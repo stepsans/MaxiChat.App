@@ -2,6 +2,9 @@ import { Router } from "express";
 import type makeWASocketType from "@whiskeysockets/baileys";
 import qrcode from "qrcode";
 import path from "path";
+import fs from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import mime from "mime-types";
 import { db } from "@workspace/db";
 import {
   whatsappSessionTable,
@@ -12,8 +15,84 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { logger } from "../lib/logger";
 
 const AUTH_DIR = path.join(process.cwd(), ".whatsapp-auth");
+export const MEDIA_DIR = path.join(process.cwd(), "media");
+
+async function ensureMediaDir() {
+  try {
+    await fs.mkdir(MEDIA_DIR, { recursive: true });
+  } catch {}
+}
+
+async function saveBufferToMedia(
+  buffer: Buffer,
+  mimeType: string,
+  preferredFilename?: string
+): Promise<{ url: string; filename: string }> {
+  await ensureMediaDir();
+  const ext = preferredFilename
+    ? path.extname(preferredFilename) || `.${mime.extension(mimeType) || "bin"}`
+    : `.${mime.extension(mimeType) || "bin"}`;
+  const filename = `${randomUUID()}${ext}`;
+  const filepath = path.join(MEDIA_DIR, filename);
+  await fs.writeFile(filepath, buffer);
+  return { url: `/api/media/${filename}`, filename: preferredFilename ?? filename };
+}
+
+export function getActiveSocket(): WASocket | null {
+  return sock;
+}
+
+export async function sendMediaToJid(
+  jid: string,
+  filepath: string,
+  mimeType: string,
+  mediaType: "image" | "video" | "document" | "audio",
+  caption?: string,
+  filename?: string
+) {
+  if (!sock) throw new Error("WhatsApp is not connected");
+  const buffer = await fs.readFile(filepath);
+  if (mediaType === "image") {
+    await sock.sendMessage(jid, { image: buffer, caption, mimetype: mimeType });
+  } else if (mediaType === "video") {
+    await sock.sendMessage(jid, { video: buffer, caption, mimetype: mimeType });
+  } else if (mediaType === "audio") {
+    await sock.sendMessage(jid, { audio: buffer, mimetype: mimeType, ptt: false });
+  } else {
+    await sock.sendMessage(jid, {
+      document: buffer,
+      mimetype: mimeType,
+      fileName: filename ?? path.basename(filepath),
+      caption,
+    });
+  }
+}
+
+export async function sendContactToJid(
+  jid: string,
+  contactName: string,
+  contactPhone: string
+) {
+  if (!sock) throw new Error("WhatsApp is not connected");
+  // Build vCard
+  const cleanPhone = contactPhone.replace(/[^\d+]/g, "");
+  const waNumber = cleanPhone.startsWith("+") ? cleanPhone.slice(1) : cleanPhone;
+  const vcard =
+    "BEGIN:VCARD\n" +
+    "VERSION:3.0\n" +
+    `FN:${contactName}\n` +
+    `TEL;type=CELL;type=VOICE;waid=${waNumber}:${cleanPhone}\n` +
+    "END:VCARD";
+  await sock.sendMessage(jid, {
+    contacts: {
+      displayName: contactName,
+      contacts: [{ vcard }],
+    },
+  });
+}
 
 type WASocket = Awaited<ReturnType<typeof makeWASocketType>>;
 
@@ -111,34 +190,65 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
   }
 }
 
+interface IncomingMedia {
+  mediaType: "image" | "video" | "document" | "audio" | "contact";
+  mediaUrl: string | null;
+  mediaMimeType: string | null;
+  mediaFilename: string | null;
+}
+
 async function handleIncomingMessage(
   jid: string,
   messageText: string,
   pushName: string,
-  rawNumber: string
+  rawNumber: string,
+  media?: IncomingMedia
 ) {
   const phoneNumber = `+${rawNumber}`;
   const contactName = pushName || rawNumber;
 
   const chat = await getOrCreateChat(phoneNumber, contactName);
 
+  // Build a human-readable preview for the chat list
+  const preview = messageText.trim().length
+    ? messageText
+    : media
+      ? media.mediaType === "image"
+        ? "📷 Gambar"
+        : media.mediaType === "video"
+          ? "🎥 Video"
+          : media.mediaType === "audio"
+            ? "🎤 Audio"
+            : media.mediaType === "document"
+              ? `📄 ${media.mediaFilename ?? "Dokumen"}`
+              : media.mediaType === "contact"
+                ? `👤 ${media.mediaFilename ?? "Kontak"}`
+                : "Media"
+      : "";
+
   await db.insert(chatMessagesTable).values({
     chatId: chat.id,
     direction: "inbound",
     content: messageText,
     isAiGenerated: false,
+    mediaType: media?.mediaType ?? null,
+    mediaUrl: media?.mediaUrl ?? null,
+    mediaMimeType: media?.mediaMimeType ?? null,
+    mediaFilename: media?.mediaFilename ?? null,
   });
 
   await db
     .update(chatsTable)
     .set({
-      lastMessage: messageText,
+      lastMessage: preview,
       lastMessageAt: new Date(),
       unreadCount: (chat.unreadCount ?? 0) + 1,
     })
     .where(eq(chatsTable.id, chat.id));
 
   if (chat.isHumanTakeover) return;
+  // Don't auto-reply to pure media messages without text
+  if (!messageText.trim()) return;
 
   const settingsRows = await db.select().from(settingsTable).limit(1);
   const settings = settingsRows[0];
@@ -238,6 +348,8 @@ async function startBaileys(sessionId: number) {
       }
     });
 
+    const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       if (type !== "notify") return;
 
@@ -253,20 +365,94 @@ async function startBaileys(sessionId: number) {
           if (!jid.endsWith("@s.whatsapp.net")) continue;
           if (isJidGroup(jid)) continue;
 
+          // Recursively unwrap ephemeral / viewOnce wrappers
+          let inner: any = msg.message;
+          for (let i = 0; i < 5; i++) {
+            const next =
+              inner.ephemeralMessage?.message ||
+              inner.viewOnceMessage?.message ||
+              inner.viewOnceMessageV2?.message ||
+              inner.viewOnceMessageV2Extension?.message;
+            if (!next) break;
+            inner = next;
+          }
+
           const messageContent =
-            msg.message.conversation ||
-            msg.message.extendedTextMessage?.text ||
-            msg.message.imageMessage?.caption ||
-            msg.message.videoMessage?.caption ||
+            inner.conversation ||
+            inner.extendedTextMessage?.text ||
+            inner.imageMessage?.caption ||
+            inner.videoMessage?.caption ||
+            inner.documentMessage?.caption ||
+            inner.documentWithCaptionMessage?.message?.documentMessage?.caption ||
             "";
 
-          if (!messageContent.trim()) continue;
+          // Detect media
+          let media: IncomingMedia | undefined;
+          let mediaKind: "image" | "video" | "document" | "audio" | null = null;
+          let mediaMime: string | null = null;
+          let mediaFilename: string | null = null;
+
+          if (inner.imageMessage) {
+            mediaKind = "image";
+            mediaMime = inner.imageMessage.mimetype ?? "image/jpeg";
+          } else if (inner.videoMessage) {
+            mediaKind = "video";
+            mediaMime = inner.videoMessage.mimetype ?? "video/mp4";
+          } else if (inner.audioMessage) {
+            mediaKind = "audio";
+            mediaMime = inner.audioMessage.mimetype ?? "audio/ogg";
+          } else if (inner.documentMessage) {
+            mediaKind = "document";
+            mediaMime = inner.documentMessage.mimetype ?? "application/octet-stream";
+            mediaFilename = inner.documentMessage.fileName ?? null;
+          } else if (inner.documentWithCaptionMessage?.message?.documentMessage) {
+            mediaKind = "document";
+            const doc = inner.documentWithCaptionMessage.message.documentMessage;
+            mediaMime = doc.mimetype ?? "application/octet-stream";
+            mediaFilename = doc.fileName ?? null;
+          }
+
+          if (mediaKind) {
+            try {
+              const buf = (await downloadMediaMessage(
+                { ...msg, message: inner } as any,
+                "buffer",
+                {}
+              )) as Buffer;
+              const saved = await saveBufferToMedia(
+                buf,
+                mediaMime ?? "application/octet-stream",
+                mediaFilename ?? undefined
+              );
+              media = {
+                mediaType: mediaKind,
+                mediaUrl: saved.url,
+                mediaMimeType: mediaMime,
+                mediaFilename: mediaFilename ?? saved.filename,
+              };
+            } catch (err) {
+              logger.error({ err }, "Failed to download incoming media");
+            }
+          } else if (inner.contactMessage || inner.contactsArrayMessage) {
+            // Contact card — store the vCard text in mediaUrl as a data: URI is overkill; just keep displayName
+            const contact = inner.contactMessage ?? inner.contactsArrayMessage?.contacts?.[0];
+            const displayName = contact?.displayName ?? "Kontak";
+            media = {
+              mediaType: "contact",
+              mediaUrl: null,
+              mediaMimeType: "text/vcard",
+              mediaFilename: displayName,
+            };
+          }
+
+          if (!messageContent.trim() && !media) continue;
 
           // Extract clean phone number — strip @domain and :device suffix
           const rawNumber = jid.split("@")[0].split(":")[0];
           const pushName = msg.pushName || rawNumber;
-          await handleIncomingMessage(jid, messageContent, pushName, rawNumber);
-        } catch {
+          await handleIncomingMessage(jid, messageContent, pushName, rawNumber, media);
+        } catch (err) {
+          logger.error({ err }, "Failed to process incoming message");
         }
       }
     });

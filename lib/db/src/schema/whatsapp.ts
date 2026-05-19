@@ -38,6 +38,10 @@ export const chatMessagesTable = pgTable("chat_messages", {
   direction: text("direction").notNull(),
   content: text("content").notNull(),
   isAiGenerated: boolean("is_ai_generated").notNull().default(false),
+  mediaType: text("media_type"),
+  mediaUrl: text("media_url"),
+  mediaMimeType: text("media_mime_type"),
+  mediaFilename: text("media_filename"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

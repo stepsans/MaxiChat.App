@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,7 +11,6 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -20,6 +19,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,10 +41,18 @@ import {
   Send,
   UserCheck,
   Loader2,
+  Paperclip,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  FileText,
+  User as UserIcon,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+
+type MediaKind = "image" | "video" | "document";
 
 export default function ChatDetail() {
   const { id } = useParams<{ id: string }>();
@@ -39,6 +60,88 @@ export default function ChatDetail() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [reply, setReply] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingFileKind, setPendingFileKind] = useState<MediaKind>("document");
+  const [uploading, setUploading] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [sendingContact, setSendingContact] = useState(false);
+
+  const acceptFor = (k: MediaKind) =>
+    k === "image" ? "image/*" : k === "video" ? "video/*" : "*/*";
+
+  function openFilePicker(kind: MediaKind) {
+    setPendingFileKind(kind);
+    // defer one tick so the accept attr update applies
+    setTimeout(() => fileInputRef.current?.click(), 0);
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking same file
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (reply.trim()) fd.append("caption", reply.trim());
+      const res = await fetch(`/api/chats/${chatId}/media`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Gagal mengirim media");
+      }
+      setReply("");
+      qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+      qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+      toast({ title: "Media terkirim." });
+    } catch (err: any) {
+      toast({
+        title: "Gagal mengirim media",
+        description: err?.message ?? "",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSendContact() {
+    if (!contactName.trim() || !contactPhone.trim()) return;
+    setSendingContact(true);
+    try {
+      const res = await fetch(`/api/chats/${chatId}/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: contactName.trim(),
+          phone: contactPhone.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Gagal mengirim kontak");
+      }
+      setContactOpen(false);
+      setContactName("");
+      setContactPhone("");
+      qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+      qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+      toast({ title: "Kontak terkirim." });
+    } catch (err: any) {
+      toast({
+        title: "Gagal mengirim kontak",
+        description: err?.message ?? "",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingContact(false);
+    }
+  }
 
   const { data: chat, isLoading } = useGetChat(chatId, {
     query: {
@@ -177,8 +280,10 @@ export default function ChatDetail() {
             <p className="text-sm">No messages yet</p>
           </div>
         ) : (
-          chat.messages.map((msg) => {
+          chat.messages.map((msg: any) => {
             const isOutbound = msg.direction === "outbound";
+            const mediaType: string | null = msg.mediaType ?? null;
+            const mediaUrl: string | null = msg.mediaUrl ?? null;
             return (
               <div
                 key={msg.id}
@@ -187,14 +292,73 @@ export default function ChatDetail() {
               >
                 <div
                   className={cn(
-                    "max-w-[70%] rounded-lg px-3 py-2 text-sm",
+                    "max-w-[70%] rounded-lg px-3 py-2 text-sm space-y-1.5",
                     isOutbound
                       ? "bg-primary text-primary-foreground"
                       : "bg-secondary text-foreground"
                   )}
                 >
-                  <p className="leading-relaxed">{msg.content}</p>
-                  <div className="flex items-center gap-1 mt-1">
+                  {mediaType === "image" && mediaUrl && (
+                    <a href={mediaUrl} target="_blank" rel="noreferrer">
+                      <img
+                        src={mediaUrl}
+                        alt={msg.mediaFilename ?? "image"}
+                        className="rounded-md max-h-72 object-cover"
+                      />
+                    </a>
+                  )}
+                  {mediaType === "video" && mediaUrl && (
+                    <video
+                      src={mediaUrl}
+                      controls
+                      className="rounded-md max-h-72 w-full"
+                    />
+                  )}
+                  {mediaType === "audio" && mediaUrl && (
+                    <audio src={mediaUrl} controls className="w-full" />
+                  )}
+                  {mediaType === "document" && mediaUrl && (
+                    <a
+                      href={mediaUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={msg.mediaFilename ?? undefined}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1.5",
+                        isOutbound ? "bg-primary-foreground/10" : "bg-foreground/5"
+                      )}
+                    >
+                      <FileText className="w-5 h-5 flex-shrink-0 opacity-80" />
+                      <span className="truncate text-xs underline">
+                        {msg.mediaFilename ?? "Document"}
+                      </span>
+                      <Download className="w-3.5 h-3.5 opacity-60 ml-auto" />
+                    </a>
+                  )}
+                  {mediaType === "contact" && (
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1.5",
+                        isOutbound ? "bg-primary-foreground/10" : "bg-foreground/5"
+                      )}
+                    >
+                      <UserIcon className="w-5 h-5 flex-shrink-0 opacity-80" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">
+                          {msg.mediaFilename ?? "Kontak"}
+                        </p>
+                        {msg.content && (
+                          <p className="text-[10px] opacity-70 truncate">
+                            {msg.content}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {msg.content && mediaType !== "contact" && (
+                    <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  )}
+                  <div className="flex items-center gap-1">
                     <span className="text-[10px] opacity-60">
                       {format(new Date(msg.createdAt), "HH:mm")}
                     </span>
@@ -220,10 +384,63 @@ export default function ChatDetail() {
             Human mode — AI auto-reply is paused for this chat
           </p>
         )}
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-end">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                data-testid="button-attach"
+                variant="outline"
+                size="sm"
+                className="self-end"
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Paperclip className="w-4 h-4" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                data-testid="menu-attach-image"
+                onClick={() => openFilePicker("image")}
+              >
+                <ImageIcon className="w-4 h-4 mr-2" /> Gambar
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-attach-video"
+                onClick={() => openFilePicker("video")}
+              >
+                <VideoIcon className="w-4 h-4 mr-2" /> Video
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-attach-document"
+                onClick={() => openFilePicker("document")}
+              >
+                <FileText className="w-4 h-4 mr-2" /> File / Dokumen
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-attach-contact"
+                onClick={() => setContactOpen(true)}
+              >
+                <UserIcon className="w-4 h-4 mr-2" /> Kontak
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={acceptFor(pendingFileKind)}
+            onChange={handleFileSelected}
+            className="hidden"
+            data-testid="input-file"
+          />
+
           <Textarea
             data-testid="textarea-reply"
-            placeholder="Type a manual reply..."
+            placeholder="Ketik balasan atau caption..."
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             rows={2}
@@ -256,6 +473,57 @@ export default function ChatDetail() {
           </Button>
         </div>
       </div>
+
+      {/* Contact share dialog */}
+      <Dialog open={contactOpen} onOpenChange={setContactOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Kirim Kontak</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="contact-name" className="text-xs">Nama</Label>
+              <Input
+                id="contact-name"
+                data-testid="input-contact-name"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Nama kontak"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="contact-phone" className="text-xs">Nomor WhatsApp</Label>
+              <Input
+                id="contact-phone"
+                data-testid="input-contact-phone"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder="+62812xxxxxxxx"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setContactOpen(false)}
+              disabled={sendingContact}
+            >
+              Batal
+            </Button>
+            <Button
+              data-testid="button-send-contact"
+              onClick={handleSendContact}
+              disabled={sendingContact || !contactName.trim() || !contactPhone.trim()}
+            >
+              {sendingContact ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Kirim"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

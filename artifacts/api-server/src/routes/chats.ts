@@ -1,4 +1,9 @@
 import { Router } from "express";
+import multer from "multer";
+import path from "node:path";
+import fs from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
@@ -12,8 +17,50 @@ import {
   SendManualReplyParams,
   TakeoverChatParams,
 } from "@workspace/api-zod";
+import {
+  MEDIA_DIR,
+  sendMediaToJid,
+  sendContactToJid,
+  getActiveSocket,
+} from "./whatsapp";
 
 const router = Router();
+
+// Multer storage — write directly into the media dir with a UUID filename
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, cb) => {
+      try {
+        await fs.mkdir(MEDIA_DIR, { recursive: true });
+      } catch {}
+      cb(null, MEDIA_DIR);
+    },
+    filename: (_req, file, cb) => {
+      // Derive extension from declared MIME (trusted by Multer) and never
+      // from the user-controlled original filename — that prevents stored
+      // .html/.svg/.js files from being served as active content.
+      const ext = mime.extension(file.mimetype || "");
+      cb(null, `${randomUUID()}${ext ? "." + ext : ""}`);
+    },
+  }),
+  limits: { fileSize: 64 * 1024 * 1024 }, // 64MB
+});
+
+function classifyMediaType(
+  mime: string
+): "image" | "video" | "audio" | "document" {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+async function jidForChat(chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
+  const [chat] = await db.select().from(chatsTable).where(eq(chatsTable.id, chatId));
+  if (!chat) return null;
+  const cleaned = chat.phoneNumber.replace(/[^\d]/g, "");
+  return { chat, jid: `${cleaned}@s.whatsapp.net` };
+}
 
 router.get("/", async (req, res) => {
   try {
@@ -187,6 +234,138 @@ router.post("/:id/takeover", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to toggle takeover");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Send media (image/video/audio/document) via WhatsApp
+router.post("/:id/media", upload.single("file"), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: "Missing file" });
+    }
+
+    if (!getActiveSocket()) {
+      // Clean up the file we just saved
+      await fs.unlink(req.file.path).catch(() => {});
+      return res.status(503).json({ error: "WhatsApp belum terhubung" });
+    }
+
+    const target = await jidForChat(id);
+    if (!target) {
+      await fs.unlink(req.file.path).catch(() => {});
+      return res.status(404).json({ error: "Chat not found" });
+    }
+
+    const caption = (req.body?.caption as string | undefined)?.trim() || undefined;
+    const mimeType = req.file.mimetype || "application/octet-stream";
+    const mediaType = classifyMediaType(mimeType);
+    const originalName = req.file.originalname;
+
+    try {
+      await sendMediaToJid(
+        target.jid,
+        req.file.path,
+        mimeType,
+        mediaType,
+        caption,
+        originalName
+      );
+    } catch (err) {
+      req.log.error({ err }, "Failed to send media via WhatsApp");
+      await fs.unlink(req.file.path).catch(() => {});
+      return res.status(500).json({ error: "Failed to send media" });
+    }
+
+    const mediaUrl = `/api/media/${path.basename(req.file.path)}`;
+    const previewByType = {
+      image: "📷 Gambar",
+      video: "🎥 Video",
+      audio: "🎤 Audio",
+      document: `📄 ${originalName}`,
+    } as const;
+    const preview = caption || previewByType[mediaType];
+
+    const [message] = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: id,
+        direction: "outbound",
+        content: caption ?? "",
+        isAiGenerated: false,
+        mediaType,
+        mediaUrl,
+        mediaMimeType: mimeType,
+        mediaFilename: originalName,
+      })
+      .returning();
+
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: preview, lastMessageAt: new Date() })
+      .where(eq(chatsTable.id, id));
+
+    res.json({ ...message, createdAt: message.createdAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send media");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Send contact card via WhatsApp
+router.post("/:id/contact", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    const name = (req.body?.name as string | undefined)?.trim();
+    const phone = (req.body?.phone as string | undefined)?.trim();
+    if (!name || !phone) {
+      return res.status(400).json({ error: "Name and phone are required" });
+    }
+
+    if (!getActiveSocket()) {
+      return res.status(503).json({ error: "WhatsApp belum terhubung" });
+    }
+
+    const target = await jidForChat(id);
+    if (!target) return res.status(404).json({ error: "Chat not found" });
+
+    try {
+      await sendContactToJid(target.jid, name, phone);
+    } catch (err) {
+      req.log.error({ err }, "Failed to send contact via WhatsApp");
+      return res.status(500).json({ error: "Failed to send contact" });
+    }
+
+    const preview = `👤 ${name}`;
+    const [message] = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: id,
+        direction: "outbound",
+        content: `${name} (${phone})`,
+        isAiGenerated: false,
+        mediaType: "contact",
+        mediaUrl: null,
+        mediaMimeType: "text/vcard",
+        mediaFilename: name,
+      })
+      .returning();
+
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: preview, lastMessageAt: new Date() })
+      .where(eq(chatsTable.id, id));
+
+    res.json({ ...message, createdAt: message.createdAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send contact");
     res.status(500).json({ error: "Internal server error" });
   }
 });
