@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "AI WhatsApp Automation Assistant"
+version = "1.0.0"
+id = "artifacts/whatsapp-ai"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21603
+
+[services.development]
+run = "pnpm --filter @workspace/whatsapp-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/whatsapp-ai", "run", "build" ]
+publicDir = "artifacts/whatsapp-ai/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21603"
+BASE_PATH = "/"

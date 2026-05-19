@@ -1,0 +1,139 @@
+
+Buatkan saya sebuah web app bernama “AI WhatsApp Automation Assistant” yang dapat membalas semua chat WhatsApp secara otomatis selama 24 jam menggunakan AI, dengan kemampuan memahami produk knowledge dan menjawab seperti customer service profesional yang ramah, cepat, dan membantu closing.
+
+Tujuan utama:
+Menggantikan admin WhatsApp manual menjadi AI yang:
+
+Bisa menjawab pertanyaan customer
+Bisa menjelaskan produk
+Bisa mengarahkan ke pembelian
+Bisa tetap sopan dan engaging
+
+TECH STACK:
+
+Frontend: React + Next.js + Tailwind
+Backend: Node.js (Express)
+WhatsApp Integration: WhatsApp Web API (gunakan library seperti Baileys atau venom-bot)
+AI:
+
+OpenAI GPT (untuk balasan)
+Embedding / vector DB (untuk knowledge base, gunakan Pinecone / Supabase vector / local vector store)
+
+Database:
+
+PostgreSQL / Firebase
+
+FITUR UTAMA:
+
+KONEKSI WHATSAPP (WAJIB ADA)
+Login menggunakan QR Code (scan seperti WhatsApp Web)
+Status:
+Connected
+Disconnected
+Auto reconnect jika terputus
+AUTO REPLY 24 JAM
+Semua chat masuk akan dibalas otomatis oleh AI
+Delay natural (1–3 detik) agar terasa manusiawi
+Bisa handle:
+chat baru
+follow up chat lama
+KNOWLEDGE BASE (FITUR PALING PENTING)
+
+User bisa input:
+
+Deskripsi produk
+FAQ (QnA)
+Link website
+Script jualan
+Testimoni
+
+AI harus belajar dari data ini menggunakan sistem embedding (RAG).
+
+AI RESPONSE ENGINE
+
+Gunakan prompt system seperti ini:
+
+“Kamu adalah customer service profesional yang ramah, cepat, dan membantu closing.
+
+Gunakan gaya bahasa:
+
+Santai tapi sopan
+Gunakan emoji secukupnya 😊🔥
+Jawaban singkat, jelas, dan tidak bertele-tele
+
+Gunakan knowledge berikut untuk menjawab:
+[DATA KNOWLEDGE BASE]
+
+Jika user bertanya:
+[CHAT USER]
+
+Tugas kamu:
+
+Jawab pertanyaan dengan jelas
+Jika memungkinkan, arahkan ke pembelian
+Gunakan bahasa natural seperti manusia
+Jangan jawab di luar knowledge
+Jika tidak tahu, arahkan ke admin manusia”
+FALLBACK KE HUMAN AGENT (PENTING BANGET)
+
+Jika AI tidak yakin:
+
+Balas:
+“Aku bantu cek dulu ya kak, nanti admin kami bantu jawab lebih detail 🙏”
+Tandai chat sebagai:
+“Butuh human”
+SMART DETECTION
+
+AI harus bisa mengenali:
+
+Pertanyaan harga
+Cara order
+Komplain
+Closing intent
+AUTO SELLING FLOW
+
+Jika user menunjukkan minat:
+
+AI harus bisa:
+
+Jelaskan benefit
+Beri CTA:
+“Mau aku bantu proses ordernya sekarang kak? 😊”
+DASHBOARD ADMIN
+Lihat semua chat
+Status:
+Dibalas AI
+Butuh human
+Bisa takeover manual
+TRAINING SYSTEM
+
+User bisa:
+
+Tambah FAQ
+Update jawaban
+Upload knowledge baru
+
+AI otomatis belajar ulang
+
+LOGIC PENTING:
+Jangan spam
+Jangan terlalu panjang
+Gunakan emoji natural
+Maksimal 2–4 kalimat
+TAMBAHAN LEVEL PRO:
+Tag user:
+Hot lead
+Cold
+Closing
+Auto follow up:
+“Halo kak, kemarin sempat tanya produk, masih tertarik? 😊”
+Analisa chat:
+Berapa yang closing
+Pertanyaan paling sering
+
+MINDSET:
+
+AI ini bukan chatbot…
+
+Tapi:
+Sales + CS + Closing assistant dalam satu sistem 

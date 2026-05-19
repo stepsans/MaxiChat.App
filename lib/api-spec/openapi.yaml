@@ -3,13 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AI WhatsApp Automation Assistant API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: whatsapp
+    description: WhatsApp connection management
+  - name: chats
+    description: Chat management
+  - name: knowledge
+    description: Knowledge base management
+  - name: settings
+    description: AI settings
+  - name: analytics
+    description: Analytics and reporting
 paths:
   /healthz:
     get:
@@ -24,6 +34,308 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /whatsapp/status:
+    get:
+      operationId: getWhatsappStatus
+      tags: [whatsapp]
+      summary: Get WhatsApp connection status
+      responses:
+        "200":
+          description: Current WhatsApp connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatus"
+
+  /whatsapp/connect:
+    post:
+      operationId: connectWhatsapp
+      tags: [whatsapp]
+      summary: Initiate WhatsApp connection and get QR code
+      responses:
+        "200":
+          description: QR code generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatus"
+
+  /whatsapp/disconnect:
+    post:
+      operationId: disconnectWhatsapp
+      tags: [whatsapp]
+      summary: Disconnect WhatsApp session
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatus"
+
+  /chats:
+    get:
+      operationId: listChats
+      tags: [chats]
+      summary: List all chats
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, needs_human, ai_handled, closed]
+          required: false
+        - name: tag
+          in: query
+          schema:
+            type: string
+            enum: [all, hot_lead, cold, closing]
+          required: false
+      responses:
+        "200":
+          description: List of chats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Chat"
+
+  /chats/{id}:
+    get:
+      operationId: getChat
+      tags: [chats]
+      summary: Get a specific chat with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Chat with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatWithMessages"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    patch:
+      operationId: updateChat
+      tags: [chats]
+      summary: Update chat status or tag
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatUpdate"
+      responses:
+        "200":
+          description: Updated chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+  /chats/{id}/reply:
+    post:
+      operationId: sendManualReply
+      tags: [chats]
+      summary: Send a manual reply to a chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManualReplyInput"
+      responses:
+        "200":
+          description: Reply sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+
+  /chats/{id}/takeover:
+    post:
+      operationId: takeoverChat
+      tags: [chats]
+      summary: Toggle human takeover for a chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TakeoverInput"
+      responses:
+        "200":
+          description: Takeover toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+  /knowledge:
+    get:
+      operationId: listKnowledge
+      tags: [knowledge]
+      summary: List all knowledge base entries
+      responses:
+        "200":
+          description: List of knowledge entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeEntry"
+
+    post:
+      operationId: createKnowledge
+      tags: [knowledge]
+      summary: Add a knowledge base entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeInput"
+      responses:
+        "201":
+          description: Created knowledge entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeEntry"
+
+  /knowledge/{id}:
+    put:
+      operationId: updateKnowledge
+      tags: [knowledge]
+      summary: Update a knowledge base entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeUpdate"
+      responses:
+        "200":
+          description: Updated knowledge entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeEntry"
+
+    delete:
+      operationId: deleteKnowledge
+      tags: [knowledge]
+      summary: Delete a knowledge base entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get AI settings
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update AI settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+
+  /analytics/summary:
+    get:
+      operationId: getAnalyticsSummary
+      tags: [analytics]
+      summary: Get analytics summary
+      responses:
+        "200":
+          description: Analytics summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSummary"
+
+  /analytics/common-questions:
+    get:
+      operationId: getCommonQuestions
+      tags: [analytics]
+      summary: Get most common customer questions
+      responses:
+        "200":
+          description: Common questions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommonQuestion"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +346,238 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required: [success]
+
+    WhatsappStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [connected, disconnected, connecting, qr_ready]
+        qrCode:
+          type: ["string", "null"]
+        phoneNumber:
+          type: ["string", "null"]
+        connectedAt:
+          type: ["string", "null"]
+
+    Chat:
+      type: object
+      required: [id, phoneNumber, contactName, status, tag, isHumanTakeover, lastMessage, lastMessageAt, unreadCount, createdAt]
+      properties:
+        id:
+          type: integer
+        phoneNumber:
+          type: string
+        contactName:
+          type: string
+        status:
+          type: string
+          enum: [ai_handled, needs_human, closed]
+        tag:
+          type: string
+          enum: [none, hot_lead, cold, closing]
+        isHumanTakeover:
+          type: boolean
+        lastMessage:
+          type: ["string", "null"]
+        lastMessageAt:
+          type: ["string", "null"]
+        unreadCount:
+          type: integer
+        createdAt:
+          type: string
+
+    ChatMessage:
+      type: object
+      required: [id, chatId, direction, content, isAiGenerated, createdAt]
+      properties:
+        id:
+          type: integer
+        chatId:
+          type: integer
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        content:
+          type: string
+        isAiGenerated:
+          type: boolean
+        createdAt:
+          type: string
+
+    ChatWithMessages:
+      type: object
+      required: [id, phoneNumber, contactName, status, tag, isHumanTakeover, lastMessage, lastMessageAt, unreadCount, createdAt, messages]
+      properties:
+        id:
+          type: integer
+        phoneNumber:
+          type: string
+        contactName:
+          type: string
+        status:
+          type: string
+          enum: [ai_handled, needs_human, closed]
+        tag:
+          type: string
+          enum: [none, hot_lead, cold, closing]
+        isHumanTakeover:
+          type: boolean
+        lastMessage:
+          type: ["string", "null"]
+        lastMessageAt:
+          type: ["string", "null"]
+        unreadCount:
+          type: integer
+        createdAt:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+
+    ChatUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ai_handled, needs_human, closed]
+        tag:
+          type: string
+          enum: [none, hot_lead, cold, closing]
+
+    ManualReplyInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+
+    TakeoverInput:
+      type: object
+      required: [takeover]
+      properties:
+        takeover:
+          type: boolean
+
+    KnowledgeEntry:
+      type: object
+      required: [id, type, title, content, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [product, faq, script, testimonial, website]
+        title:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    KnowledgeInput:
+      type: object
+      required: [type, title, content]
+      properties:
+        type:
+          type: string
+          enum: [product, faq, script, testimonial, website]
+        title:
+          type: string
+        content:
+          type: string
+
+    KnowledgeUpdate:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [product, faq, script, testimonial, website]
+        title:
+          type: string
+        content:
+          type: string
+
+    Settings:
+      type: object
+      required: [id, systemPrompt, autoReplyEnabled, replyDelayMin, replyDelayMax, fallbackMessage, updatedAt]
+      properties:
+        id:
+          type: integer
+        systemPrompt:
+          type: string
+        autoReplyEnabled:
+          type: boolean
+        replyDelayMin:
+          type: integer
+        replyDelayMax:
+          type: integer
+        fallbackMessage:
+          type: string
+        updatedAt:
+          type: string
+
+    SettingsUpdate:
+      type: object
+      properties:
+        systemPrompt:
+          type: string
+        autoReplyEnabled:
+          type: boolean
+        replyDelayMin:
+          type: integer
+        replyDelayMax:
+          type: integer
+        fallbackMessage:
+          type: string
+
+    AnalyticsSummary:
+      type: object
+      required: [totalChats, aiHandled, needsHuman, closed, hotLeads, closingLeads, coldLeads, totalMessages, todayChats, closingRate]
+      properties:
+        totalChats:
+          type: integer
+        aiHandled:
+          type: integer
+        needsHuman:
+          type: integer
+        closed:
+          type: integer
+        hotLeads:
+          type: integer
+        closingLeads:
+          type: integer
+        coldLeads:
+          type: integer
+        totalMessages:
+          type: integer
+        todayChats:
+          type: integer
+        closingRate:
+          type: number
+
+    CommonQuestion:
+      type: object
+      required: [question, count]
+      properties:
+        question:
+          type: string
+        count:
+          type: integer

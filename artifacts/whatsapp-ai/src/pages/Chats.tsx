@@ -1,0 +1,205 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import {
+  useListChats,
+  useUpdateChat,
+  getListChatsQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Bot,
+  UserCheck,
+  Search,
+  Flame,
+  TrendingUp,
+  Snowflake,
+  MessageSquare,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
+
+const statusColors: Record<string, string> = {
+  ai_handled: "bg-primary/10 text-primary border-primary/20",
+  needs_human: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+  closed: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+};
+
+const tagColors: Record<string, string> = {
+  hot_lead: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  cold: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  closing: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  none: "",
+};
+
+const tagIcons: Record<string, React.ElementType> = {
+  hot_lead: Flame,
+  cold: Snowflake,
+  closing: TrendingUp,
+};
+
+const statusLabels: Record<string, string> = {
+  ai_handled: "AI Handled",
+  needs_human: "Needs Human",
+  closed: "Closed",
+};
+
+export default function Chats() {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [, setLocation] = useLocation();
+
+  const { data: chats, isLoading } = useListChats();
+
+  const filtered = (chats ?? []).filter((c) => {
+    const matchStatus = statusFilter === "all" || c.status === statusFilter;
+    const matchTag = tagFilter === "all" || c.tag === tagFilter;
+    const matchSearch =
+      !search ||
+      c.contactName.toLowerCase().includes(search.toLowerCase()) ||
+      c.phoneNumber.includes(search);
+    return matchStatus && matchTag && matchSearch;
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 h-14 border-b border-border flex-shrink-0">
+        <div>
+          <h1 className="text-base font-semibold">Chats</h1>
+          <p className="text-xs text-muted-foreground">
+            {chats?.length ?? 0} total conversations
+          </p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-border flex-shrink-0">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input
+            data-testid="input-search-chats"
+            className="pl-8 h-8 text-sm"
+            placeholder="Search contacts..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger data-testid="select-status-filter" className="h-8 w-36 text-sm">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All status</SelectItem>
+            <SelectItem value="ai_handled">AI Handled</SelectItem>
+            <SelectItem value="needs_human">Needs Human</SelectItem>
+            <SelectItem value="closed">Closed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={tagFilter} onValueChange={setTagFilter}>
+          <SelectTrigger data-testid="select-tag-filter" className="h-8 w-32 text-sm">
+            <SelectValue placeholder="Tag" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All tags</SelectItem>
+            <SelectItem value="hot_lead">Hot Lead</SelectItem>
+            <SelectItem value="cold">Cold</SelectItem>
+            <SelectItem value="closing">Closing</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Chat List */}
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="p-4 space-y-2">
+            {Array(8)
+              .fill(0)
+              .map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-md" />
+              ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <MessageSquare className="w-8 h-8 mb-2 opacity-30" />
+            <p className="text-sm">No chats found</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {filtered.map((chat) => {
+              const TagIcon = tagIcons[chat.tag];
+              return (
+                <Link
+                  key={chat.id}
+                  href={`/chats/${chat.id}`}
+                  data-testid={`chat-list-item-${chat.id}`}
+                  className="flex items-center gap-3 px-6 py-3.5 hover:bg-accent transition-colors cursor-pointer"
+                >
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 text-sm font-semibold text-foreground">
+                      {chat.contactName.charAt(0).toUpperCase()}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-sm font-medium truncate">{chat.contactName}</span>
+                        {chat.tag !== "none" && TagIcon && (
+                          <Badge
+                            variant="outline"
+                            className={cn("text-[10px] h-4 px-1.5", tagColors[chat.tag])}
+                          >
+                            <TagIcon className="w-2.5 h-2.5 mr-0.5" />
+                            {chat.tag.replace("_", " ")}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {chat.lastMessage ?? "No messages yet"}
+                      </p>
+                    </div>
+
+                    {/* Right */}
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      {chat.lastMessageAt && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatDistanceToNow(new Date(chat.lastMessageAt), { addSuffix: true })}
+                        </span>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className={cn("text-[10px] h-4 px-1.5", statusColors[chat.status])}
+                      >
+                        {chat.status === "ai_handled" ? (
+                          <Bot className="w-2.5 h-2.5 mr-0.5" />
+                        ) : (
+                          <UserCheck className="w-2.5 h-2.5 mr-0.5" />
+                        )}
+                        {statusLabels[chat.status]}
+                      </Badge>
+                      {chat.unreadCount > 0 && (
+                        <span className="w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-bold">
+                          {chat.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
