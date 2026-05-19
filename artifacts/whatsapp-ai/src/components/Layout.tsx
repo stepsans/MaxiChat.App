@@ -72,7 +72,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <SiWhatsapp className="w-4 h-4 text-white" />
           </div>
           <span className="text-sm font-semibold text-foreground tracking-tight">
-            WA AI Assistant
+            Maxipro Assistant
           </span>
         </div>
 
