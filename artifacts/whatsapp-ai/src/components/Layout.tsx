@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { cn } from "@/lib/utils";
-import { useGetWhatsappStatus } from "@workspace/api-client-react";
+import { useGetWhatsappStatus, useListChats } from "@workspace/api-client-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -20,6 +20,15 @@ const navItems = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+function useUnreadCount() {
+  const { data: chats } = useListChats(
+    {},
+    { query: { refetchInterval: 5000 } }
+  );
+  if (!chats) return 0;
+  return chats.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+}
 
 function StatusBadge() {
   const { data: status } = useGetWhatsappStatus({
@@ -61,6 +70,7 @@ function StatusBadge() {
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const totalUnread = useUnreadCount();
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -81,6 +91,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {navItems.map(({ href, label, icon: Icon }) => {
             const isActive =
               href === "/" ? location === "/" : location.startsWith(href);
+            const isChats = href === "/chats";
+            const showBadge = isChats && totalUnread > 0;
             return (
               <Link
                 key={href}
@@ -94,7 +106,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
+                <span className="flex-1">{label}</span>
+                {showBadge && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold leading-none",
+                      isActive
+                        ? "bg-white text-primary"
+                        : "bg-primary text-white"
+                    )}
+                  >
+                    {totalUnread > 99 ? "99+" : totalUnread}
+                  </span>
+                )}
               </Link>
             );
           })}

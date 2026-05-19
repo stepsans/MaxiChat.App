@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -76,6 +76,19 @@ export default function ChatDetail() {
       },
     },
   });
+
+  useEffect(() => {
+    if (chat && (chat.unreadCount ?? 0) > 0) {
+      updateChat.mutate(
+        { id: chatId, data: { unreadCount: 0 } },
+        {
+          onSuccess: () => {
+            qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+          },
+        }
+      );
+    }
+  }, [chat?.id]);
 
   if (isLoading) {
     return (
