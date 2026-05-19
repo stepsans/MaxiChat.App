@@ -114,12 +114,13 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
 async function handleIncomingMessage(
   jid: string,
   messageText: string,
-  pushName: string
+  pushName: string,
+  rawNumber: string
 ) {
-  const phoneNumber = jid.split("@")[0];
-  const contactName = pushName || phoneNumber;
+  const phoneNumber = `+${rawNumber}`;
+  const contactName = pushName || rawNumber;
 
-  const chat = await getOrCreateChat(`+${phoneNumber}`, contactName);
+  const chat = await getOrCreateChat(phoneNumber, contactName);
 
   await db.insert(chatMessagesTable).values({
     chatId: chat.id,
@@ -247,6 +248,9 @@ async function startBaileys(sessionId: number) {
 
           const jid = msg.key.remoteJid;
           if (!jid) continue;
+
+          // Only handle 1-on-1 chats via standard WhatsApp JIDs
+          if (!jid.endsWith("@s.whatsapp.net")) continue;
           if (isJidGroup(jid)) continue;
 
           const messageContent =
@@ -258,8 +262,10 @@ async function startBaileys(sessionId: number) {
 
           if (!messageContent.trim()) continue;
 
-          const pushName = msg.pushName || jid.split("@")[0];
-          await handleIncomingMessage(jid, messageContent, pushName);
+          // Extract clean phone number — strip @domain and :device suffix
+          const rawNumber = jid.split("@")[0].split(":")[0];
+          const pushName = msg.pushName || rawNumber;
+          await handleIncomingMessage(jid, messageContent, pushName, rawNumber);
         } catch {
         }
       }
