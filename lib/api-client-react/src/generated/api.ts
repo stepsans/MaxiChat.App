@@ -580,6 +580,76 @@ export const useUpdateChat = <TError = ErrorType<unknown>,
       return useMutation(getUpdateChatMutationOptions(options));
     }
 
+export const getDeleteChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}`
+}
+
+/**
+ * @summary Delete a chat and all its messages
+ */
+export const deleteChat = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteChatUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteChatMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChat>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChat>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChat>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteChat(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteChatMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChat>>>
+
+    export type DeleteChatMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a chat and all its messages
+ */
+export const useDeleteChat = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChat>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteChat>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteChatMutationOptions(options));
+    }
+
 export const getSendManualReplyUrl = (id: number,) => {
 
 

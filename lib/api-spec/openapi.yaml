@@ -151,6 +151,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/Chat"
 
+    delete:
+      operationId: deleteChat
+      tags: [chats]
+      summary: Delete a chat and all its messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Chat deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}/reply:
     post:
       operationId: sendManualReply

@@ -129,6 +129,18 @@ export const UpdateChatResponse = zod.object({
 
 
 /**
+ * @summary Delete a chat and all its messages
+ */
+export const DeleteChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteChatResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary Send a manual reply to a chat
  */
 export const SendManualReplyParams = zod.object({

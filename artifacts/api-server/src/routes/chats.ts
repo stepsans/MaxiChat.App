@@ -109,6 +109,25 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const [existing] = await db.select().from(chatsTable).where(eq(chatsTable.id, id));
+    if (!existing) return res.status(404).json({ error: "Chat not found" });
+
+    await db.delete(chatsTable).where(eq(chatsTable.id, id));
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/:id/reply", async (req, res) => {
   try {
     const idParsed = SendManualReplyParams.safeParse({ id: Number(req.params.id) });

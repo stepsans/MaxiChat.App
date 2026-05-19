@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import {
   useListChats,
-  useUpdateChat,
+  useDeleteChat,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import {
   Select,
   SelectContent,
@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Snowflake,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -58,9 +59,38 @@ export default function Chats() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [, setLocation] = useLocation();
+  const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { data: chats, isLoading } = useListChats();
+
+  const deleteChat = useDeleteChat({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        toast({ title: "Chat dihapus." });
+      },
+      onError: () => {
+        toast({ title: "Gagal menghapus chat.", variant: "destructive" });
+      },
+    },
+  });
+
+  const handleDelete = (
+    e: React.MouseEvent,
+    chatId: number,
+    contactName: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      window.confirm(
+        `Hapus chat dengan ${contactName}? Semua pesan dalam chat ini akan ikut terhapus.`
+      )
+    ) {
+      deleteChat.mutate({ id: chatId });
+    }
+  };
 
   const filtered = (chats ?? []).filter((c) => {
     const matchStatus = statusFilter === "all" || c.status === statusFilter;
@@ -194,6 +224,18 @@ export default function Chats() {
                         </span>
                       )}
                     </div>
+
+                    {/* Delete button */}
+                    <button
+                      type="button"
+                      data-testid={`delete-chat-${chat.id}`}
+                      onClick={(e) => handleDelete(e, chat.id, chat.contactName)}
+                      disabled={deleteChat.isPending}
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0 disabled:opacity-50"
+                      aria-label="Delete chat"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                 </Link>
               );
             })}
