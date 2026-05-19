@@ -172,17 +172,19 @@ export default function Dashboard() {
 
             {isQrReady && status?.qrCode && (
               <div className="mt-4 p-4 bg-white rounded-lg inline-block" data-testid="qr-code-display">
-                <p className="text-xs text-gray-700 font-medium mb-2 text-center">
-                  Scan with WhatsApp mobile app
+                <p className="text-xs text-gray-600 font-medium mb-3 text-center">
+                  Scan dengan WhatsApp di HP kamu
                 </p>
-                <div className="w-40 h-40 bg-gray-100 flex items-center justify-center rounded border border-gray-200">
-                  <div className="text-center">
-                    <QrCode className="w-12 h-12 text-gray-400 mx-auto mb-1" />
-                    <p className="text-[10px] text-gray-400 break-all max-w-[120px]">
-                      {status.qrCode.slice(0, 40)}...
-                    </p>
-                  </div>
-                </div>
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(status.qrCode)}&format=svg`}
+                  alt="WhatsApp QR Code"
+                  width={180}
+                  height={180}
+                  className="rounded"
+                />
+                <p className="text-[10px] text-gray-400 text-center mt-2">
+                  QR kedaluwarsa dalam 60 detik
+                </p>
               </div>
             )}
           </CardContent>

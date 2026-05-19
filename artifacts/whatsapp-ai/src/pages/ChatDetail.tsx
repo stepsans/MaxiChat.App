@@ -98,10 +98,12 @@ export default function ChatDetail() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-border flex-shrink-0">
-        <Link href="/chats">
-          <a data-testid="button-back-to-chats" className="p-1.5 rounded-md hover:bg-accent transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </a>
+        <Link
+          href="/chats"
+          data-testid="button-back-to-chats"
+          className="p-1.5 rounded-md hover:bg-accent transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
         </Link>
         <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold flex-shrink-0">
           {chat.contactName.charAt(0).toUpperCase()}
