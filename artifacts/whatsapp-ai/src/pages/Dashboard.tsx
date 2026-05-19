@@ -176,10 +176,10 @@ export default function Dashboard() {
                   Scan dengan WhatsApp di HP kamu
                 </p>
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(status.qrCode)}&format=svg`}
+                  src={status.qrCode}
                   alt="WhatsApp QR Code"
-                  width={180}
-                  height={180}
+                  width={220}
+                  height={220}
                   className="rounded"
                 />
                 <p className="text-[10px] text-gray-400 text-center mt-2">
