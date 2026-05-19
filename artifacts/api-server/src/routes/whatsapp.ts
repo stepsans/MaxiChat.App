@@ -271,6 +271,17 @@ async function startBaileys(sessionId: number) {
   }
 }
 
+export async function initWhatsapp() {
+  try {
+    const session = await getOrCreateSession();
+    if (session.status === "connected" || session.status === "connecting" || session.status === "qr_ready") {
+      await setStatus(session.id, "connecting");
+      startBaileys(session.id).catch(() => {});
+    }
+  } catch {
+  }
+}
+
 const router = Router();
 
 router.get("/status", async (req, res) => {

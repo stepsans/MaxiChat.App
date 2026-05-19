@@ -78,15 +78,8 @@ export default function ChatDetail() {
   });
 
   useEffect(() => {
-    if (chat && (chat.unreadCount ?? 0) > 0) {
-      updateChat.mutate(
-        { id: chatId, data: { unreadCount: 0 } },
-        {
-          onSuccess: () => {
-            qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
-          },
-        }
-      );
+    if (chat) {
+      qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
     }
   }, [chat?.id]);
 

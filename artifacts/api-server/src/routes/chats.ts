@@ -59,8 +59,16 @@ router.get("/:id", async (req, res) => {
       .where(eq(chatMessagesTable.chatId, chat.id))
       .orderBy(chatMessagesTable.createdAt);
 
+    if ((chat.unreadCount ?? 0) > 0) {
+      db.update(chatsTable)
+        .set({ unreadCount: 0 })
+        .where(eq(chatsTable.id, chat.id))
+        .catch(() => {});
+    }
+
     res.json({
       ...chat,
+      unreadCount: 0,
       lastMessageAt: chat.lastMessageAt?.toISOString() ?? null,
       createdAt: chat.createdAt.toISOString(),
       messages: messages.map((m) => ({
