@@ -36,6 +36,7 @@ import type {
   Settings,
   SettingsUpdate,
   SuccessResponse,
+  SyncGoogleSheetResult,
   TakeoverInput,
   WhatsappStatus
 } from './api.schemas';
@@ -1230,6 +1231,76 @@ export const useUpdateSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateSettingsMutationOptions(options));
+    }
+
+export const getSyncKnowledgeFromGoogleSheetUrl = () => {
+
+
+
+
+  return `/api/knowledge/sync-google-sheet`
+}
+
+/**
+ * @summary Sync knowledge base from configured Google Sheet CSV URL
+ */
+export const syncKnowledgeFromGoogleSheet = async ( options?: RequestInit): Promise<SyncGoogleSheetResult> => {
+
+  return customFetch<SyncGoogleSheetResult>(getSyncKnowledgeFromGoogleSheetUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSyncKnowledgeFromGoogleSheetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext> => {
+
+const mutationKey = ['syncKnowledgeFromGoogleSheet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, void> = () => {
+
+
+          return  syncKnowledgeFromGoogleSheet(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncKnowledgeFromGoogleSheetMutationResult = NonNullable<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>>
+
+    export type SyncKnowledgeFromGoogleSheetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Sync knowledge base from configured Google Sheet CSV URL
+ */
+export const useSyncKnowledgeFromGoogleSheet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSyncKnowledgeFromGoogleSheetMutationOptions(options));
     }
 
 export const getGetAnalyticsSummaryUrl = () => {

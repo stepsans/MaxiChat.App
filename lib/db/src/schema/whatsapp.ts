@@ -58,6 +58,7 @@ export const knowledgeTable = pgTable("knowledge_entries", {
   type: text("type").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  source: text("source").notNull().default("manual"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -78,6 +79,10 @@ export const settingsTable = pgTable("settings", {
   replyDelayMin: integer("reply_delay_min").notNull().default(1),
   replyDelayMax: integer("reply_delay_max").notNull().default(3),
   fallbackMessage: text("fallback_message").notNull(),
+  googleSheetCsvUrl: text("google_sheet_csv_url"),
+  googleSheetLastSyncAt: timestamp("google_sheet_last_sync_at", { withTimezone: true }),
+  googleSheetLastSyncCount: integer("google_sheet_last_sync_count"),
+  googleSheetLastSyncError: text("google_sheet_last_sync_error"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

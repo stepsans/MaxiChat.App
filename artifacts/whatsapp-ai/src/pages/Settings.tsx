@@ -3,7 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetSettings,
   useUpdateSettings,
+  useSyncKnowledgeFromGoogleSheet,
   getGetSettingsQueryKey,
+  getListKnowledgeQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, FileSpreadsheet, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -32,6 +34,7 @@ const settingsSchema = z.object({
   replyDelayMin: z.coerce.number().int().min(0).max(30),
   replyDelayMax: z.coerce.number().int().min(0).max(60),
   fallbackMessage: z.string().min(1, "Fallback message is required"),
+  googleSheetCsvUrl: z.string().optional(),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -58,6 +61,7 @@ export default function Settings() {
       replyDelayMin: 1,
       replyDelayMax: 3,
       fallbackMessage: "",
+      googleSheetCsvUrl: "",
     },
   });
 
@@ -69,12 +73,64 @@ export default function Settings() {
         replyDelayMin: settings.replyDelayMin,
         replyDelayMax: settings.replyDelayMax,
         fallbackMessage: settings.fallbackMessage,
+        googleSheetCsvUrl: settings.googleSheetCsvUrl ?? "",
       });
     }
   }, [settings, form]);
 
   const onSubmit = (data: SettingsForm) => {
-    update.mutate({ data });
+    update.mutate({
+      data: {
+        ...data,
+        googleSheetCsvUrl: data.googleSheetCsvUrl?.trim() ? data.googleSheetCsvUrl.trim() : null,
+      },
+    });
+  };
+
+  const sync = useSyncKnowledgeFromGoogleSheet({
+    mutation: {
+      onSuccess: (result) => {
+        qc.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
+        qc.invalidateQueries({ queryKey: getListKnowledgeQueryKey() });
+        if (result.success) {
+          toast({ title: `Berhasil sync ${result.count} entri dari Google Sheet.` });
+        } else {
+          toast({
+            title: "Sync gagal",
+            description: result.error ?? "Unknown error",
+            variant: "destructive",
+          });
+        }
+      },
+      onError: (err: unknown) => {
+        const msg =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message)
+            : "Gagal sync. Cek URL & akses sheet.";
+        toast({ title: "Sync gagal", description: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  const handleSyncNow = () => {
+    const url = form.getValues("googleSheetCsvUrl")?.trim();
+    if (!url) {
+      toast({
+        title: "Isi dulu Google Sheet URL",
+        description: "Lalu klik Save Settings sebelum sync.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (url !== (settings?.googleSheetCsvUrl ?? "")) {
+      toast({
+        title: "Save dulu sebelum sync",
+        description: "URL berubah — klik Save Settings dulu, baru sync.",
+        variant: "destructive",
+      });
+      return;
+    }
+    sync.mutate();
   };
 
   if (isLoading) {
@@ -254,6 +310,84 @@ export default function Settings() {
                     </FormItem>
                   )}
                 />
+              </CardContent>
+            </Card>
+
+            {/* Google Sheet Sync */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-primary" />
+                  Sync Knowledge Base dari Google Sheet
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Paste link Google Sheet (sheet harus di-share "Anyone with the link" atau Publish to web sebagai CSV). Format kolom:{" "}
+                  <b>A = type</b> (product/faq/script/testimonial/website), <b>B = title</b>, <b>C = content</b>. Baris pertama = header.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <FormField
+                  control={form.control}
+                  name="googleSheetCsvUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Google Sheet URL</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-google-sheet-url"
+                          placeholder="https://docs.google.com/spreadsheets/d/.../edit#gid=0"
+                          {...field}
+                          value={field.value ?? ""}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Sync akan <b>mengganti semua entri sebelumnya</b> yang berasal dari sheet. Entri manual tidak terhapus.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid="button-sync-google-sheet"
+                    onClick={handleSyncNow}
+                    disabled={sync.isPending}
+                  >
+                    {sync.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Sync Sekarang
+                  </Button>
+
+                  {settings?.googleSheetLastSyncAt && (
+                    <div className="text-xs flex items-center gap-1.5">
+                      {settings.googleSheetLastSyncError ? (
+                        <>
+                          <AlertCircle className="w-3.5 h-3.5 text-destructive" />
+                          <span className="text-destructive">
+                            {settings.googleSheetLastSyncError}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                          <span className="text-muted-foreground">
+                            Last sync:{" "}
+                            {new Date(settings.googleSheetLastSyncAt).toLocaleString("id-ID")}
+                            {" · "}
+                            {settings.googleSheetLastSyncCount ?? 0} entri
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
 

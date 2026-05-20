@@ -34,6 +34,7 @@ export * from './manualReplyInput';
 export * from './settings';
 export * from './settingsUpdate';
 export * from './successResponse';
+export * from './syncGoogleSheetResult';
 export * from './takeoverInput';
 export * from './whatsappStatus';
 export * from './whatsappStatusStatus';

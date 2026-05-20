@@ -194,6 +194,7 @@ export const ListKnowledgeResponseItem = zod.object({
   "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']),
   "title": zod.string(),
   "content": zod.string(),
+  "source": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -228,6 +229,7 @@ export const UpdateKnowledgeResponse = zod.object({
   "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']),
   "title": zod.string(),
   "content": zod.string(),
+  "source": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -255,6 +257,10 @@ export const GetSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
+  "googleSheetCsvUrl": zod.string().nullish(),
+  "googleSheetLastSyncAt": zod.string().nullish(),
+  "googleSheetLastSyncCount": zod.number().nullish(),
+  "googleSheetLastSyncError": zod.string().nullish(),
   "updatedAt": zod.string()
 })
 
@@ -267,7 +273,8 @@ export const UpdateSettingsBody = zod.object({
   "autoReplyEnabled": zod.boolean().optional(),
   "replyDelayMin": zod.number().optional(),
   "replyDelayMax": zod.number().optional(),
-  "fallbackMessage": zod.string().optional()
+  "fallbackMessage": zod.string().optional(),
+  "googleSheetCsvUrl": zod.string().nullish()
 })
 
 export const UpdateSettingsResponse = zod.object({
@@ -277,7 +284,21 @@ export const UpdateSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
+  "googleSheetCsvUrl": zod.string().nullish(),
+  "googleSheetLastSyncAt": zod.string().nullish(),
+  "googleSheetLastSyncCount": zod.number().nullish(),
+  "googleSheetLastSyncError": zod.string().nullish(),
   "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Sync knowledge base from configured Google Sheet CSV URL
+ */
+export const SyncKnowledgeFromGoogleSheetResponse = zod.object({
+  "success": zod.boolean(),
+  "count": zod.number(),
+  "error": zod.string().nullish()
 })
 
 

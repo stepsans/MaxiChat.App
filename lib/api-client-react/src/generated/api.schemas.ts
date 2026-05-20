@@ -171,6 +171,7 @@ export interface KnowledgeEntry {
   type: KnowledgeEntryType;
   title: string;
   content: string;
+  source: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -216,6 +217,10 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
+  googleSheetCsvUrl?: string | null;
+  googleSheetLastSyncAt?: string | null;
+  googleSheetLastSyncCount?: number | null;
+  googleSheetLastSyncError?: string | null;
   updatedAt: string;
 }
 
@@ -225,6 +230,13 @@ export interface SettingsUpdate {
   replyDelayMin?: number;
   replyDelayMax?: number;
   fallbackMessage?: string;
+  googleSheetCsvUrl?: string | null;
+}
+
+export interface SyncGoogleSheetResult {
+  success: boolean;
+  count: number;
+  error?: string | null;
 }
 
 export interface AnalyticsSummary {

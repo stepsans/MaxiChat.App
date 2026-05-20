@@ -37,10 +37,18 @@ async function getOrCreateSettings() {
   return created;
 }
 
+function serializeSettings(s: typeof settingsTable.$inferSelect) {
+  return {
+    ...s,
+    updatedAt: s.updatedAt.toISOString(),
+    googleSheetLastSyncAt: s.googleSheetLastSyncAt ? s.googleSheetLastSyncAt.toISOString() : null,
+  };
+}
+
 router.get("/", async (req, res) => {
   try {
     const settings = await getOrCreateSettings();
-    res.json({ ...settings, updatedAt: settings.updatedAt.toISOString() });
+    res.json(serializeSettings(settings));
   } catch (err) {
     req.log.error({ err }, "Failed to get settings");
     res.status(500).json({ error: "Internal server error" });
@@ -59,7 +67,7 @@ router.put("/", async (req, res) => {
       .where(eq(settingsTable.id, current.id))
       .returning();
 
-    res.json({ ...updated, updatedAt: updated.updatedAt.toISOString() });
+    res.json(serializeSettings(updated));
   } catch (err) {
     req.log.error({ err }, "Failed to update settings");
     res.status(500).json({ error: "Internal server error" });
