@@ -368,12 +368,22 @@ async function startBaileys(sessionId: number) {
           const jid = msg.key.remoteJid;
           if (!jid) continue;
 
-          // Only handle 1-on-1 chats via standard WhatsApp JIDs
-          if (!jid.endsWith("@s.whatsapp.net")) {
-            logger.info({ jid }, "skip: non-DM jid");
+          // Skip groups, broadcasts, status & newsletter JIDs. Accept both
+          // standard phone JIDs (@s.whatsapp.net) and LID JIDs (@lid) which
+          // WhatsApp uses for privacy on direct messages.
+          if (isJidGroup(jid)) continue;
+          if (
+            jid.endsWith("@broadcast") ||
+            jid.endsWith("@newsletter") ||
+            jid === "status@broadcast"
+          ) {
+            logger.info({ jid }, "skip: broadcast/status/newsletter");
             continue;
           }
-          if (isJidGroup(jid)) continue;
+          if (!jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@lid")) {
+            logger.info({ jid }, "skip: unsupported jid type");
+            continue;
+          }
 
           // Recursively unwrap ephemeral / viewOnce wrappers
           let inner: any = msg.message;
