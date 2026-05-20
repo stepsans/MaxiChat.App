@@ -697,6 +697,13 @@ router.post("/disconnect", async (req, res) => {
       sock = null;
     }
     isConnecting = false;
+    // Wipe local auth credentials so the next /connect starts a fresh
+    // pairing flow (QR code). Without this, useMultiFileAuthState reads the
+    // now-invalidated creds.json and WhatsApp immediately rejects with
+    // DisconnectReason.loggedOut — so no QR is ever generated.
+    await fs.rm(AUTH_DIR, { recursive: true, force: true }).catch((err) => {
+      req.log.warn({ err }, "Failed to wipe WhatsApp auth dir");
+    });
     const session = await getOrCreateSession();
     const updated = await setStatus(session.id, "disconnected", {
       qrCode: null,
