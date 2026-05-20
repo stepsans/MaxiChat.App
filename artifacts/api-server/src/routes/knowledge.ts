@@ -99,9 +99,14 @@ router.delete("/:id", async (req, res) => {
 const VALID_TYPES = new Set(["product", "faq", "script", "testimonial", "website"]);
 
 // Strictly allow only docs.google.com spreadsheets URLs to prevent SSRF.
-// Accepts the three common shapes and always rebuilds the final fetch URL
-// from validated components — never returns the user's input verbatim.
-function normalizeSheetUrlToCsv(input: string): string | null {
+// Returns the validated sheet identity ({ kind, id, defaultGid }) and the
+// caller rebuilds final fetch URLs from these components — we never reuse
+// the raw user-supplied URL for outbound requests.
+type SheetId =
+  | { kind: "regular"; id: string; defaultGid: string | null }
+  | { kind: "published"; id: string; defaultGid: string | null };
+
+function parseSheetUrl(input: string): SheetId | null {
   const raw = input.trim();
   if (!raw) return null;
   let parsed: URL;
@@ -113,32 +118,124 @@ function normalizeSheetUrlToCsv(input: string): string | null {
   if (parsed.protocol !== "https:") return null;
   if (parsed.hostname !== "docs.google.com") return null;
 
-  // Published-to-web: /spreadsheets/d/e/{PUB_ID}/pub?output=csv[&gid=GID]
+  // Published-to-web: /spreadsheets/d/e/{PUB_ID}/pub
   const pubMatch = parsed.pathname.match(
     /^\/spreadsheets\/d\/e\/([a-zA-Z0-9_-]+)\/pub\b/
   );
   if (pubMatch) {
-    const pubId = pubMatch[1];
     const gid = parsed.searchParams.get("gid");
-    const gidPart = gid && /^\d+$/.test(gid) ? `&gid=${gid}` : "";
-    return `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?output=csv${gidPart}`;
+    return {
+      kind: "published",
+      id: pubMatch[1],
+      defaultGid: gid && /^\d+$/.test(gid) ? gid : null,
+    };
   }
 
-  // Regular sheet: /spreadsheets/d/{ID}/...  (edit, export, view, etc.)
+  // Regular sheet: /spreadsheets/d/{ID}/...
   const idMatch = parsed.pathname.match(/^\/spreadsheets\/d\/([a-zA-Z0-9_-]+)(\/|$)/);
   if (idMatch) {
-    const id = idMatch[1];
-    // gid may come from query (?gid=) or hash (#gid=)
     let gid = parsed.searchParams.get("gid");
     if (!gid) {
       const hashMatch = parsed.hash.match(/gid=(\d+)/);
       gid = hashMatch ? hashMatch[1] : null;
     }
-    const gidPart = gid && /^\d+$/.test(gid) ? `&gid=${gid}` : "";
-    return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv${gidPart}`;
+    return {
+      kind: "regular",
+      id: idMatch[1],
+      defaultGid: gid && /^\d+$/.test(gid) ? gid : null,
+    };
   }
 
   return null;
+}
+
+function buildCsvUrl(sheet: SheetId, gidOverride: string | null): string {
+  const gid = gidOverride && /^\d+$/.test(gidOverride) ? gidOverride : sheet.defaultGid;
+  const gidPart = gid ? `&gid=${gid}` : "";
+  if (sheet.kind === "published") {
+    return `https://docs.google.com/spreadsheets/d/e/${sheet.id}/pub?output=csv${gidPart}`;
+  }
+  return `https://docs.google.com/spreadsheets/d/${sheet.id}/export?format=csv${gidPart}`;
+}
+
+// Fetch the public-facing HTML view of the sheet and extract { gid, name }
+// pairs for every tab. Works for both "Anyone with link" sheets (/htmlview)
+// and "Publish to web" sheets (/pubhtml). All outbound requests are bound to
+// docs.google.com only (SSRF-safe).
+async function fetchSheetTabs(
+  sheet: SheetId
+): Promise<{ gid: string; name: string }[]> {
+  const urls =
+    sheet.kind === "published"
+      ? [`https://docs.google.com/spreadsheets/d/e/${sheet.id}/pubhtml`]
+      : [
+          `https://docs.google.com/spreadsheets/d/${sheet.id}/htmlview`,
+          `https://docs.google.com/spreadsheets/d/${sheet.id}/pubhtml`,
+        ];
+
+  let lastErr: Error | null = null;
+  for (const url of urls) {
+    try {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 15000);
+      const resp = await fetch(url, { redirect: "follow", signal: controller.signal });
+      clearTimeout(t);
+      if (!resp.ok) {
+        lastErr = new Error(`HTTP ${resp.status} dari ${url.includes("htmlview") ? "htmlview" : "pubhtml"}`);
+        continue;
+      }
+      const html = await resp.text();
+      const tabs = parseTabsFromHtml(html);
+      if (tabs.length > 0) return tabs;
+      lastErr = new Error("Tidak menemukan daftar tab di halaman sheet.");
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error("Gagal mengambil daftar tab");
+    }
+  }
+  throw lastErr ?? new Error("Gagal mengambil daftar tab");
+}
+
+function parseTabsFromHtml(html: string): { gid: string; name: string }[] {
+  const found = new Map<string, string>();
+
+  const addTab = (gid: string, rawName: string) => {
+    // Strip any nested tags inside the anchor (Google sometimes wraps the
+    // sheet name in spans/divs) and decode HTML entities.
+    const name = decodeEntities(rawName.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim());
+    if (gid && name && !found.has(gid)) found.set(gid, name);
+  };
+
+  // Pattern A (both /htmlview and /pubhtml). Accept single or double quotes
+  // on the id attribute and any nested markup inside the <a>.
+  //   <li id="sheet-button-{GID}" ...> ... <a ...>...{NAME}...</a> ... </li>
+  const reA =
+    /id\s*=\s*['"]sheet-button-(\d+)['"][\s\S]*?<a\b[^>]*>([\s\S]*?)<\/a>/g;
+  let m: RegExpExecArray | null;
+  while ((m = reA.exec(html)) !== null) {
+    addTab(m[1], m[2]);
+  }
+
+  // Pattern B (fallback for pages rendering a <select> with options):
+  //   <option value="{GID}">{NAME}</option>
+  if (found.size === 0) {
+    const reB =
+      /<option\b[^>]*\bvalue\s*=\s*['"](\d+)['"][^>]*>([\s\S]*?)<\/option>/g;
+    while ((m = reB.exec(html)) !== null) {
+      addTab(m[1], m[2]);
+    }
+  }
+
+  return Array.from(found.entries()).map(([gid, name]) => ({ gid, name }));
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
 }
 
 // Minimal RFC4180 CSV parser. Handles quoted fields, escaped quotes, CRLF.
@@ -184,6 +281,42 @@ function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((cell) => cell.trim().length > 0));
 }
 
+router.get("/google-sheet-tabs", async (req, res) => {
+  try {
+    const [settings] = await db.select().from(settingsTable).limit(1);
+    const sheetUrl = settings?.googleSheetCsvUrl?.trim();
+    if (!sheetUrl) {
+      return res
+        .status(400)
+        .json({ success: false, tabs: [], error: "Google Sheet URL belum diatur di Settings" });
+    }
+    const sheet = parseSheetUrl(sheetUrl);
+    if (!sheet) {
+      return res
+        .status(400)
+        .json({ success: false, tabs: [], error: "Format URL Google Sheet tidak dikenali" });
+    }
+    try {
+      const tabs = await fetchSheetTabs(sheet);
+      if (tabs.length === 0) {
+        return res.status(400).json({
+          success: false,
+          tabs: [],
+          error:
+            'Tidak bisa membaca daftar tab. Pastikan sheet di-share "Anyone with the link" atau di-publish.',
+        });
+      }
+      return res.json({ success: true, tabs });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Gagal mengambil daftar tab";
+      return res.status(400).json({ success: false, tabs: [], error: msg });
+    }
+  } catch (err) {
+    req.log.error({ err }, "Failed to list google sheet tabs");
+    res.status(500).json({ success: false, tabs: [], error: "Internal server error" });
+  }
+});
+
 // Simple in-process single-flight lock to prevent concurrent syncs racing on
 // delete+insert (which would otherwise produce duplicate or partial rows).
 let syncInFlight = false;
@@ -196,6 +329,25 @@ router.post("/sync-google-sheet", async (req, res) => {
   }
   syncInFlight = true;
   try {
+    // Optional gid from request body picks a specific tab. If the caller
+    // provided a gid, it MUST be numeric — reject explicitly rather than
+    // silently falling back to the default tab.
+    const rawGidUnknown =
+      req.body && typeof req.body === "object"
+        ? (req.body as { gid?: unknown }).gid
+        : undefined;
+    let gidOverride: string | null = null;
+    if (rawGidUnknown !== undefined && rawGidUnknown !== null && rawGidUnknown !== "") {
+      if (typeof rawGidUnknown !== "string" || !/^\d+$/.test(rawGidUnknown)) {
+        return res.status(400).json({
+          success: false,
+          count: 0,
+          error: "Parameter 'gid' tidak valid (harus angka).",
+        });
+      }
+      gidOverride = rawGidUnknown;
+    }
+
     const [settings] = await db.select().from(settingsTable).limit(1);
     const sheetUrl = settings?.googleSheetCsvUrl?.trim();
     if (!sheetUrl) {
@@ -204,8 +356,8 @@ router.post("/sync-google-sheet", async (req, res) => {
         .json({ success: false, count: 0, error: "Google Sheet URL belum diatur di Settings" });
     }
 
-    const csvUrl = normalizeSheetUrlToCsv(sheetUrl);
-    if (!csvUrl) {
+    const sheet = parseSheetUrl(sheetUrl);
+    if (!sheet) {
       const errMsg = "Format URL Google Sheet tidak dikenali";
       if (settings) {
         await db
@@ -220,6 +372,7 @@ router.post("/sync-google-sheet", async (req, res) => {
       }
       return res.status(400).json({ success: false, count: 0, error: errMsg });
     }
+    const csvUrl = buildCsvUrl(sheet, gidOverride);
 
     let csvText: string;
     try {

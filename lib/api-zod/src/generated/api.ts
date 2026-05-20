@@ -293,8 +293,25 @@ export const UpdateSettingsResponse = zod.object({
 
 
 /**
+ * @summary List sheet tabs of the configured Google Sheet
+ */
+export const ListGoogleSheetTabsResponse = zod.object({
+  "success": zod.boolean(),
+  "tabs": zod.array(zod.object({
+  "gid": zod.string(),
+  "name": zod.string()
+})),
+  "error": zod.string().nullish()
+})
+
+
+/**
  * @summary Sync knowledge base from configured Google Sheet CSV URL
  */
+export const SyncKnowledgeFromGoogleSheetBody = zod.object({
+  "gid": zod.string().nullish()
+})
+
 export const SyncKnowledgeFromGoogleSheetResponse = zod.object({
   "success": zod.boolean(),
   "count": zod.number(),

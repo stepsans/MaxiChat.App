@@ -1,12 +1,23 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetSettings,
   useUpdateSettings,
   useSyncKnowledgeFromGoogleSheet,
+  listGoogleSheetTabs,
   getGetSettingsQueryKey,
   getListKnowledgeQueryKey,
 } from "@workspace/api-client-react";
+import type { GoogleSheetTab } from "@workspace/api-client-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -93,6 +104,7 @@ export default function Settings() {
         qc.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
         qc.invalidateQueries({ queryKey: getListKnowledgeQueryKey() });
         if (result.success) {
+          setTabDialogOpen(false);
           toast({ title: `Berhasil sync ${result.count} entri dari Google Sheet.` });
         } else {
           toast({
@@ -112,7 +124,14 @@ export default function Settings() {
     },
   });
 
-  const handleSyncNow = () => {
+  // Tab picker state
+  const [tabDialogOpen, setTabDialogOpen] = useState(false);
+  const [tabs, setTabs] = useState<GoogleSheetTab[]>([]);
+  const [tabsLoading, setTabsLoading] = useState(false);
+  const [tabsError, setTabsError] = useState<string | null>(null);
+  const [selectedGid, setSelectedGid] = useState<string>("");
+
+  const handleSyncNow = async () => {
     const url = form.getValues("googleSheetCsvUrl")?.trim();
     if (!url) {
       toast({
@@ -130,7 +149,32 @@ export default function Settings() {
       });
       return;
     }
-    sync.mutate();
+    setTabDialogOpen(true);
+    setTabsLoading(true);
+    setTabsError(null);
+    setTabs([]);
+    try {
+      const result = await listGoogleSheetTabs();
+      if (result.success && result.tabs.length > 0) {
+        setTabs(result.tabs);
+        setSelectedGid(result.tabs[0].gid);
+      } else {
+        setTabsError(result.error ?? "Tidak ada tab ditemukan");
+      }
+    } catch (err) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "Gagal mengambil daftar tab";
+      setTabsError(msg);
+    } finally {
+      setTabsLoading(false);
+    }
+  };
+
+  const handleConfirmSync = () => {
+    if (!selectedGid) return;
+    sync.mutate({ data: { gid: selectedGid } });
   };
 
   if (isLoading) {
@@ -404,6 +448,80 @@ export default function Settings() {
           </form>
         </Form>
       </div>
+
+      <Dialog open={tabDialogOpen} onOpenChange={setTabDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pilih Sheet Tab untuk Sync</DialogTitle>
+            <DialogDescription>
+              Pilih tab/sheet yang berisi data knowledge base. Hanya satu tab yang akan disync.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 min-h-[120px]">
+            {tabsLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Mengambil daftar tab...
+              </div>
+            )}
+
+            {!tabsLoading && tabsError && (
+              <div className="flex items-start gap-2 text-sm text-destructive">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>{tabsError}</span>
+              </div>
+            )}
+
+            {!tabsLoading && !tabsError && tabs.length > 0 && (
+              <RadioGroup
+                value={selectedGid}
+                onValueChange={setSelectedGid}
+                className="space-y-1.5 max-h-72 overflow-y-auto"
+              >
+                {tabs.map((t) => (
+                  <label
+                    key={t.gid}
+                    htmlFor={`tab-${t.gid}`}
+                    className="flex items-center gap-2.5 rounded-md border border-border px-3 py-2 text-sm cursor-pointer hover-elevate"
+                    data-testid={`radio-tab-${t.gid}`}
+                  >
+                    <RadioGroupItem id={`tab-${t.gid}`} value={t.gid} />
+                    <span className="flex-1 truncate">{t.name}</span>
+                    <span className="text-xs text-muted-foreground">gid={t.gid}</span>
+                  </label>
+                ))}
+              </RadioGroup>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setTabDialogOpen(false)}
+              disabled={sync.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmSync}
+              disabled={
+                sync.isPending || tabsLoading || !!tabsError || !selectedGid || tabs.length === 0
+              }
+              data-testid="button-confirm-sync"
+            >
+              {sync.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              Sync Tab Ini
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
