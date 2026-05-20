@@ -5,6 +5,7 @@ import {
   boolean,
   integer,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -30,20 +31,27 @@ export const insertChatSchema = createInsertSchema(chatsTable).omit({
 export type Chat = typeof chatsTable.$inferSelect;
 export type InsertChat = z.infer<typeof insertChatSchema>;
 
-export const chatMessagesTable = pgTable("chat_messages", {
-  id: serial("id").primaryKey(),
-  chatId: integer("chat_id")
-    .notNull()
-    .references(() => chatsTable.id, { onDelete: "cascade" }),
-  direction: text("direction").notNull(),
-  content: text("content").notNull(),
-  isAiGenerated: boolean("is_ai_generated").notNull().default(false),
-  mediaType: text("media_type"),
-  mediaUrl: text("media_url"),
-  mediaMimeType: text("media_mime_type"),
-  mediaFilename: text("media_filename"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const chatMessagesTable = pgTable(
+  "chat_messages",
+  {
+    id: serial("id").primaryKey(),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chatsTable.id, { onDelete: "cascade" }),
+    direction: text("direction").notNull(),
+    content: text("content").notNull(),
+    isAiGenerated: boolean("is_ai_generated").notNull().default(false),
+    mediaType: text("media_type"),
+    mediaUrl: text("media_url"),
+    mediaMimeType: text("media_mime_type"),
+    mediaFilename: text("media_filename"),
+    waMessageId: text("wa_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    waMessageIdUnique: uniqueIndex("chat_messages_wa_message_id_unique").on(t.waMessageId),
+  })
+);
 
 export const insertChatMessageSchema = createInsertSchema(chatMessagesTable).omit({
   id: true,

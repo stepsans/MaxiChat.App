@@ -13,7 +13,7 @@ import {
   knowledgeTable,
   settingsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { logger } from "../lib/logger";
 
@@ -197,57 +197,245 @@ interface IncomingMedia {
   mediaFilename: string | null;
 }
 
-async function handleIncomingMessage(
-  jid: string,
-  messageText: string,
-  pushName: string,
-  rawNumber: string,
-  media?: IncomingMedia
-) {
-  const phoneNumber = `+${rawNumber}`;
-  const contactName = pushName || rawNumber;
+interface ParsedWaMessage {
+  jid: string;
+  rawNumber: string;
+  pushName: string;
+  waMessageId: string | null;
+  fromMe: boolean;
+  timestamp: Date;
+  messageContent: string;
+  media?: IncomingMedia;
+}
 
+function toEpochMs(ts: unknown): number {
+  if (typeof ts === "number") return ts * 1000;
+  if (typeof ts === "bigint") return Number(ts) * 1000;
+  if (ts && typeof ts === "object") {
+    const anyTs = ts as { toNumber?: () => number; low?: number };
+    if (typeof anyTs.toNumber === "function") return anyTs.toNumber() * 1000;
+    if (typeof anyTs.low === "number") return anyTs.low * 1000;
+  }
+  return Date.now();
+}
+
+async function parseWaMessage(
+  msg: any,
+  isJidGroup: (jid: string) => boolean,
+  downloadMediaMessage: any,
+  downloadMedia: boolean
+): Promise<ParsedWaMessage | null> {
+  if (!msg?.message) return null;
+  const jid: string | undefined = msg.key?.remoteJid;
+  if (!jid) return null;
+
+  // Skip groups, broadcasts, status, newsletters
+  if (isJidGroup(jid)) return null;
+  if (
+    jid.endsWith("@broadcast") ||
+    jid.endsWith("@newsletter") ||
+    jid === "status@broadcast"
+  ) {
+    return null;
+  }
+  if (!jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@lid")) return null;
+
+  // Unwrap ephemeral / viewOnce
+  let inner: any = msg.message;
+  for (let i = 0; i < 5; i++) {
+    const next =
+      inner.ephemeralMessage?.message ||
+      inner.viewOnceMessage?.message ||
+      inner.viewOnceMessageV2?.message ||
+      inner.viewOnceMessageV2Extension?.message;
+    if (!next) break;
+    inner = next;
+  }
+
+  const messageContent: string =
+    inner.conversation ||
+    inner.extendedTextMessage?.text ||
+    inner.imageMessage?.caption ||
+    inner.videoMessage?.caption ||
+    inner.documentMessage?.caption ||
+    inner.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+    "";
+
+  let media: IncomingMedia | undefined;
+  let mediaKind: "image" | "video" | "document" | "audio" | null = null;
+  let mediaMime: string | null = null;
+  let mediaFilename: string | null = null;
+
+  if (inner.imageMessage) {
+    mediaKind = "image";
+    mediaMime = inner.imageMessage.mimetype ?? "image/jpeg";
+  } else if (inner.videoMessage) {
+    mediaKind = "video";
+    mediaMime = inner.videoMessage.mimetype ?? "video/mp4";
+  } else if (inner.audioMessage) {
+    mediaKind = "audio";
+    mediaMime = inner.audioMessage.mimetype ?? "audio/ogg";
+  } else if (inner.documentMessage) {
+    mediaKind = "document";
+    mediaMime = inner.documentMessage.mimetype ?? "application/octet-stream";
+    mediaFilename = inner.documentMessage.fileName ?? null;
+  } else if (inner.documentWithCaptionMessage?.message?.documentMessage) {
+    mediaKind = "document";
+    const doc = inner.documentWithCaptionMessage.message.documentMessage;
+    mediaMime = doc.mimetype ?? "application/octet-stream";
+    mediaFilename = doc.fileName ?? null;
+  }
+
+  if (mediaKind) {
+    if (downloadMedia) {
+      try {
+        const buf = (await downloadMediaMessage(
+          { ...msg, message: inner } as any,
+          "buffer",
+          {}
+        )) as Buffer;
+        const saved = await saveBufferToMedia(
+          buf,
+          mediaMime ?? "application/octet-stream",
+          mediaFilename ?? undefined
+        );
+        media = {
+          mediaType: mediaKind,
+          mediaUrl: saved.url,
+          mediaMimeType: mediaMime,
+          mediaFilename: mediaFilename ?? saved.filename,
+        };
+      } catch (err) {
+        logger.error({ err }, "Failed to download media");
+        media = {
+          mediaType: mediaKind,
+          mediaUrl: null,
+          mediaMimeType: mediaMime,
+          mediaFilename,
+        };
+      }
+    } else {
+      // History sync: skip download to avoid hammering WA & filling disk
+      media = {
+        mediaType: mediaKind,
+        mediaUrl: null,
+        mediaMimeType: mediaMime,
+        mediaFilename,
+      };
+    }
+  } else if (inner.contactMessage || inner.contactsArrayMessage) {
+    const contact = inner.contactMessage ?? inner.contactsArrayMessage?.contacts?.[0];
+    const displayName = contact?.displayName ?? "Kontak";
+    media = {
+      mediaType: "contact",
+      mediaUrl: null,
+      mediaMimeType: "text/vcard",
+      mediaFilename: displayName,
+    };
+  }
+
+  if (!messageContent.trim() && !media) return null;
+
+  const rawNumber = jid.split("@")[0].split(":")[0];
+  const pushName: string = msg.pushName || rawNumber;
+  const waMessageId: string | null = msg.key?.id ?? null;
+  const fromMe = !!msg.key?.fromMe;
+  const timestamp = new Date(toEpochMs(msg.messageTimestamp));
+
+  return { jid, rawNumber, pushName, waMessageId, fromMe, timestamp, messageContent, media };
+}
+
+function buildPreview(messageText: string, media?: IncomingMedia): string {
+  if (messageText.trim().length) return messageText;
+  if (!media) return "";
+  switch (media.mediaType) {
+    case "image": return "📷 Gambar";
+    case "video": return "🎥 Video";
+    case "audio": return "🎤 Audio";
+    case "document": return `📄 ${media.mediaFilename ?? "Dokumen"}`;
+    case "contact": return `👤 ${media.mediaFilename ?? "Kontak"}`;
+    default: return "Media";
+  }
+}
+
+async function persistWaMessage(
+  parsed: ParsedWaMessage,
+  opts: { incrementUnread: boolean }
+): Promise<{ chat: typeof chatsTable.$inferSelect; inserted: boolean }> {
+  const phoneNumber = `+${parsed.rawNumber}`;
+  const contactName = parsed.pushName || parsed.rawNumber;
   const chat = await getOrCreateChat(phoneNumber, contactName);
+  const direction = parsed.fromMe ? "outbound" : "inbound";
 
-  // Build a human-readable preview for the chat list
-  const preview = messageText.trim().length
-    ? messageText
-    : media
-      ? media.mediaType === "image"
-        ? "📷 Gambar"
-        : media.mediaType === "video"
-          ? "🎥 Video"
-          : media.mediaType === "audio"
-            ? "🎤 Audio"
-            : media.mediaType === "document"
-              ? `📄 ${media.mediaFilename ?? "Dokumen"}`
-              : media.mediaType === "contact"
-                ? `👤 ${media.mediaFilename ?? "Kontak"}`
-                : "Media"
-      : "";
+  let inserted = true;
+  if (parsed.waMessageId) {
+    const result = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: chat.id,
+        direction,
+        content: parsed.messageContent,
+        isAiGenerated: false,
+        mediaType: parsed.media?.mediaType ?? null,
+        mediaUrl: parsed.media?.mediaUrl ?? null,
+        mediaMimeType: parsed.media?.mediaMimeType ?? null,
+        mediaFilename: parsed.media?.mediaFilename ?? null,
+        waMessageId: parsed.waMessageId,
+        createdAt: parsed.timestamp,
+      })
+      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .returning({ id: chatMessagesTable.id });
+    inserted = result.length > 0;
+  } else {
+    await db.insert(chatMessagesTable).values({
+      chatId: chat.id,
+      direction,
+      content: parsed.messageContent,
+      isAiGenerated: false,
+      mediaType: parsed.media?.mediaType ?? null,
+      mediaUrl: parsed.media?.mediaUrl ?? null,
+      mediaMimeType: parsed.media?.mediaMimeType ?? null,
+      mediaFilename: parsed.media?.mediaFilename ?? null,
+      waMessageId: null,
+      createdAt: parsed.timestamp,
+    });
+  }
 
-  await db.insert(chatMessagesTable).values({
-    chatId: chat.id,
-    direction: "inbound",
-    content: messageText,
-    isAiGenerated: false,
-    mediaType: media?.mediaType ?? null,
-    mediaUrl: media?.mediaUrl ?? null,
-    mediaMimeType: media?.mediaMimeType ?? null,
-    mediaFilename: media?.mediaFilename ?? null,
-  });
+  if (!inserted) return { chat, inserted };
 
-  await db
-    .update(chatsTable)
-    .set({
-      lastMessage: preview,
-      lastMessageAt: new Date(),
-      unreadCount: (chat.unreadCount ?? 0) + 1,
-    })
-    .where(eq(chatsTable.id, chat.id));
+  const preview = buildPreview(parsed.messageContent, parsed.media);
 
+  // Atomic, race-safe aggregate update:
+  // - lastMessage/lastMessageAt only overwrite if THIS message is newer
+  //   than what's currently stored (handled SQL-side via CASE).
+  // - unreadCount uses SQL increment so concurrent inserts don't lose counts.
+  // - contactName fills in only when the existing name is still the bare
+  //   phone number (i.e. we never got a real pushName before).
+  const ts = parsed.timestamp;
+  const updateSet: Record<string, unknown> = {
+    lastMessage: sql`CASE WHEN ${chatsTable.lastMessageAt} IS NULL OR ${chatsTable.lastMessageAt} < ${ts} THEN ${preview} ELSE ${chatsTable.lastMessage} END`,
+    lastMessageAt: sql`CASE WHEN ${chatsTable.lastMessageAt} IS NULL OR ${chatsTable.lastMessageAt} < ${ts} THEN ${ts} ELSE ${chatsTable.lastMessageAt} END`,
+  };
+  if (opts.incrementUnread && !parsed.fromMe) {
+    updateSet.unreadCount = sql`${chatsTable.unreadCount} + 1`;
+  }
+  if (
+    parsed.pushName &&
+    parsed.pushName !== parsed.rawNumber &&
+    (chat.contactName === parsed.rawNumber || !chat.contactName)
+  ) {
+    updateSet.contactName = sql`CASE WHEN ${chatsTable.contactName} = ${parsed.rawNumber} OR ${chatsTable.contactName} IS NULL THEN ${parsed.pushName} ELSE ${chatsTable.contactName} END`;
+  }
+  await db.update(chatsTable).set(updateSet).where(eq(chatsTable.id, chat.id));
+  return { chat, inserted };
+}
+
+async function maybeTriggerAutoReply(
+  chat: typeof chatsTable.$inferSelect,
+  jid: string,
+  messageText: string
+) {
   if (chat.isHumanTakeover) return;
-  // Don't auto-reply to pure media messages without text
   if (!messageText.trim()) return;
 
   const settingsRows = await db.select().from(settingsTable).limit(1);
@@ -264,14 +452,18 @@ async function handleIncomingMessage(
       const replyText = aiReply ?? settings.fallbackMessage;
 
       if (sock && replyText) {
-        await sock.sendMessage(jid, { text: replyText });
+        const sent = await sock.sendMessage(jid, { text: replyText });
 
-        await db.insert(chatMessagesTable).values({
-          chatId: chat.id,
-          direction: "outbound",
-          content: replyText,
-          isAiGenerated: !!aiReply,
-        });
+        await db
+          .insert(chatMessagesTable)
+          .values({
+            chatId: chat.id,
+            direction: "outbound",
+            content: replyText,
+            isAiGenerated: !!aiReply,
+            waMessageId: sent?.key?.id ?? null,
+          })
+          .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
 
         await db
           .update(chatsTable)
@@ -282,7 +474,8 @@ async function handleIncomingMessage(
           })
           .where(eq(chatsTable.id, chat.id));
       }
-    } catch {
+    } catch (err) {
+      logger.error({ err }, "Auto-reply failed");
     }
   }, delay);
 }
@@ -310,6 +503,10 @@ async function startBaileys(sessionId: number) {
       printQRInTerminal: false,
       msgRetryCounterCache,
       logger: (await import("pino")).default({ level: "warn" }),
+      // Pull historical chats & messages on initial connect so the dashboard
+      // mirrors the user's phone, not just messages received while online.
+      syncFullHistory: true,
+      shouldSyncHistoryMessage: () => true,
     });
 
     sock.ev.on("creds.update", saveCreds);
@@ -350,6 +547,7 @@ async function startBaileys(sessionId: number) {
 
     const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
 
+    // Live messages — full processing including media download + AI auto-reply
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       logger.info(
         { type, count: messages.length, jids: messages.map((m) => m.key.remoteJid) },
@@ -359,122 +557,81 @@ async function startBaileys(sessionId: number) {
 
       for (const msg of messages) {
         try {
-          if (!msg.message) {
-            logger.info({ key: msg.key }, "skip: no message body");
-            continue;
-          }
-          if (msg.key.fromMe) continue;
+          const parsed = await parseWaMessage(
+            msg,
+            isJidGroup as (j: string) => boolean,
+            downloadMediaMessage,
+            true
+          );
+          if (!parsed) continue;
 
-          const jid = msg.key.remoteJid;
-          if (!jid) continue;
+          const { chat, inserted } = await persistWaMessage(parsed, {
+            incrementUnread: true,
+          });
+          if (!inserted) continue;
+          if (parsed.fromMe) continue;
 
-          // Skip groups, broadcasts, status & newsletter JIDs. Accept both
-          // standard phone JIDs (@s.whatsapp.net) and LID JIDs (@lid) which
-          // WhatsApp uses for privacy on direct messages.
-          if (isJidGroup(jid)) continue;
-          if (
-            jid.endsWith("@broadcast") ||
-            jid.endsWith("@newsletter") ||
-            jid === "status@broadcast"
-          ) {
-            logger.info({ jid }, "skip: broadcast/status/newsletter");
-            continue;
-          }
-          if (!jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@lid")) {
-            logger.info({ jid }, "skip: unsupported jid type");
-            continue;
-          }
-
-          // Recursively unwrap ephemeral / viewOnce wrappers
-          let inner: any = msg.message;
-          for (let i = 0; i < 5; i++) {
-            const next =
-              inner.ephemeralMessage?.message ||
-              inner.viewOnceMessage?.message ||
-              inner.viewOnceMessageV2?.message ||
-              inner.viewOnceMessageV2Extension?.message;
-            if (!next) break;
-            inner = next;
-          }
-
-          const messageContent =
-            inner.conversation ||
-            inner.extendedTextMessage?.text ||
-            inner.imageMessage?.caption ||
-            inner.videoMessage?.caption ||
-            inner.documentMessage?.caption ||
-            inner.documentWithCaptionMessage?.message?.documentMessage?.caption ||
-            "";
-
-          // Detect media
-          let media: IncomingMedia | undefined;
-          let mediaKind: "image" | "video" | "document" | "audio" | null = null;
-          let mediaMime: string | null = null;
-          let mediaFilename: string | null = null;
-
-          if (inner.imageMessage) {
-            mediaKind = "image";
-            mediaMime = inner.imageMessage.mimetype ?? "image/jpeg";
-          } else if (inner.videoMessage) {
-            mediaKind = "video";
-            mediaMime = inner.videoMessage.mimetype ?? "video/mp4";
-          } else if (inner.audioMessage) {
-            mediaKind = "audio";
-            mediaMime = inner.audioMessage.mimetype ?? "audio/ogg";
-          } else if (inner.documentMessage) {
-            mediaKind = "document";
-            mediaMime = inner.documentMessage.mimetype ?? "application/octet-stream";
-            mediaFilename = inner.documentMessage.fileName ?? null;
-          } else if (inner.documentWithCaptionMessage?.message?.documentMessage) {
-            mediaKind = "document";
-            const doc = inner.documentWithCaptionMessage.message.documentMessage;
-            mediaMime = doc.mimetype ?? "application/octet-stream";
-            mediaFilename = doc.fileName ?? null;
-          }
-
-          if (mediaKind) {
-            try {
-              const buf = (await downloadMediaMessage(
-                { ...msg, message: inner } as any,
-                "buffer",
-                {}
-              )) as Buffer;
-              const saved = await saveBufferToMedia(
-                buf,
-                mediaMime ?? "application/octet-stream",
-                mediaFilename ?? undefined
-              );
-              media = {
-                mediaType: mediaKind,
-                mediaUrl: saved.url,
-                mediaMimeType: mediaMime,
-                mediaFilename: mediaFilename ?? saved.filename,
-              };
-            } catch (err) {
-              logger.error({ err }, "Failed to download incoming media");
-            }
-          } else if (inner.contactMessage || inner.contactsArrayMessage) {
-            // Contact card — store the vCard text in mediaUrl as a data: URI is overkill; just keep displayName
-            const contact = inner.contactMessage ?? inner.contactsArrayMessage?.contacts?.[0];
-            const displayName = contact?.displayName ?? "Kontak";
-            media = {
-              mediaType: "contact",
-              mediaUrl: null,
-              mediaMimeType: "text/vcard",
-              mediaFilename: displayName,
-            };
-          }
-
-          if (!messageContent.trim() && !media) continue;
-
-          // Extract clean phone number — strip @domain and :device suffix
-          const rawNumber = jid.split("@")[0].split(":")[0];
-          const pushName = msg.pushName || rawNumber;
-          await handleIncomingMessage(jid, messageContent, pushName, rawNumber, media);
+          await maybeTriggerAutoReply(chat, parsed.jid, parsed.messageContent);
         } catch (err) {
           logger.error({ err }, "Failed to process incoming message");
         }
       }
+    });
+
+    // Historical sync — chat list + past messages from the user's phone.
+    // Fires (potentially multiple times) right after pairing while WA pushes
+    // the backlog. We persist without downloading media and without firing AI
+    // replies, so the dashboard mirrors the phone without side effects.
+    sock.ev.on("messaging-history.set", async (payload) => {
+      const { chats = [], messages = [], isLatest, syncType } = payload as {
+        chats?: Array<{ id: string; name?: string | null }>;
+        messages?: any[];
+        isLatest?: boolean;
+        syncType?: number;
+      };
+      logger.info(
+        { chats: chats.length, messages: messages.length, isLatest, syncType },
+        "messaging-history.set received"
+      );
+
+      // Pre-create chat rows from the chat list so empty chats still appear.
+      for (const c of chats) {
+        try {
+          if (!c?.id) continue;
+          if ((isJidGroup as (j: string) => boolean)(c.id)) continue;
+          if (
+            c.id.endsWith("@broadcast") ||
+            c.id.endsWith("@newsletter") ||
+            c.id === "status@broadcast"
+          )
+            continue;
+          if (!c.id.endsWith("@s.whatsapp.net") && !c.id.endsWith("@lid")) continue;
+          const rawNumber = c.id.split("@")[0].split(":")[0];
+          const phoneNumber = `+${rawNumber}`;
+          const contactName = c.name?.trim() || rawNumber;
+          await getOrCreateChat(phoneNumber, contactName);
+        } catch (err) {
+          logger.error({ err, chatId: c?.id }, "Failed to seed history chat");
+        }
+      }
+
+      let ingested = 0;
+      for (const msg of messages) {
+        try {
+          const parsed = await parseWaMessage(
+            msg,
+            isJidGroup as (j: string) => boolean,
+            downloadMediaMessage,
+            false
+          );
+          if (!parsed) continue;
+          const { inserted } = await persistWaMessage(parsed, { incrementUnread: false });
+          if (inserted) ingested++;
+        } catch (err) {
+          logger.error({ err }, "Failed to ingest history message");
+        }
+      }
+      logger.info({ ingested }, "messaging-history.set done");
     });
   } catch (err) {
     isConnecting = false;
