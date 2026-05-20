@@ -252,13 +252,36 @@ async function parseWaMessage(
     inner = next;
   }
 
-  const messageContent: string =
+  // protocolMessage = edits/deletes/key changes — not real user content, skip
+  if (inner.protocolMessage || inner.senderKeyDistributionMessage || inner.messageContextInfo) {
+    // messageContextInfo alone (no payload) also has no content
+    const onlyMeta =
+      !inner.conversation &&
+      !inner.extendedTextMessage &&
+      !inner.imageMessage &&
+      !inner.videoMessage &&
+      !inner.audioMessage &&
+      !inner.documentMessage &&
+      !inner.stickerMessage &&
+      !inner.locationMessage &&
+      !inner.contactMessage;
+    if (inner.protocolMessage || onlyMeta) return null;
+  }
+
+  // Reactions, pinned messages, polls votes — telemetry, not chat content
+  if (inner.reactionMessage || inner.pollUpdateMessage) return null;
+
+  let messageContent: string =
     inner.conversation ||
     inner.extendedTextMessage?.text ||
     inner.imageMessage?.caption ||
     inner.videoMessage?.caption ||
     inner.documentMessage?.caption ||
     inner.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+    inner.buttonsMessage?.contentText ||
+    inner.templateMessage?.hydratedTemplate?.hydratedContentText ||
+    inner.listMessage?.description ||
+    inner.interactiveMessage?.body?.text ||
     "";
 
   let media: IncomingMedia | undefined;
@@ -332,9 +355,30 @@ async function parseWaMessage(
       mediaMimeType: "text/vcard",
       mediaFilename: displayName,
     };
+  } else if (inner.stickerMessage) {
+    // Stickers are images but use a placeholder so they appear in chat list
+    if (!messageContent) messageContent = "🏷️ Stiker";
+  } else if (inner.locationMessage || inner.liveLocationMessage) {
+    const loc = inner.locationMessage ?? inner.liveLocationMessage;
+    const name = loc?.name ? ` ${loc.name}` : "";
+    if (!messageContent) messageContent = `📍 Lokasi${name}`;
+  } else if (inner.pollCreationMessage || inner.pollCreationMessageV3) {
+    const poll = inner.pollCreationMessage ?? inner.pollCreationMessageV3;
+    if (!messageContent) messageContent = `📊 Polling: ${poll?.name ?? ""}`.trim();
+  } else if (inner.groupInviteMessage) {
+    if (!messageContent) messageContent = `👥 Undangan grup: ${inner.groupInviteMessage.groupName ?? ""}`.trim();
+  } else if (inner.productMessage || inner.orderMessage) {
+    if (!messageContent) messageContent = "🛒 Pesan produk/pesanan";
   }
 
-  if (!messageContent.trim() && !media) return null;
+  if (!messageContent.trim() && !media) {
+    // Log unknown types once so we can extend later; only for live to avoid spam
+    if (downloadMedia) {
+      const keys = Object.keys(inner).slice(0, 5);
+      logger.info({ keys, jid }, "skip: unrecognized message body");
+    }
+    return null;
+  }
 
   const rawNumber = jid.split("@")[0].split(":")[0];
   const pushName: string = msg.pushName || rawNumber;
