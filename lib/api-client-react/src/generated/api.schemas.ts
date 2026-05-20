@@ -252,6 +252,36 @@ export interface AnalyticsSummary {
   closingRate: number;
 }
 
+export interface Product {
+  id: number;
+  code: string;
+  name: string;
+  price: number;
+  /** @nullable */
+  imageUrl: string | null;
+  /** @nullable */
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductInput {
+  /** @minLength 1 */
+  code: string;
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 0 */
+  price: number;
+  /** @nullable */
+  imageUrl?: string | null;
+  /** @nullable */
+  description?: string | null;
+}
+
+export interface SendProductBody {
+  productId: number;
+}
+
 export interface CommonQuestion {
   question: string;
   count: number;

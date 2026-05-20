@@ -141,6 +141,27 @@ export const DeleteChatResponse = zod.object({
 
 
 /**
+ * @summary Send a product from the catalog to a chat
+ */
+export const SendProductToChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendProductToChatBody = zod.object({
+  "productId": zod.number()
+})
+
+export const SendProductToChatResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Send a manual reply to a chat
  */
 export const SendManualReplyParams = zod.object({
@@ -299,6 +320,85 @@ export const SyncKnowledgeFromGoogleSheetResponse = zod.object({
   "success": zod.boolean(),
   "count": zod.number(),
   "error": zod.string().nullish()
+})
+
+
+/**
+ * @summary List all products
+ */
+export const ListProductsResponseItem = zod.object({
+  "id": zod.number(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "imageUrl": zod.string().nullable(),
+  "description": zod.string().nullable(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListProductsResponse = zod.array(ListProductsResponseItem)
+
+
+/**
+ * @summary Create a product
+ */
+
+
+export const createProductBodyPriceMin = 0;
+
+
+
+export const CreateProductBody = zod.object({
+  "code": zod.string().min(1),
+  "name": zod.string().min(1),
+  "price": zod.number().min(createProductBodyPriceMin),
+  "imageUrl": zod.string().nullish(),
+  "description": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update a product
+ */
+export const UpdateProductParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+export const updateProductBodyPriceMin = 0;
+
+
+
+export const UpdateProductBody = zod.object({
+  "code": zod.string().min(1),
+  "name": zod.string().min(1),
+  "price": zod.number().min(updateProductBodyPriceMin),
+  "imageUrl": zod.string().nullish(),
+  "description": zod.string().nullish()
+})
+
+export const UpdateProductResponse = zod.object({
+  "id": zod.number(),
+  "code": zod.string(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "imageUrl": zod.string().nullable(),
+  "description": zod.string().nullable(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a product
+ */
+export const DeleteProductParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteProductResponse = zod.object({
+  "success": zod.boolean()
 })
 
 

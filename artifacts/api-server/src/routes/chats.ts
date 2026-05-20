@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
-import { chatsTable, chatMessagesTable } from "@workspace/db";
+import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import {
   ListChatsQueryParams,
@@ -366,6 +366,127 @@ router.post("/:id/contact", async (req, res) => {
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to send contact");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Send a product (image + caption) from the catalog to a chat
+router.post("/:id/product", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const productId = Number(req.body?.productId);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+    if (!Number.isFinite(productId) || productId <= 0) {
+      return res.status(400).json({ error: "Invalid productId" });
+    }
+
+    if (!getActiveSocket()) {
+      return res.status(503).json({ error: "WhatsApp belum terhubung" });
+    }
+
+    const target = await jidForChat(id);
+    if (!target) return res.status(404).json({ error: "Chat not found" });
+
+    const [product] = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.id, productId));
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const priceFmt = new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(product.price);
+
+    const captionLines = [
+      `*${product.name}*`,
+      `Kode: ${product.code}`,
+      `Harga: ${priceFmt}`,
+    ];
+    if (product.description?.trim()) {
+      captionLines.push("", product.description.trim());
+    }
+    const caption = captionLines.join("\n");
+
+    let mediaType: "image" | null = null;
+    let mediaUrl: string | null = null;
+    let mediaMimeType: string | null = null;
+    let mediaFilename: string | null = null;
+
+    // If product has an image, try to resolve it on disk first. Missing files
+    // are recoverable (fall back to text). Send failures are NOT recoverable.
+    let imageFilePath: string | null = null;
+    let imageMimeType: string | null = null;
+    if (product.imageUrl && product.imageUrl.startsWith("/api/media/")) {
+      const filename = path.basename(product.imageUrl);
+      const candidate = path.join(MEDIA_DIR, filename);
+      try {
+        await fs.access(candidate);
+        imageFilePath = candidate;
+        imageMimeType = mime.lookup(filename) || "image/jpeg";
+      } catch (err) {
+        req.log.warn(
+          { err, productId },
+          "Product image missing on disk, falling back to text"
+        );
+      }
+    }
+
+    if (imageFilePath && imageMimeType) {
+      try {
+        await sendMediaToJid(
+          target.jid,
+          imageFilePath,
+          imageMimeType,
+          "image",
+          caption,
+          product.name
+        );
+        mediaType = "image";
+        mediaUrl = product.imageUrl;
+        mediaMimeType = imageMimeType;
+        mediaFilename = product.name;
+      } catch (err) {
+        req.log.error({ err, productId }, "Failed to send product image");
+        return res.status(500).json({ error: "Failed to send product image" });
+      }
+    } else {
+      const sock = getActiveSocket();
+      if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
+      try {
+        await sock.sendMessage(target.jid, { text: caption });
+      } catch (err) {
+        req.log.error({ err, productId }, "Failed to send product as text");
+        return res.status(500).json({ error: "Failed to send product" });
+      }
+    }
+
+    const [message] = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: id,
+        direction: "outbound",
+        content: caption,
+        isAiGenerated: false,
+        mediaType,
+        mediaUrl,
+        mediaMimeType,
+        mediaFilename,
+      })
+      .returning();
+
+    const preview = `🛍️ ${product.name} — ${priceFmt}`;
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: preview, lastMessageAt: new Date() })
+      .where(eq(chatsTable.id, id));
+
+    res.json({ ...message, createdAt: message.createdAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send product");
     res.status(500).json({ error: "Internal server error" });
   }
 });

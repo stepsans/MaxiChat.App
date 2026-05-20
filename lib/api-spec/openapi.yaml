@@ -20,6 +20,8 @@ tags:
     description: AI settings
   - name: analytics
     description: Analytics and reporting
+  - name: products
+    description: Product catalog management
 paths:
   /healthz:
     get:
@@ -170,6 +172,43 @@ paths:
                 $ref: "#/components/schemas/SuccessResponse"
         "404":
           description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chats/{id}/product:
+    post:
+      operationId: sendProductToChat
+      tags: [chats, products]
+      summary: Send a product from the catalog to a chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendProductBody"
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "404":
+          description: Chat or product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: WhatsApp not connected
           content:
             application/json:
               schema:
@@ -344,6 +383,86 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncGoogleSheetResult"
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List all products
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "409":
+          description: Duplicate code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/{id}:
+    put:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
 
   /analytics/summary:
     get:
@@ -638,6 +757,53 @@ components:
           type: integer
         closingRate:
           type: number
+
+    Product:
+      type: object
+      required: [id, code, name, price, imageUrl, description, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        price:
+          type: integer
+        imageUrl:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ProductInput:
+      type: object
+      required: [code, name, price]
+      properties:
+        code:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        price:
+          type: integer
+          format: int32
+          minimum: 0
+        imageUrl:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+
+    SendProductBody:
+      type: object
+      required: [productId]
+      properties:
+        productId:
+          type: integer
 
     CommonQuestion:
       type: object

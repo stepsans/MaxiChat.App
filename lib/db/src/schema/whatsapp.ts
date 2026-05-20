@@ -95,3 +95,29 @@ export const settingsTable = pgTable("settings", {
 });
 
 export type Settings = typeof settingsTable.$inferSelect;
+
+export const productsTable = pgTable(
+  "products",
+  {
+    id: serial("id").primaryKey(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    price: integer("price").notNull(),
+    imageUrl: text("image_url"),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    productsCodeUnique: uniqueIndex("products_code_unique").on(t.code),
+  })
+);
+
+export const insertProductSchema = createInsertSchema(productsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Product = typeof productsTable.$inferSelect;
+export type InsertProduct = z.infer<typeof insertProductSchema>;

@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   BookOpen,
+  Package,
   Settings,
   BarChart3,
   Wifi,
@@ -17,6 +18,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chats", label: "Chats", icon: MessageSquare },
   { href: "/knowledge", label: "Knowledge Base", icon: BookOpen },
+  { href: "/products", label: "Products", icon: Package },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

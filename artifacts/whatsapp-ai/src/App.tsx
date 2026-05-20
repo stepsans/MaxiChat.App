@@ -10,6 +10,7 @@ import ChatDetail from "@/pages/ChatDetail";
 import Knowledge from "@/pages/Knowledge";
 import Settings from "@/pages/Settings";
 import Analytics from "@/pages/Analytics";
+import Products from "@/pages/Products";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ function Router() {
         <Route path="/chats" component={Chats} />
         <Route path="/chats/:id" component={ChatDetail} />
         <Route path="/knowledge" component={Knowledge} />
+        <Route path="/products" component={Products} />
         <Route path="/settings" component={Settings} />
         <Route path="/analytics" component={Analytics} />
         <Route component={NotFound} />
