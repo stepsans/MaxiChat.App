@@ -130,6 +130,7 @@ export default function Settings() {
   const [tabsLoading, setTabsLoading] = useState(false);
   const [tabsError, setTabsError] = useState<string | null>(null);
   const [selectedGid, setSelectedGid] = useState<string>("");
+  const [manualGid, setManualGid] = useState<string>("");
 
   const handleSyncNow = async () => {
     const url = form.getValues("googleSheetCsvUrl")?.trim();
@@ -153,6 +154,7 @@ export default function Settings() {
     setTabsLoading(true);
     setTabsError(null);
     setTabs([]);
+    setManualGid("");
     try {
       const result = await listGoogleSheetTabs();
       if (result.success && result.tabs.length > 0) {
@@ -175,6 +177,19 @@ export default function Settings() {
   const handleConfirmSync = () => {
     if (!selectedGid) return;
     sync.mutate({ data: { gid: selectedGid } });
+  };
+
+  const handleManualSync = () => {
+    const g = manualGid.trim();
+    if (g && !/^\d+$/.test(g)) {
+      toast({
+        title: "gid tidak valid",
+        description: "gid harus angka (contoh: 0, 123456789).",
+        variant: "destructive",
+      });
+      return;
+    }
+    sync.mutate({ data: g ? { gid: g } : {} });
   };
 
   if (isLoading) {
@@ -467,9 +482,32 @@ export default function Settings() {
             )}
 
             {!tabsLoading && tabsError && (
-              <div className="flex items-start gap-2 text-sm text-destructive">
-                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>{tabsError}</span>
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 text-sm text-destructive">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>{tabsError}</span>
+                </div>
+                <div className="text-xs text-muted-foreground leading-relaxed">
+                  Tidak bisa baca daftar tab otomatis. Biasanya karena sheet
+                  belum di-<strong>Publish to web</strong>. Kamu bisa:
+                  <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                    <li>Masukkan <strong>gid</strong> tab manual di bawah (lihat angka setelah <code>#gid=</code> pada URL sheet), atau</li>
+                    <li>Klik <strong>Sync Tab Default</strong> untuk pakai tab pertama.</li>
+                  </ul>
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="manual-gid" className="text-xs font-medium">
+                    gid tab (opsional)
+                  </label>
+                  <Input
+                    id="manual-gid"
+                    value={manualGid}
+                    onChange={(e) => setManualGid(e.target.value)}
+                    placeholder="contoh: 0 atau 123456789"
+                    inputMode="numeric"
+                    data-testid="input-manual-gid"
+                  />
+                </div>
               </div>
             )}
 
@@ -504,21 +542,37 @@ export default function Settings() {
             >
               Batal
             </Button>
-            <Button
-              type="button"
-              onClick={handleConfirmSync}
-              disabled={
-                sync.isPending || tabsLoading || !!tabsError || !selectedGid || tabs.length === 0
-              }
-              data-testid="button-confirm-sync"
-            >
-              {sync.isPending ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-              )}
-              Sync Tab Ini
-            </Button>
+            {!tabsLoading && tabsError ? (
+              <Button
+                type="button"
+                onClick={handleManualSync}
+                disabled={sync.isPending}
+                data-testid="button-manual-sync"
+              >
+                {sync.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                )}
+                {manualGid.trim() ? "Sync gid Ini" : "Sync Tab Default"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleConfirmSync}
+                disabled={
+                  sync.isPending || tabsLoading || !selectedGid || tabs.length === 0
+                }
+                data-testid="button-confirm-sync"
+              >
+                {sync.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                )}
+                Sync Tab Ini
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
