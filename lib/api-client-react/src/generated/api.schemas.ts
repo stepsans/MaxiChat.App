@@ -233,24 +233,9 @@ export interface SettingsUpdate {
   googleSheetCsvUrl?: string | null;
 }
 
-export interface SyncGoogleSheetBody {
-  gid?: string | null;
-}
-
 export interface SyncGoogleSheetResult {
   success: boolean;
   count: number;
-  error?: string | null;
-}
-
-export interface GoogleSheetTab {
-  gid: string;
-  name: string;
-}
-
-export interface GoogleSheetTabsResult {
-  success: boolean;
-  tabs: GoogleSheetTab[];
   error?: string | null;
 }
 

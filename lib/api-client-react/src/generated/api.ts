@@ -27,7 +27,6 @@ import type {
   ChatWithMessages,
   CommonQuestion,
   ErrorResponse,
-  GoogleSheetTabsResult,
   HealthStatus,
   KnowledgeEntry,
   KnowledgeInput,
@@ -37,7 +36,6 @@ import type {
   Settings,
   SettingsUpdate,
   SuccessResponse,
-  SyncGoogleSheetBody,
   SyncGoogleSheetResult,
   TakeoverInput,
   WhatsappStatus
@@ -1235,83 +1233,6 @@ export const useUpdateSettings = <TError = ErrorType<unknown>,
       return useMutation(getUpdateSettingsMutationOptions(options));
     }
 
-export const getListGoogleSheetTabsUrl = () => {
-
-
-
-
-  return `/api/knowledge/google-sheet-tabs`
-}
-
-/**
- * @summary List sheet tabs of the configured Google Sheet
- */
-export const listGoogleSheetTabs = async ( options?: RequestInit): Promise<GoogleSheetTabsResult> => {
-
-  return customFetch<GoogleSheetTabsResult>(getListGoogleSheetTabsUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getListGoogleSheetTabsQueryKey = () => {
-    return [
-    `/api/knowledge/google-sheet-tabs`
-    ] as const;
-    }
-
-
-export const getListGoogleSheetTabsQueryOptions = <TData = Awaited<ReturnType<typeof listGoogleSheetTabs>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGoogleSheetTabs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getListGoogleSheetTabsQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listGoogleSheetTabs>>> = ({ signal }) => listGoogleSheetTabs({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listGoogleSheetTabs>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type ListGoogleSheetTabsQueryResult = NonNullable<Awaited<ReturnType<typeof listGoogleSheetTabs>>>
-export type ListGoogleSheetTabsQueryError = ErrorType<unknown>
-
-
-/**
- * @summary List sheet tabs of the configured Google Sheet
- */
-
-export function useListGoogleSheetTabs<TData = Awaited<ReturnType<typeof listGoogleSheetTabs>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGoogleSheetTabs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getListGoogleSheetTabsQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-
-
-
 export const getSyncKnowledgeFromGoogleSheetUrl = () => {
 
 
@@ -1323,15 +1244,14 @@ export const getSyncKnowledgeFromGoogleSheetUrl = () => {
 /**
  * @summary Sync knowledge base from configured Google Sheet CSV URL
  */
-export const syncKnowledgeFromGoogleSheet = async (syncGoogleSheetBody?: SyncGoogleSheetBody, options?: RequestInit): Promise<SyncGoogleSheetResult> => {
+export const syncKnowledgeFromGoogleSheet = async ( options?: RequestInit): Promise<SyncGoogleSheetResult> => {
 
   return customFetch<SyncGoogleSheetResult>(getSyncKnowledgeFromGoogleSheetUrl(),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      syncGoogleSheetBody,)
+    method: 'POST'
+
+
   }
 );}
 
@@ -1339,8 +1259,8 @@ export const syncKnowledgeFromGoogleSheet = async (syncGoogleSheetBody?: SyncGoo
 
 
 export const getSyncKnowledgeFromGoogleSheetMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,{data?: BodyType<SyncGoogleSheetBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,{data?: BodyType<SyncGoogleSheetBody>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext> => {
 
 const mutationKey = ['syncKnowledgeFromGoogleSheet'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -1352,10 +1272,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, {data?: BodyType<SyncGoogleSheetBody>}> = (props) => {
-          const {data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, void> = () => {
 
-          return  syncKnowledgeFromGoogleSheet(data,requestOptions)
+
+          return  syncKnowledgeFromGoogleSheet(requestOptions)
         }
 
 
@@ -1366,18 +1286,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type SyncKnowledgeFromGoogleSheetMutationResult = NonNullable<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>>
-    export type SyncKnowledgeFromGoogleSheetMutationBody = BodyType<SyncGoogleSheetBody> | undefined
+
     export type SyncKnowledgeFromGoogleSheetMutationError = ErrorType<unknown>
 
     /**
  * @summary Sync knowledge base from configured Google Sheet CSV URL
  */
 export const useSyncKnowledgeFromGoogleSheet = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,{data?: BodyType<SyncGoogleSheetBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>,
         TError,
-        {data?: BodyType<SyncGoogleSheetBody>},
+        void,
         TContext
       > => {
       return useMutation(getSyncKnowledgeFromGoogleSheetMutationOptions(options));
