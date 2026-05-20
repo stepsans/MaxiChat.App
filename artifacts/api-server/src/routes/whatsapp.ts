@@ -309,7 +309,7 @@ async function startBaileys(sessionId: number) {
       auth: state,
       printQRInTerminal: false,
       msgRetryCounterCache,
-      logger: (await import("pino")).default({ level: "silent" }),
+      logger: (await import("pino")).default({ level: "warn" }),
     });
 
     sock.ev.on("creds.update", saveCreds);
@@ -351,18 +351,28 @@ async function startBaileys(sessionId: number) {
     const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
-      if (type !== "notify") return;
+      logger.info(
+        { type, count: messages.length, jids: messages.map((m) => m.key.remoteJid) },
+        "messages.upsert received"
+      );
+      if (type !== "notify" && type !== "append") return;
 
       for (const msg of messages) {
         try {
-          if (!msg.message) continue;
+          if (!msg.message) {
+            logger.info({ key: msg.key }, "skip: no message body");
+            continue;
+          }
           if (msg.key.fromMe) continue;
 
           const jid = msg.key.remoteJid;
           if (!jid) continue;
 
           // Only handle 1-on-1 chats via standard WhatsApp JIDs
-          if (!jid.endsWith("@s.whatsapp.net")) continue;
+          if (!jid.endsWith("@s.whatsapp.net")) {
+            logger.info({ jid }, "skip: non-DM jid");
+            continue;
+          }
           if (isJidGroup(jid)) continue;
 
           // Recursively unwrap ephemeral / viewOnce wrappers
