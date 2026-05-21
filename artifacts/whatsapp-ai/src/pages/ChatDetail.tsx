@@ -272,7 +272,9 @@ export default function ChatDetail() {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold truncate">{chat.contactName}</p>
-          <p className="text-xs text-muted-foreground">{chat.phoneNumber}</p>
+          <p className="text-xs text-muted-foreground">
+            {chat.phoneNumber.endsWith("@g.us") ? "Grup" : chat.phoneNumber}
+          </p>
         </div>
 
         {/* Controls */}

@@ -58,6 +58,10 @@ function classifyMediaType(
 async function jidForChat(chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
   const [chat] = await db.select().from(chatsTable).where(eq(chatsTable.id, chatId));
   if (!chat) return null;
+  // Groups: phoneNumber column already holds the full "<id>@g.us" JID.
+  if (chat.phoneNumber.includes("@")) {
+    return { chat, jid: chat.phoneNumber };
+  }
   const cleaned = chat.phoneNumber.replace(/[^\d]/g, "");
   return { chat, jid: `${cleaned}@s.whatsapp.net` };
 }
