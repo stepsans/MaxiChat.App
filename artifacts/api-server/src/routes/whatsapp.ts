@@ -811,6 +811,62 @@ async function startBaileys(sessionId: number) {
       }
       logger.info({ ingested }, "messaging-history.set done");
     });
+
+    // Contacts metadata — populates verified/business name (nickname) and
+    // refines contactName from the user's saved phonebook entry. Fires during
+    // initial sync and whenever WA updates contact info.
+    const handleContacts = async (
+      contacts: Array<{
+        id?: string;
+        name?: string | null;
+        notify?: string | null;
+        verifiedName?: string | null;
+      }>
+    ) => {
+      if (myEpoch !== sessionEpoch) return;
+      for (const c of contacts) {
+        try {
+          if (!c?.id) continue;
+          // Only canonical phone-number contacts; LID-only contacts can't be
+          // mapped to a chat phoneNumber here.
+          if (!c.id.endsWith("@s.whatsapp.net")) continue;
+          const rawNumber = c.id.split("@")[0].split(":")[0];
+          const phoneNumber = `+${rawNumber}`;
+          const savedName = c.name?.trim() || null;
+          const verifiedName = c.verifiedName?.trim() || null;
+          const pushName = c.notify?.trim() || null;
+
+          const updateSet: Record<string, unknown> = {};
+          // Only touch nickname when WA explicitly sent the field. A truthy
+          // value sets it; an explicit null/empty clears any stale business
+          // name. Missing key → leave the column as-is.
+          if (Object.prototype.hasOwnProperty.call(c, "verifiedName")) {
+            updateSet.nickname = verifiedName;
+          }
+          // Prefer saved phonebook name; fall back to pushName when current
+          // contactName is still the bare phone-number fallback.
+          const preferredName = savedName || pushName;
+          if (preferredName) {
+            updateSet.contactName = sql`CASE
+              WHEN ${chatsTable.contactName} = ${rawNumber}
+                OR ${chatsTable.contactName} = ${phoneNumber}
+                OR ${chatsTable.contactName} IS NULL
+              THEN ${preferredName}
+              ELSE ${chatsTable.contactName}
+            END`;
+          }
+          if (Object.keys(updateSet).length === 0) continue;
+          await db
+            .update(chatsTable)
+            .set(updateSet)
+            .where(eq(chatsTable.phoneNumber, phoneNumber));
+        } catch (err) {
+          logger.error({ err, id: c?.id }, "Failed to apply contact update");
+        }
+      }
+    };
+    sock.ev.on("contacts.upsert", handleContacts);
+    sock.ev.on("contacts.update", handleContacts);
   } catch (err) {
     isConnecting = false;
     await setStatus(sessionId, "disconnected");
@@ -878,6 +934,8 @@ router.post("/disconnect", async (req, res) => {
         sock.ev.removeAllListeners("messages.upsert");
         sock.ev.removeAllListeners("messaging-history.set");
         sock.ev.removeAllListeners("connection.update");
+        sock.ev.removeAllListeners("contacts.upsert");
+        sock.ev.removeAllListeners("contacts.update");
       } catch {}
       await sock.logout().catch(() => {});
       sock = null;

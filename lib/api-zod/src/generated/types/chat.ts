@@ -12,6 +12,8 @@ export interface Chat {
   id: number;
   phoneNumber: string;
   contactName: string;
+  /** @nullable */
+  nickname: string | null;
   status: ChatStatus;
   tag: ChatTag;
   isHumanTakeover: boolean;

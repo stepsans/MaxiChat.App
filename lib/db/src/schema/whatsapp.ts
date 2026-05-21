@@ -16,6 +16,7 @@ export const chatsTable = pgTable(
     id: serial("id").primaryKey(),
     phoneNumber: text("phone_number").notNull(),
     contactName: text("contact_name").notNull(),
+    nickname: text("nickname"),
     status: text("status").notNull().default("ai_handled"),
     tag: text("tag").notNull().default("none"),
     isHumanTakeover: boolean("is_human_takeover").notNull().default(false),

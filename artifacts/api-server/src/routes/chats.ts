@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import {
   ListChatsQueryParams,
   UpdateChatBody,
@@ -72,7 +72,12 @@ router.get("/", async (req, res) => {
     const status = parsed.success ? parsed.data.status : undefined;
     const tag = parsed.success ? parsed.data.tag : undefined;
 
-    let query = db.select().from(chatsTable).orderBy(desc(chatsTable.lastMessageAt));
+    let query = db
+      .select()
+      .from(chatsTable)
+      .orderBy(
+        sql`COALESCE(${chatsTable.lastMessageAt}, ${chatsTable.createdAt}) DESC`
+      );
     const results = await query;
 
     let filtered = results;

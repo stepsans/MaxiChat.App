@@ -28,7 +28,16 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { format, isToday, isYesterday, isThisYear } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
+
+function formatChatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (isToday(d)) return format(d, "HH:mm");
+  if (isYesterday(d)) return `Kemarin ${format(d, "HH:mm")}`;
+  if (isThisYear(d)) return format(d, "d MMM HH:mm", { locale: idLocale });
+  return format(d, "d MMM yyyy HH:mm", { locale: idLocale });
+}
 
 const statusColors: Record<string, string> = {
   ai_handled: "bg-primary/10 text-primary border-primary/20",
@@ -98,6 +107,7 @@ export default function Chats() {
     const matchSearch =
       !search ||
       c.contactName.toLowerCase().includes(search.toLowerCase()) ||
+      (c.nickname?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
       c.phoneNumber.includes(search);
     return matchStatus && matchTag && matchSearch;
   });
@@ -185,6 +195,11 @@ export default function Chats() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-sm font-medium truncate">{chat.contactName}</span>
+                        {chat.nickname && chat.nickname !== chat.contactName && (
+                          <span className="text-[11px] text-muted-foreground truncate">
+                            ~ {chat.nickname}
+                          </span>
+                        )}
                         {chat.tag !== "none" && TagIcon && (
                           <Badge
                             variant="outline"
@@ -203,8 +218,13 @@ export default function Chats() {
                     {/* Right */}
                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
                       {chat.lastMessageAt && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatDistanceToNow(new Date(chat.lastMessageAt), { addSuffix: true })}
+                        <span
+                          className="text-[10px] text-muted-foreground tabular-nums"
+                          title={format(new Date(chat.lastMessageAt), "d MMMM yyyy HH:mm", {
+                            locale: idLocale,
+                          })}
+                        >
+                          {formatChatTimestamp(chat.lastMessageAt)}
                         </span>
                       )}
                       <Badge
