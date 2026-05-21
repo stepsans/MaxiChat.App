@@ -227,13 +227,17 @@ function neutralizeFormula(s: string): string {
 }
 
 function exportTimestamp(d: Date = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const yy = pad(d.getFullYear() % 100);
-  const mm = pad(d.getMonth() + 1);
-  const dd = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const mi = pad(d.getMinutes());
-  return `${yy}${mm}${dd}-${hh}${mi}`;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return `${get("year")}${get("month")}${get("day")}-${get("hour")}${get("minute")}`;
 }
 
 function rowToCsvField(v: unknown): string {
