@@ -576,21 +576,6 @@ export default function Products() {
                 data-testid="input-product-image"
               />
               <div className="flex-1 grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Link Foto{" "}
-                    <span className="text-[10px] font-normal">
-                      (tempel URL gambar — otomatis jadi thumbnail)
-                    </span>
-                  </label>
-                  <Input
-                    value={imageUrl ?? ""}
-                    onChange={(e) => setImageUrl(e.target.value || null)}
-                    placeholder="https://contoh.com/foto.jpg atau /api/media/…"
-                    className="h-8 text-xs mt-1"
-                    data-testid="input-product-image-url"
-                  />
-                </div>
                 <Field
                   label="Kode Product *"
                   value={form.code}
@@ -672,6 +657,21 @@ export default function Products() {
             </div>
 
             <div className="grid grid-cols-1 gap-2">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Link Foto{" "}
+                  <span className="text-[10px] font-normal">
+                    (tempel URL gambar — otomatis jadi thumbnail)
+                  </span>
+                </label>
+                <Input
+                  value={imageUrl ?? ""}
+                  onChange={(e) => setImageUrl(e.target.value || null)}
+                  placeholder="https://contoh.com/foto.jpg atau /api/media/…"
+                  className="h-8 text-xs mt-1"
+                  data-testid="input-product-image-url"
+                />
+              </div>
               <Field
                 label="Link Website"
                 value={form.productUrl}
