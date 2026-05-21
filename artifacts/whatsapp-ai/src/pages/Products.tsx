@@ -402,9 +402,8 @@ export default function Products() {
             <p className="text-xs mt-1">Coba kata kunci lain.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead className="bg-secondary sticky top-0 z-10">
+          <table className="w-full text-xs border-collapse">
+            <thead className="bg-secondary sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
                 <tr className="text-left">
                   <th className="px-3 py-2 font-medium">ID</th>
                   <th className="px-3 py-2 font-medium">Foto</th>
@@ -513,7 +512,6 @@ export default function Products() {
                 ))}
               </tbody>
             </table>
-          </div>
         )}
       </div>
 
