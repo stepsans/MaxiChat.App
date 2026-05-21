@@ -523,18 +523,79 @@ paths:
                   error:
                     type: string
 
-  /products/sync-google-sheet:
-    post:
-      operationId: syncProductsFromGoogleSheet
+  /products/export.csv:
+    get:
+      operationId: exportProductsCsv
       tags: [products]
-      summary: Sync product catalog from configured Google Sheet CSV URL
+      summary: Export full product catalog as CSV
+      description: |
+        Returns a UTF-8 CSV (with BOM) of all products. Cells starting with
+        `=`, `+`, `-`, `@`, tab, or CR are prefixed with `'` to mitigate
+        spreadsheet formula injection. Consumed via browser navigation.
       responses:
         "200":
-          description: Sync result
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /products/export.xlsx:
+    get:
+      operationId: exportProductsXlsx
+      tags: [products]
+      summary: Export full product catalog as XLSX
+      description: Returns an Excel .xlsx workbook of all products. Consumed via browser navigation.
+      responses:
+        "200":
+          description: XLSX file
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /products/import:
+    post:
+      operationId: importProducts
+      tags: [products]
+      summary: Import product catalog from CSV/XLSX (replaces ALL existing rows)
+      description: |
+        Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
+        Required headers (case-insensitive): Kode Product, Nama Barang, Harga Pricelist.
+        Optional headers: Category, Harga Silver, Harga Gold, Harga Platinum,
+        Harga Reseller, Harga Distributor, Foto, Link Website, Link Video.
+        Consumed via plain `fetch` + `FormData`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data: {}
+      responses:
+        "200":
+          description: Import result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SyncGoogleSheetResult"
+                type: object
+                required: [imported]
+                properties:
+                  imported:
+                    type: integer
+                  skipped:
+                    type: integer
+        "400":
+          description: Invalid file or contents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another import is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /products:
     get:
@@ -874,18 +935,6 @@ components:
           type: integer
         fallbackMessage:
           type: string
-        productSheetCsvUrl:
-          type: string
-          nullable: true
-        productSheetLastSyncAt:
-          type: string
-          nullable: true
-        productSheetLastSyncCount:
-          type: integer
-          nullable: true
-        productSheetLastSyncError:
-          type: string
-          nullable: true
         updatedAt:
           type: string
 
@@ -902,21 +951,6 @@ components:
           type: integer
         fallbackMessage:
           type: string
-        productSheetCsvUrl:
-          type: string
-          nullable: true
-
-    SyncGoogleSheetResult:
-      type: object
-      required: [success, count]
-      properties:
-        success:
-          type: boolean
-        count:
-          type: integer
-        error:
-          type: string
-          nullable: true
 
     AnalyticsSummary:
       type: object
@@ -945,7 +979,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, price, imageUrl, productUrl, description, source, createdAt, updatedAt]
+      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, productUrl, videoUrl, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -953,17 +987,32 @@ components:
           type: string
         name:
           type: string
+        category:
+          type: ["string", "null"]
         price:
           type: integer
+          description: "Harga Pricelist — public price shown to customers"
+        priceSilver:
+          type: ["integer", "null"]
+          description: "Internal only — never sent to customers"
+        priceGold:
+          type: ["integer", "null"]
+          description: "Internal only — never sent to customers"
+        pricePlatinum:
+          type: ["integer", "null"]
+          description: "Internal only — never sent to customers"
+        priceReseller:
+          type: ["integer", "null"]
+          description: "Internal only — never sent to customers"
+        priceDistributor:
+          type: ["integer", "null"]
+          description: "Internal only — never sent to customers"
         imageUrl:
           type: ["string", "null"]
         productUrl:
           type: ["string", "null"]
-        description:
+        videoUrl:
           type: ["string", "null"]
-        source:
-          type: string
-          description: "manual or google_sheet"
         createdAt:
           type: string
         updatedAt:
@@ -979,15 +1028,37 @@ components:
         name:
           type: string
           minLength: 1
+        category:
+          type: ["string", "null"]
         price:
           type: integer
+          format: int32
+          minimum: 0
+        priceSilver:
+          type: ["integer", "null"]
+          format: int32
+          minimum: 0
+        priceGold:
+          type: ["integer", "null"]
+          format: int32
+          minimum: 0
+        pricePlatinum:
+          type: ["integer", "null"]
+          format: int32
+          minimum: 0
+        priceReseller:
+          type: ["integer", "null"]
+          format: int32
+          minimum: 0
+        priceDistributor:
+          type: ["integer", "null"]
           format: int32
           minimum: 0
         imageUrl:
           type: ["string", "null"]
         productUrl:
           type: ["string", "null"]
-        description:
+        videoUrl:
           type: ["string", "null"]
 
     SendProductBody:

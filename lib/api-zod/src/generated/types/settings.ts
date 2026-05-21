@@ -13,9 +13,5 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
-  productSheetCsvUrl?: string | null;
-  productSheetLastSyncAt?: string | null;
-  productSheetLastSyncCount?: number | null;
-  productSheetLastSyncError?: string | null;
   updatedAt: string;
 }

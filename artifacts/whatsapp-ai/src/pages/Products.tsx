@@ -9,8 +9,6 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -29,6 +27,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import {
   Plus,
@@ -37,6 +41,10 @@ import {
   Package,
   Loader2,
   ImagePlus,
+  Upload,
+  Download,
+  ExternalLink,
+  Video,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -44,19 +52,40 @@ type Product = {
   id: number;
   code: string;
   name: string;
+  category: string | null;
   price: number;
+  priceSilver: number | null;
+  priceGold: number | null;
+  pricePlatinum: number | null;
+  priceReseller: number | null;
+  priceDistributor: number | null;
   imageUrl: string | null;
-  description: string | null;
+  productUrl: string | null;
+  videoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-const formatIDR = (n: number) =>
-  new Intl.NumberFormat("id-ID", {
+const formatIDR = (n: number | null | undefined) => {
+  if (n === null || n === undefined) return "—";
+  return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     maximumFractionDigits: 0,
   }).format(n);
+};
+
+const numOrNull = (s: string): number | null => {
+  const t = s.trim();
+  if (!t) return null;
+  const n = Number(t.replace(/[^\d]/g, ""));
+  return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : null;
+};
+
+const strOrNull = (s: string): string | null => {
+  const t = s.trim();
+  return t.length > 0 ? t : null;
+};
 
 export default function Products() {
   const qc = useQueryClient();
@@ -65,19 +94,29 @@ export default function Products() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState<string>("");
-  const [description, setDescription] = useState("");
+  const emptyForm = {
+    code: "",
+    name: "",
+    category: "",
+    price: "",
+    priceSilver: "",
+    priceGold: "",
+    pricePlatinum: "",
+    priceReseller: "",
+    priceDistributor: "",
+    productUrl: "",
+    videoUrl: "",
+  };
+  const [form, setForm] = useState({ ...emptyForm });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [uploadingImg, setUploadingImg] = useState(false);
   const imgInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: products, isLoading } = useListProducts();
-
-  const invalidate = () =>
-    qc.invalidateQueries({ queryKey: getListProductsQueryKey() });
+  const invalidate = () => qc.invalidateQueries({ queryKey: getListProductsQueryKey() });
 
   const create = useCreateProduct({
     mutation: {
@@ -86,10 +125,10 @@ export default function Products() {
         setDialogOpen(false);
         toast({ title: "Produk ditambahkan." });
       },
-      onError: (e: any) =>
+      onError: (e: unknown) =>
         toast({
           title: "Gagal menambah produk",
-          description: e?.message ?? "",
+          description: e instanceof Error ? e.message : "",
           variant: "destructive",
         }),
     },
@@ -101,10 +140,10 @@ export default function Products() {
         setDialogOpen(false);
         toast({ title: "Produk diperbarui." });
       },
-      onError: (e: any) =>
+      onError: (e: unknown) =>
         toast({
           title: "Gagal memperbarui produk",
-          description: e?.message ?? "",
+          description: e instanceof Error ? e.message : "",
           variant: "destructive",
         }),
     },
@@ -119,26 +158,28 @@ export default function Products() {
     },
   });
 
-  const resetForm = () => {
-    setCode("");
-    setName("");
-    setPrice("");
-    setDescription("");
-    setImageUrl(null);
-  };
-
   const openCreate = () => {
     setEditing(null);
-    resetForm();
+    setForm({ ...emptyForm });
+    setImageUrl(null);
     setDialogOpen(true);
   };
 
   const openEdit = (p: Product) => {
     setEditing(p);
-    setCode(p.code);
-    setName(p.name);
-    setPrice(String(p.price));
-    setDescription(p.description ?? "");
+    setForm({
+      code: p.code,
+      name: p.name,
+      category: p.category ?? "",
+      price: String(p.price),
+      priceSilver: p.priceSilver !== null ? String(p.priceSilver) : "",
+      priceGold: p.priceGold !== null ? String(p.priceGold) : "",
+      pricePlatinum: p.pricePlatinum !== null ? String(p.pricePlatinum) : "",
+      priceReseller: p.priceReseller !== null ? String(p.priceReseller) : "",
+      priceDistributor: p.priceDistributor !== null ? String(p.priceDistributor) : "",
+      productUrl: p.productUrl ?? "",
+      videoUrl: p.videoUrl ?? "",
+    });
     setImageUrl(p.imageUrl);
     setDialogOpen(true);
   };
@@ -161,10 +202,10 @@ export default function Products() {
       }
       const data = (await res.json()) as { url: string };
       setImageUrl(data.url);
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Gagal upload gambar",
-        description: err?.message ?? "",
+        description: err instanceof Error ? err.message : "",
         variant: "destructive",
       });
     } finally {
@@ -173,23 +214,30 @@ export default function Products() {
   };
 
   const handleSubmit = () => {
-    const trimmedCode = code.trim();
-    const trimmedName = name.trim();
-    const priceNum = Number(price);
-    if (!trimmedCode || !trimmedName) {
+    const code = form.code.trim();
+    const name = form.name.trim();
+    const price = numOrNull(form.price);
+    if (!code || !name) {
       toast({ title: "Kode dan nama wajib diisi", variant: "destructive" });
       return;
     }
-    if (!Number.isFinite(priceNum) || priceNum < 0) {
-      toast({ title: "Harga tidak valid", variant: "destructive" });
+    if (price === null) {
+      toast({ title: "Harga Pricelist tidak valid", variant: "destructive" });
       return;
     }
     const data = {
-      code: trimmedCode,
-      name: trimmedName,
-      price: priceNum,
+      code,
+      name,
+      category: strOrNull(form.category),
+      price,
+      priceSilver: numOrNull(form.priceSilver),
+      priceGold: numOrNull(form.priceGold),
+      pricePlatinum: numOrNull(form.pricePlatinum),
+      priceReseller: numOrNull(form.priceReseller),
+      priceDistributor: numOrNull(form.priceDistributor),
       imageUrl: imageUrl ?? null,
-      description: description.trim() || null,
+      productUrl: strOrNull(form.productUrl),
+      videoUrl: strOrNull(form.videoUrl),
     };
     if (editing) {
       update.mutate({ id: editing.id, data });
@@ -198,101 +246,242 @@ export default function Products() {
     }
   };
 
+  const handleImportClick = () => importInputRef.current?.click();
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/products/import", { method: "POST", body: fd });
+      const json = (await res.json().catch(() => ({}))) as {
+        imported?: number;
+        skipped?: number;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error || "Import gagal");
+      invalidate();
+      toast({
+        title: `Import sukses: ${json.imported ?? 0} produk`,
+        description:
+          json.skipped && json.skipped > 0
+            ? `${json.skipped} baris dilewati`
+            : "Semua data lama telah diganti.",
+      });
+    } catch (err: unknown) {
+      toast({
+        title: "Gagal import",
+        description: err instanceof Error ? err.message : "",
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExport = (format: "csv" | "xlsx") => {
+    window.location.href = `/api/products/export.${format}`;
+  };
+
   const isPending = create.isPending || update.isPending;
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between px-6 h-14 border-b border-border flex-shrink-0">
         <div>
           <h1 className="text-base font-semibold">Katalog Produk</h1>
           <p className="text-xs text-muted-foreground">
-            {products?.length ?? 0} produk — dapat dikirim ke chat customer
+            {products?.length ?? 0} produk — harga silver/gold/platinum/reseller/distributor hanya
+            tampil di app, tidak dikirim ke customer.
           </p>
         </div>
-        <Button data-testid="button-add-product" size="sm" onClick={openCreate}>
-          <Plus className="w-3.5 h-3.5 mr-1.5" />
-          Tambah Produk
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,.xlsx"
+            className="hidden"
+            onChange={handleImport}
+            data-testid="input-import-products"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImportClick}
+            disabled={importing}
+            data-testid="button-import-products"
+          >
+            {importing ? (
+              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Upload className="w-3.5 h-3.5 mr-1.5" />
+            )}
+            Import
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" data-testid="button-export-products">
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport("csv")}>CSV (.csv)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("xlsx")}>
+                Excel (.xlsx)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button data-testid="button-add-product" size="sm" onClick={openCreate}>
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            Tambah Produk
+          </Button>
+        </div>
       </div>
 
-      <div className="flex-1 p-6">
+      <div className="flex-1 overflow-auto">
         {isLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="p-6 space-y-2">
             {Array(8)
               .fill(0)
               .map((_, i) => (
-                <Skeleton key={i} className="h-56 rounded-lg" />
+                <Skeleton key={i} className="h-10 w-full" />
               ))}
           </div>
         ) : !products || products.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <Package className="w-8 h-8 mb-2 opacity-30" />
             <p className="text-sm">Belum ada produk</p>
-            <p className="text-xs mt-1">Tambahkan produk untuk dikirim ke customer</p>
+            <p className="text-xs mt-1">
+              Tambahkan manual atau gunakan Import (CSV/XLSX)
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {products.map((p) => (
-              <Card
-                key={p.id}
-                data-testid={`product-card-${p.id}`}
-                className="group relative overflow-hidden flex flex-col"
-              >
-                <div className="aspect-square bg-secondary flex items-center justify-center overflow-hidden">
-                  {p.imageUrl ? (
-                    <img
-                      src={p.imageUrl}
-                      alt={p.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Package className="w-10 h-10 opacity-30" />
-                  )}
-                </div>
-                <div className="p-3 space-y-1 flex-1 flex flex-col">
-                  <p className="text-[10px] text-muted-foreground font-mono">
-                    {p.code}
-                  </p>
-                  <p className="text-sm font-medium line-clamp-2">{p.name}</p>
-                  <p className="text-sm font-semibold text-primary mt-auto">
-                    {formatIDR(p.price)}
-                  </p>
-                </div>
-                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    data-testid={`button-edit-product-${p.id}`}
-                    variant="secondary"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => openEdit(p as Product)}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead className="bg-secondary sticky top-0 z-10">
+                <tr className="text-left">
+                  <th className="px-3 py-2 font-medium">ID</th>
+                  <th className="px-3 py-2 font-medium">Foto</th>
+                  <th className="px-3 py-2 font-medium">Category</th>
+                  <th className="px-3 py-2 font-medium">Kode Product</th>
+                  <th className="px-3 py-2 font-medium">Nama Barang</th>
+                  <th className="px-3 py-2 font-medium text-right">Harga Pricelist</th>
+                  <th className="px-3 py-2 font-medium text-right">Harga Silver</th>
+                  <th className="px-3 py-2 font-medium text-right">Harga Gold</th>
+                  <th className="px-3 py-2 font-medium text-right">Harga Platinum</th>
+                  <th className="px-3 py-2 font-medium text-right">Harga Reseller</th>
+                  <th className="px-3 py-2 font-medium text-right">Harga Distributor</th>
+                  <th className="px-3 py-2 font-medium">Link Website</th>
+                  <th className="px-3 py-2 font-medium">Link Video</th>
+                  <th className="px-3 py-2 font-medium w-20"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(products as Product[]).map((p) => (
+                  <tr
+                    key={p.id}
+                    data-testid={`product-row-${p.id}`}
+                    className="border-t border-border hover:bg-accent/30"
                   >
-                    <Pencil className="w-3 h-3" />
-                  </Button>
-                  <Button
-                    data-testid={`button-delete-product-${p.id}`}
-                    variant="secondary"
-                    size="icon"
-                    className="h-7 w-7 text-destructive hover:text-destructive"
-                    onClick={() => setDeleteId(p.id)}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
+                    <td className="px-3 py-2 text-muted-foreground">{p.id}</td>
+                    <td className="px-3 py-2">
+                      <div className="w-10 h-10 rounded bg-secondary overflow-hidden flex items-center justify-center">
+                        {p.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.imageUrl}
+                            alt={p.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Package className="w-4 h-4 opacity-30" />
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">{p.category ?? "—"}</td>
+                    <td className="px-3 py-2 font-mono">{p.code}</td>
+                    <td className="px-3 py-2 font-medium max-w-[200px] truncate" title={p.name}>
+                      {p.name}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-primary">
+                      {formatIDR(p.price)}
+                    </td>
+                    <td className="px-3 py-2 text-right">{formatIDR(p.priceSilver)}</td>
+                    <td className="px-3 py-2 text-right">{formatIDR(p.priceGold)}</td>
+                    <td className="px-3 py-2 text-right">{formatIDR(p.pricePlatinum)}</td>
+                    <td className="px-3 py-2 text-right">{formatIDR(p.priceReseller)}</td>
+                    <td className="px-3 py-2 text-right">{formatIDR(p.priceDistributor)}</td>
+                    <td className="px-3 py-2">
+                      {p.productUrl ? (
+                        <a
+                          href={p.productUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Buka
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {p.videoUrl ? (
+                        <a
+                          href={p.videoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          <Video className="w-3 h-3" />
+                          Video
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          data-testid={`button-edit-product-${p.id}`}
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => openEdit(p)}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          data-testid={`button-delete-product-${p.id}`}
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteId(p.id)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editing ? "Edit Produk" : "Tambah Produk"}
-            </DialogTitle>
+            <DialogTitle>{editing ? "Edit Produk" : "Tambah Produk"}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-start gap-3">
               <div
                 onClick={() => imgInputRef.current?.click()}
@@ -301,15 +490,12 @@ export default function Products() {
                 {uploadingImg ? (
                   <Loader2 className="w-5 h-5 animate-spin opacity-60" />
                 ) : imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt="preview"
-                    className="w-full h-full object-cover"
-                  />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={imageUrl} alt="preview" className="w-full h-full object-cover" />
                 ) : (
                   <div className="flex flex-col items-center text-muted-foreground gap-1">
                     <ImagePlus className="w-5 h-5" />
-                    <span className="text-[10px]">Gambar</span>
+                    <span className="text-[10px]">Foto</span>
                   </div>
                 )}
               </div>
@@ -321,71 +507,107 @@ export default function Products() {
                 onChange={handleImageSelect}
                 data-testid="input-product-image"
               />
-              <div className="flex-1 space-y-2">
-                <div className="space-y-1">
-                  <Label htmlFor="product-code" className="text-xs">
-                    Kode Barang
-                  </Label>
-                  <Input
-                    id="product-code"
-                    data-testid="input-product-code"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    placeholder="SKU-001"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="product-price" className="text-xs">
-                    Harga (Rp)
-                  </Label>
-                  <Input
-                    id="product-price"
-                    data-testid="input-product-price"
-                    type="number"
-                    min="0"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="150000"
+              <div className="flex-1 grid grid-cols-2 gap-2">
+                <Field
+                  label="Kode Product *"
+                  value={form.code}
+                  onChange={(v) => setForm({ ...form, code: v })}
+                  placeholder="SKU-001"
+                  testid="input-product-code"
+                />
+                <Field
+                  label="Category"
+                  value={form.category}
+                  onChange={(v) => setForm({ ...form, category: v })}
+                  placeholder="Skincare"
+                  testid="input-product-category"
+                />
+                <div className="col-span-2">
+                  <Field
+                    label="Nama Barang *"
+                    value={form.name}
+                    onChange={(v) => setForm({ ...form, name: v })}
+                    placeholder="Serum Vitamin C Premium"
+                    testid="input-product-name"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="product-name" className="text-xs">
-                Nama Barang
-              </Label>
-              <Input
-                id="product-name"
-                data-testid="input-product-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Serum Vitamin C Premium"
-              />
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">
+                Harga (Rupiah, angka saja)
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Field
+                  label="Harga Pricelist * (publik)"
+                  value={form.price}
+                  onChange={(v) => setForm({ ...form, price: v })}
+                  placeholder="150000"
+                  testid="input-product-price"
+                />
+                <Field
+                  label="Harga Silver"
+                  value={form.priceSilver}
+                  onChange={(v) => setForm({ ...form, priceSilver: v })}
+                  placeholder="kosong = N/A"
+                  testid="input-product-silver"
+                />
+                <Field
+                  label="Harga Gold"
+                  value={form.priceGold}
+                  onChange={(v) => setForm({ ...form, priceGold: v })}
+                  placeholder="kosong = N/A"
+                  testid="input-product-gold"
+                />
+                <Field
+                  label="Harga Platinum"
+                  value={form.pricePlatinum}
+                  onChange={(v) => setForm({ ...form, pricePlatinum: v })}
+                  placeholder="kosong = N/A"
+                  testid="input-product-platinum"
+                />
+                <Field
+                  label="Harga Reseller"
+                  value={form.priceReseller}
+                  onChange={(v) => setForm({ ...form, priceReseller: v })}
+                  placeholder="kosong = N/A"
+                  testid="input-product-reseller"
+                />
+                <Field
+                  label="Harga Distributor"
+                  value={form.priceDistributor}
+                  onChange={(v) => setForm({ ...form, priceDistributor: v })}
+                  placeholder="kosong = N/A"
+                  testid="input-product-distributor"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Hanya <b>Harga Pricelist</b> yang dikirim ke customer. Silver/Gold/Platinum/Reseller/
+                Distributor adalah info internal di app.
+              </p>
             </div>
 
-            <div className="space-y-1">
-              <Label htmlFor="product-desc" className="text-xs">
-                Deskripsi (opsional)
-              </Label>
-              <Textarea
-                id="product-desc"
-                data-testid="textarea-product-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Penjelasan singkat produk..."
-                rows={3}
-                className="resize-none"
+            <div className="grid grid-cols-1 gap-2">
+              <Field
+                label="Link Website"
+                value={form.productUrl}
+                onChange={(v) => setForm({ ...form, productUrl: v })}
+                placeholder="https://..."
+                testid="input-product-link"
+              />
+              <Field
+                label="Link Video"
+                value={form.videoUrl}
+                onChange={(v) => setForm({ ...form, videoUrl: v })}
+                placeholder="https://youtu.be/..."
+                testid="input-product-video"
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDialogOpen(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
               Batal
             </Button>
             <Button
@@ -404,9 +626,7 @@ export default function Products() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Produk</AlertDialogTitle>
-            <AlertDialogDescription>
-              Produk ini akan dihapus permanen.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Produk ini akan dihapus permanen.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
@@ -420,6 +640,33 @@ export default function Products() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  testid,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  testid?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        data-testid={testid}
+        className="h-9 text-sm"
+      />
     </div>
   );
 }

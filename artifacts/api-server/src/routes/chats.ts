@@ -418,14 +418,13 @@ router.post("/:id/product", async (req, res) => {
       maximumFractionDigits: 0,
     }).format(product.price);
 
+    // Only public/customer-facing fields are sent. Internal pricing
+    // tiers (silver/gold/platinum/reseller/distributor) are NEVER shared.
     const captionLines = [
       `*${product.name}*`,
       `Kode: ${product.code}`,
       `Harga: ${priceFmt}`,
     ];
-    if (product.description?.trim()) {
-      captionLines.push("", product.description.trim());
-    }
     const caption = captionLines.join("\n");
 
     let mediaType: "image" | null = null;

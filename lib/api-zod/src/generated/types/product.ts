@@ -10,15 +10,41 @@ export interface Product {
   id: number;
   code: string;
   name: string;
+  /** @nullable */
+  category: string | null;
+  /** Harga Pricelist — public price shown to customers */
   price: number;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceSilver: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceGold: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  pricePlatinum: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceReseller: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceDistributor: number | null;
   /** @nullable */
   imageUrl: string | null;
   /** @nullable */
   productUrl: string | null;
   /** @nullable */
-  description: string | null;
-  /** manual or google_sheet */
-  source: string;
+  videoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

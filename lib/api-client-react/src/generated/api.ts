@@ -29,6 +29,7 @@ import type {
   CreateKnowledgeType400,
   CreateKnowledgeType409,
   DeleteKnowledgeType200,
+  DeleteKnowledgeType400,
   DeleteKnowledgeType404,
   DeleteKnowledgeType409,
   ErrorResponse,
@@ -36,6 +37,7 @@ import type {
   ImportKnowledge200,
   ImportKnowledge400,
   ImportKnowledge409,
+  ImportProducts200,
   KnowledgeEntry,
   KnowledgeInput,
   KnowledgeType,
@@ -49,7 +51,6 @@ import type {
   Settings,
   SettingsUpdate,
   SuccessResponse,
-  SyncGoogleSheetResult,
   TakeoverInput,
   WhatsappStatus
 } from './api.schemas';
@@ -1569,7 +1570,7 @@ export const deleteKnowledgeType = async (id: number, options?: RequestInit): Pr
 
 
 
-export const getDeleteKnowledgeTypeMutationOptions = <TError = ErrorType<DeleteKnowledgeType404 | DeleteKnowledgeType409>,
+export const getDeleteKnowledgeTypeMutationOptions = <TError = ErrorType<DeleteKnowledgeType400 | DeleteKnowledgeType404 | DeleteKnowledgeType409>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteKnowledgeType>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteKnowledgeType>>, TError,{id: number}, TContext> => {
 
@@ -1598,12 +1599,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeleteKnowledgeTypeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteKnowledgeType>>>
 
-    export type DeleteKnowledgeTypeMutationError = ErrorType<DeleteKnowledgeType404 | DeleteKnowledgeType409>
+    export type DeleteKnowledgeTypeMutationError = ErrorType<DeleteKnowledgeType400 | DeleteKnowledgeType404 | DeleteKnowledgeType409>
 
     /**
  * @summary Delete a knowledge type (only if no entries reference it)
  */
-export const useDeleteKnowledgeType = <TError = ErrorType<DeleteKnowledgeType404 | DeleteKnowledgeType409>,
+export const useDeleteKnowledgeType = <TError = ErrorType<DeleteKnowledgeType400 | DeleteKnowledgeType404 | DeleteKnowledgeType409>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteKnowledgeType>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteKnowledgeType>>,
@@ -1614,20 +1615,185 @@ export const useDeleteKnowledgeType = <TError = ErrorType<DeleteKnowledgeType404
       return useMutation(getDeleteKnowledgeTypeMutationOptions(options));
     }
 
-export const getSyncProductsFromGoogleSheetUrl = () => {
+export const getExportProductsCsvUrl = () => {
 
 
 
 
-  return `/api/products/sync-google-sheet`
+  return `/api/products/export.csv`
 }
 
 /**
- * @summary Sync product catalog from configured Google Sheet CSV URL
- */
-export const syncProductsFromGoogleSheet = async ( options?: RequestInit): Promise<SyncGoogleSheetResult> => {
+ * Returns a UTF-8 CSV (with BOM) of all products. Cells starting with
+`=`, `+`, `-`, `@`, tab, or CR are prefixed with `'` to mitigate
+spreadsheet formula injection. Consumed via browser navigation.
 
-  return customFetch<SyncGoogleSheetResult>(getSyncProductsFromGoogleSheetUrl(),
+ * @summary Export full product catalog as CSV
+ */
+export const exportProductsCsv = async ( options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getExportProductsCsvUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportProductsCsvQueryKey = () => {
+    return [
+    `/api/products/export.csv`
+    ] as const;
+    }
+
+
+export const getExportProductsCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportProductsCsv>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportProductsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportProductsCsvQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportProductsCsv>>> = ({ signal }) => exportProductsCsv({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportProductsCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportProductsCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportProductsCsv>>>
+export type ExportProductsCsvQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export full product catalog as CSV
+ */
+
+export function useExportProductsCsv<TData = Awaited<ReturnType<typeof exportProductsCsv>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportProductsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportProductsCsvQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportProductsXlsxUrl = () => {
+
+
+
+
+  return `/api/products/export.xlsx`
+}
+
+/**
+ * Returns an Excel .xlsx workbook of all products. Consumed via browser navigation.
+ * @summary Export full product catalog as XLSX
+ */
+export const exportProductsXlsx = async ( options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getExportProductsXlsxUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportProductsXlsxQueryKey = () => {
+    return [
+    `/api/products/export.xlsx`
+    ] as const;
+    }
+
+
+export const getExportProductsXlsxQueryOptions = <TData = Awaited<ReturnType<typeof exportProductsXlsx>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportProductsXlsx>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportProductsXlsxQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportProductsXlsx>>> = ({ signal }) => exportProductsXlsx({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportProductsXlsx>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportProductsXlsxQueryResult = NonNullable<Awaited<ReturnType<typeof exportProductsXlsx>>>
+export type ExportProductsXlsxQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export full product catalog as XLSX
+ */
+
+export function useExportProductsXlsx<TData = Awaited<ReturnType<typeof exportProductsXlsx>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportProductsXlsx>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportProductsXlsxQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getImportProductsUrl = () => {
+
+
+
+
+  return `/api/products/import`
+}
+
+/**
+ * Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
+Required headers (case-insensitive): Kode Product, Nama Barang, Harga Pricelist.
+Optional headers: Category, Harga Silver, Harga Gold, Harga Platinum,
+Harga Reseller, Harga Distributor, Foto, Link Website, Link Video.
+Consumed via plain `fetch` + `FormData`.
+
+ * @summary Import product catalog from CSV/XLSX (replaces ALL existing rows)
+ */
+export const importProducts = async ( options?: RequestInit): Promise<ImportProducts200> => {
+
+  return customFetch<ImportProducts200>(getImportProductsUrl(),
   {
     ...options,
     method: 'POST'
@@ -1639,11 +1805,11 @@ export const syncProductsFromGoogleSheet = async ( options?: RequestInit): Promi
 
 
 
-export const getSyncProductsFromGoogleSheetMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, TError,void, TContext> => {
+export const getImportProductsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importProducts>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importProducts>>, TError,void, TContext> => {
 
-const mutationKey = ['syncProductsFromGoogleSheet'];
+const mutationKey = ['importProducts'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1653,10 +1819,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importProducts>>, void> = () => {
 
 
-          return  syncProductsFromGoogleSheet(requestOptions)
+          return  importProducts(requestOptions)
         }
 
 
@@ -1666,22 +1832,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type SyncProductsFromGoogleSheetMutationResult = NonNullable<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>>
+    export type ImportProductsMutationResult = NonNullable<Awaited<ReturnType<typeof importProducts>>>
 
-    export type SyncProductsFromGoogleSheetMutationError = ErrorType<unknown>
+    export type ImportProductsMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Sync product catalog from configured Google Sheet CSV URL
+ * @summary Import product catalog from CSV/XLSX (replaces ALL existing rows)
  */
-export const useSyncProductsFromGoogleSheet = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useImportProducts = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importProducts>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>,
+        Awaited<ReturnType<typeof importProducts>>,
         TError,
         void,
         TContext
       > => {
-      return useMutation(getSyncProductsFromGoogleSheetMutationOptions(options));
+      return useMutation(getImportProductsMutationOptions(options));
     }
 
 export const getListProductsUrl = () => {

@@ -4,21 +4,16 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import mime from "mime-types";
+import ExcelJS from "exceljs";
 import { db } from "@workspace/db";
-import { productsTable, settingsTable } from "@workspace/db";
+import { productsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import {
-  CreateProductBody,
-  UpdateProductBody,
-  UpdateProductParams,
-  DeleteProductParams,
-} from "@workspace/api-zod";
+import { z } from "zod";
 import { MEDIA_DIR } from "./whatsapp";
-import { normalizeSheetUrlToCsv, parseCsv, fetchSheetCsv } from "../lib/sheet-sync";
 
 const router = Router();
 
-const upload = multer({
+const imageUpload = multer({
   storage: multer.diskStorage({
     destination: async (_req, _file, cb) => {
       try {
@@ -40,11 +35,54 @@ const upload = multer({
   limits: { fileSize: 16 * 1024 * 1024 },
 });
 
+const fileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
 function serialize(p: typeof productsTable.$inferSelect) {
   return {
     ...p,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
+const ProductBody = z.object({
+  code: z.string().trim().min(1, "Kode wajib diisi"),
+  name: z.string().trim().min(1, "Nama wajib diisi"),
+  category: z.string().trim().nullable().optional(),
+  price: z.number().int().nonnegative(),
+  priceSilver: z.number().int().nonnegative().nullable().optional(),
+  priceGold: z.number().int().nonnegative().nullable().optional(),
+  pricePlatinum: z.number().int().nonnegative().nullable().optional(),
+  priceReseller: z.number().int().nonnegative().nullable().optional(),
+  priceDistributor: z.number().int().nonnegative().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+  productUrl: z.string().nullable().optional(),
+  videoUrl: z.string().nullable().optional(),
+});
+
+function bodyToInsert(b: z.infer<typeof ProductBody>) {
+  const norm = (v: string | null | undefined) => {
+    const s = (v ?? "").trim();
+    return s.length > 0 ? s : null;
+  };
+  const num = (n: number | null | undefined) =>
+    n === undefined || n === null ? null : n;
+  return {
+    code: b.code.trim(),
+    name: b.name.trim(),
+    category: norm(b.category),
+    price: b.price,
+    priceSilver: num(b.priceSilver),
+    priceGold: num(b.priceGold),
+    pricePlatinum: num(b.pricePlatinum),
+    priceReseller: num(b.priceReseller),
+    priceDistributor: num(b.priceDistributor),
+    imageUrl: norm(b.imageUrl),
+    productUrl: norm(b.productUrl),
+    videoUrl: norm(b.videoUrl),
   };
 }
 
@@ -60,27 +98,18 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const parsed = CreateProductBody.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
-    if (!Number.isInteger(parsed.data.price)) {
-      return res.status(400).json({ error: "Harga harus berupa bilangan bulat" });
+    const parsed = ProductBody.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
-
     try {
       const [created] = await db
         .insert(productsTable)
-        .values({
-          code: parsed.data.code.trim(),
-          name: parsed.data.name.trim(),
-          price: parsed.data.price,
-          imageUrl: parsed.data.imageUrl ?? null,
-          productUrl: parsed.data.productUrl ?? null,
-          description: parsed.data.description ?? null,
-        })
+        .values(bodyToInsert(parsed.data))
         .returning();
       res.status(201).json(serialize(created));
-    } catch (e: any) {
-      if (e?.code === "23505") {
+    } catch (e: unknown) {
+      if ((e as { code?: string })?.code === "23505") {
         return res.status(409).json({ error: "Kode produk sudah dipakai" });
       }
       throw e;
@@ -93,34 +122,24 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const idP = UpdateProductParams.safeParse({ id: Number(req.params.id) });
-    if (!idP.success) return res.status(400).json({ error: "Invalid id" });
-
-    const bodyP = UpdateProductBody.safeParse(req.body);
-    if (!bodyP.success) return res.status(400).json({ error: "Invalid body" });
-    if (!Number.isInteger(bodyP.data.price)) {
-      return res.status(400).json({ error: "Harga harus berupa bilangan bulat" });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
     }
-
+    const parsed = ProductBody.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+    }
     try {
       const [updated] = await db
         .update(productsTable)
-        .set({
-          code: bodyP.data.code.trim(),
-          name: bodyP.data.name.trim(),
-          price: bodyP.data.price,
-          imageUrl: bodyP.data.imageUrl ?? null,
-          productUrl: bodyP.data.productUrl ?? null,
-          description: bodyP.data.description ?? null,
-          updatedAt: new Date(),
-        })
-        .where(eq(productsTable.id, idP.data.id))
+        .set({ ...bodyToInsert(parsed.data), updatedAt: new Date() })
+        .where(eq(productsTable.id, id))
         .returning();
-
       if (!updated) return res.status(404).json({ error: "Product not found" });
       res.json(serialize(updated));
-    } catch (e: any) {
-      if (e?.code === "23505") {
+    } catch (e: unknown) {
+      if ((e as { code?: string })?.code === "23505") {
         return res.status(409).json({ error: "Kode produk sudah dipakai" });
       }
       throw e;
@@ -133,14 +152,14 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const idP = DeleteProductParams.safeParse({ id: Number(req.params.id) });
-    if (!idP.success) return res.status(400).json({ error: "Invalid id" });
-
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
     const deleted = await db
       .delete(productsTable)
-      .where(eq(productsTable.id, idP.data.id))
+      .where(eq(productsTable.id, id))
       .returning();
-
     if (deleted.length === 0) return res.status(404).json({ error: "Product not found" });
     res.json({ success: true });
   } catch (err) {
@@ -149,202 +168,8 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// --- Google Sheet sync for product catalog ---
-//
-// Expected columns (header row required, header text is ignored — order is what matters):
-//   A = kode barang     (code, required, unique)
-//   B = nama produk     (name, optional → falls back to code)
-//   C = harga           (price, required, integer Rupiah — non-numeric chars stripped)
-//   D = foto produk     (imageUrl, optional, must be http/https)
-//   E = link website    (productUrl, optional, must be http/https)
-//
-// Sync replaces all rows where source='google_sheet'; manual entries are kept.
-
-let productSyncInFlight = false;
-
-function parsePriceCell(raw: string): number | null {
-  if (!raw) return null;
-  // Strip everything except digits ("Rp 1.250.000" / "1,250,000" / "1250000")
-  const digits = raw.replace(/[^\d]/g, "");
-  if (!digits) return null;
-  const n = Number(digits);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
-  return n;
-}
-
-function isValidHttpUrl(raw: string): boolean {
-  if (!raw) return false;
-  try {
-    const u = new URL(raw);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-router.post("/sync-google-sheet", async (req, res) => {
-  if (productSyncInFlight) {
-    return res
-      .status(409)
-      .json({ success: false, count: 0, error: "Sync sedang berjalan, tunggu sebentar." });
-  }
-  productSyncInFlight = true;
-  try {
-    const [settings] = await db.select().from(settingsTable).limit(1);
-    const sheetUrl = settings?.productSheetCsvUrl?.trim();
-    if (!sheetUrl) {
-      return res.status(400).json({
-        success: false,
-        count: 0,
-        error: "Google Sheet URL produk belum diatur di Settings",
-      });
-    }
-
-    const setSyncError = async (errMsg: string) => {
-      if (!settings) return;
-      await db
-        .update(settingsTable)
-        .set({
-          productSheetLastSyncAt: new Date(),
-          productSheetLastSyncError: errMsg,
-          productSheetLastSyncCount: 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(settingsTable.id, settings.id));
-    };
-
-    const csvUrl = normalizeSheetUrlToCsv(sheetUrl);
-    if (!csvUrl) {
-      const errMsg = "Format URL Google Sheet tidak dikenali";
-      await setSyncError(errMsg);
-      return res.status(400).json({ success: false, count: 0, error: errMsg });
-    }
-
-    let csvText: string;
-    try {
-      csvText = await fetchSheetCsv(csvUrl);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Gagal mengambil sheet";
-      await setSyncError(msg);
-      return res.status(400).json({ success: false, count: 0, error: msg });
-    }
-
-    const rows = parseCsv(csvText);
-    if (rows.length < 2) {
-      const errMsg = "Sheet kosong atau tidak punya data (selain header)";
-      await setSyncError(errMsg);
-      return res.status(400).json({ success: false, count: 0, error: errMsg });
-    }
-
-    // Skip header. Dedupe by code (first occurrence wins; later duplicates skipped).
-    const dataRows = rows.slice(1);
-    const seen = new Set<string>();
-    const skipped: { row: number; reason: string }[] = [];
-    const entries: {
-      code: string;
-      name: string;
-      price: number;
-      imageUrl: string | null;
-      productUrl: string | null;
-      source: string;
-    }[] = [];
-
-    for (let i = 0; i < dataRows.length; i++) {
-      const r = dataRows[i];
-      const rowNum = i + 2; // human-friendly row number incl. header
-      const code = (r[0] ?? "").trim();
-      const nameRaw = (r[1] ?? "").trim();
-      const priceRaw = (r[2] ?? "").trim();
-      const imageRaw = (r[3] ?? "").trim();
-      const urlRaw = (r[4] ?? "").trim();
-
-      if (!code) {
-        skipped.push({ row: rowNum, reason: "kode kosong" });
-        continue;
-      }
-      const price = parsePriceCell(priceRaw);
-      if (price === null) {
-        skipped.push({ row: rowNum, reason: "harga tidak valid" });
-        continue;
-      }
-      if (seen.has(code)) {
-        skipped.push({ row: rowNum, reason: `kode "${code}" duplikat` });
-        continue;
-      }
-      seen.add(code);
-
-      entries.push({
-        code,
-        name: nameRaw || code,
-        price,
-        imageUrl: isValidHttpUrl(imageRaw) ? imageRaw : null,
-        productUrl: isValidHttpUrl(urlRaw) ? urlRaw : null,
-        source: "google_sheet",
-      });
-    }
-
-    if (entries.length === 0) {
-      const errMsg =
-        "Tidak ada baris valid. Format: A=kode, B=nama, C=harga, D=foto, E=link website. Baris 1 = header.";
-      await setSyncError(errMsg);
-      return res.status(400).json({ success: false, count: 0, error: errMsg });
-    }
-
-    // Replace all sheet-synced rows in a single tx. Manual rows untouched.
-    try {
-      await db.transaction(async (tx) => {
-        await tx.delete(productsTable).where(eq(productsTable.source, "google_sheet"));
-        await tx.insert(productsTable).values(entries);
-      });
-    } catch (e: any) {
-      if (e?.code === "23505") {
-        // Unique constraint on `code` collided with an existing manual entry.
-        // The tx rolled back atomically — no data loss. Tell the user which
-        // code(s) need to be renamed in their sheet or removed from manual.
-        const detail =
-          typeof e?.detail === "string"
-            ? e.detail.replace(/^Key \(code\)=\(([^)]+)\) already exists\.?$/, '"$1"')
-            : null;
-        const errMsg = detail
-          ? `Kode produk bentrok dengan entri manual: ${detail}. Hapus produk manual atau ubah kode di sheet.`
-          : "Beberapa kode di sheet bentrok dengan produk manual. Hapus produk manual atau ubah kode di sheet.";
-        await setSyncError(errMsg);
-        return res.status(409).json({ success: false, count: 0, error: errMsg });
-      }
-      throw e;
-    }
-
-    const summary =
-      skipped.length > 0
-        ? `${entries.length} produk tersimpan, ${skipped.length} baris dilewati.`
-        : null;
-
-    await db
-      .update(settingsTable)
-      .set({
-        productSheetLastSyncAt: new Date(),
-        productSheetLastSyncError: summary,
-        productSheetLastSyncCount: entries.length,
-        updatedAt: new Date(),
-      })
-      .where(eq(settingsTable.id, settings!.id));
-
-    req.log.info(
-      { inserted: entries.length, skipped: skipped.length },
-      "Product sheet sync done"
-    );
-    res.json({ success: true, count: entries.length });
-  } catch (err) {
-    req.log.error({ err }, "Failed to sync products from google sheet");
-    res.status(500).json({ success: false, count: 0, error: "Internal server error" });
-  } finally {
-    productSyncInFlight = false;
-  }
-});
-
-// Image upload endpoint — returns the public URL the frontend can attach
-// to a product when creating/updating.
-router.post("/upload-image", upload.single("file"), async (req, res) => {
+// --- Image upload ---
+router.post("/upload-image", imageUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Missing file" });
     const url = `/api/media/${path.basename(req.file.path)}`;
@@ -352,6 +177,317 @@ router.post("/upload-image", upload.single("file"), async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Failed to upload product image");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// --- Import / Export ---
+
+const EXPORT_HEADERS = [
+  "id",
+  "code",
+  "name",
+  "category",
+  "price",
+  "priceSilver",
+  "priceGold",
+  "pricePlatinum",
+  "priceReseller",
+  "priceDistributor",
+  "imageUrl",
+  "productUrl",
+  "videoUrl",
+] as const;
+
+function neutralizeFormula(s: string): string {
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
+function rowToCsvField(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  const escaped = s.includes('"') ? s.replace(/"/g, '""') : s;
+  const needsQuote = /[",\n\r]/.test(s);
+  const safe = neutralizeFormula(escaped);
+  return needsQuote ? `"${safe}"` : safe;
+}
+
+router.get("/export.csv", async (req, res) => {
+  try {
+    const rows = await db.select().from(productsTable).orderBy(productsTable.id);
+    const lines: string[] = [EXPORT_HEADERS.join(",")];
+    for (const r of rows) {
+      lines.push(
+        EXPORT_HEADERS.map((h) => rowToCsvField((r as Record<string, unknown>)[h])).join(","),
+      );
+    }
+    const body = "\uFEFF" + lines.join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="products.csv"');
+    res.send(body);
+  } catch (err) {
+    req.log.error({ err }, "Failed to export products csv");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/export.xlsx", async (req, res) => {
+  try {
+    const rows = await db.select().from(productsTable).orderBy(productsTable.id);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Products");
+    ws.addRow([...EXPORT_HEADERS]);
+    for (const r of rows) {
+      ws.addRow(EXPORT_HEADERS.map((h) => (r as Record<string, unknown>)[h] ?? ""));
+    }
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", 'attachment; filename="products.xlsx"');
+    const buf = await wb.xlsx.writeBuffer();
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    req.log.error({ err }, "Failed to export products xlsx");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+function parseIntCell(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const digits = s.replace(/[^\d]/g, "");
+  if (!digits) return null;
+  const n = Number(digits);
+  return Number.isFinite(n) && Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+function parseCsv(text: string): string[][] {
+  const stripped = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const rows: string[][] = [];
+  let field = "";
+  let row: string[] = [];
+  let inQuotes = false;
+  for (let i = 0; i < stripped.length; i++) {
+    const c = stripped[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (stripped[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ",") {
+        row.push(field);
+        field = "";
+      } else if (c === "\n") {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = "";
+      } else if (c === "\r") {
+        // skip
+      } else field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+}
+
+async function parseXlsxBuffer(buf: Buffer): Promise<string[][]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf as unknown as ArrayBuffer);
+  const ws = wb.worksheets[0];
+  if (!ws) return [];
+  const out: string[][] = [];
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    const cells: string[] = [];
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      const v = cell.value;
+      if (v === null || v === undefined) cells.push("");
+      else if (typeof v === "object" && "text" in v) cells.push(String((v as { text: string }).text));
+      else if (typeof v === "object" && "result" in v)
+        cells.push(String((v as { result: unknown }).result ?? ""));
+      else cells.push(String(v));
+    });
+    out.push(cells);
+  });
+  return out;
+}
+
+const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
+  id: "id",
+  code: "code",
+  "kode product": "code",
+  "kode produk": "code",
+  "kode barang": "code",
+  name: "name",
+  "nama barang": "name",
+  "nama produk": "name",
+  category: "category",
+  kategori: "category",
+  price: "price",
+  "harga pricelist": "price",
+  pricelist: "price",
+  "harga silver": "priceSilver",
+  pricesilver: "priceSilver",
+  "harga gold": "priceGold",
+  pricegold: "priceGold",
+  "harga platinum": "pricePlatinum",
+  priceplatinum: "pricePlatinum",
+  "harga reseller": "priceReseller",
+  pricereseller: "priceReseller",
+  "harga distributor": "priceDistributor",
+  pricedistributor: "priceDistributor",
+  "image url": "imageUrl",
+  "image_url": "imageUrl",
+  imageurl: "imageUrl",
+  foto: "imageUrl",
+  "product url": "productUrl",
+  "product_url": "productUrl",
+  producturl: "productUrl",
+  "link website": "productUrl",
+  website: "productUrl",
+  "video url": "videoUrl",
+  "video_url": "videoUrl",
+  videourl: "videoUrl",
+  "link video": "videoUrl",
+};
+
+const EXPORT_HEADERS_MAP = {
+  id: 0,
+  code: 0,
+  name: 0,
+  category: 0,
+  price: 0,
+  priceSilver: 0,
+  priceGold: 0,
+  pricePlatinum: 0,
+  priceReseller: 0,
+  priceDistributor: 0,
+  imageUrl: 0,
+  productUrl: 0,
+  videoUrl: 0,
+};
+
+type ProductCol = keyof typeof EXPORT_HEADERS_MAP;
+
+let productImportInFlight = false;
+
+router.post("/import", fileUpload.single("file"), async (req, res) => {
+  if (productImportInFlight) {
+    return res.status(409).json({ error: "Import sedang berjalan, tunggu sebentar." });
+  }
+  productImportInFlight = true;
+  try {
+    if (!req.file) return res.status(400).json({ error: "Missing file" });
+    const name = (req.file.originalname || "").toLowerCase();
+    let rows: string[][];
+    try {
+      if (name.endsWith(".xlsx")) {
+        rows = await parseXlsxBuffer(req.file.buffer);
+      } else if (name.endsWith(".csv")) {
+        rows = parseCsv(req.file.buffer.toString("utf-8"));
+      } else {
+        return res.status(400).json({ error: "Format tidak didukung. Gunakan .csv atau .xlsx." });
+      }
+    } catch (e) {
+      req.log.error({ err: e }, "Failed to parse product import file");
+      return res.status(400).json({ error: "Gagal membaca isi file." });
+    }
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: "File kosong." });
+    }
+
+    const headerCells = rows[0].map((c) => c.trim().toLowerCase());
+    const colIndex: Partial<Record<ProductCol, number>> = {};
+    headerCells.forEach((h, idx) => {
+      const key = HEADER_ALIASES[h];
+      if (key && colIndex[key] === undefined) colIndex[key] = idx;
+    });
+
+    if (colIndex.code === undefined || colIndex.name === undefined || colIndex.price === undefined) {
+      return res.status(400).json({
+        error:
+          "Header wajib: Kode Product, Nama Barang, Harga Pricelist. Header lain (Category, Harga Silver/Gold/Platinum/Reseller/Distributor, Foto, Link Website, Link Video) opsional.",
+      });
+    }
+
+    const cell = (r: string[], k: ProductCol): string =>
+      colIndex[k] !== undefined ? (r[colIndex[k] as number] ?? "").toString().trim() : "";
+
+    const entries: (typeof productsTable.$inferInsert)[] = [];
+    const seen = new Set<string>();
+    const skipped: { row: number; reason: string }[] = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const rowNum = i + 1;
+      const code = cell(r, "code");
+      const nm = cell(r, "name");
+      const priceRaw = cell(r, "price");
+      if (!code) {
+        skipped.push({ row: rowNum, reason: "kode kosong" });
+        continue;
+      }
+      const price = parseIntCell(priceRaw);
+      if (price === null) {
+        skipped.push({ row: rowNum, reason: "harga pricelist tidak valid" });
+        continue;
+      }
+      if (seen.has(code)) {
+        skipped.push({ row: rowNum, reason: `kode "${code}" duplikat di file` });
+        continue;
+      }
+      seen.add(code);
+
+      const urlOrNull = (s: string) => {
+        const t = s.trim();
+        if (!t) return null;
+        try {
+          const u = new URL(t);
+          return u.protocol === "http:" || u.protocol === "https:" ? t : null;
+        } catch {
+          return null;
+        }
+      };
+
+      entries.push({
+        code,
+        name: nm || code,
+        category: cell(r, "category") || null,
+        price,
+        priceSilver: parseIntCell(cell(r, "priceSilver")),
+        priceGold: parseIntCell(cell(r, "priceGold")),
+        pricePlatinum: parseIntCell(cell(r, "pricePlatinum")),
+        priceReseller: parseIntCell(cell(r, "priceReseller")),
+        priceDistributor: parseIntCell(cell(r, "priceDistributor")),
+        imageUrl: urlOrNull(cell(r, "imageUrl")),
+        productUrl: urlOrNull(cell(r, "productUrl")),
+        videoUrl: urlOrNull(cell(r, "videoUrl")),
+      });
+    }
+
+    if (entries.length === 0) {
+      return res.status(400).json({ error: "Tidak ada baris valid di file." });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(productsTable);
+      await tx.insert(productsTable).values(entries);
+    });
+
+    res.json({ imported: entries.length, skipped: skipped.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to import products");
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    productImportInFlight = false;
   }
 });
 

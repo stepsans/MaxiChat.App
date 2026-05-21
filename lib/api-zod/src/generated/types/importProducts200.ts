@@ -6,8 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SyncGoogleSheetResult {
-  success: boolean;
-  count: number;
-  error?: string | null;
-}
+export type ImportProducts200 = {
+  imported: number;
+  skipped?: number;
+};

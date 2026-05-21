@@ -292,10 +292,6 @@ export const GetSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
-  "productSheetCsvUrl": zod.string().nullish(),
-  "productSheetLastSyncAt": zod.string().nullish(),
-  "productSheetLastSyncCount": zod.number().nullish(),
-  "productSheetLastSyncError": zod.string().nullish(),
   "updatedAt": zod.string()
 })
 
@@ -308,8 +304,7 @@ export const UpdateSettingsBody = zod.object({
   "autoReplyEnabled": zod.boolean().optional(),
   "replyDelayMin": zod.number().optional(),
   "replyDelayMax": zod.number().optional(),
-  "fallbackMessage": zod.string().optional(),
-  "productSheetCsvUrl": zod.string().nullish()
+  "fallbackMessage": zod.string().optional()
 })
 
 export const UpdateSettingsResponse = zod.object({
@@ -319,10 +314,6 @@ export const UpdateSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
-  "productSheetCsvUrl": zod.string().nullish(),
-  "productSheetLastSyncAt": zod.string().nullish(),
-  "productSheetLastSyncCount": zod.number().nullish(),
-  "productSheetLastSyncError": zod.string().nullish(),
   "updatedAt": zod.string()
 })
 
@@ -377,12 +368,17 @@ export const DeleteKnowledgeTypeResponse = zod.object({
 
 
 /**
- * @summary Sync product catalog from configured Google Sheet CSV URL
+ * Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
+Required headers (case-insensitive): Kode Product, Nama Barang, Harga Pricelist.
+Optional headers: Category, Harga Silver, Harga Gold, Harga Platinum,
+Harga Reseller, Harga Distributor, Foto, Link Website, Link Video.
+Consumed via plain `fetch` + `FormData`.
+
+ * @summary Import product catalog from CSV/XLSX (replaces ALL existing rows)
  */
-export const SyncProductsFromGoogleSheetResponse = zod.object({
-  "success": zod.boolean(),
-  "count": zod.number(),
-  "error": zod.string().nullish()
+export const ImportProductsResponse = zod.object({
+  "imported": zod.number(),
+  "skipped": zod.number().optional()
 })
 
 
@@ -393,11 +389,16 @@ export const ListProductsResponseItem = zod.object({
   "id": zod.number(),
   "code": zod.string(),
   "name": zod.string(),
-  "price": zod.number(),
+  "category": zod.string().nullable(),
+  "price": zod.number().describe('Harga Pricelist — public price shown to customers'),
+  "priceSilver": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "priceGold": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "pricePlatinum": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "priceReseller": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
   "imageUrl": zod.string().nullable(),
   "productUrl": zod.string().nullable(),
-  "description": zod.string().nullable(),
-  "source": zod.string().describe('manual or google_sheet'),
+  "videoUrl": zod.string().nullable(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -411,15 +412,31 @@ export const ListProductsResponse = zod.array(ListProductsResponseItem)
 
 export const createProductBodyPriceMin = 0;
 
+export const createProductBodyPriceSilverMin = 0;
+
+export const createProductBodyPriceGoldMin = 0;
+
+export const createProductBodyPricePlatinumMin = 0;
+
+export const createProductBodyPriceResellerMin = 0;
+
+export const createProductBodyPriceDistributorMin = 0;
+
 
 
 export const CreateProductBody = zod.object({
   "code": zod.string().min(1),
   "name": zod.string().min(1),
+  "category": zod.string().nullish(),
   "price": zod.number().min(createProductBodyPriceMin),
+  "priceSilver": zod.number().min(createProductBodyPriceSilverMin).nullish(),
+  "priceGold": zod.number().min(createProductBodyPriceGoldMin).nullish(),
+  "pricePlatinum": zod.number().min(createProductBodyPricePlatinumMin).nullish(),
+  "priceReseller": zod.number().min(createProductBodyPriceResellerMin).nullish(),
+  "priceDistributor": zod.number().min(createProductBodyPriceDistributorMin).nullish(),
   "imageUrl": zod.string().nullish(),
   "productUrl": zod.string().nullish(),
-  "description": zod.string().nullish()
+  "videoUrl": zod.string().nullish()
 })
 
 
@@ -434,26 +451,47 @@ export const UpdateProductParams = zod.object({
 
 export const updateProductBodyPriceMin = 0;
 
+export const updateProductBodyPriceSilverMin = 0;
+
+export const updateProductBodyPriceGoldMin = 0;
+
+export const updateProductBodyPricePlatinumMin = 0;
+
+export const updateProductBodyPriceResellerMin = 0;
+
+export const updateProductBodyPriceDistributorMin = 0;
+
 
 
 export const UpdateProductBody = zod.object({
   "code": zod.string().min(1),
   "name": zod.string().min(1),
+  "category": zod.string().nullish(),
   "price": zod.number().min(updateProductBodyPriceMin),
+  "priceSilver": zod.number().min(updateProductBodyPriceSilverMin).nullish(),
+  "priceGold": zod.number().min(updateProductBodyPriceGoldMin).nullish(),
+  "pricePlatinum": zod.number().min(updateProductBodyPricePlatinumMin).nullish(),
+  "priceReseller": zod.number().min(updateProductBodyPriceResellerMin).nullish(),
+  "priceDistributor": zod.number().min(updateProductBodyPriceDistributorMin).nullish(),
   "imageUrl": zod.string().nullish(),
   "productUrl": zod.string().nullish(),
-  "description": zod.string().nullish()
+  "videoUrl": zod.string().nullish()
 })
 
 export const UpdateProductResponse = zod.object({
   "id": zod.number(),
   "code": zod.string(),
   "name": zod.string(),
-  "price": zod.number(),
+  "category": zod.string().nullable(),
+  "price": zod.number().describe('Harga Pricelist — public price shown to customers'),
+  "priceSilver": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "priceGold": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "pricePlatinum": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "priceReseller": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
   "imageUrl": zod.string().nullable(),
   "productUrl": zod.string().nullable(),
-  "description": zod.string().nullable(),
-  "source": zod.string().describe('manual or google_sheet'),
+  "videoUrl": zod.string().nullable(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

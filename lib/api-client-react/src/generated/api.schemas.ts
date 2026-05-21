@@ -207,10 +207,6 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
-  productSheetCsvUrl?: string | null;
-  productSheetLastSyncAt?: string | null;
-  productSheetLastSyncCount?: number | null;
-  productSheetLastSyncError?: string | null;
   updatedAt: string;
 }
 
@@ -220,13 +216,6 @@ export interface SettingsUpdate {
   replyDelayMin?: number;
   replyDelayMax?: number;
   fallbackMessage?: string;
-  productSheetCsvUrl?: string | null;
-}
-
-export interface SyncGoogleSheetResult {
-  success: boolean;
-  count: number;
-  error?: string | null;
 }
 
 export interface AnalyticsSummary {
@@ -246,15 +235,41 @@ export interface Product {
   id: number;
   code: string;
   name: string;
+  /** @nullable */
+  category: string | null;
+  /** Harga Pricelist — public price shown to customers */
   price: number;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceSilver: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceGold: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  pricePlatinum: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceReseller: number | null;
+  /**
+     * Internal only — never sent to customers
+     * @nullable
+     */
+  priceDistributor: number | null;
   /** @nullable */
   imageUrl: string | null;
   /** @nullable */
   productUrl: string | null;
   /** @nullable */
-  description: string | null;
-  /** manual or google_sheet */
-  source: string;
+  videoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -264,14 +279,41 @@ export interface ProductInput {
   code: string;
   /** @minLength 1 */
   name: string;
+  /** @nullable */
+  category?: string | null;
   /** @minimum 0 */
   price: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceSilver?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceGold?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  pricePlatinum?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceReseller?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceDistributor?: number | null;
   /** @nullable */
   imageUrl?: string | null;
   /** @nullable */
   productUrl?: string | null;
   /** @nullable */
-  description?: string | null;
+  videoUrl?: string | null;
 }
 
 export interface SendProductBody {
@@ -332,11 +374,20 @@ export type DeleteKnowledgeType200 = {
   success: boolean;
 };
 
+export type DeleteKnowledgeType400 = {
+  error?: string;
+};
+
 export type DeleteKnowledgeType404 = {
   error?: string;
 };
 
 export type DeleteKnowledgeType409 = {
   error?: string;
+};
+
+export type ImportProducts200 = {
+  imported: number;
+  skipped?: number;
 };
 

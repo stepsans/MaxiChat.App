@@ -3,9 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetSettings,
   useUpdateSettings,
-  useSyncProductsFromGoogleSheet,
   getGetSettingsQueryKey,
-  getListProductsQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare, FileSpreadsheet, RefreshCw, CheckCircle2, AlertCircle, Package } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,7 +32,6 @@ const settingsSchema = z.object({
   replyDelayMin: z.coerce.number().int().min(0).max(30),
   replyDelayMax: z.coerce.number().int().min(0).max(60),
   fallbackMessage: z.string().min(1, "Fallback message is required"),
-  productSheetCsvUrl: z.string().optional(),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -61,7 +58,6 @@ export default function Settings() {
       replyDelayMin: 1,
       replyDelayMax: 3,
       fallbackMessage: "",
-      productSheetCsvUrl: "",
     },
   });
 
@@ -73,64 +69,12 @@ export default function Settings() {
         replyDelayMin: settings.replyDelayMin,
         replyDelayMax: settings.replyDelayMax,
         fallbackMessage: settings.fallbackMessage,
-        productSheetCsvUrl: settings.productSheetCsvUrl ?? "",
       });
     }
   }, [settings, form]);
 
   const onSubmit = (data: SettingsForm) => {
-    update.mutate({
-      data: {
-        ...data,
-        productSheetCsvUrl: data.productSheetCsvUrl?.trim() ? data.productSheetCsvUrl.trim() : null,
-      },
-    });
-  };
-
-  const productSync = useSyncProductsFromGoogleSheet({
-    mutation: {
-      onSuccess: (result) => {
-        qc.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
-        qc.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        if (result.success) {
-          toast({ title: `Berhasil sync ${result.count} produk dari Google Sheet.` });
-        } else {
-          toast({
-            title: "Sync produk gagal",
-            description: result.error ?? "Unknown error",
-            variant: "destructive",
-          });
-        }
-      },
-      onError: (err: unknown) => {
-        const msg =
-          err && typeof err === "object" && "message" in err
-            ? String((err as { message: unknown }).message)
-            : "Gagal sync. Cek URL & akses sheet.";
-        toast({ title: "Sync produk gagal", description: msg, variant: "destructive" });
-      },
-    },
-  });
-
-  const handleSyncProducts = () => {
-    const url = form.getValues("productSheetCsvUrl")?.trim();
-    if (!url) {
-      toast({
-        title: "Isi dulu Google Sheet URL produk",
-        description: "Lalu klik Save Settings sebelum sync.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (url !== (settings?.productSheetCsvUrl ?? "")) {
-      toast({
-        title: "Save dulu sebelum sync",
-        description: "URL berubah — klik Save Settings dulu, baru sync.",
-        variant: "destructive",
-      });
-      return;
-    }
-    productSync.mutate();
+    update.mutate({ data });
   };
 
   if (isLoading) {
@@ -145,7 +89,6 @@ export default function Settings() {
 
   return (
     <div className="flex flex-col h-full overflow-auto">
-      {/* Header */}
       <div className="flex items-center justify-between px-6 h-14 border-b border-border flex-shrink-0">
         <div>
           <h1 className="text-base font-semibold">Settings</h1>
@@ -156,7 +99,6 @@ export default function Settings() {
       <div className="flex-1 p-6 max-w-2xl space-y-5">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            {/* Auto Reply Toggle */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -192,7 +134,6 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            {/* Reply Delay */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -247,7 +188,6 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            {/* System Prompt */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -280,7 +220,6 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            {/* Fallback Message */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -310,89 +249,6 @@ export default function Settings() {
                     </FormItem>
                   )}
                 />
-              </CardContent>
-            </Card>
-
-            {/* Google Sheet Sync — Products */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Package className="w-4 h-4 text-primary" />
-                  Sync Produk dari Google Sheet
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Paste link Google Sheet (sheet harus di-share "Anyone with the link" atau Publish to web sebagai CSV). Urutan kolom:{" "}
-                  <b>A = kode barang</b>, <b>B = nama produk</b> (opsional), <b>C = harga</b> (angka, "Rp 1.250.000" boleh),{" "}
-                  <b>D = foto produk</b> (URL gambar), <b>E = link website</b>. Baris pertama = header.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <FormField
-                  control={form.control}
-                  name="productSheetCsvUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs">Google Sheet URL Produk</FormLabel>
-                      <FormControl>
-                        <Input
-                          data-testid="input-product-sheet-url"
-                          placeholder="https://docs.google.com/spreadsheets/d/.../edit#gid=0"
-                          {...field}
-                          value={field.value ?? ""}
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        Sync akan <b>mengganti semua produk hasil sync sebelumnya</b>. Produk yang ditambah manual lewat halaman Products tidak ikut terhapus.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="button-sync-product-sheet"
-                    onClick={handleSyncProducts}
-                    disabled={productSync.isPending}
-                  >
-                    {productSync.isPending ? (
-                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                    )}
-                    Sync Sekarang
-                  </Button>
-
-                  {settings?.productSheetLastSyncAt && (
-                    <div className="text-xs flex items-center gap-1.5">
-                      {settings.productSheetLastSyncError &&
-                      (settings.productSheetLastSyncCount ?? 0) === 0 ? (
-                        <>
-                          <AlertCircle className="w-3.5 h-3.5 text-destructive" />
-                          <span className="text-destructive">
-                            {settings.productSheetLastSyncError}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                          <span className="text-muted-foreground">
-                            Last sync:{" "}
-                            {new Date(settings.productSheetLastSyncAt).toLocaleString("id-ID")}
-                            {" · "}
-                            {settings.productSheetLastSyncCount ?? 0} produk
-                            {settings.productSheetLastSyncError
-                              ? ` · ${settings.productSheetLastSyncError}`
-                              : ""}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
               </CardContent>
             </Card>
 

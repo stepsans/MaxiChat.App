@@ -11,12 +11,39 @@ export interface ProductInput {
   code: string;
   /** @minLength 1 */
   name: string;
+  /** @nullable */
+  category?: string | null;
   /** @minimum 0 */
   price: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceSilver?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceGold?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  pricePlatinum?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceReseller?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  priceDistributor?: number | null;
   /** @nullable */
   imageUrl?: string | null;
   /** @nullable */
   productUrl?: string | null;
   /** @nullable */
-  description?: string | null;
+  videoUrl?: string | null;
 }
