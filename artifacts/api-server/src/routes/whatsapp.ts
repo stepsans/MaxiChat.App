@@ -123,15 +123,10 @@ async function setStatus(
 }
 
 async function getOrCreateChat(phoneNumber: string, contactName: string) {
-  const existing = await db
-    .select()
-    .from(chatsTable)
-    .where(eq(chatsTable.phoneNumber, phoneNumber))
-    .limit(1);
-
-  if (existing.length > 0) return existing[0];
-
-  const [created] = await db
+  // True upsert: relies on the unique index on chats.phone_number so concurrent
+  // workers (live messages.upsert vs. messaging-history.set) cannot create
+  // duplicate rows. ON CONFLICT DO UPDATE on a no-op column returns the row.
+  const [row] = await db
     .insert(chatsTable)
     .values({
       phoneNumber,
@@ -141,8 +136,12 @@ async function getOrCreateChat(phoneNumber: string, contactName: string) {
       isHumanTakeover: false,
       unreadCount: 0,
     })
+    .onConflictDoUpdate({
+      target: chatsTable.phoneNumber,
+      set: { phoneNumber: sql`${chatsTable.phoneNumber}` },
+    })
     .returning();
-  return created;
+  return row;
 }
 
 async function generateAiReply(chatId: number, userMessage: string): Promise<string | null> {
@@ -200,6 +199,7 @@ interface IncomingMedia {
 interface ParsedWaMessage {
   jid: string;
   rawNumber: string;
+  lidRawNumber: string | null;
   pushName: string;
   waMessageId: string | null;
   fromMe: boolean;
@@ -380,13 +380,42 @@ async function parseWaMessage(
     return null;
   }
 
-  const rawNumber = jid.split("@")[0].split(":")[0];
+  // Baileys 7.x uses LID addressing for new contacts: msg.key.remoteJid is
+  // "<lid>@lid" and msg.key.remoteJidAlt carries the actual phone "<pn>@s.whatsapp.net".
+  // Prefer the phone-side JID for deriving the displayed number so chats appear
+  // under the user's real phone, not the opaque LID.
+  const remoteJidAlt: string | undefined = msg.key?.remoteJidAlt;
+  const phoneJid =
+    jid.endsWith("@s.whatsapp.net")
+      ? jid
+      : remoteJidAlt?.endsWith("@s.whatsapp.net")
+      ? remoteJidAlt
+      : jid;
+
+  const rawNumber = phoneJid.split("@")[0].split(":")[0];
+  const lidRawNumber =
+    jid.endsWith("@lid")
+      ? jid.split("@")[0].split(":")[0]
+      : remoteJidAlt?.endsWith("@lid")
+      ? remoteJidAlt.split("@")[0].split(":")[0]
+      : null;
+
   const pushName: string = msg.pushName || rawNumber;
   const waMessageId: string | null = msg.key?.id ?? null;
   const fromMe = !!msg.key?.fromMe;
   const timestamp = new Date(toEpochMs(msg.messageTimestamp));
 
-  return { jid, rawNumber, pushName, waMessageId, fromMe, timestamp, messageContent, media };
+  return {
+    jid,
+    rawNumber,
+    lidRawNumber,
+    pushName,
+    waMessageId,
+    fromMe,
+    timestamp,
+    messageContent,
+    media,
+  };
 }
 
 function buildPreview(messageText: string, media?: IncomingMedia): string {
@@ -408,6 +437,53 @@ async function persistWaMessage(
 ): Promise<{ chat: typeof chatsTable.$inferSelect; inserted: boolean }> {
   const phoneNumber = `+${parsed.rawNumber}`;
   const contactName = parsed.pushName || parsed.rawNumber;
+
+  // Heal pre-existing rows that were stored under the LID number (before we
+  // learned to prefer remoteJidAlt). When the same conversation now resolves
+  // to a real phone, merge messages from the LID-keyed chat into the canonical
+  // phone-keyed chat (or rename if no canonical row exists yet). Run in a
+  // transaction with row-level locks so concurrent ingestion can't race
+  // between the merge update and the chat delete.
+  if (parsed.lidRawNumber && parsed.lidRawNumber !== parsed.rawNumber) {
+    const lidPhone = `+${parsed.lidRawNumber}`;
+    await db.transaction(async (tx) => {
+      // Lock both candidate rows in a deterministic order to avoid deadlocks.
+      const candidates = await tx
+        .select()
+        .from(chatsTable)
+        .where(
+          sql`${chatsTable.phoneNumber} IN (${lidPhone}, ${phoneNumber})`
+        )
+        .orderBy(chatsTable.phoneNumber)
+        .for("update");
+
+      const lidChat = candidates.find((c) => c.phoneNumber === lidPhone);
+      if (!lidChat) return;
+      const realChat = candidates.find((c) => c.phoneNumber === phoneNumber);
+
+      if (realChat) {
+        await tx
+          .update(chatMessagesTable)
+          .set({ chatId: realChat.id })
+          .where(eq(chatMessagesTable.chatId, lidChat.id));
+        await tx.delete(chatsTable).where(eq(chatsTable.id, lidChat.id));
+        logger.info(
+          { lidPhone, phoneNumber },
+          "Merged stale LID-keyed chat into canonical phone chat"
+        );
+      } else {
+        await tx
+          .update(chatsTable)
+          .set({ phoneNumber, contactName })
+          .where(eq(chatsTable.id, lidChat.id));
+        logger.info(
+          { lidPhone, phoneNumber },
+          "Renamed stale LID-keyed chat to canonical phone"
+        );
+      }
+    });
+  }
+
   const chat = await getOrCreateChat(phoneNumber, contactName);
   const direction = parsed.fromMe ? "outbound" : "inbound";
 
@@ -649,7 +725,10 @@ async function startBaileys(sessionId: number) {
             c.id === "status@broadcast"
           )
             continue;
-          if (!c.id.endsWith("@s.whatsapp.net") && !c.id.endsWith("@lid")) continue;
+          // Only seed canonical phone-number chats. LID-only entries from the
+          // history list have no phone mapping here; they'll be created with
+          // the real phone once a live message arrives (which carries remoteJidAlt).
+          if (!c.id.endsWith("@s.whatsapp.net")) continue;
           const rawNumber = c.id.split("@")[0].split(":")[0];
           const phoneNumber = `+${rawNumber}`;
           const contactName = c.name?.trim() || rawNumber;

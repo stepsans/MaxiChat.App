@@ -10,18 +10,24 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const chatsTable = pgTable("chats", {
-  id: serial("id").primaryKey(),
-  phoneNumber: text("phone_number").notNull(),
-  contactName: text("contact_name").notNull(),
-  status: text("status").notNull().default("ai_handled"),
-  tag: text("tag").notNull().default("none"),
-  isHumanTakeover: boolean("is_human_takeover").notNull().default(false),
-  lastMessage: text("last_message"),
-  lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
-  unreadCount: integer("unread_count").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const chatsTable = pgTable(
+  "chats",
+  {
+    id: serial("id").primaryKey(),
+    phoneNumber: text("phone_number").notNull(),
+    contactName: text("contact_name").notNull(),
+    status: text("status").notNull().default("ai_handled"),
+    tag: text("tag").notNull().default("none"),
+    isHumanTakeover: boolean("is_human_takeover").notNull().default(false),
+    lastMessage: text("last_message"),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    unreadCount: integer("unread_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    chatsPhoneNumberUnique: uniqueIndex("chats_phone_number_unique").on(t.phoneNumber),
+  })
+);
 
 export const insertChatSchema = createInsertSchema(chatsTable).omit({
   id: true,
