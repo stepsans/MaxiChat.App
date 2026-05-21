@@ -1,0 +1,59 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.09);
+
+  --background: 215 15% 10%;
+  --foreground: 210 20% 98%;
+  --border: 215 15% 15%;
+
+  --card: 215 15% 12%;
+  --card-foreground: 210 20% 98%;
+  --card-border: 215 15% 18%;
+
+  --sidebar: 215 15% 10%;
+  --sidebar-foreground: 210 20% 98%;
+  --sidebar-border: 215 15% 15%;
+  --sidebar-primary: 142 61% 33%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 215 15% 16%;
+  --sidebar-accent-foreground: 210 20% 98%;
+  --sidebar-ring: 142 61% 33%;
+
+  --popover: 215 15% 12%;
+  --popover-foreground: 210 20% 98%;
+  --popover-border: 215 15% 18%;
+
+  --primary: 142 71% 40%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 215 15% 18%;
+  --secondary-foreground: 210 20% 98%;
+
+  --muted: 215 15% 16%;
+  --muted-foreground: 215 10% 65%;
+
+  --accent: 215 15% 18%;
+  --accent-foreground: 210 20% 98%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 215 15% 18%;
+  --ring: 142 71% 40%;
+
+  --chart-1: 142 71% 40%;
+  --chart-2: 210 90% 60%;
+  --chart-3: 35 90% 60%;
+  --chart-4: 280 80% 60%;
+  --chart-5: 0 84% 60%;
+
+  --app-font-sans: "Inter", sans-serif;
+  --app-font-serif: Georgia, serif;
+  --app-font-mono: Menlo, monospace;
+  --radius: 0.5rem;
+}
