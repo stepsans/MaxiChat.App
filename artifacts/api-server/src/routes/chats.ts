@@ -529,7 +529,61 @@ router.post("/:id/product", async (req, res) => {
           .where(eq(chatMessagesTable.waMessageId, waMessageId!))
           .limit(1);
 
-    const preview = `🛍️ ${product.name} — ${priceFmt}`;
+    // Send link follow-ups: productUrl, then each videoUrl. Each as its own
+    // message so WhatsApp generates a link preview thumbnail per URL.
+    // link-preview-js (installed) makes Baileys auto-fetch the preview when
+    // we call sendMessage({ text: <url> }). A small delay between sends keeps
+    // ordering deterministic on the WA side and gives the preview fetch time.
+    const sock = getActiveSocket();
+    const followUps: string[] = [];
+    if (product.productUrl && product.productUrl.length > 0) {
+      followUps.push(product.productUrl);
+    }
+    if (Array.isArray(product.videoUrls)) {
+      for (const v of product.videoUrls) {
+        if (v && v.length > 0) followUps.push(v);
+      }
+    }
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let lastSentUrl: string | null = null;
+    for (const url of followUps) {
+      if (!sock) break;
+      try {
+        // 800ms throttle between link sends — gives WA time to resolve the
+        // preview server-side before the next message arrives.
+        await sleep(800);
+        const sent = await sock.sendMessage(target.jid, { text: url });
+        const followWaId = sent?.key?.id ?? null;
+        // Skip route-side insert when WA didn't return an id — letting the
+        // messages.upsert echo persist the row prevents duplicate logical
+        // rows (the unique index treats NULL waMessageId as distinct).
+        if (followWaId) {
+          await db
+            .insert(chatMessagesTable)
+            .values({
+              chatId: id,
+              direction: "outbound",
+              content: url,
+              isAiGenerated: false,
+              mediaType: null,
+              mediaUrl: null,
+              mediaMimeType: null,
+              mediaFilename: null,
+              waMessageId: followWaId,
+            })
+            .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+        }
+        lastSentUrl = url;
+      } catch (err) {
+        // Non-fatal: log and continue with remaining URLs.
+        req.log.warn({ err, productId, url }, "Failed to send product link follow-up");
+      }
+    }
+
+    // Reflect the actual last message in the chat list summary. If any link
+    // follow-up was sent, the link itself is the latest outbound message;
+    // otherwise show the product preview.
+    const preview = lastSentUrl ?? `🛍️ ${product.name} — ${priceFmt}`;
     await db
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })
