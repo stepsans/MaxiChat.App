@@ -6,6 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type DeleteManualKnowledge200 = {
-  deleted: number;
+export type ImportKnowledge200 = {
+  imported: number;
 };

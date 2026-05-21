@@ -26,9 +26,11 @@ import type {
   ChatUpdate,
   ChatWithMessages,
   CommonQuestion,
-  DeleteManualKnowledge200,
   ErrorResponse,
   HealthStatus,
+  ImportKnowledge200,
+  ImportKnowledge400,
+  ImportKnowledge409,
   KnowledgeEntry,
   KnowledgeInput,
   KnowledgeUpdate,
@@ -1309,90 +1311,28 @@ export const useUpdateSettings = <TError = ErrorType<unknown>,
       return useMutation(getUpdateSettingsMutationOptions(options));
     }
 
-export const getDeleteManualKnowledgeUrl = () => {
+export const getImportKnowledgeUrl = () => {
 
 
 
 
-  return `/api/knowledge/manual`
+  return `/api/knowledge/import`
 }
 
 /**
- * @summary Delete all manually created knowledge entries (source='manual')
+ * Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
+Required columns (header row, case-insensitive): type, title, content.
+Valid type values: product, faq, script, testimonial, website.
+On success, the entire `knowledge_entries` table is wiped and replaced.
+Note: this endpoint is consumed via plain `fetch` + `FormData` on the
+client; the request body is documented here for contract completeness
+but the typed client hook is not used.
+
+ * @summary Import knowledge entries from CSV/XLSX (replaces ALL existing entries)
  */
-export const deleteManualKnowledge = async ( options?: RequestInit): Promise<DeleteManualKnowledge200> => {
+export const importKnowledge = async ( options?: RequestInit): Promise<ImportKnowledge200> => {
 
-  return customFetch<DeleteManualKnowledge200>(getDeleteManualKnowledgeUrl(),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-
-export const getDeleteManualKnowledgeMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteManualKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteManualKnowledge>>, TError,void, TContext> => {
-
-const mutationKey = ['deleteManualKnowledge'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteManualKnowledge>>, void> = () => {
-
-
-          return  deleteManualKnowledge(requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteManualKnowledgeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteManualKnowledge>>>
-
-    export type DeleteManualKnowledgeMutationError = ErrorType<unknown>
-
-    /**
- * @summary Delete all manually created knowledge entries (source='manual')
- */
-export const useDeleteManualKnowledge = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteManualKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof deleteManualKnowledge>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getDeleteManualKnowledgeMutationOptions(options));
-    }
-
-export const getSyncKnowledgeFromGoogleSheetUrl = () => {
-
-
-
-
-  return `/api/knowledge/sync-google-sheet`
-}
-
-/**
- * @summary Sync knowledge base from configured Google Sheet CSV URL
- */
-export const syncKnowledgeFromGoogleSheet = async ( options?: RequestInit): Promise<SyncGoogleSheetResult> => {
-
-  return customFetch<SyncGoogleSheetResult>(getSyncKnowledgeFromGoogleSheetUrl(),
+  return customFetch<ImportKnowledge200>(getImportKnowledgeUrl(),
   {
     ...options,
     method: 'POST'
@@ -1404,11 +1344,11 @@ export const syncKnowledgeFromGoogleSheet = async ( options?: RequestInit): Prom
 
 
 
-export const getSyncKnowledgeFromGoogleSheetMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext> => {
+export const getImportKnowledgeMutationOptions = <TError = ErrorType<ImportKnowledge400 | ImportKnowledge409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importKnowledge>>, TError,void, TContext> => {
 
-const mutationKey = ['syncKnowledgeFromGoogleSheet'];
+const mutationKey = ['importKnowledge'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1418,10 +1358,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importKnowledge>>, void> = () => {
 
 
-          return  syncKnowledgeFromGoogleSheet(requestOptions)
+          return  importKnowledge(requestOptions)
         }
 
 
@@ -1431,22 +1371,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type SyncKnowledgeFromGoogleSheetMutationResult = NonNullable<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>>
+    export type ImportKnowledgeMutationResult = NonNullable<Awaited<ReturnType<typeof importKnowledge>>>
 
-    export type SyncKnowledgeFromGoogleSheetMutationError = ErrorType<unknown>
+    export type ImportKnowledgeMutationError = ErrorType<ImportKnowledge400 | ImportKnowledge409>
 
     /**
- * @summary Sync knowledge base from configured Google Sheet CSV URL
+ * @summary Import knowledge entries from CSV/XLSX (replaces ALL existing entries)
  */
-export const useSyncKnowledgeFromGoogleSheet = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useImportKnowledge = <TError = ErrorType<ImportKnowledge400 | ImportKnowledge409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof syncKnowledgeFromGoogleSheet>>,
+        Awaited<ReturnType<typeof importKnowledge>>,
         TError,
         void,
         TContext
       > => {
-      return useMutation(getSyncKnowledgeFromGoogleSheetMutationOptions(options));
+      return useMutation(getImportKnowledgeMutationOptions(options));
     }
 
 export const getSyncProductsFromGoogleSheetUrl = () => {

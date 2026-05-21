@@ -371,35 +371,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/Settings"
 
-  /knowledge/manual:
-    delete:
-      operationId: deleteManualKnowledge
+  /knowledge/import:
+    post:
+      operationId: importKnowledge
       tags: [knowledge]
-      summary: Delete all manually created knowledge entries (source='manual')
+      summary: Import knowledge entries from CSV/XLSX (replaces ALL existing entries)
+      description: |
+        Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
+        Required columns (header row, case-insensitive): type, title, content.
+        Valid type values: product, faq, script, testimonial, website.
+        On success, the entire `knowledge_entries` table is wiped and replaced.
+        Note: this endpoint is consumed via plain `fetch` + `FormData` on the
+        client; the request body is documented here for contract completeness
+        but the typed client hook is not used.
+      requestBody:
+        required: true
+        description: |
+          `multipart/form-data` with a single field `file` containing the CSV
+          or XLSX upload. Body schema intentionally omitted to keep generated
+          clients free of browser-only `File`/`Blob` types; consume this
+          endpoint via plain `fetch` + `FormData`.
+        content:
+          multipart/form-data: {}
       responses:
         "200":
-          description: Deleted count
+          description: Import result
           content:
             application/json:
               schema:
                 type: object
-                required: [deleted]
+                required: [imported]
                 properties:
-                  deleted:
+                  imported:
                     type: integer
-
-  /knowledge/sync-google-sheet:
-    post:
-      operationId: syncKnowledgeFromGoogleSheet
-      tags: [knowledge]
-      summary: Sync knowledge base from configured Google Sheet CSV URL
-      responses:
-        "200":
-          description: Sync result
+        "400":
+          description: Invalid file or contents
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SyncGoogleSheetResult"
+                type: object
+                properties:
+                  error:
+                    type: string
+        "409":
+          description: Another import is already in progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
 
   /products/sync-google-sheet:
     post:
@@ -678,7 +700,7 @@ components:
 
     KnowledgeEntry:
       type: object
-      required: [id, type, title, content, source, createdAt, updatedAt]
+      required: [id, type, title, content, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -688,8 +710,6 @@ components:
         title:
           type: string
         content:
-          type: string
-        source:
           type: string
         createdAt:
           type: string
@@ -735,18 +755,6 @@ components:
           type: integer
         fallbackMessage:
           type: string
-        googleSheetCsvUrl:
-          type: string
-          nullable: true
-        googleSheetLastSyncAt:
-          type: string
-          nullable: true
-        googleSheetLastSyncCount:
-          type: integer
-          nullable: true
-        googleSheetLastSyncError:
-          type: string
-          nullable: true
         productSheetCsvUrl:
           type: string
           nullable: true
@@ -775,9 +783,6 @@ components:
           type: integer
         fallbackMessage:
           type: string
-        googleSheetCsvUrl:
-          type: string
-          nullable: true
         productSheetCsvUrl:
           type: string
           nullable: true

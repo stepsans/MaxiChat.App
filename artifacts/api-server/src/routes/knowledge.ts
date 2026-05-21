@@ -1,6 +1,7 @@
 import { Router } from "express";
+import multer from "multer";
 import { db } from "@workspace/db";
-import { knowledgeTable, settingsTable } from "@workspace/db";
+import { knowledgeTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   CreateKnowledgeBody,
@@ -8,12 +9,18 @@ import {
   UpdateKnowledgeParams,
   DeleteKnowledgeParams,
 } from "@workspace/api-zod";
-import { normalizeSheetUrlToCsv, parseCsv, fetchSheetCsv } from "../lib/sheet-sync";
+import { parseCsv } from "../lib/sheet-sync";
 import ExcelJS from "exceljs";
 
 const router = Router();
 
-const EXPORT_COLUMNS = ["id", "type", "title", "content", "source", "createdAt", "updatedAt"] as const;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+const VALID_TYPES = new Set(["product", "faq", "script", "testimonial", "website"]);
+const EXPORT_COLUMNS = ["id", "type", "title", "content", "createdAt", "updatedAt"] as const;
 
 function neutralizeFormula(s: string): string {
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
@@ -70,7 +77,6 @@ router.get("/export.xlsx", async (req, res) => {
       { header: "type", key: "type", width: 14 },
       { header: "title", key: "title", width: 36 },
       { header: "content", key: "content", width: 80 },
-      { header: "source", key: "source", width: 14 },
       { header: "createdAt", key: "createdAt", width: 22 },
       { header: "updatedAt", key: "updatedAt", width: 22 },
     ];
@@ -81,7 +87,6 @@ router.get("/export.xlsx", async (req, res) => {
         type: safeCell(e.type),
         title: safeCell(e.title),
         content: safeCell(e.content),
-        source: safeCell(e.source),
         createdAt: e.createdAt.toISOString(),
         updatedAt: e.updatedAt.toISOString(),
       });
@@ -166,19 +171,6 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/manual", async (req, res) => {
-  try {
-    const deleted = await db
-      .delete(knowledgeTable)
-      .where(eq(knowledgeTable.source, "manual"))
-      .returning();
-    res.json({ deleted: deleted.length });
-  } catch (err) {
-    req.log.error({ err }, "Failed to delete manual knowledge entries");
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 router.delete("/:id", async (req, res) => {
   try {
     const idParsed = DeleteKnowledgeParams.safeParse({ id: Number(req.params.id) });
@@ -198,128 +190,133 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// --- Google Sheet sync ---
+// --- Import from CSV / XLSX (replaces all entries) ---
 
-const VALID_TYPES = new Set(["product", "faq", "script", "testimonial", "website"]);
+interface ParsedEntry {
+  type: string;
+  title: string;
+  content: string;
+}
 
-// Simple in-process single-flight lock to prevent concurrent syncs racing on
-// delete+insert (which would otherwise produce duplicate or partial rows).
-let syncInFlight = false;
+function normalizeHeader(s: string): string {
+  return s.trim().toLowerCase();
+}
 
-router.post("/sync-google-sheet", async (req, res) => {
-  if (syncInFlight) {
+function rowsToEntries(rows: string[][]): { entries: ParsedEntry[]; error: string | null } {
+  if (rows.length === 0) {
+    return { entries: [], error: "File kosong" };
+  }
+  const headers = rows[0].map(normalizeHeader);
+  const typeIdx = headers.indexOf("type");
+  const titleIdx = headers.indexOf("title");
+  const contentIdx = headers.indexOf("content");
+  if (typeIdx === -1 || titleIdx === -1 || contentIdx === -1) {
+    return {
+      entries: [],
+      error: "Header wajib: type, title, content (baris pertama).",
+    };
+  }
+  const entries: ParsedEntry[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const rawType = (r[typeIdx] ?? "").trim().toLowerCase();
+    const title = (r[titleIdx] ?? "").trim();
+    const content = (r[contentIdx] ?? "").trim();
+    if (!title && !content) continue;
+    if (!title || !content) continue;
+    const type = VALID_TYPES.has(rawType) ? rawType : "faq";
+    entries.push({ type, title, content });
+  }
+  if (entries.length === 0) {
+    return { entries: [], error: "Tidak ada baris valid di file." };
+  }
+  return { entries, error: null };
+}
+
+async function parseXlsxBuffer(buf: Buffer): Promise<string[][]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf as unknown as ArrayBuffer);
+  const ws = wb.worksheets[0];
+  if (!ws) return [];
+  const rows: string[][] = [];
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    const out: string[] = [];
+    const values = row.values as unknown[];
+    // ExcelJS row.values is 1-indexed; skip index 0
+    for (let i = 1; i < values.length; i++) {
+      const v = values[i];
+      if (v === null || v === undefined) {
+        out.push("");
+      } else if (typeof v === "object" && v !== null && "text" in (v as object)) {
+        out.push(String((v as { text: unknown }).text ?? ""));
+      } else if (v instanceof Date) {
+        out.push(v.toISOString());
+      } else {
+        out.push(String(v));
+      }
+    }
+    rows.push(out);
+  });
+  return rows;
+}
+
+let importInFlight = false;
+
+router.post("/import", upload.single("file"), async (req, res) => {
+  if (importInFlight) {
     return res
       .status(409)
-      .json({ success: false, count: 0, error: "Sync sedang berjalan, tunggu sebentar." });
+      .json({ error: "Import sedang berjalan, tunggu sebentar." });
   }
-  syncInFlight = true;
+  importInFlight = true;
   try {
-    const [settings] = await db.select().from(settingsTable).limit(1);
-    const sheetUrl = settings?.googleSheetCsvUrl?.trim();
-    if (!sheetUrl) {
-      return res
-        .status(400)
-        .json({ success: false, count: 0, error: "Google Sheet URL belum diatur di Settings" });
-    }
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "File tidak ditemukan di field 'file'" });
 
-    const csvUrl = normalizeSheetUrlToCsv(sheetUrl);
-    if (!csvUrl) {
-      const errMsg = "Format URL Google Sheet tidak dikenali";
-      if (settings) {
-        await db
-          .update(settingsTable)
-          .set({
-            googleSheetLastSyncAt: new Date(),
-            googleSheetLastSyncError: errMsg,
-            googleSheetLastSyncCount: 0,
-            updatedAt: new Date(),
-          })
-          .where(eq(settingsTable.id, settings.id));
-      }
-      return res.status(400).json({ success: false, count: 0, error: errMsg });
-    }
+    const name = (file.originalname ?? "").toLowerCase();
+    const mime = (file.mimetype ?? "").toLowerCase();
+    const isXlsx =
+      name.endsWith(".xlsx") ||
+      mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const isCsv =
+      name.endsWith(".csv") ||
+      mime === "text/csv" ||
+      mime === "application/csv" ||
+      mime === "text/plain";
 
-    let csvText: string;
+    let rows: string[][];
     try {
-      csvText = await fetchSheetCsv(csvUrl);
+      if (isXlsx) {
+        rows = await parseXlsxBuffer(file.buffer);
+      } else if (isCsv) {
+        // Strip UTF-8 BOM if present
+        let text = file.buffer.toString("utf8");
+        if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+        rows = parseCsv(text);
+      } else {
+        return res.status(400).json({
+          error: "Format file tidak didukung. Gunakan .csv atau .xlsx",
+        });
+      }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Gagal mengambil sheet";
-      await db
-        .update(settingsTable)
-        .set({
-          googleSheetLastSyncAt: new Date(),
-          googleSheetLastSyncError: msg,
-          googleSheetLastSyncCount: 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(settingsTable.id, settings!.id));
-      return res.status(400).json({ success: false, count: 0, error: msg });
+      req.log.error({ err: e }, "Failed to parse import file");
+      return res.status(400).json({ error: "Gagal membaca isi file." });
     }
 
-    const rows = parseCsv(csvText);
-    if (rows.length < 2) {
-      const errMsg = "Sheet kosong atau tidak punya data (selain header)";
-      await db
-        .update(settingsTable)
-        .set({
-          googleSheetLastSyncAt: new Date(),
-          googleSheetLastSyncError: errMsg,
-          googleSheetLastSyncCount: 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(settingsTable.id, settings!.id));
-      return res.status(400).json({ success: false, count: 0, error: errMsg });
-    }
+    const { entries, error } = rowsToEntries(rows);
+    if (error) return res.status(400).json({ error });
 
-    // Skip header row
-    const dataRows = rows.slice(1);
-    const entries: { type: string; title: string; content: string; source: string }[] = [];
-    for (const r of dataRows) {
-      const rawType = (r[0] ?? "").trim().toLowerCase();
-      const title = (r[1] ?? "").trim();
-      const content = (r[2] ?? "").trim();
-      if (!title || !content) continue;
-      const type = VALID_TYPES.has(rawType) ? rawType : "faq";
-      entries.push({ type, title, content, source: "google_sheet" });
-    }
-
-    if (entries.length === 0) {
-      const errMsg =
-        "Tidak ada baris valid. Format kolom: A=type, B=title, C=content (baris 1 = header)";
-      await db
-        .update(settingsTable)
-        .set({
-          googleSheetLastSyncAt: new Date(),
-          googleSheetLastSyncError: errMsg,
-          googleSheetLastSyncCount: 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(settingsTable.id, settings!.id));
-      return res.status(400).json({ success: false, count: 0, error: errMsg });
-    }
-
-    // Replace all prior sheet-synced entries, keep manual entries untouched
     await db.transaction(async (tx) => {
-      await tx.delete(knowledgeTable).where(eq(knowledgeTable.source, "google_sheet"));
+      await tx.delete(knowledgeTable);
       await tx.insert(knowledgeTable).values(entries);
     });
 
-    await db
-      .update(settingsTable)
-      .set({
-        googleSheetLastSyncAt: new Date(),
-        googleSheetLastSyncError: null,
-        googleSheetLastSyncCount: entries.length,
-        updatedAt: new Date(),
-      })
-      .where(eq(settingsTable.id, settings!.id));
-
-    res.json({ success: true, count: entries.length });
+    res.json({ imported: entries.length });
   } catch (err) {
-    req.log.error({ err }, "Failed to sync google sheet");
-    res.status(500).json({ success: false, count: 0, error: "Internal server error" });
+    req.log.error({ err }, "Failed to import knowledge");
+    res.status(500).json({ error: "Internal server error" });
   } finally {
-    syncInFlight = false;
+    importInFlight = false;
   }
 });
 

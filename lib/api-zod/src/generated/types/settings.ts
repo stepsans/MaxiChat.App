@@ -13,10 +13,6 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
-  googleSheetCsvUrl?: string | null;
-  googleSheetLastSyncAt?: string | null;
-  googleSheetLastSyncCount?: number | null;
-  googleSheetLastSyncError?: string | null;
   productSheetCsvUrl?: string | null;
   productSheetLastSyncAt?: string | null;
   productSheetLastSyncCount?: number | null;

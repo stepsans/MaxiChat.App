@@ -231,7 +231,6 @@ export const ListKnowledgeResponseItem = zod.object({
   "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']),
   "title": zod.string(),
   "content": zod.string(),
-  "source": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -266,7 +265,6 @@ export const UpdateKnowledgeResponse = zod.object({
   "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']),
   "title": zod.string(),
   "content": zod.string(),
-  "source": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -294,10 +292,6 @@ export const GetSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
-  "googleSheetCsvUrl": zod.string().nullish(),
-  "googleSheetLastSyncAt": zod.string().nullish(),
-  "googleSheetLastSyncCount": zod.number().nullish(),
-  "googleSheetLastSyncError": zod.string().nullish(),
   "productSheetCsvUrl": zod.string().nullish(),
   "productSheetLastSyncAt": zod.string().nullish(),
   "productSheetLastSyncCount": zod.number().nullish(),
@@ -315,7 +309,6 @@ export const UpdateSettingsBody = zod.object({
   "replyDelayMin": zod.number().optional(),
   "replyDelayMax": zod.number().optional(),
   "fallbackMessage": zod.string().optional(),
-  "googleSheetCsvUrl": zod.string().nullish(),
   "productSheetCsvUrl": zod.string().nullish()
 })
 
@@ -326,10 +319,6 @@ export const UpdateSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
-  "googleSheetCsvUrl": zod.string().nullish(),
-  "googleSheetLastSyncAt": zod.string().nullish(),
-  "googleSheetLastSyncCount": zod.number().nullish(),
-  "googleSheetLastSyncError": zod.string().nullish(),
   "productSheetCsvUrl": zod.string().nullish(),
   "productSheetLastSyncAt": zod.string().nullish(),
   "productSheetLastSyncCount": zod.number().nullish(),
@@ -339,20 +328,18 @@ export const UpdateSettingsResponse = zod.object({
 
 
 /**
- * @summary Delete all manually created knowledge entries (source='manual')
- */
-export const DeleteManualKnowledgeResponse = zod.object({
-  "deleted": zod.number()
-})
+ * Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
+Required columns (header row, case-insensitive): type, title, content.
+Valid type values: product, faq, script, testimonial, website.
+On success, the entire `knowledge_entries` table is wiped and replaced.
+Note: this endpoint is consumed via plain `fetch` + `FormData` on the
+client; the request body is documented here for contract completeness
+but the typed client hook is not used.
 
-
-/**
- * @summary Sync knowledge base from configured Google Sheet CSV URL
+ * @summary Import knowledge entries from CSV/XLSX (replaces ALL existing entries)
  */
-export const SyncKnowledgeFromGoogleSheetResponse = zod.object({
-  "success": zod.boolean(),
-  "count": zod.number(),
-  "error": zod.string().nullish()
+export const ImportKnowledgeResponse = zod.object({
+  "imported": zod.number()
 })
 
 

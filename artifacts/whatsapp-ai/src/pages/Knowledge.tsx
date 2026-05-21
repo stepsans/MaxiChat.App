@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListKnowledge,
   useCreateKnowledge,
   useUpdateKnowledge,
   useDeleteKnowledge,
-  useDeleteManualKnowledge,
   getListKnowledgeQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -39,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, BookOpen, Loader2, Eraser, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen, Loader2, Upload, Download } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,7 +83,9 @@ export default function Knowledge() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<KnowledgeEntry | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: entries, isLoading } = useListKnowledge();
   const create = useCreateKnowledge({
@@ -115,27 +116,60 @@ export default function Knowledge() {
       },
     },
   });
-  const removeManual = useDeleteManualKnowledge({
-    mutation: {
-      onSuccess: (data) => {
-        qc.invalidateQueries({ queryKey: getListKnowledgeQueryKey() });
-        setBulkDeleteOpen(false);
-        toast({
-          title: `${data.deleted} entry manual dihapus.`,
-          description: "Entry dari Google Sheet tetap utuh.",
-        });
-      },
-      onError: () => {
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!f) return;
+    const name = f.name.toLowerCase();
+    if (!name.endsWith(".csv") && !name.endsWith(".xlsx")) {
+      toast({
+        variant: "destructive",
+        title: "Format tidak didukung",
+        description: "Gunakan file .csv atau .xlsx",
+      });
+      return;
+    }
+    setPendingFile(f);
+  };
+
+  const runImport = async () => {
+    if (!pendingFile) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", pendingFile);
+      const res = await fetch(`${import.meta.env.BASE_URL}api/knowledge/import`, {
+        method: "POST",
+        body: fd,
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        imported?: number;
+        error?: string;
+      };
+      if (!res.ok) {
         toast({
           variant: "destructive",
-          title: "Gagal menghapus entry manual",
-          description: "Coba lagi atau periksa koneksi.",
+          title: "Import gagal",
+          description: json.error ?? `HTTP ${res.status}`,
         });
-      },
-    },
-  });
-
-  const manualCount = entries?.filter((e) => (e as { source?: string }).source === "manual").length ?? 0;
+        return;
+      }
+      qc.invalidateQueries({ queryKey: getListKnowledgeQueryKey() });
+      toast({
+        title: `Import berhasil: ${json.imported ?? 0} entry.`,
+        description: "Semua data lama sudah diganti.",
+      });
+      setPendingFile(null);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Import gagal",
+        description: err instanceof Error ? err.message : "Network error",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const form = useForm<EntryForm>({
     resolver: zodResolver(entrySchema),
@@ -212,17 +246,22 @@ export default function Knowledge() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="hidden"
+            data-testid="input-import-file"
+            onChange={handleFilePick}
+          />
           <Button
-            data-testid="button-delete-manual-knowledge"
+            data-testid="button-import-knowledge"
             size="sm"
             variant="outline"
-            className="text-destructive hover:text-destructive"
-            onClick={() => setBulkDeleteOpen(true)}
-            disabled={manualCount === 0}
-            title={manualCount === 0 ? "Tidak ada entry manual" : undefined}
+            onClick={() => fileInputRef.current?.click()}
           >
-            <Eraser className="w-3.5 h-3.5 mr-1.5" />
-            Hapus Entry Manual ({manualCount})
+            <Upload className="w-3.5 h-3.5 mr-1.5" />
+            Import
           </Button>
           <Button data-testid="button-add-knowledge" size="sm" onClick={openCreate}>
             <Plus className="w-3.5 h-3.5 mr-1.5" />
@@ -376,27 +415,39 @@ export default function Knowledge() {
         </DialogContent>
       </Dialog>
 
-      {/* Bulk Delete Manual Confirm */}
-      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+      {/* Import Confirm */}
+      <AlertDialog
+        open={pendingFile !== null}
+        onOpenChange={(open) => {
+          if (!open && !importing) setPendingFile(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hapus semua entry manual?</AlertDialogTitle>
+            <AlertDialogTitle>Import & ganti seluruh Knowledge Base?</AlertDialogTitle>
             <AlertDialogDescription>
-              {manualCount} entry yang dibuat manual lewat tombol "Add Entry" akan dihapus permanen.
-              Entry yang berasal dari Google Sheet tetap aman dan tidak terpengaruh.
-              Tindakan ini tidak bisa dibatalkan.
+              File: <b>{pendingFile?.name}</b>
+              <br />
+              <br />
+              Semua entry yang ada sekarang akan <b>dihapus permanen</b>, lalu diganti dengan isi
+              file. Format kolom wajib: <b>type</b>, <b>title</b>, <b>content</b> (baris pertama =
+              header). Tipe valid: product, faq, script, testimonial, website. Tindakan ini tidak
+              bisa dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={importing}>Batal</AlertDialogCancel>
             <AlertDialogAction
-              data-testid="button-confirm-delete-manual"
-              onClick={() => removeManual.mutate()}
-              disabled={removeManual.isPending}
+              data-testid="button-confirm-import"
+              onClick={(e) => {
+                e.preventDefault();
+                void runImport();
+              }}
+              disabled={importing}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {removeManual.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-              Hapus Semua
+              {importing && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Ganti & Import
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

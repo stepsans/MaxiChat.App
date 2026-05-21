@@ -41,7 +41,9 @@ function serializeSettings(s: typeof settingsTable.$inferSelect) {
   return {
     ...s,
     updatedAt: s.updatedAt.toISOString(),
-    googleSheetLastSyncAt: s.googleSheetLastSyncAt ? s.googleSheetLastSyncAt.toISOString() : null,
+    productSheetLastSyncAt: s.productSheetLastSyncAt
+      ? s.productSheetLastSyncAt.toISOString()
+      : null,
   };
 }
 

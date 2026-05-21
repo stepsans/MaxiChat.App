@@ -12,7 +12,6 @@ export interface KnowledgeEntry {
   type: KnowledgeEntryType;
   title: string;
   content: string;
-  source: string;
   createdAt: string;
   updatedAt: string;
 }

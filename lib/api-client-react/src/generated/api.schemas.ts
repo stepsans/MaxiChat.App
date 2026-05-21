@@ -183,7 +183,6 @@ export interface KnowledgeEntry {
   type: KnowledgeEntryType;
   title: string;
   content: string;
-  source: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -229,10 +228,6 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
-  googleSheetCsvUrl?: string | null;
-  googleSheetLastSyncAt?: string | null;
-  googleSheetLastSyncCount?: number | null;
-  googleSheetLastSyncError?: string | null;
   productSheetCsvUrl?: string | null;
   productSheetLastSyncAt?: string | null;
   productSheetLastSyncCount?: number | null;
@@ -246,7 +241,6 @@ export interface SettingsUpdate {
   replyDelayMin?: number;
   replyDelayMax?: number;
   fallbackMessage?: string;
-  googleSheetCsvUrl?: string | null;
   productSheetCsvUrl?: string | null;
 }
 
@@ -335,7 +329,15 @@ export const ListChatsTag = {
   closing: 'closing',
 } as const;
 
-export type DeleteManualKnowledge200 = {
-  deleted: number;
+export type ImportKnowledge200 = {
+  imported: number;
+};
+
+export type ImportKnowledge400 = {
+  error?: string;
+};
+
+export type ImportKnowledge409 = {
+  error?: string;
 };
 
