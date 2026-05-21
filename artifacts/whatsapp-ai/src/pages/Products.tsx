@@ -523,20 +523,48 @@ export default function Products() {
 
           <div className="space-y-4">
             <div className="flex items-start gap-3">
-              <div
-                onClick={() => imgInputRef.current?.click()}
-                className="w-28 h-28 rounded-md border border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden cursor-pointer hover:bg-accent/50 flex-shrink-0"
-              >
-                {uploadingImg ? (
-                  <Loader2 className="w-5 h-5 animate-spin opacity-60" />
-                ) : imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={imageUrl} alt="preview" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="flex flex-col items-center text-muted-foreground gap-1">
-                    <ImagePlus className="w-5 h-5" />
-                    <span className="text-[10px]">Foto</span>
-                  </div>
+              <div className="flex flex-col gap-1.5 flex-shrink-0 w-28">
+                <div
+                  onClick={() => imgInputRef.current?.click()}
+                  className="w-28 h-28 rounded-md border border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden cursor-pointer hover:bg-accent/50"
+                  data-testid="thumbnail-product-image"
+                >
+                  {uploadingImg ? (
+                    <Loader2 className="w-5 h-5 animate-spin opacity-60" />
+                  ) : imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={imageUrl}
+                      alt="preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center text-muted-foreground gap-1">
+                      <ImagePlus className="w-5 h-5" />
+                      <span className="text-[10px]">Foto</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => imgInputRef.current?.click()}
+                  className="text-[10px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                  data-testid="button-upload-image"
+                >
+                  Upload file
+                </button>
+                {imageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl(null)}
+                    className="text-[10px] text-destructive hover:underline underline-offset-2"
+                    data-testid="button-clear-image"
+                  >
+                    Hapus foto
+                  </button>
                 )}
               </div>
               <input
@@ -548,6 +576,21 @@ export default function Products() {
                 data-testid="input-product-image"
               />
               <div className="flex-1 grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Link Foto{" "}
+                    <span className="text-[10px] font-normal">
+                      (tempel URL gambar — otomatis jadi thumbnail)
+                    </span>
+                  </label>
+                  <Input
+                    value={imageUrl ?? ""}
+                    onChange={(e) => setImageUrl(e.target.value || null)}
+                    placeholder="https://contoh.com/foto.jpg atau /api/media/…"
+                    className="h-8 text-xs mt-1"
+                    data-testid="input-product-image-url"
+                  />
+                </div>
                 <Field
                   label="Kode Product *"
                   value={form.code}
