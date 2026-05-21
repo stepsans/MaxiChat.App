@@ -9,8 +9,98 @@ import {
   DeleteKnowledgeParams,
 } from "@workspace/api-zod";
 import { normalizeSheetUrlToCsv, parseCsv, fetchSheetCsv } from "../lib/sheet-sync";
+import ExcelJS from "exceljs";
 
 const router = Router();
+
+const EXPORT_COLUMNS = ["id", "type", "title", "content", "source", "createdAt", "updatedAt"] as const;
+
+function neutralizeFormula(s: string): string {
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const raw = typeof value === "string" ? neutralizeFormula(value) : String(value);
+  if (/[",\r\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
+  return raw;
+}
+
+function safeCell(value: unknown): unknown {
+  if (typeof value === "string") return neutralizeFormula(value);
+  return value;
+}
+
+function exportFilename(ext: string): string {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  return `knowledge-base-${stamp}.${ext}`;
+}
+
+router.get("/export.csv", async (req, res) => {
+  try {
+    const entries = await db.select().from(knowledgeTable).orderBy(knowledgeTable.id);
+    const lines: string[] = [EXPORT_COLUMNS.join(",")];
+    for (const e of entries) {
+      const row: Record<string, unknown> = {
+        ...e,
+        createdAt: e.createdAt.toISOString(),
+        updatedAt: e.updatedAt.toISOString(),
+      };
+      lines.push(EXPORT_COLUMNS.map((c) => csvEscape(row[c])).join(","));
+    }
+    const body = "\uFEFF" + lines.join("\r\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("csv")}"`);
+    res.send(body);
+  } catch (err) {
+    req.log.error({ err }, "Failed to export knowledge as CSV");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/export.xlsx", async (req, res) => {
+  try {
+    const entries = await db.select().from(knowledgeTable).orderBy(knowledgeTable.id);
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Maxipro Assistant";
+    wb.created = new Date();
+    const ws = wb.addWorksheet("Knowledge Base");
+    ws.columns = [
+      { header: "id", key: "id", width: 6 },
+      { header: "type", key: "type", width: 14 },
+      { header: "title", key: "title", width: 36 },
+      { header: "content", key: "content", width: 80 },
+      { header: "source", key: "source", width: 14 },
+      { header: "createdAt", key: "createdAt", width: 22 },
+      { header: "updatedAt", key: "updatedAt", width: 22 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    for (const e of entries) {
+      ws.addRow({
+        id: e.id,
+        type: safeCell(e.type),
+        title: safeCell(e.title),
+        content: safeCell(e.content),
+        source: safeCell(e.source),
+        createdAt: e.createdAt.toISOString(),
+        updatedAt: e.updatedAt.toISOString(),
+      });
+    }
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      row.alignment = { vertical: "top", wrapText: true };
+    });
+    const buffer = await wb.xlsx.writeBuffer();
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${exportFilename("xlsx")}"`);
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    req.log.error({ err }, "Failed to export knowledge as XLSX");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.get("/", async (req, res) => {
   try {

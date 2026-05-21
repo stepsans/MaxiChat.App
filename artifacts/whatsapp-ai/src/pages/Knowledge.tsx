@@ -39,7 +39,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, BookOpen, Loader2, Eraser } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen, Loader2, Eraser, Download } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -173,6 +179,39 @@ export default function Knowledge() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                data-testid="button-export-knowledge"
+                size="sm"
+                variant="outline"
+                disabled={(entries?.length ?? 0) === 0}
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <a
+                  data-testid="link-export-csv"
+                  href={`${import.meta.env.BASE_URL}api/knowledge/export.csv`}
+                  download
+                >
+                  Download CSV
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  data-testid="link-export-xlsx"
+                  href={`${import.meta.env.BASE_URL}api/knowledge/export.xlsx`}
+                  download
+                >
+                  Download Excel (.xlsx)
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             data-testid="button-delete-manual-knowledge"
             size="sm"
