@@ -70,6 +70,7 @@ export const ListChatsResponseItem = zod.object({
   "lastMessageAt": zod.string().nullable(),
   "pinnedAt": zod.string().nullable(),
   "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string()
 })
@@ -95,6 +96,7 @@ export const GetChatResponse = zod.object({
   "lastMessageAt": zod.string().nullable(),
   "pinnedAt": zod.string().nullable(),
   "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string(),
   "messages": zod.array(zod.object({
@@ -132,6 +134,7 @@ export const UpdateChatResponse = zod.object({
   "lastMessageAt": zod.string().nullable(),
   "pinnedAt": zod.string().nullable(),
   "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string()
 })
@@ -214,6 +217,7 @@ export const TakeoverChatResponse = zod.object({
   "lastMessageAt": zod.string().nullable(),
   "pinnedAt": zod.string().nullable(),
   "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string()
 })

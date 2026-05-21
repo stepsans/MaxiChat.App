@@ -23,6 +23,7 @@ export const chatsTable = pgTable(
     lastMessage: text("last_message"),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    isLid: boolean("is_lid").notNull().default(false),
     isArchived: boolean("is_archived").notNull().default(false),
     unreadCount: integer("unread_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

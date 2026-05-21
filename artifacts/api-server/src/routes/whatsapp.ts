@@ -166,10 +166,15 @@ async function applyChatListMeta(
     .where(eq(chatsTable.phoneNumber, phoneNumber));
 }
 
-async function getOrCreateChat(phoneNumber: string, contactName: string) {
+async function getOrCreateChat(
+  phoneNumber: string,
+  contactName: string,
+  opts: { isLid?: boolean } = {}
+) {
   // True upsert: relies on the unique index on chats.phone_number so concurrent
   // workers (live messages.upsert vs. messaging-history.set) cannot create
   // duplicate rows. ON CONFLICT DO UPDATE on a no-op column returns the row.
+  const isLid = !!opts.isLid;
   const [row] = await db
     .insert(chatsTable)
     .values({
@@ -179,9 +184,13 @@ async function getOrCreateChat(phoneNumber: string, contactName: string) {
       tag: "none",
       isHumanTakeover: false,
       unreadCount: 0,
+      isLid,
     })
     .onConflictDoUpdate({
       target: chatsTable.phoneNumber,
+      // No-op write to make ON CONFLICT return the row. Never re-set `isLid`
+      // here — once a chat has been resolved to a real phone we must not
+      // regress it back to LID on a subsequent stray message.
       set: { phoneNumber: sql`${chatsTable.phoneNumber}` },
     })
     .returning();
@@ -530,6 +539,11 @@ async function persistWaMessage(
           .set({ chatId: realChat.id })
           .where(eq(chatMessagesTable.chatId, lidChat.id));
         await tx.delete(chatsTable).where(eq(chatsTable.id, lidChat.id));
+        // Mark the surviving real chat as resolved (not LID).
+        await tx
+          .update(chatsTable)
+          .set({ isLid: false })
+          .where(eq(chatsTable.id, realChat.id));
         logger.info(
           { lidPhone, phoneNumber },
           "Merged stale LID-keyed chat into canonical phone chat"
@@ -537,7 +551,7 @@ async function persistWaMessage(
       } else {
         await tx
           .update(chatsTable)
-          .set({ phoneNumber, contactName })
+          .set({ phoneNumber, contactName, isLid: false })
           .where(eq(chatsTable.id, lidChat.id));
         logger.info(
           { lidPhone, phoneNumber },
@@ -547,7 +561,14 @@ async function persistWaMessage(
     });
   }
 
-  const chat = await getOrCreateChat(phoneNumber, contactName);
+  // A chat is LID-only when the JID is "@lid" with no phone alt — we ended
+  // up using the LID raw digits as the phone key because we have nothing
+  // better. parseWaMessage signals this by setting rawNumber === lidRawNumber.
+  const isLidChat =
+    !parsed.isGroup &&
+    parsed.lidRawNumber !== null &&
+    parsed.lidRawNumber === parsed.rawNumber;
+  const chat = await getOrCreateChat(phoneNumber, contactName, { isLid: isLidChat });
   const direction = parsed.fromMe ? "outbound" : "inbound";
 
   let inserted = true;
@@ -953,6 +974,48 @@ async function startBaileys(sessionId: number) {
 
 export async function initWhatsapp() {
   try {
+    // One-shot backfill for chats stored with a LID raw number as the phone
+    // key (pre-`is_lid` data). Heuristic: DM (not "@g.us"), digit count > 15
+    // (E.164 max is 15 — anything longer cannot be a real phone), and
+    // contactName is still the bare digits — i.e. we never got a real
+    // pushName/verifiedName. Also re-clear is_lid for rows that no longer
+    // look like LIDs (e.g. someone got a real name) so the flag self-heals.
+    // Safe to re-run; idempotent.
+    try {
+      const setRes = await db.execute(sql`
+        UPDATE chats
+           SET is_lid = TRUE
+         WHERE is_lid = FALSE
+           AND phone_number NOT LIKE '%@g.us'
+           AND LENGTH(REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g')) >= 15
+           AND (contact_name = SUBSTRING(phone_number FROM 2) OR contact_name IS NULL)
+      `);
+      // Clear is_lid when the row no longer matches the LID profile. True
+      // inverse of the SET predicate so the column is fully self-healing:
+      // any row that has since acquired a real contact_name (or has a
+      // nickname, or is a group, or has a normal-length phone) gets cleared.
+      const clearRes = await db.execute(sql`
+        UPDATE chats
+           SET is_lid = FALSE
+         WHERE is_lid = TRUE
+           AND (
+             phone_number LIKE '%@g.us'
+             OR LENGTH(REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g')) < 15
+             OR (
+               contact_name IS NOT NULL
+               AND contact_name <> SUBSTRING(phone_number FROM 2)
+             )
+             OR nickname IS NOT NULL
+           )
+      `);
+      logger.info(
+        { set: (setRes as any).rowCount ?? null, cleared: (clearRes as any).rowCount ?? null },
+        "is_lid backfill done"
+      );
+    } catch (err) {
+      logger.warn({ err }, "is_lid backfill failed (non-fatal)");
+    }
+
     const session = await getOrCreateSession();
     if (session.status === "connected" || session.status === "connecting" || session.status === "qr_ready") {
       await setStatus(session.id, "connecting");

@@ -268,12 +268,21 @@ export default function ChatDetail() {
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold flex-shrink-0">
-          {chat.contactName.charAt(0).toUpperCase()}
+          {chat.isLid && !chat.nickname?.trim()
+            ? "?"
+            : (chat.nickname?.trim() || chat.contactName).charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{chat.contactName}</p>
+          <p className="text-sm font-semibold truncate">
+            {chat.nickname?.trim() ||
+              (chat.isLid ? "Kontak WhatsApp" : chat.contactName)}
+          </p>
           <p className="text-xs text-muted-foreground">
-            {chat.phoneNumber.endsWith("@g.us") ? "Grup" : chat.phoneNumber}
+            {chat.phoneNumber.endsWith("@g.us")
+              ? "Grup"
+              : chat.isLid
+              ? "Nomor belum tertaut"
+              : chat.phoneNumber}
           </p>
         </div>
 

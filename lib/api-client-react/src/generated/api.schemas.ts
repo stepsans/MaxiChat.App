@@ -72,6 +72,7 @@ export interface Chat {
   /** @nullable */
   pinnedAt: string | null;
   isArchived: boolean;
+  isLid: boolean;
   unreadCount: number;
   createdAt: string;
 }
@@ -128,6 +129,7 @@ export interface ChatWithMessages {
   /** @nullable */
   pinnedAt: string | null;
   isArchived: boolean;
+  isLid: boolean;
   unreadCount: number;
   createdAt: string;
   messages: ChatMessage[];

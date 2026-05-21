@@ -230,8 +230,10 @@ export default function Chats() {
                     <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 text-sm font-semibold text-foreground">
                       {isGroupChat(chat) ? (
                         <Users className="w-4 h-4 text-muted-foreground" />
+                      ) : chat.isLid && !chat.nickname?.trim() ? (
+                        <Users className="w-4 h-4 text-muted-foreground" />
                       ) : (
-                        chat.contactName.charAt(0).toUpperCase()
+                        (chat.nickname?.trim() || chat.contactName).charAt(0).toUpperCase()
                       )}
                     </div>
 
@@ -244,12 +246,10 @@ export default function Chats() {
                         {chat.isArchived && (
                           <Archive className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                         )}
-                        <span className="text-sm font-medium truncate">{chat.contactName}</span>
-                        {chat.nickname && chat.nickname !== chat.contactName && (
-                          <span className="text-[11px] text-muted-foreground truncate">
-                            ~ {chat.nickname}
-                          </span>
-                        )}
+                        <span className="text-sm font-medium truncate">
+                          {chat.nickname?.trim() ||
+                            (chat.isLid ? "Kontak WhatsApp" : chat.contactName)}
+                        </span>
                         {chat.tag !== "none" && TagIcon && (
                           <Badge
                             variant="outline"
@@ -260,6 +260,13 @@ export default function Chats() {
                           </Badge>
                         )}
                       </div>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {isGroupChat(chat)
+                          ? "Grup"
+                          : chat.isLid
+                          ? "Nomor belum tertaut"
+                          : chat.phoneNumber}
+                      </p>
                       <p className="text-xs text-muted-foreground truncate">
                         {chat.lastMessage ?? "No messages yet"}
                       </p>
