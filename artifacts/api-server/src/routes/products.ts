@@ -226,6 +226,16 @@ function neutralizeFormula(s: string): string {
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
 }
 
+function exportTimestamp(d: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yy = pad(d.getFullYear() % 100);
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yy}${mm}${dd}-${hh}${mi}`;
+}
+
 function rowToCsvField(v: unknown): string {
   if (v === null || v === undefined) return "";
   const s = Array.isArray(v) ? v.join(" | ") : String(v);
@@ -246,7 +256,10 @@ router.get("/export.csv", async (req, res) => {
     }
     const body = "\uFEFF" + lines.join("\n");
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", 'attachment; filename="products.csv"');
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="products_${exportTimestamp()}.csv"`,
+    );
     res.send(body);
   } catch (err) {
     req.log.error({ err }, "Failed to export products csv");
@@ -273,7 +286,10 @@ router.get("/export.xlsx", async (req, res) => {
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
-    res.setHeader("Content-Disposition", 'attachment; filename="products.xlsx"');
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="products_${exportTimestamp()}.xlsx"`,
+    );
     const buf = await wb.xlsx.writeBuffer();
     res.send(Buffer.from(buf));
   } catch (err) {
