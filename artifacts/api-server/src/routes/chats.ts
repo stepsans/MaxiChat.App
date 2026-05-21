@@ -283,8 +283,9 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     const mediaType = classifyMediaType(mimeType);
     const originalName = req.file.originalname;
 
+    let waMessageId: string | null = null;
     try {
-      await sendMediaToJid(
+      waMessageId = await sendMediaToJid(
         target.jid,
         req.file.path,
         mimeType,
@@ -307,7 +308,10 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     } as const;
     const preview = caption || previewByType[mediaType];
 
-    const [message] = await db
+    // Tag the row with the WA message id so the echo from messages.upsert
+    // (which uses onConflictDoNothing on wa_message_id) does NOT create a
+    // duplicate row.
+    const inserted = await db
       .insert(chatMessagesTable)
       .values({
         chatId: id,
@@ -318,8 +322,17 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
         mediaUrl,
         mediaMimeType: mimeType,
         mediaFilename: originalName,
+        waMessageId,
       })
+      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
       .returning();
+    const [message] = inserted.length
+      ? inserted
+      : await db
+          .select()
+          .from(chatMessagesTable)
+          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .limit(1);
 
     await db
       .update(chatsTable)
@@ -353,15 +366,16 @@ router.post("/:id/contact", async (req, res) => {
     const target = await jidForChat(id);
     if (!target) return res.status(404).json({ error: "Chat not found" });
 
+    let waMessageId: string | null = null;
     try {
-      await sendContactToJid(target.jid, name, phone);
+      waMessageId = await sendContactToJid(target.jid, name, phone);
     } catch (err) {
       req.log.error({ err }, "Failed to send contact via WhatsApp");
       return res.status(500).json({ error: "Failed to send contact" });
     }
 
     const preview = `👤 ${name}`;
-    const [message] = await db
+    const insertedRows = await db
       .insert(chatMessagesTable)
       .values({
         chatId: id,
@@ -372,8 +386,17 @@ router.post("/:id/contact", async (req, res) => {
         mediaUrl: null,
         mediaMimeType: "text/vcard",
         mediaFilename: name,
+        waMessageId,
       })
+      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
       .returning();
+    const [message] = insertedRows.length
+      ? insertedRows
+      : await db
+          .select()
+          .from(chatMessagesTable)
+          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .limit(1);
 
     await db
       .update(chatsTable)
@@ -451,9 +474,10 @@ router.post("/:id/product", async (req, res) => {
       }
     }
 
+    let waMessageId: string | null = null;
     if (imageFilePath && imageMimeType) {
       try {
-        await sendMediaToJid(
+        waMessageId = await sendMediaToJid(
           target.jid,
           imageFilePath,
           imageMimeType,
@@ -473,14 +497,16 @@ router.post("/:id/product", async (req, res) => {
       const sock = getActiveSocket();
       if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
       try {
-        await sock.sendMessage(target.jid, { text: caption });
+        const sent = await sock.sendMessage(target.jid, { text: caption });
+        waMessageId = sent?.key?.id ?? null;
       } catch (err) {
         req.log.error({ err, productId }, "Failed to send product as text");
         return res.status(500).json({ error: "Failed to send product" });
       }
     }
 
-    const [message] = await db
+    // Dedupe against the echo from messages.upsert via the WA message id.
+    const insertedRows = await db
       .insert(chatMessagesTable)
       .values({
         chatId: id,
@@ -491,8 +517,17 @@ router.post("/:id/product", async (req, res) => {
         mediaUrl,
         mediaMimeType,
         mediaFilename,
+        waMessageId,
       })
+      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
       .returning();
+    const [message] = insertedRows.length
+      ? insertedRows
+      : await db
+          .select()
+          .from(chatMessagesTable)
+          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .limit(1);
 
     const preview = `🛍️ ${product.name} — ${priceFmt}`;
     await db

@@ -52,30 +52,32 @@ export async function sendMediaToJid(
   mediaType: "image" | "video" | "document" | "audio",
   caption?: string,
   filename?: string
-) {
+): Promise<string | null> {
   if (!sock) throw new Error("WhatsApp is not connected");
   const buffer = await fs.readFile(filepath);
+  let sent;
   if (mediaType === "image") {
-    await sock.sendMessage(jid, { image: buffer, caption, mimetype: mimeType });
+    sent = await sock.sendMessage(jid, { image: buffer, caption, mimetype: mimeType });
   } else if (mediaType === "video") {
-    await sock.sendMessage(jid, { video: buffer, caption, mimetype: mimeType });
+    sent = await sock.sendMessage(jid, { video: buffer, caption, mimetype: mimeType });
   } else if (mediaType === "audio") {
-    await sock.sendMessage(jid, { audio: buffer, mimetype: mimeType, ptt: false });
+    sent = await sock.sendMessage(jid, { audio: buffer, mimetype: mimeType, ptt: false });
   } else {
-    await sock.sendMessage(jid, {
+    sent = await sock.sendMessage(jid, {
       document: buffer,
       mimetype: mimeType,
       fileName: filename ?? path.basename(filepath),
       caption,
     });
   }
+  return sent?.key?.id ?? null;
 }
 
 export async function sendContactToJid(
   jid: string,
   contactName: string,
   contactPhone: string
-) {
+): Promise<string | null> {
   if (!sock) throw new Error("WhatsApp is not connected");
   // Build vCard
   const cleanPhone = contactPhone.replace(/[^\d+]/g, "");
@@ -86,12 +88,13 @@ export async function sendContactToJid(
     `FN:${contactName}\n` +
     `TEL;type=CELL;type=VOICE;waid=${waNumber}:${cleanPhone}\n` +
     "END:VCARD";
-  await sock.sendMessage(jid, {
+  const sent = await sock.sendMessage(jid, {
     contacts: {
       displayName: contactName,
       contacts: [{ vcard }],
     },
   });
+  return sent?.key?.id ?? null;
 }
 
 type WASocket = Awaited<ReturnType<typeof makeWASocketType>>;
