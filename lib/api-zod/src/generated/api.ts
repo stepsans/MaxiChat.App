@@ -294,6 +294,10 @@ export const GetSettingsResponse = zod.object({
   "googleSheetLastSyncAt": zod.string().nullish(),
   "googleSheetLastSyncCount": zod.number().nullish(),
   "googleSheetLastSyncError": zod.string().nullish(),
+  "productSheetCsvUrl": zod.string().nullish(),
+  "productSheetLastSyncAt": zod.string().nullish(),
+  "productSheetLastSyncCount": zod.number().nullish(),
+  "productSheetLastSyncError": zod.string().nullish(),
   "updatedAt": zod.string()
 })
 
@@ -307,7 +311,8 @@ export const UpdateSettingsBody = zod.object({
   "replyDelayMin": zod.number().optional(),
   "replyDelayMax": zod.number().optional(),
   "fallbackMessage": zod.string().optional(),
-  "googleSheetCsvUrl": zod.string().nullish()
+  "googleSheetCsvUrl": zod.string().nullish(),
+  "productSheetCsvUrl": zod.string().nullish()
 })
 
 export const UpdateSettingsResponse = zod.object({
@@ -321,6 +326,10 @@ export const UpdateSettingsResponse = zod.object({
   "googleSheetLastSyncAt": zod.string().nullish(),
   "googleSheetLastSyncCount": zod.number().nullish(),
   "googleSheetLastSyncError": zod.string().nullish(),
+  "productSheetCsvUrl": zod.string().nullish(),
+  "productSheetLastSyncAt": zod.string().nullish(),
+  "productSheetLastSyncCount": zod.number().nullish(),
+  "productSheetLastSyncError": zod.string().nullish(),
   "updatedAt": zod.string()
 })
 
@@ -336,6 +345,16 @@ export const SyncKnowledgeFromGoogleSheetResponse = zod.object({
 
 
 /**
+ * @summary Sync product catalog from configured Google Sheet CSV URL
+ */
+export const SyncProductsFromGoogleSheetResponse = zod.object({
+  "success": zod.boolean(),
+  "count": zod.number(),
+  "error": zod.string().nullish()
+})
+
+
+/**
  * @summary List all products
  */
 export const ListProductsResponseItem = zod.object({
@@ -344,7 +363,9 @@ export const ListProductsResponseItem = zod.object({
   "name": zod.string(),
   "price": zod.number(),
   "imageUrl": zod.string().nullable(),
+  "productUrl": zod.string().nullable(),
   "description": zod.string().nullable(),
+  "source": zod.string().describe('manual or google_sheet'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -365,6 +386,7 @@ export const CreateProductBody = zod.object({
   "name": zod.string().min(1),
   "price": zod.number().min(createProductBodyPriceMin),
   "imageUrl": zod.string().nullish(),
+  "productUrl": zod.string().nullish(),
   "description": zod.string().nullish()
 })
 
@@ -387,6 +409,7 @@ export const UpdateProductBody = zod.object({
   "name": zod.string().min(1),
   "price": zod.number().min(updateProductBodyPriceMin),
   "imageUrl": zod.string().nullish(),
+  "productUrl": zod.string().nullish(),
   "description": zod.string().nullish()
 })
 
@@ -396,7 +419,9 @@ export const UpdateProductResponse = zod.object({
   "name": zod.string(),
   "price": zod.number(),
   "imageUrl": zod.string().nullable(),
+  "productUrl": zod.string().nullable(),
   "description": zod.string().nullable(),
+  "source": zod.string().describe('manual or google_sheet'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

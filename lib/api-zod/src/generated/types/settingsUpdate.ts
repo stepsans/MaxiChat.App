@@ -13,4 +13,5 @@ export interface SettingsUpdate {
   replyDelayMax?: number;
   fallbackMessage?: string;
   googleSheetCsvUrl?: string | null;
+  productSheetCsvUrl?: string | null;
 }

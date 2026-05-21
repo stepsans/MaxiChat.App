@@ -1378,6 +1378,76 @@ export const useSyncKnowledgeFromGoogleSheet = <TError = ErrorType<unknown>,
       return useMutation(getSyncKnowledgeFromGoogleSheetMutationOptions(options));
     }
 
+export const getSyncProductsFromGoogleSheetUrl = () => {
+
+
+
+
+  return `/api/products/sync-google-sheet`
+}
+
+/**
+ * @summary Sync product catalog from configured Google Sheet CSV URL
+ */
+export const syncProductsFromGoogleSheet = async ( options?: RequestInit): Promise<SyncGoogleSheetResult> => {
+
+  return customFetch<SyncGoogleSheetResult>(getSyncProductsFromGoogleSheetUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSyncProductsFromGoogleSheetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, TError,void, TContext> => {
+
+const mutationKey = ['syncProductsFromGoogleSheet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, void> = () => {
+
+
+          return  syncProductsFromGoogleSheet(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncProductsFromGoogleSheetMutationResult = NonNullable<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>>
+
+    export type SyncProductsFromGoogleSheetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Sync product catalog from configured Google Sheet CSV URL
+ */
+export const useSyncProductsFromGoogleSheet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncProductsFromGoogleSheet>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSyncProductsFromGoogleSheetMutationOptions(options));
+    }
+
 export const getListProductsUrl = () => {
 
 

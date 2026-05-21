@@ -231,6 +231,10 @@ export interface Settings {
   googleSheetLastSyncAt?: string | null;
   googleSheetLastSyncCount?: number | null;
   googleSheetLastSyncError?: string | null;
+  productSheetCsvUrl?: string | null;
+  productSheetLastSyncAt?: string | null;
+  productSheetLastSyncCount?: number | null;
+  productSheetLastSyncError?: string | null;
   updatedAt: string;
 }
 
@@ -241,6 +245,7 @@ export interface SettingsUpdate {
   replyDelayMax?: number;
   fallbackMessage?: string;
   googleSheetCsvUrl?: string | null;
+  productSheetCsvUrl?: string | null;
 }
 
 export interface SyncGoogleSheetResult {
@@ -270,7 +275,11 @@ export interface Product {
   /** @nullable */
   imageUrl: string | null;
   /** @nullable */
+  productUrl: string | null;
+  /** @nullable */
   description: string | null;
+  /** manual or google_sheet */
+  source: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -284,6 +293,8 @@ export interface ProductInput {
   price: number;
   /** @nullable */
   imageUrl?: string | null;
+  /** @nullable */
+  productUrl?: string | null;
   /** @nullable */
   description?: string | null;
 }

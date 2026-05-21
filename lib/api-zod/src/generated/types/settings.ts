@@ -17,5 +17,9 @@ export interface Settings {
   googleSheetLastSyncAt?: string | null;
   googleSheetLastSyncCount?: number | null;
   googleSheetLastSyncError?: string | null;
+  productSheetCsvUrl?: string | null;
+  productSheetLastSyncAt?: string | null;
+  productSheetLastSyncCount?: number | null;
+  productSheetLastSyncError?: string | null;
   updatedAt: string;
 }

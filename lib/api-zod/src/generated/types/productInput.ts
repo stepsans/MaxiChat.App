@@ -16,5 +16,7 @@ export interface ProductInput {
   /** @nullable */
   imageUrl?: string | null;
   /** @nullable */
+  productUrl?: string | null;
+  /** @nullable */
   description?: string | null;
 }

@@ -384,6 +384,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/SyncGoogleSheetResult"
 
+  /products/sync-google-sheet:
+    post:
+      operationId: syncProductsFromGoogleSheet
+      tags: [products]
+      summary: Sync product catalog from configured Google Sheet CSV URL
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncGoogleSheetResult"
+
   /products:
     get:
       operationId: listProducts
@@ -713,6 +726,18 @@ components:
         googleSheetLastSyncError:
           type: string
           nullable: true
+        productSheetCsvUrl:
+          type: string
+          nullable: true
+        productSheetLastSyncAt:
+          type: string
+          nullable: true
+        productSheetLastSyncCount:
+          type: integer
+          nullable: true
+        productSheetLastSyncError:
+          type: string
+          nullable: true
         updatedAt:
           type: string
 
@@ -730,6 +755,9 @@ components:
         fallbackMessage:
           type: string
         googleSheetCsvUrl:
+          type: string
+          nullable: true
+        productSheetCsvUrl:
           type: string
           nullable: true
 
@@ -772,7 +800,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, price, imageUrl, description, createdAt, updatedAt]
+      required: [id, code, name, price, imageUrl, productUrl, description, source, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -784,8 +812,13 @@ components:
           type: integer
         imageUrl:
           type: ["string", "null"]
+        productUrl:
+          type: ["string", "null"]
         description:
           type: ["string", "null"]
+        source:
+          type: string
+          description: "manual or google_sheet"
         createdAt:
           type: string
         updatedAt:
@@ -806,6 +839,8 @@ components:
           format: int32
           minimum: 0
         imageUrl:
+          type: ["string", "null"]
+        productUrl:
           type: ["string", "null"]
         description:
           type: ["string", "null"]

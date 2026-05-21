@@ -100,6 +100,10 @@ export const settingsTable = pgTable("settings", {
   googleSheetLastSyncAt: timestamp("google_sheet_last_sync_at", { withTimezone: true }),
   googleSheetLastSyncCount: integer("google_sheet_last_sync_count"),
   googleSheetLastSyncError: text("google_sheet_last_sync_error"),
+  productSheetCsvUrl: text("product_sheet_csv_url"),
+  productSheetLastSyncAt: timestamp("product_sheet_last_sync_at", { withTimezone: true }),
+  productSheetLastSyncCount: integer("product_sheet_last_sync_count"),
+  productSheetLastSyncError: text("product_sheet_last_sync_error"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -113,7 +117,9 @@ export const productsTable = pgTable(
     name: text("name").notNull(),
     price: integer("price").notNull(),
     imageUrl: text("image_url"),
+    productUrl: text("product_url"),
     description: text("description"),
+    source: text("source").notNull().default("manual"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

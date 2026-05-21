@@ -14,7 +14,11 @@ export interface Product {
   /** @nullable */
   imageUrl: string | null;
   /** @nullable */
+  productUrl: string | null;
+  /** @nullable */
   description: string | null;
+  /** manual or google_sheet */
+  source: string;
   createdAt: string;
   updatedAt: string;
 }
