@@ -21,6 +21,9 @@ export interface Chat {
   lastMessage: string | null;
   /** @nullable */
   lastMessageAt: string | null;
+  /** @nullable */
+  pinnedAt: string | null;
+  isArchived: boolean;
   unreadCount: number;
   createdAt: string;
 }

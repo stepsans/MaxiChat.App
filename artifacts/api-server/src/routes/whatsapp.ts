@@ -127,6 +127,45 @@ async function setStatus(
   return updated;
 }
 
+// Extracts pin/archive metadata from a Baileys chat object. Returns a partial
+// update set; missing keys mean "leave the column as-is". An explicit
+// pinned=0/null clears any prior pin.
+function extractChatListMeta(
+  c: Record<string, unknown>
+): { pinnedAt?: Date | null; isArchived?: boolean } {
+  const meta: { pinnedAt?: Date | null; isArchived?: boolean } = {};
+  if (Object.prototype.hasOwnProperty.call(c, "pinned")) {
+    const p = (c as { pinned?: unknown }).pinned;
+    if (typeof p === "number" && p > 0) {
+      // Baileys stores pin time as unix seconds.
+      meta.pinnedAt = new Date(p * 1000);
+    } else if (p === 0 || p === null) {
+      // Explicit unpin signal. Skip undefined / other values to avoid
+      // false clears from partial updates.
+      meta.pinnedAt = null;
+    }
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(c, "archived") &&
+    typeof (c as { archived?: unknown }).archived === "boolean"
+  ) {
+    meta.isArchived = (c as { archived: boolean }).archived;
+  }
+  return meta;
+}
+
+async function applyChatListMeta(
+  phoneNumber: string,
+  c: Record<string, unknown>
+): Promise<void> {
+  const meta = extractChatListMeta(c);
+  if (Object.keys(meta).length === 0) return;
+  await db
+    .update(chatsTable)
+    .set(meta)
+    .where(eq(chatsTable.phoneNumber, phoneNumber));
+}
+
 async function getOrCreateChat(phoneNumber: string, contactName: string) {
   // True upsert: relies on the unique index on chats.phone_number so concurrent
   // workers (live messages.upsert vs. messaging-history.set) cannot create
@@ -720,6 +759,10 @@ async function startBaileys(sessionId: number) {
 
       for (const msg of messages) {
         try {
+          // Re-check epoch on every iteration: a long backlog must not keep
+          // writing (and re-creating chats) after /disconnect bumps the epoch
+          // and clears the chats table.
+          if (myEpoch !== sessionEpoch) return;
           const parsed = await parseWaMessage(
             msg,
             isJidGroup as (j: string) => boolean,
@@ -728,6 +771,7 @@ async function startBaileys(sessionId: number) {
             resolveGroupName
           );
           if (!parsed) continue;
+          if (myEpoch !== sessionEpoch) return;
 
           const { chat, inserted } = await persistWaMessage(parsed, {
             incrementUnread: true,
@@ -772,21 +816,25 @@ async function startBaileys(sessionId: number) {
           )
             continue;
           const isGroup = (isJidGroup as (j: string) => boolean)(c.id);
+          let key: string;
           if (isGroup) {
             // Groups: store full @g.us JID as key, group subject as name.
             const groupName =
               c.name?.trim() || (await resolveGroupName(c.id)) || c.id.split("@")[0];
             await getOrCreateChat(c.id, groupName);
-            continue;
+            key = c.id;
+          } else {
+            // Only seed canonical phone-number DMs. LID-only entries from the
+            // history list have no phone mapping here; they'll be created with
+            // the real phone once a live message arrives (which carries remoteJidAlt).
+            if (!c.id.endsWith("@s.whatsapp.net")) continue;
+            const rawNumber = c.id.split("@")[0].split(":")[0];
+            const phoneNumber = `+${rawNumber}`;
+            const contactName = c.name?.trim() || rawNumber;
+            await getOrCreateChat(phoneNumber, contactName);
+            key = phoneNumber;
           }
-          // Only seed canonical phone-number DMs. LID-only entries from the
-          // history list have no phone mapping here; they'll be created with
-          // the real phone once a live message arrives (which carries remoteJidAlt).
-          if (!c.id.endsWith("@s.whatsapp.net")) continue;
-          const rawNumber = c.id.split("@")[0].split(":")[0];
-          const phoneNumber = `+${rawNumber}`;
-          const contactName = c.name?.trim() || rawNumber;
-          await getOrCreateChat(phoneNumber, contactName);
+          await applyChatListMeta(key, c);
         } catch (err) {
           logger.error({ err, chatId: c?.id }, "Failed to seed history chat");
         }
@@ -795,6 +843,9 @@ async function startBaileys(sessionId: number) {
       let ingested = 0;
       for (const msg of messages) {
         try {
+          // Backlog can be tens of thousands of messages; abort the loop if
+          // the session was disconnected mid-sync.
+          if (myEpoch !== sessionEpoch) return;
           const parsed = await parseWaMessage(
             msg,
             isJidGroup as (j: string) => boolean,
@@ -803,6 +854,7 @@ async function startBaileys(sessionId: number) {
             resolveGroupName
           );
           if (!parsed) continue;
+          if (myEpoch !== sessionEpoch) return;
           const { inserted } = await persistWaMessage(parsed, { incrementUnread: false });
           if (inserted) ingested++;
         } catch (err) {
@@ -867,6 +919,31 @@ async function startBaileys(sessionId: number) {
     };
     sock.ev.on("contacts.upsert", handleContacts);
     sock.ev.on("contacts.update", handleContacts);
+
+    // Chat-level metadata (pin / archive). Pin status drives sort order in
+    // the UI, so we mirror it from WhatsApp.
+    const keyForChatId = (id: string): string | null => {
+      if (id.endsWith("@g.us")) return id;
+      if (id.endsWith("@s.whatsapp.net")) {
+        return `+${id.split("@")[0].split(":")[0]}`;
+      }
+      return null;
+    };
+    const handleChatMeta = async (updates: Array<{ id?: string } & Record<string, unknown>>) => {
+      if (myEpoch !== sessionEpoch) return;
+      for (const c of updates) {
+        try {
+          if (!c?.id) continue;
+          const key = keyForChatId(c.id);
+          if (!key) continue;
+          await applyChatListMeta(key, c);
+        } catch (err) {
+          logger.error({ err, id: c?.id }, "Failed to apply chat metadata");
+        }
+      }
+    };
+    sock.ev.on("chats.upsert", handleChatMeta);
+    sock.ev.on("chats.update", handleChatMeta);
   } catch (err) {
     isConnecting = false;
     await setStatus(sessionId, "disconnected");
@@ -936,6 +1013,8 @@ router.post("/disconnect", async (req, res) => {
         sock.ev.removeAllListeners("connection.update");
         sock.ev.removeAllListeners("contacts.upsert");
         sock.ev.removeAllListeners("contacts.update");
+        sock.ev.removeAllListeners("chats.upsert");
+        sock.ev.removeAllListeners("chats.update");
       } catch {}
       await sock.logout().catch(() => {});
       sock = null;

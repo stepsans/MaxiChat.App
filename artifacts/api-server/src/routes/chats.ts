@@ -72,11 +72,19 @@ router.get("/", async (req, res) => {
     const status = parsed.success ? parsed.data.status : undefined;
     const tag = parsed.success ? parsed.data.tag : undefined;
 
+    // Sort: (1) pinned chats first (most recently pinned at top),
+    // (2) non-archived next, (3) by last message time desc with chats that
+    // have any history above empty ones, (4) finally createdAt as tiebreaker.
     let query = db
       .select()
       .from(chatsTable)
       .orderBy(
-        sql`COALESCE(${chatsTable.lastMessageAt}, ${chatsTable.createdAt}) DESC`
+        sql`(${chatsTable.pinnedAt} IS NOT NULL) DESC,
+            ${chatsTable.pinnedAt} DESC NULLS LAST,
+            ${chatsTable.isArchived} ASC,
+            (${chatsTable.lastMessageAt} IS NOT NULL) DESC,
+            ${chatsTable.lastMessageAt} DESC NULLS LAST,
+            ${chatsTable.createdAt} DESC`
       );
     const results = await query;
 

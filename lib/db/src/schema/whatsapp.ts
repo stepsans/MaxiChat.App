@@ -22,6 +22,8 @@ export const chatsTable = pgTable(
     isHumanTakeover: boolean("is_human_takeover").notNull().default(false),
     lastMessage: text("last_message"),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    isArchived: boolean("is_archived").notNull().default(false),
     unreadCount: integer("unread_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

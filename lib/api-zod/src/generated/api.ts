@@ -68,6 +68,8 @@ export const ListChatsResponseItem = zod.object({
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string()
 })
@@ -91,6 +93,8 @@ export const GetChatResponse = zod.object({
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string(),
   "messages": zod.array(zod.object({
@@ -126,6 +130,8 @@ export const UpdateChatResponse = zod.object({
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string()
 })
@@ -206,6 +212,8 @@ export const TakeoverChatResponse = zod.object({
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
   "unreadCount": zod.number(),
   "createdAt": zod.string()
 })

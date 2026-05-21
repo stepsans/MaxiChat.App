@@ -26,7 +26,12 @@ import {
   Snowflake,
   MessageSquare,
   Trash2,
+  Pin,
+  Archive,
+  Users,
+  User,
 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
@@ -68,6 +73,7 @@ export default function Chats() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [scope, setScope] = useState<"personal" | "group">("personal");
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -101,7 +107,13 @@ export default function Chats() {
     }
   };
 
-  const filtered = (chats ?? []).filter((c) => {
+  const isGroupChat = (c: { phoneNumber: string }) => c.phoneNumber.endsWith("@g.us");
+  const allChats = chats ?? [];
+  const personalCount = allChats.filter((c) => !isGroupChat(c)).length;
+  const groupCount = allChats.length - personalCount;
+
+  const filtered = allChats.filter((c) => {
+    const matchScope = scope === "group" ? isGroupChat(c) : !isGroupChat(c);
     const matchStatus = statusFilter === "all" || c.status === statusFilter;
     const matchTag = tagFilter === "all" || c.tag === tagFilter;
     const matchSearch =
@@ -109,7 +121,7 @@ export default function Chats() {
       c.contactName.toLowerCase().includes(search.toLowerCase()) ||
       (c.nickname?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
       c.phoneNumber.includes(search);
-    return matchStatus && matchTag && matchSearch;
+    return matchScope && matchStatus && matchTag && matchSearch;
   });
 
   return (
@@ -119,9 +131,31 @@ export default function Chats() {
         <div>
           <h1 className="text-base font-semibold">Chats</h1>
           <p className="text-xs text-muted-foreground">
-            {chats?.length ?? 0} total conversations
+            {allChats.length} total conversations
           </p>
         </div>
+      </div>
+
+      {/* Tabs: Personal / Grup */}
+      <div className="px-6 pt-3 border-b border-border flex-shrink-0">
+        <Tabs value={scope} onValueChange={(v) => setScope(v as "personal" | "group")}>
+          <TabsList className="grid grid-cols-2 w-full max-w-xs">
+            <TabsTrigger value="personal" data-testid="tab-personal" className="gap-1.5">
+              <User className="w-3.5 h-3.5" />
+              Personal
+              <span className="text-[10px] text-muted-foreground ml-0.5">
+                {personalCount}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="group" data-testid="tab-group" className="gap-1.5">
+              <Users className="w-3.5 h-3.5" />
+              Grup
+              <span className="text-[10px] text-muted-foreground ml-0.5">
+                {groupCount}
+              </span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Filters */}
@@ -173,7 +207,13 @@ export default function Chats() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <MessageSquare className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">No chats found</p>
+            <p className="text-sm">
+              {search || statusFilter !== "all" || tagFilter !== "all"
+                ? "Tidak ada hasil untuk filter saat ini"
+                : scope === "group"
+                  ? "Belum ada grup"
+                  : "Belum ada chat personal"}
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -188,12 +228,22 @@ export default function Chats() {
                 >
                     {/* Avatar */}
                     <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 text-sm font-semibold text-foreground">
-                      {chat.contactName.charAt(0).toUpperCase()}
+                      {isGroupChat(chat) ? (
+                        <Users className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        chat.contactName.charAt(0).toUpperCase()
+                      )}
                     </div>
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
+                        {chat.pinnedAt && (
+                          <Pin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                        )}
+                        {chat.isArchived && (
+                          <Archive className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                        )}
                         <span className="text-sm font-medium truncate">{chat.contactName}</span>
                         {chat.nickname && chat.nickname !== chat.contactName && (
                           <span className="text-[11px] text-muted-foreground truncate">
