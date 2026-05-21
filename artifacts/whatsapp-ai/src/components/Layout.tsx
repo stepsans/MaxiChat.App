@@ -83,7 +83,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary">
             <SiWhatsapp className="w-4 h-4 text-white" />
           </div>
-          <span className="text-sm font-semibold text-foreground tracking-tight">Maxichan</span>
+          <span className="text-sm font-semibold text-foreground tracking-tight">Maxipro.co.id</span>
         </div>
 
         {/* Nav */}
