@@ -339,6 +339,14 @@ export const UpdateSettingsResponse = zod.object({
 
 
 /**
+ * @summary Delete all manually created knowledge entries (source='manual')
+ */
+export const DeleteManualKnowledgeResponse = zod.object({
+  "deleted": zod.number()
+})
+
+
+/**
  * @summary Sync knowledge base from configured Google Sheet CSV URL
  */
 export const SyncKnowledgeFromGoogleSheetResponse = zod.object({

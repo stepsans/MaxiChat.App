@@ -26,6 +26,7 @@ import type {
   ChatUpdate,
   ChatWithMessages,
   CommonQuestion,
+  DeleteManualKnowledge200,
   ErrorResponse,
   HealthStatus,
   KnowledgeEntry,
@@ -1306,6 +1307,76 @@ export const useUpdateSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateSettingsMutationOptions(options));
+    }
+
+export const getDeleteManualKnowledgeUrl = () => {
+
+
+
+
+  return `/api/knowledge/manual`
+}
+
+/**
+ * @summary Delete all manually created knowledge entries (source='manual')
+ */
+export const deleteManualKnowledge = async ( options?: RequestInit): Promise<DeleteManualKnowledge200> => {
+
+  return customFetch<DeleteManualKnowledge200>(getDeleteManualKnowledgeUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteManualKnowledgeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteManualKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteManualKnowledge>>, TError,void, TContext> => {
+
+const mutationKey = ['deleteManualKnowledge'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteManualKnowledge>>, void> = () => {
+
+
+          return  deleteManualKnowledge(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteManualKnowledgeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteManualKnowledge>>>
+
+    export type DeleteManualKnowledgeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete all manually created knowledge entries (source='manual')
+ */
+export const useDeleteManualKnowledge = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteManualKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteManualKnowledge>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteManualKnowledgeMutationOptions(options));
     }
 
 export const getSyncKnowledgeFromGoogleSheetUrl = () => {

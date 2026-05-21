@@ -19,6 +19,7 @@ export * from './chatWithMessages';
 export * from './chatWithMessagesStatus';
 export * from './chatWithMessagesTag';
 export * from './commonQuestion';
+export * from './deleteManualKnowledge200';
 export * from './errorResponse';
 export * from './healthStatus';
 export * from './knowledgeEntry';

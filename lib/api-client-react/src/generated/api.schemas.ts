@@ -335,3 +335,7 @@ export const ListChatsTag = {
   closing: 'closing',
 } as const;
 
+export type DeleteManualKnowledge200 = {
+  deleted: number;
+};
+

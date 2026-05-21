@@ -76,6 +76,19 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+router.delete("/manual", async (req, res) => {
+  try {
+    const deleted = await db
+      .delete(knowledgeTable)
+      .where(eq(knowledgeTable.source, "manual"))
+      .returning();
+    res.json({ deleted: deleted.length });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete manual knowledge entries");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const idParsed = DeleteKnowledgeParams.safeParse({ id: Number(req.params.id) });

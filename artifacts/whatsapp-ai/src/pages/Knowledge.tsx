@@ -5,6 +5,7 @@ import {
   useCreateKnowledge,
   useUpdateKnowledge,
   useDeleteKnowledge,
+  useDeleteManualKnowledge,
   getListKnowledgeQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, BookOpen, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen, Loader2, Eraser } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -77,6 +78,7 @@ export default function Knowledge() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<KnowledgeEntry | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const { data: entries, isLoading } = useListKnowledge();
   const create = useCreateKnowledge({
@@ -107,6 +109,27 @@ export default function Knowledge() {
       },
     },
   });
+  const removeManual = useDeleteManualKnowledge({
+    mutation: {
+      onSuccess: (data) => {
+        qc.invalidateQueries({ queryKey: getListKnowledgeQueryKey() });
+        setBulkDeleteOpen(false);
+        toast({
+          title: `${data.deleted} entry manual dihapus.`,
+          description: "Entry dari Google Sheet tetap utuh.",
+        });
+      },
+      onError: () => {
+        toast({
+          variant: "destructive",
+          title: "Gagal menghapus entry manual",
+          description: "Coba lagi atau periksa koneksi.",
+        });
+      },
+    },
+  });
+
+  const manualCount = entries?.filter((e) => (e as { source?: string }).source === "manual").length ?? 0;
 
   const form = useForm<EntryForm>({
     resolver: zodResolver(entrySchema),
@@ -149,10 +172,24 @@ export default function Knowledge() {
             {entries?.length ?? 0} entries — AI learns from this data
           </p>
         </div>
-        <Button data-testid="button-add-knowledge" size="sm" onClick={openCreate}>
-          <Plus className="w-3.5 h-3.5 mr-1.5" />
-          Add Entry
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            data-testid="button-delete-manual-knowledge"
+            size="sm"
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setBulkDeleteOpen(true)}
+            disabled={manualCount === 0}
+            title={manualCount === 0 ? "Tidak ada entry manual" : undefined}
+          >
+            <Eraser className="w-3.5 h-3.5 mr-1.5" />
+            Hapus Entry Manual ({manualCount})
+          </Button>
+          <Button data-testid="button-add-knowledge" size="sm" onClick={openCreate}>
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            Add Entry
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 p-6">
@@ -299,6 +336,32 @@ export default function Knowledge() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Delete Manual Confirm */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus semua entry manual?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {manualCount} entry yang dibuat manual lewat tombol "Add Entry" akan dihapus permanen.
+              Entry yang berasal dari Google Sheet tetap aman dan tidak terpengaruh.
+              Tindakan ini tidak bisa dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-delete-manual"
+              onClick={() => removeManual.mutate()}
+              disabled={removeManual.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removeManual.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Hapus Semua
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirm */}
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>

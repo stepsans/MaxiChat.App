@@ -371,6 +371,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/Settings"
 
+  /knowledge/manual:
+    delete:
+      operationId: deleteManualKnowledge
+      tags: [knowledge]
+      summary: Delete all manually created knowledge entries (source='manual')
+      responses:
+        "200":
+          description: Deleted count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: integer
+
   /knowledge/sync-google-sheet:
     post:
       operationId: syncKnowledgeFromGoogleSheet
