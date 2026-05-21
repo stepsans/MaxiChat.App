@@ -45,6 +45,8 @@ import {
   Download,
   ExternalLink,
   Video,
+  Search,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -96,6 +98,7 @@ export default function Products() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [search, setSearch] = useState("");
 
   const emptyForm = {
     code: "",
@@ -288,17 +291,50 @@ export default function Products() {
 
   const isPending = create.isPending || update.isPending;
 
+  const q = search.trim().toLowerCase();
+  const filteredProducts = q
+    ? ((products as Product[] | undefined) ?? []).filter((p) =>
+        [p.code, p.name, p.category ?? ""].some((f) =>
+          f.toLowerCase().includes(q)
+        )
+      )
+    : ((products as Product[] | undefined) ?? []);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between px-6 h-14 border-b border-border flex-shrink-0">
         <div>
           <h1 className="text-base font-semibold">Katalog Produk</h1>
           <p className="text-xs text-muted-foreground">
-            {products?.length ?? 0} produk — harga silver/gold/platinum/reseller/distributor hanya
-            tampil di app, tidak dikirim ke customer.
+            {q
+              ? `${filteredProducts.length} dari ${products?.length ?? 0} produk`
+              : `${products?.length ?? 0} produk`}{" "}
+            — harga silver/gold/platinum/reseller/distributor hanya tampil di app,
+            tidak dikirim ke customer.
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari kode, nama, kategori…"
+              className="h-8 w-56 pl-7 pr-7 text-xs"
+              data-testid="input-search-products"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Bersihkan pencarian"
+                onClick={() => setSearch("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-accent text-muted-foreground"
+                data-testid="button-clear-search"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
           <input
             ref={importInputRef}
             type="file"
@@ -359,6 +395,12 @@ export default function Products() {
               Tambahkan manual atau gunakan Import (CSV/XLSX)
             </p>
           </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <Search className="w-8 h-8 mb-2 opacity-30" />
+            <p className="text-sm">Tidak ada produk yang cocok</p>
+            <p className="text-xs mt-1">Coba kata kunci lain.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
@@ -381,7 +423,7 @@ export default function Products() {
                 </tr>
               </thead>
               <tbody>
-                {(products as Product[]).map((p) => (
+                {filteredProducts.map((p) => (
                   <tr
                     key={p.id}
                     data-testid={`product-row-${p.id}`}
