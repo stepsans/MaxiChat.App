@@ -385,6 +385,10 @@ export const ImportProductsResponse = zod.object({
 /**
  * @summary List all products
  */
+export const listProductsResponseVideoUrlsMax = 10;
+
+
+
 export const ListProductsResponseItem = zod.object({
   "id": zod.number(),
   "code": zod.string(),
@@ -398,7 +402,7 @@ export const ListProductsResponseItem = zod.object({
   "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
   "imageUrl": zod.string().nullable(),
   "productUrl": zod.string().nullable(),
-  "videoUrl": zod.string().nullable(),
+  "videoUrls": zod.array(zod.string()).max(listProductsResponseVideoUrlsMax).describe('Up to 10 video URLs per product'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -422,6 +426,8 @@ export const createProductBodyPriceResellerMin = 0;
 
 export const createProductBodyPriceDistributorMin = 0;
 
+export const createProductBodyVideoUrlsMax = 10;
+
 
 
 export const CreateProductBody = zod.object({
@@ -436,7 +442,7 @@ export const CreateProductBody = zod.object({
   "priceDistributor": zod.number().min(createProductBodyPriceDistributorMin).nullish(),
   "imageUrl": zod.string().nullish(),
   "productUrl": zod.string().nullish(),
-  "videoUrl": zod.string().nullish()
+  "videoUrls": zod.array(zod.string()).max(createProductBodyVideoUrlsMax).optional().describe('Up to 10 video URLs per product')
 })
 
 
@@ -461,6 +467,8 @@ export const updateProductBodyPriceResellerMin = 0;
 
 export const updateProductBodyPriceDistributorMin = 0;
 
+export const updateProductBodyVideoUrlsMax = 10;
+
 
 
 export const UpdateProductBody = zod.object({
@@ -475,8 +483,12 @@ export const UpdateProductBody = zod.object({
   "priceDistributor": zod.number().min(updateProductBodyPriceDistributorMin).nullish(),
   "imageUrl": zod.string().nullish(),
   "productUrl": zod.string().nullish(),
-  "videoUrl": zod.string().nullish()
+  "videoUrls": zod.array(zod.string()).max(updateProductBodyVideoUrlsMax).optional().describe('Up to 10 video URLs per product')
 })
+
+export const updateProductResponseVideoUrlsMax = 10;
+
+
 
 export const UpdateProductResponse = zod.object({
   "id": zod.number(),
@@ -491,7 +503,7 @@ export const UpdateProductResponse = zod.object({
   "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
   "imageUrl": zod.string().nullable(),
   "productUrl": zod.string().nullable(),
-  "videoUrl": zod.string().nullable(),
+  "videoUrls": zod.array(zod.string()).max(updateProductResponseVideoUrlsMax).describe('Up to 10 video URLs per product'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

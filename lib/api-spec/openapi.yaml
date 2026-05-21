@@ -979,7 +979,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, productUrl, videoUrl, createdAt, updatedAt]
+      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, productUrl, videoUrls, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -1011,8 +1011,12 @@ components:
           type: ["string", "null"]
         productUrl:
           type: ["string", "null"]
-        videoUrl:
-          type: ["string", "null"]
+        videoUrls:
+          type: array
+          items:
+            type: string
+          description: "Up to 10 video URLs per product"
+          maxItems: 10
         createdAt:
           type: string
         updatedAt:
@@ -1058,8 +1062,12 @@ components:
           type: ["string", "null"]
         productUrl:
           type: ["string", "null"]
-        videoUrl:
-          type: ["string", "null"]
+        videoUrls:
+          type: array
+          items:
+            type: string
+          description: "Up to 10 video URLs per product"
+          maxItems: 10
 
     SendProductBody:
       type: object

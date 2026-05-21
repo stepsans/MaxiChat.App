@@ -60,8 +60,23 @@ const ProductBody = z.object({
   priceDistributor: z.number().int().nonnegative().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
   productUrl: z.string().nullable().optional(),
-  videoUrl: z.string().nullable().optional(),
+  videoUrls: z.array(z.string()).max(10).optional(),
 });
+
+function isSafeHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isSafeMediaUrl(s: string): boolean {
+  // Allow http(s) external links and internal /api/media/... uploads
+  if (s.startsWith("/api/media/")) return true;
+  return isSafeHttpUrl(s);
+}
 
 function bodyToInsert(b: z.infer<typeof ProductBody>) {
   const norm = (v: string | null | undefined) => {
@@ -80,9 +95,18 @@ function bodyToInsert(b: z.infer<typeof ProductBody>) {
     pricePlatinum: num(b.pricePlatinum),
     priceReseller: num(b.priceReseller),
     priceDistributor: num(b.priceDistributor),
-    imageUrl: norm(b.imageUrl),
-    productUrl: norm(b.productUrl),
-    videoUrl: norm(b.videoUrl),
+    imageUrl: ((): string | null => {
+      const v = norm(b.imageUrl);
+      return v && isSafeMediaUrl(v) ? v : null;
+    })(),
+    productUrl: ((): string | null => {
+      const v = norm(b.productUrl);
+      return v && isSafeHttpUrl(v) ? v : null;
+    })(),
+    videoUrls: (b.videoUrls ?? [])
+      .map((s) => (s ?? "").trim())
+      .filter((s) => s.length > 0 && isSafeHttpUrl(s))
+      .slice(0, 10),
   };
 }
 
@@ -195,7 +219,7 @@ const EXPORT_HEADERS = [
   "priceDistributor",
   "imageUrl",
   "productUrl",
-  "videoUrl",
+  "videoUrls",
 ] as const;
 
 function neutralizeFormula(s: string): string {
@@ -204,7 +228,7 @@ function neutralizeFormula(s: string): string {
 
 function rowToCsvField(v: unknown): string {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  const s = Array.isArray(v) ? v.join(" | ") : String(v);
   const escaped = s.includes('"') ? s.replace(/"/g, '""') : s;
   const needsQuote = /[",\n\r]/.test(s);
   const safe = neutralizeFormula(escaped);
@@ -237,7 +261,13 @@ router.get("/export.xlsx", async (req, res) => {
     const ws = wb.addWorksheet("Products");
     ws.addRow([...EXPORT_HEADERS]);
     for (const r of rows) {
-      ws.addRow(EXPORT_HEADERS.map((h) => (r as Record<string, unknown>)[h] ?? ""));
+      ws.addRow(
+        EXPORT_HEADERS.map((h) => {
+          const v = (r as Record<string, unknown>)[h];
+          if (Array.isArray(v)) return v.join(" | ");
+          return v ?? "";
+        }),
+      );
     }
     res.setHeader(
       "Content-Type",
@@ -353,10 +383,13 @@ const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
   producturl: "productUrl",
   "link website": "productUrl",
   website: "productUrl",
-  "video url": "videoUrl",
-  "video_url": "videoUrl",
-  videourl: "videoUrl",
-  "link video": "videoUrl",
+  "video url": "videoUrls",
+  "video_url": "videoUrls",
+  videourl: "videoUrls",
+  "video urls": "videoUrls",
+  "video_urls": "videoUrls",
+  videourls: "videoUrls",
+  "link video": "videoUrls",
 };
 
 const EXPORT_HEADERS_MAP = {
@@ -372,7 +405,7 @@ const EXPORT_HEADERS_MAP = {
   priceDistributor: 0,
   imageUrl: 0,
   productUrl: 0,
-  videoUrl: 0,
+  videoUrls: 0,
 };
 
 type ProductCol = keyof typeof EXPORT_HEADERS_MAP;
@@ -457,6 +490,13 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
         }
       };
 
+      const videoUrlsCell = cell(r, "videoUrls");
+      const videoUrls = videoUrlsCell
+        .split(/[|\n;]+/)
+        .map((s) => urlOrNull(s))
+        .filter((u): u is string => !!u)
+        .slice(0, 10);
+
       entries.push({
         code,
         name: nm || code,
@@ -469,7 +509,7 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
         priceDistributor: parseIntCell(cell(r, "priceDistributor")),
         imageUrl: urlOrNull(cell(r, "imageUrl")),
         productUrl: urlOrNull(cell(r, "productUrl")),
-        videoUrl: urlOrNull(cell(r, "videoUrl")),
+        videoUrls,
       });
     }
 

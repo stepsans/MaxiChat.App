@@ -268,8 +268,11 @@ export interface Product {
   imageUrl: string | null;
   /** @nullable */
   productUrl: string | null;
-  /** @nullable */
-  videoUrl: string | null;
+  /**
+     * Up to 10 video URLs per product
+     * @maxItems 10
+     */
+  videoUrls: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -312,8 +315,11 @@ export interface ProductInput {
   imageUrl?: string | null;
   /** @nullable */
   productUrl?: string | null;
-  /** @nullable */
-  videoUrl?: string | null;
+  /**
+     * Up to 10 video URLs per product
+     * @maxItems 10
+     */
+  videoUrls?: string[];
 }
 
 export interface SendProductBody {

@@ -63,7 +63,7 @@ type Product = {
   priceDistributor: number | null;
   imageUrl: string | null;
   productUrl: string | null;
-  videoUrl: string | null;
+  videoUrls: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -111,9 +111,9 @@ export default function Products() {
     priceReseller: "",
     priceDistributor: "",
     productUrl: "",
-    videoUrl: "",
   };
   const [form, setForm] = useState({ ...emptyForm });
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [uploadingImg, setUploadingImg] = useState(false);
   const imgInputRef = useRef<HTMLInputElement | null>(null);
@@ -165,6 +165,7 @@ export default function Products() {
     setEditing(null);
     setForm({ ...emptyForm });
     setImageUrl(null);
+    setVideoUrls([]);
     setDialogOpen(true);
   };
 
@@ -181,9 +182,9 @@ export default function Products() {
       priceReseller: p.priceReseller !== null ? String(p.priceReseller) : "",
       priceDistributor: p.priceDistributor !== null ? String(p.priceDistributor) : "",
       productUrl: p.productUrl ?? "",
-      videoUrl: p.videoUrl ?? "",
     });
     setImageUrl(p.imageUrl);
+    setVideoUrls(p.videoUrls ?? []);
     setDialogOpen(true);
   };
 
@@ -240,7 +241,7 @@ export default function Products() {
       priceDistributor: numOrNull(form.priceDistributor),
       imageUrl: imageUrl ?? null,
       productUrl: strOrNull(form.productUrl),
-      videoUrl: strOrNull(form.videoUrl),
+      videoUrls: videoUrls.map((s) => s.trim()).filter((s) => s.length > 0).slice(0, 10),
     };
     if (editing) {
       update.mutate({ id: editing.id, data });
@@ -472,16 +473,26 @@ export default function Products() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      {p.videoUrl ? (
-                        <a
-                          href={p.videoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          <Video className="w-3 h-3" />
-                          Video
-                        </a>
+                      {p.videoUrls && p.videoUrls.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {p.videoUrls.slice(0, 3).map((url, i) => (
+                            <a
+                              key={i}
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              <Video className="w-3 h-3" />
+                              Video {i + 1}
+                            </a>
+                          ))}
+                          {p.videoUrls.length > 3 ? (
+                            <span className="text-[10px] text-muted-foreground">
+                              +{p.videoUrls.length - 3} lagi
+                            </span>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -679,13 +690,66 @@ export default function Products() {
                 placeholder="https://..."
                 testid="input-product-link"
               />
-              <Field
-                label="Link Video"
-                value={form.videoUrl}
-                onChange={(v) => setForm({ ...form, videoUrl: v })}
-                placeholder="https://youtu.be/..."
-                testid="input-product-video"
-              />
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Link Video{" "}
+                    <span className="text-[10px] font-normal">
+                      ({videoUrls.length}/10 — bisa lebih dari satu)
+                    </span>
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={videoUrls.length >= 10}
+                    onClick={() => setVideoUrls([...videoUrls, ""])}
+                    data-testid="button-add-video"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Tambah video
+                  </Button>
+                </div>
+                {videoUrls.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground italic">
+                    Belum ada link video. Klik "Tambah video" untuk menambahkan.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {videoUrls.map((url, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground w-4 shrink-0">
+                          {idx + 1}.
+                        </span>
+                        <Input
+                          value={url}
+                          onChange={(e) => {
+                            const next = [...videoUrls];
+                            next[idx] = e.target.value;
+                            setVideoUrls(next);
+                          }}
+                          placeholder="https://youtu.be/..."
+                          className="h-8 text-xs"
+                          data-testid={`input-product-video-${idx}`}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={() =>
+                            setVideoUrls(videoUrls.filter((_, i) => i !== idx))
+                          }
+                          data-testid={`button-remove-video-${idx}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
