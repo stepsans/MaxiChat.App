@@ -423,6 +423,106 @@ paths:
                   error:
                     type: string
 
+  /knowledge-types:
+    get:
+      operationId: listKnowledgeTypes
+      tags: [knowledge]
+      summary: List available knowledge entry types
+      responses:
+        "200":
+          description: Types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeType"
+    post:
+      operationId: createKnowledgeType
+      tags: [knowledge]
+      summary: Create a new knowledge entry type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeTypeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeType"
+        "400":
+          description: Invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "409":
+          description: Type already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /knowledge-types/{id}:
+    delete:
+      operationId: deleteKnowledgeType
+      tags: [knowledge]
+      summary: Delete a knowledge type (only if no entries reference it)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "409":
+          description: Conflict — type still in use
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
   /products/sync-google-sheet:
     post:
       operationId: syncProductsFromGoogleSheet
@@ -706,7 +806,6 @@ components:
           type: integer
         type:
           type: string
-          enum: [product, faq, script, testimonial, website]
         title:
           type: string
         content:
@@ -722,7 +821,6 @@ components:
       properties:
         type:
           type: string
-          enum: [product, faq, script, testimonial, website]
         title:
           type: string
         content:
@@ -733,10 +831,31 @@ components:
       properties:
         type:
           type: string
-          enum: [product, faq, script, testimonial, website]
         title:
           type: string
         content:
+          type: string
+
+    KnowledgeType:
+      type: object
+      required: [id, value, label, createdAt]
+      properties:
+        id:
+          type: integer
+        value:
+          type: string
+        label:
+          type: string
+        createdAt:
+          type: string
+
+    KnowledgeTypeInput:
+      type: object
+      required: [value, label]
+      properties:
+        value:
+          type: string
+        label:
           type: string
 
     Settings:

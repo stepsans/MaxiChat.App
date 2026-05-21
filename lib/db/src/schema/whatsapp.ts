@@ -71,6 +71,15 @@ export const insertChatMessageSchema = createInsertSchema(chatMessagesTable).omi
 export type ChatMessage = typeof chatMessagesTable.$inferSelect;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 
+export const knowledgeTypesTable = pgTable("knowledge_types", {
+  id: serial("id").primaryKey(),
+  value: text("value").notNull().unique(),
+  label: text("label").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type KnowledgeType = typeof knowledgeTypesTable.$inferSelect;
+
 export const knowledgeTable = pgTable("knowledge_entries", {
   id: serial("id").primaryKey(),
   type: text("type").notNull(),

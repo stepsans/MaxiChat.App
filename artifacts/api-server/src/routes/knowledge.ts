@@ -1,8 +1,9 @@
 import { Router } from "express";
 import multer from "multer";
 import { db } from "@workspace/db";
-import { knowledgeTable } from "@workspace/db";
+import { knowledgeTable, knowledgeTypesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { ensureKnowledgeTypesSeed } from "./knowledge-types";
 import {
   CreateKnowledgeBody,
   UpdateKnowledgeBody,
@@ -19,8 +20,21 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-const VALID_TYPES = new Set(["product", "faq", "script", "testimonial", "website"]);
 const EXPORT_COLUMNS = ["id", "type", "title", "content", "createdAt", "updatedAt"] as const;
+
+async function loadValidTypes(): Promise<Set<string>> {
+  await ensureKnowledgeTypesSeed();
+  const rows = await db.select({ value: knowledgeTypesTable.value }).from(knowledgeTypesTable);
+  return new Set(rows.map((r) => r.value));
+}
+
+function makeLabelFromValue(v: string): string {
+  return v
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
+}
 
 function neutralizeFormula(s: string): string {
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
@@ -202,6 +216,8 @@ function normalizeHeader(s: string): string {
   return s.trim().toLowerCase();
 }
 
+const VALUE_REGEX = /^[a-z0-9][a-z0-9_-]{0,30}$/;
+
 function rowsToEntries(rows: string[][]): { entries: ParsedEntry[]; error: string | null } {
   if (rows.length === 0) {
     return { entries: [], error: "File kosong" };
@@ -224,7 +240,7 @@ function rowsToEntries(rows: string[][]): { entries: ParsedEntry[]; error: strin
     const content = (r[contentIdx] ?? "").trim();
     if (!title && !content) continue;
     if (!title || !content) continue;
-    const type = VALID_TYPES.has(rawType) ? rawType : "faq";
+    const type = VALUE_REGEX.test(rawType) ? rawType : "faq";
     entries.push({ type, title, content });
   }
   if (entries.length === 0) {
@@ -306,7 +322,21 @@ router.post("/import", upload.single("file"), async (req, res) => {
     const { entries, error } = rowsToEntries(rows);
     if (error) return res.status(400).json({ error });
 
+    const validTypes = await loadValidTypes();
+    const newTypes = new Set<string>();
+    for (const e of entries) {
+      if (!validTypes.has(e.type)) newTypes.add(e.type);
+    }
+
     await db.transaction(async (tx) => {
+      if (newTypes.size > 0) {
+        await tx
+          .insert(knowledgeTypesTable)
+          .values(
+            Array.from(newTypes).map((v) => ({ value: v, label: makeLabelFromValue(v) })),
+          )
+          .onConflictDoNothing();
+      }
       await tx.delete(knowledgeTable);
       await tx.insert(knowledgeTable).values(entries);
     });

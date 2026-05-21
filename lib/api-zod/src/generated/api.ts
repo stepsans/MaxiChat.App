@@ -228,7 +228,7 @@ export const TakeoverChatResponse = zod.object({
  */
 export const ListKnowledgeResponseItem = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']),
+  "type": zod.string(),
   "title": zod.string(),
   "content": zod.string(),
   "createdAt": zod.string(),
@@ -241,7 +241,7 @@ export const ListKnowledgeResponse = zod.array(ListKnowledgeResponseItem)
  * @summary Add a knowledge base entry
  */
 export const CreateKnowledgeBody = zod.object({
-  "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']),
+  "type": zod.string(),
   "title": zod.string(),
   "content": zod.string()
 })
@@ -255,14 +255,14 @@ export const UpdateKnowledgeParams = zod.object({
 })
 
 export const UpdateKnowledgeBody = zod.object({
-  "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']).optional(),
+  "type": zod.string().optional(),
   "title": zod.string().optional(),
   "content": zod.string().optional()
 })
 
 export const UpdateKnowledgeResponse = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['product', 'faq', 'script', 'testimonial', 'website']),
+  "type": zod.string(),
   "title": zod.string(),
   "content": zod.string(),
   "createdAt": zod.string(),
@@ -340,6 +340,39 @@ but the typed client hook is not used.
  */
 export const ImportKnowledgeResponse = zod.object({
   "imported": zod.number()
+})
+
+
+/**
+ * @summary List available knowledge entry types
+ */
+export const ListKnowledgeTypesResponseItem = zod.object({
+  "id": zod.number(),
+  "value": zod.string(),
+  "label": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListKnowledgeTypesResponse = zod.array(ListKnowledgeTypesResponseItem)
+
+
+/**
+ * @summary Create a new knowledge entry type
+ */
+export const CreateKnowledgeTypeBody = zod.object({
+  "value": zod.string(),
+  "label": zod.string()
+})
+
+
+/**
+ * @summary Delete a knowledge type (only if no entries reference it)
+ */
+export const DeleteKnowledgeTypeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteKnowledgeTypeResponse = zod.object({
+  "success": zod.boolean()
 })
 
 

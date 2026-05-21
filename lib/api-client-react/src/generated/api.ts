@@ -26,6 +26,11 @@ import type {
   ChatUpdate,
   ChatWithMessages,
   CommonQuestion,
+  CreateKnowledgeType400,
+  CreateKnowledgeType409,
+  DeleteKnowledgeType200,
+  DeleteKnowledgeType404,
+  DeleteKnowledgeType409,
   ErrorResponse,
   HealthStatus,
   ImportKnowledge200,
@@ -33,6 +38,8 @@ import type {
   ImportKnowledge409,
   KnowledgeEntry,
   KnowledgeInput,
+  KnowledgeType,
+  KnowledgeTypeInput,
   KnowledgeUpdate,
   ListChatsParams,
   ManualReplyInput,
@@ -1387,6 +1394,224 @@ export const useImportKnowledge = <TError = ErrorType<ImportKnowledge400 | Impor
         TContext
       > => {
       return useMutation(getImportKnowledgeMutationOptions(options));
+    }
+
+export const getListKnowledgeTypesUrl = () => {
+
+
+
+
+  return `/api/knowledge-types`
+}
+
+/**
+ * @summary List available knowledge entry types
+ */
+export const listKnowledgeTypes = async ( options?: RequestInit): Promise<KnowledgeType[]> => {
+
+  return customFetch<KnowledgeType[]>(getListKnowledgeTypesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListKnowledgeTypesQueryKey = () => {
+    return [
+    `/api/knowledge-types`
+    ] as const;
+    }
+
+
+export const getListKnowledgeTypesQueryOptions = <TData = Awaited<ReturnType<typeof listKnowledgeTypes>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listKnowledgeTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListKnowledgeTypesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listKnowledgeTypes>>> = ({ signal }) => listKnowledgeTypes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listKnowledgeTypes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListKnowledgeTypesQueryResult = NonNullable<Awaited<ReturnType<typeof listKnowledgeTypes>>>
+export type ListKnowledgeTypesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List available knowledge entry types
+ */
+
+export function useListKnowledgeTypes<TData = Awaited<ReturnType<typeof listKnowledgeTypes>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listKnowledgeTypes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListKnowledgeTypesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateKnowledgeTypeUrl = () => {
+
+
+
+
+  return `/api/knowledge-types`
+}
+
+/**
+ * @summary Create a new knowledge entry type
+ */
+export const createKnowledgeType = async (knowledgeTypeInput: KnowledgeTypeInput, options?: RequestInit): Promise<KnowledgeType> => {
+
+  return customFetch<KnowledgeType>(getCreateKnowledgeTypeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      knowledgeTypeInput,)
+  }
+);}
+
+
+
+
+export const getCreateKnowledgeTypeMutationOptions = <TError = ErrorType<CreateKnowledgeType400 | CreateKnowledgeType409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createKnowledgeType>>, TError,{data: BodyType<KnowledgeTypeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createKnowledgeType>>, TError,{data: BodyType<KnowledgeTypeInput>}, TContext> => {
+
+const mutationKey = ['createKnowledgeType'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createKnowledgeType>>, {data: BodyType<KnowledgeTypeInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createKnowledgeType(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateKnowledgeTypeMutationResult = NonNullable<Awaited<ReturnType<typeof createKnowledgeType>>>
+    export type CreateKnowledgeTypeMutationBody = BodyType<KnowledgeTypeInput>
+    export type CreateKnowledgeTypeMutationError = ErrorType<CreateKnowledgeType400 | CreateKnowledgeType409>
+
+    /**
+ * @summary Create a new knowledge entry type
+ */
+export const useCreateKnowledgeType = <TError = ErrorType<CreateKnowledgeType400 | CreateKnowledgeType409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createKnowledgeType>>, TError,{data: BodyType<KnowledgeTypeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createKnowledgeType>>,
+        TError,
+        {data: BodyType<KnowledgeTypeInput>},
+        TContext
+      > => {
+      return useMutation(getCreateKnowledgeTypeMutationOptions(options));
+    }
+
+export const getDeleteKnowledgeTypeUrl = (id: number,) => {
+
+
+
+
+  return `/api/knowledge-types/${id}`
+}
+
+/**
+ * @summary Delete a knowledge type (only if no entries reference it)
+ */
+export const deleteKnowledgeType = async (id: number, options?: RequestInit): Promise<DeleteKnowledgeType200> => {
+
+  return customFetch<DeleteKnowledgeType200>(getDeleteKnowledgeTypeUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteKnowledgeTypeMutationOptions = <TError = ErrorType<DeleteKnowledgeType404 | DeleteKnowledgeType409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteKnowledgeType>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteKnowledgeType>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteKnowledgeType'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteKnowledgeType>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteKnowledgeType(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteKnowledgeTypeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteKnowledgeType>>>
+
+    export type DeleteKnowledgeTypeMutationError = ErrorType<DeleteKnowledgeType404 | DeleteKnowledgeType409>
+
+    /**
+ * @summary Delete a knowledge type (only if no entries reference it)
+ */
+export const useDeleteKnowledgeType = <TError = ErrorType<DeleteKnowledgeType404 | DeleteKnowledgeType409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteKnowledgeType>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteKnowledgeType>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteKnowledgeTypeMutationOptions(options));
     }
 
 export const getSyncProductsFromGoogleSheetUrl = () => {

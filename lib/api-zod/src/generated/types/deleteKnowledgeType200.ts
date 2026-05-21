@@ -6,8 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface KnowledgeInput {
-  type: string;
-  title: string;
-  content: string;
-}
+export type DeleteKnowledgeType200 = {
+  success: boolean;
+};

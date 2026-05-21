@@ -6,6 +6,10 @@ import {
   useUpdateKnowledge,
   useDeleteKnowledge,
   getListKnowledgeQueryKey,
+  useListKnowledgeTypes,
+  useCreateKnowledgeType,
+  useDeleteKnowledgeType,
+  getListKnowledgeTypesQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +42,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, BookOpen, Loader2, Upload, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen, Loader2, Upload, Download, Settings2, X } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,16 +56,25 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-const typeColors: Record<string, string> = {
-  product: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  faq: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  script: "bg-violet-500/10 text-violet-400 border-violet-500/20",
-  testimonial: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  website: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-};
+const TYPE_COLOR_PALETTE = [
+  "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+  "bg-pink-500/10 text-pink-400 border-pink-500/20",
+  "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+  "bg-teal-500/10 text-teal-400 border-teal-500/20",
+];
+
+function colorForType(value: string): string {
+  let h = 0;
+  for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) >>> 0;
+  return TYPE_COLOR_PALETTE[h % TYPE_COLOR_PALETTE.length];
+}
 
 const entrySchema = z.object({
-  type: z.enum(["product", "faq", "script", "testimonial", "website"]),
+  type: z.string().min(1, "Type is required"),
   title: z.string().min(1, "Title is required"),
   content: z.string().min(1, "Content is required"),
 });
@@ -85,9 +98,71 @@ export default function Knowledge() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [typesDialogOpen, setTypesDialogOpen] = useState(false);
+  const [newTypeLabel, setNewTypeLabel] = useState("");
+  const [deleteTypeId, setDeleteTypeId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: entries, isLoading } = useListKnowledge();
+  const { data: types } = useListKnowledgeTypes();
+  const typeList = types ?? [];
+  const labelForType = (value: string) =>
+    typeList.find((t) => t.value === value)?.label ?? value;
+
+  const createType = useCreateKnowledgeType({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListKnowledgeTypesQueryKey() });
+        setNewTypeLabel("");
+        toast({ title: "Type ditambahkan." });
+      },
+      onError: (err: unknown) => {
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          (err instanceof Error ? err.message : "Gagal menambah type");
+        toast({ variant: "destructive", title: "Gagal", description: msg });
+      },
+    },
+  });
+  const deleteType = useDeleteKnowledgeType({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListKnowledgeTypesQueryKey() });
+        setDeleteTypeId(null);
+        toast({ title: "Type dihapus." });
+      },
+      onError: (err: unknown) => {
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          (err instanceof Error ? err.message : "Gagal menghapus type");
+        setDeleteTypeId(null);
+        toast({ variant: "destructive", title: "Gagal", description: msg });
+      },
+    },
+  });
+
+  const slugify = (s: string) =>
+    s
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 31);
+
+  const handleAddType = () => {
+    const label = newTypeLabel.trim();
+    if (!label) return;
+    const value = slugify(label);
+    if (!value) {
+      toast({
+        variant: "destructive",
+        title: "Nama tidak valid",
+        description: "Gunakan huruf atau angka.",
+      });
+      return;
+    }
+    createType.mutate({ data: { value, label } });
+  };
   const create = useCreateKnowledge({
     mutation: {
       onSuccess: () => {
@@ -155,6 +230,7 @@ export default function Knowledge() {
         return;
       }
       qc.invalidateQueries({ queryKey: getListKnowledgeQueryKey() });
+      qc.invalidateQueries({ queryKey: getListKnowledgeTypesQueryKey() });
       toast({
         title: `Import berhasil: ${json.imported ?? 0} entry.`,
         description: "Semua data lama sudah diganti.",
@@ -178,14 +254,15 @@ export default function Knowledge() {
 
   const openCreate = () => {
     setEditEntry(null);
-    form.reset({ type: "product", title: "", content: "" });
+    const defaultType = typeList[0]?.value ?? "product";
+    form.reset({ type: defaultType, title: "", content: "" });
     setDialogOpen(true);
   };
 
   const openEdit = (entry: KnowledgeEntry) => {
     setEditEntry(entry);
     form.reset({
-      type: entry.type as EntryForm["type"],
+      type: entry.type,
       title: entry.title,
       content: entry.content,
     });
@@ -263,6 +340,15 @@ export default function Knowledge() {
             <Upload className="w-3.5 h-3.5 mr-1.5" />
             Import
           </Button>
+          <Button
+            data-testid="button-manage-types"
+            size="sm"
+            variant="outline"
+            onClick={() => setTypesDialogOpen(true)}
+          >
+            <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+            Kelola Type
+          </Button>
           <Button data-testid="button-add-knowledge" size="sm" onClick={openCreate}>
             <Plus className="w-3.5 h-3.5 mr-1.5" />
             Add Entry
@@ -298,9 +384,9 @@ export default function Knowledge() {
                     <div className="flex items-center gap-2 min-w-0">
                       <Badge
                         variant="outline"
-                        className={cn("text-[10px] shrink-0", typeColors[entry.type])}
+                        className={cn("text-[10px] shrink-0", colorForType(entry.type))}
                       >
-                        {entry.type}
+                        {labelForType(entry.type)}
                       </Badge>
                       <CardTitle className="text-sm truncate">{entry.title}</CardTitle>
                     </div>
@@ -358,13 +444,26 @@ export default function Knowledge() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="product">Product</SelectItem>
-                        <SelectItem value="faq">FAQ</SelectItem>
-                        <SelectItem value="script">Sales Script</SelectItem>
-                        <SelectItem value="testimonial">Testimonial</SelectItem>
-                        <SelectItem value="website">Website</SelectItem>
+                        {typeList.map((t) => (
+                          <SelectItem key={t.id} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0 text-xs"
+                        onClick={() => setTypesDialogOpen(true)}
+                        data-testid="link-manage-types"
+                      >
+                        <Settings2 className="w-3 h-3 mr-1" />
+                        Kelola Type
+                      </Button>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -448,6 +547,114 @@ export default function Knowledge() {
             >
               {importing && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               Ganti & Import
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Manage Types Dialog */}
+      <Dialog open={typesDialogOpen} onOpenChange={setTypesDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Kelola Type Knowledge</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                data-testid="input-new-type"
+                placeholder="Nama type baru (mis. Promo)"
+                value={newTypeLabel}
+                onChange={(e) => setNewTypeLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddType();
+                  }
+                }}
+                disabled={createType.isPending}
+              />
+              <Button
+                data-testid="button-add-type"
+                onClick={handleAddType}
+                disabled={createType.isPending || !newTypeLabel.trim()}
+              >
+                {createType.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Plus className="w-3.5 h-3.5" />
+                )}
+              </Button>
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+              {typeList.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  Belum ada type.
+                </p>
+              ) : (
+                typeList.map((t) => (
+                  <div
+                    key={t.id}
+                    data-testid={`type-row-${t.value}`}
+                    className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border border-border"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Badge
+                        variant="outline"
+                        className={cn("text-[10px] shrink-0", colorForType(t.value))}
+                      >
+                        {t.label}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground font-mono truncate">
+                        {t.value}
+                      </span>
+                    </div>
+                    <Button
+                      data-testid={`button-delete-type-${t.value}`}
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive shrink-0"
+                      onClick={() => setDeleteTypeId(t.id)}
+                      disabled={deleteType.isPending}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Type yang masih dipakai oleh entry tidak bisa dihapus. Hapus dulu entry-nya.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTypesDialogOpen(false)}>
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Type Confirm */}
+      <AlertDialog
+        open={deleteTypeId !== null}
+        onOpenChange={(open) => !open && setDeleteTypeId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus type ini?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Type akan dihapus dari daftar pilihan. Operasi ini akan gagal jika masih ada entry
+              yang memakainya.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-delete-type"
+              onClick={() => deleteTypeId && deleteType.mutate({ id: deleteTypeId })}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Hapus
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

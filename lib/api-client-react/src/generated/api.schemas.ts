@@ -167,58 +167,37 @@ export interface TakeoverInput {
   takeover: boolean;
 }
 
-export type KnowledgeEntryType = typeof KnowledgeEntryType[keyof typeof KnowledgeEntryType];
-
-
-export const KnowledgeEntryType = {
-  product: 'product',
-  faq: 'faq',
-  script: 'script',
-  testimonial: 'testimonial',
-  website: 'website',
-} as const;
-
 export interface KnowledgeEntry {
   id: number;
-  type: KnowledgeEntryType;
+  type: string;
   title: string;
   content: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export type KnowledgeInputType = typeof KnowledgeInputType[keyof typeof KnowledgeInputType];
-
-
-export const KnowledgeInputType = {
-  product: 'product',
-  faq: 'faq',
-  script: 'script',
-  testimonial: 'testimonial',
-  website: 'website',
-} as const;
-
 export interface KnowledgeInput {
-  type: KnowledgeInputType;
+  type: string;
   title: string;
   content: string;
 }
 
-export type KnowledgeUpdateType = typeof KnowledgeUpdateType[keyof typeof KnowledgeUpdateType];
-
-
-export const KnowledgeUpdateType = {
-  product: 'product',
-  faq: 'faq',
-  script: 'script',
-  testimonial: 'testimonial',
-  website: 'website',
-} as const;
-
 export interface KnowledgeUpdate {
-  type?: KnowledgeUpdateType;
+  type?: string;
   title?: string;
   content?: string;
+}
+
+export interface KnowledgeType {
+  id: number;
+  value: string;
+  label: string;
+  createdAt: string;
+}
+
+export interface KnowledgeTypeInput {
+  value: string;
+  label: string;
 }
 
 export interface Settings {
@@ -338,6 +317,26 @@ export type ImportKnowledge400 = {
 };
 
 export type ImportKnowledge409 = {
+  error?: string;
+};
+
+export type CreateKnowledgeType400 = {
+  error?: string;
+};
+
+export type CreateKnowledgeType409 = {
+  error?: string;
+};
+
+export type DeleteKnowledgeType200 = {
+  success: boolean;
+};
+
+export type DeleteKnowledgeType404 = {
+  error?: string;
+};
+
+export type DeleteKnowledgeType409 = {
   error?: string;
 };
 

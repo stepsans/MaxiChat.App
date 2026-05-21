@@ -5,10 +5,9 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
-import type { KnowledgeUpdateType } from './knowledgeUpdateType';
 
 export interface KnowledgeUpdate {
-  type?: KnowledgeUpdateType;
+  type?: string;
   title?: string;
   content?: string;
 }
