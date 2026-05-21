@@ -221,6 +221,11 @@ async function generateAiReply(chatId: number, userMessage: string): Promise<str
 
     const systemPrompt = `${settings.systemPrompt}
 
+ATURAN MUTLAK:
+- HANYA gunakan informasi dari KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
+- Jika riwayat percakapan menyebut produk, kategori bisnis, atau bidang usaha yang TIDAK ADA di knowledge base saat ini, abaikan sepenuhnya dan jangan ulang. Knowledge base bisa berubah — anggap riwayat lama yang tidak konsisten dengan knowledge base saat ini sudah tidak berlaku.
+- Jika pertanyaan customer berada di luar knowledge base, jawab dengan sopan bahwa admin akan membantu. Jangan menebak atau mengarang.
+
 --- KNOWLEDGE BASE ---
 ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
 --- END KNOWLEDGE BASE ---`;
