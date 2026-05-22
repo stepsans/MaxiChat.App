@@ -676,13 +676,13 @@ export default function Products() {
                 <label className="text-xs font-medium text-muted-foreground">
                   Link Foto{" "}
                   <span className="text-[10px] font-normal">
-                    (tempel URL gambar — otomatis jadi thumbnail)
+                    (URL gambar, link Google Drive, atau /api/media/… — otomatis jadi thumbnail)
                   </span>
                 </label>
                 <Input
                   value={imageUrl ?? ""}
                   onChange={(e) => setImageUrl(e.target.value || null)}
-                  placeholder="https://contoh.com/foto.jpg atau /api/media/…"
+                  placeholder="https://drive.google.com/open?id=… atau https://contoh.com/foto.jpg"
                   className="h-8 text-xs mt-1"
                   data-testid="input-product-image-url"
                 />

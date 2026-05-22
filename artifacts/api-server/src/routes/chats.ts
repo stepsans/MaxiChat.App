@@ -727,13 +727,19 @@ router.post("/:id/product", async (req, res) => {
       (product.imageUrl.startsWith("http://") ||
         product.imageUrl.startsWith("https://"))
     ) {
+      // Route through flyerInputToImageUrl so Google Drive share links
+      // (e.g. drive.google.com/open?id=...) are auto-converted to the
+      // thumbnail endpoint that returns actual image bytes. Plain image
+      // URLs pass through unchanged.
+      const resolvedUrl =
+        flyerInputToImageUrl(product.imageUrl) ?? product.imageUrl;
       try {
-        const fetched = await fetchRemoteImageSafe(product.imageUrl);
+        const fetched = await fetchRemoteImageSafe(resolvedUrl);
         imageBuffer = fetched.buffer;
         imageMimeType = fetched.mimeType;
       } catch (err) {
         req.log.warn(
-          { err, productId, url: product.imageUrl },
+          { err, productId, url: product.imageUrl, resolvedUrl },
           "Failed to fetch remote product image, falling back to text"
         );
       }
