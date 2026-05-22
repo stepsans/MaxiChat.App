@@ -54,6 +54,8 @@ import {
   Video,
   Search,
   X,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -108,6 +110,10 @@ export default function Products() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("__all__");
+  // Internal tier prices (silver/gold/platinum/reseller/distributor) are
+  // sensitive — only shown in-app, never to customers. Default to hidden
+  // so casual screen-sharing doesn't leak them; user can toggle on demand.
+  const [showInternalPrices, setShowInternalPrices] = useState(false);
 
   const emptyForm = {
     code: "",
@@ -381,6 +387,26 @@ export default function Products() {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setShowInternalPrices((v) => !v)}
+            data-testid="button-toggle-internal-prices"
+            title={
+              showInternalPrices
+                ? "Sembunyikan harga Silver/Gold/Platinum/Reseller/Distributor"
+                : "Tampilkan harga Silver/Gold/Platinum/Reseller/Distributor"
+            }
+          >
+            {showInternalPrices ? (
+              <EyeOff className="w-3.5 h-3.5 mr-1.5" />
+            ) : (
+              <Eye className="w-3.5 h-3.5 mr-1.5" />
+            )}
+            {showInternalPrices ? "Sembunyikan harga internal" : "Tampilkan harga internal"}
+          </Button>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             <Input
@@ -478,11 +504,15 @@ export default function Products() {
                   <th className="px-3 py-2 font-medium">Kode Product</th>
                   <th className="px-3 py-2 font-medium">Nama Barang</th>
                   <th className="px-3 py-2 font-medium text-right">Harga Pricelist</th>
-                  <th className="px-3 py-2 font-medium text-right">Harga Silver</th>
-                  <th className="px-3 py-2 font-medium text-right">Harga Gold</th>
-                  <th className="px-3 py-2 font-medium text-right">Harga Platinum</th>
-                  <th className="px-3 py-2 font-medium text-right">Harga Reseller</th>
-                  <th className="px-3 py-2 font-medium text-right">Harga Distributor</th>
+                  {showInternalPrices && (
+                    <>
+                      <th className="px-3 py-2 font-medium text-right">Harga Silver</th>
+                      <th className="px-3 py-2 font-medium text-right">Harga Gold</th>
+                      <th className="px-3 py-2 font-medium text-right">Harga Platinum</th>
+                      <th className="px-3 py-2 font-medium text-right">Harga Reseller</th>
+                      <th className="px-3 py-2 font-medium text-right">Harga Distributor</th>
+                    </>
+                  )}
                   <th className="px-3 py-2 font-medium">Link Website</th>
                   <th className="px-3 py-2 font-medium">Link Video</th>
                   <th className="px-3 py-2 font-medium w-20"></th>
@@ -518,11 +548,15 @@ export default function Products() {
                     <td className="px-3 py-2 text-right font-semibold text-primary">
                       {formatIDR(p.price)}
                     </td>
-                    <td className="px-3 py-2 text-right">{formatIDR(p.priceSilver)}</td>
-                    <td className="px-3 py-2 text-right">{formatIDR(p.priceGold)}</td>
-                    <td className="px-3 py-2 text-right">{formatIDR(p.pricePlatinum)}</td>
-                    <td className="px-3 py-2 text-right">{formatIDR(p.priceReseller)}</td>
-                    <td className="px-3 py-2 text-right">{formatIDR(p.priceDistributor)}</td>
+                    {showInternalPrices && (
+                      <>
+                        <td className="px-3 py-2 text-right">{formatIDR(p.priceSilver)}</td>
+                        <td className="px-3 py-2 text-right">{formatIDR(p.priceGold)}</td>
+                        <td className="px-3 py-2 text-right">{formatIDR(p.pricePlatinum)}</td>
+                        <td className="px-3 py-2 text-right">{formatIDR(p.priceReseller)}</td>
+                        <td className="px-3 py-2 text-right">{formatIDR(p.priceDistributor)}</td>
+                      </>
+                    )}
                     <td className="px-3 py-2">
                       {p.productUrl ? (
                         <a
