@@ -89,7 +89,7 @@ function defaultSettingsResponse() {
 
 router.get("/", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res.json(defaultSettingsResponse());
     }
@@ -106,7 +106,7 @@ router.put("/", async (req, res) => {
     const parsed = UpdateSettingsBody.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)

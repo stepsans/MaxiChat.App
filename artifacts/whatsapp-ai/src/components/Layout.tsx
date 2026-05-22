@@ -13,8 +13,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CircleDashed,
+  LogOut,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -24,8 +26,11 @@ import {
 import {
   useGetWhatsappStatus,
   useListChats,
+  useLogout,
   getGetWhatsappStatusQueryKey,
   getListChatsQueryKey,
+  getGetMeQueryKey,
+  type AuthUser,
 } from "@workspace/api-client-react";
 
 const navItems = [
@@ -124,11 +129,28 @@ function StatusBadge({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-const SIDEBAR_STORAGE_KEY = "maxipro:sidebar-collapsed";
+const SIDEBAR_STORAGE_KEY = "vjchat:sidebar-collapsed";
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({
+  children,
+  user,
+}: {
+  children: React.ReactNode;
+  user?: AuthUser;
+}) {
   const [location] = useLocation();
   const totalUnread = useUnreadCount();
+  const queryClient = useQueryClient();
+  const logoutMut = useLogout({
+    mutation: {
+      onSettled: async () => {
+        // Drop all cached per-user data so the next signed-in user can't
+        // briefly see the previous user's chats / products / etc.
+        await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        queryClient.clear();
+      },
+    },
+  });
 
   // Persist collapse state across reloads so the user's preference sticks.
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -166,7 +188,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <SiWhatsapp className="w-4 h-4 text-white" />
               </div>
               <span className="text-sm font-semibold text-foreground tracking-tight truncate">
-                Maxipro.co.id
+                VJ-Chat
               </span>
             </div>
           )}
@@ -261,6 +283,47 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         >
           <StatusBadge collapsed={collapsed} />
         </div>
+
+        {/* Account: email + logout */}
+        {user && (
+          <div
+            className={cn(
+              "border-t border-border flex items-center",
+              collapsed ? "px-2 py-3 justify-center" : "px-3 py-2 gap-2"
+            )}
+          >
+            {!collapsed && (
+              <div
+                className="flex-1 min-w-0 text-[11px] leading-tight"
+                data-testid="account-email"
+              >
+                <div className="text-foreground/60">Masuk sebagai</div>
+                <div className="font-medium truncate text-foreground/90">
+                  {user.email}
+                </div>
+              </div>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  data-testid="button-logout"
+                  aria-label="Keluar"
+                  disabled={logoutMut.isPending}
+                  onClick={() => logoutMut.mutate()}
+                  className="flex items-center justify-center w-8 h-8 rounded-md text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-60"
+                >
+                  {logoutMut.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <LogOut className="w-4 h-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Keluar</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </aside>
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">

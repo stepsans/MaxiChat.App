@@ -396,6 +396,21 @@ export interface WhatsappStatusAuthor {
   statuses: WhatsappStatus2[];
 }
 
+export interface AuthUser {
+  id: number;
+  email: string;
+}
+
+export interface AuthMeResponse {
+  user: AuthUser | null;
+}
+
+export interface LoginInput {
+  email: string;
+  /** @minLength 1 */
+  password: string;
+}
+
 export interface TextShortcut {
   id: number;
   shortcut: string;

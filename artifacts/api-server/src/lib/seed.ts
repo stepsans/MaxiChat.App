@@ -1,0 +1,201 @@
+import fs from "node:fs";
+import path from "node:path";
+import bcrypt from "bcryptjs";
+import { eq, sql } from "drizzle-orm";
+import {
+  db,
+  usersTable,
+  userWhatsappTable,
+  whatsappSessionTable,
+} from "@workspace/db";
+import { logger } from "./logger";
+
+// Fixed allowlist — only these three accounts may sign in. Passwords are
+// hashed at startup; bcrypt comparison is constant-time per-hash so plain
+// equality of the cleartext password between accounts is fine.
+const SEED_USERS: ReadonlyArray<{
+  email: string;
+  password: string;
+  ownerPhone?: string;
+}> = [
+  {
+    email: "stephensan86@gmail.com",
+    password: "AdminMaxipro$",
+    // Pre-existing data (628111198000) belongs to this user; we pin the
+    // mapping so they keep ownership across the auth migration.
+    ownerPhone: "628111198000",
+  },
+  { email: "jc171088@gmail.com", password: "AdminMaxipro$" },
+  { email: "test@maxipro.co.id", password: "AdminMaxipro$" },
+];
+
+const AUTH_ROOT = path.join(process.cwd(), ".whatsapp-auth");
+
+// One-time migration: the pre-auth code kept Baileys creds at
+// `.whatsapp-auth/*`. After auth, each user gets their own subdir
+// `.whatsapp-auth/<userId>/`. If the legacy files are still at the root and
+// Stephen has no per-user dir yet, move them in.
+function migrateLegacyAuthDir(userId: number): void {
+  try {
+    if (!fs.existsSync(AUTH_ROOT)) return;
+    const userDir = path.join(AUTH_ROOT, String(userId));
+    if (fs.existsSync(userDir)) return; // Already migrated.
+    const entries = fs
+      .readdirSync(AUTH_ROOT, { withFileTypes: true })
+      .filter(
+        (e) =>
+          e.isFile() ||
+          // Any directory whose name isn't a numeric user id (pre-existing
+          // Baileys subdirs like "session-*" etc).
+          (e.isDirectory() && !/^\d+$/.test(e.name))
+      );
+    if (entries.length === 0) return;
+    fs.mkdirSync(userDir, { recursive: true });
+    for (const e of entries) {
+      fs.renameSync(path.join(AUTH_ROOT, e.name), path.join(userDir, e.name));
+    }
+    logger.info(
+      { userId, moved: entries.length },
+      "Migrated legacy WhatsApp auth dir to per-user subdir"
+    );
+  } catch (err) {
+    logger.error(
+      { err, userId },
+      "Failed to migrate legacy WhatsApp auth dir; manual cleanup may be needed"
+    );
+  }
+}
+
+export async function runSeed(): Promise<void> {
+  // Must run before any request hits the session middleware, since the
+  // express-session store assumes the table exists.
+  await ensureSessionTable();
+  await ensureWhatsappSessionUniqueUser();
+
+  const userIdsByEmail = new Map<string, number>();
+  for (const seed of SEED_USERS) {
+    const passwordHash = await bcrypt.hash(seed.password, 12);
+    // Upsert the user; if they already exist, refresh the password hash so a
+    // password change in code propagates without manual DB edits.
+    const [row] = await db
+      .insert(usersTable)
+      .values({ email: seed.email, passwordHash })
+      .onConflictDoUpdate({
+        target: usersTable.email,
+        set: { passwordHash },
+      })
+      .returning();
+    userIdsByEmail.set(seed.email, row.id);
+  }
+
+  // Pin Stephen to the pre-existing WhatsApp number so historical data stays
+  // with him. Other users start unmapped; their phone is recorded the first
+  // time they pair a device.
+  const stephen = SEED_USERS.find((u) => u.ownerPhone);
+  if (stephen) {
+    const userId = userIdsByEmail.get(stephen.email)!;
+    await db
+      .insert(userWhatsappTable)
+      .values({ userId, ownerPhone: stephen.ownerPhone! })
+      .onConflictDoNothing({ target: userWhatsappTable.userId });
+
+    // Backfill any pre-auth whatsapp_session row that has no userId set yet.
+    await db
+      .update(whatsappSessionTable)
+      .set({ userId })
+      .where(sql`${whatsappSessionTable.userId} IS NULL`);
+
+    migrateLegacyAuthDir(userId);
+  }
+
+  logger.info(
+    { users: userIdsByEmail.size },
+    "Auth seed complete"
+  );
+}
+
+// connect-pg-simple ships a `table.sql` it reads at runtime when
+// `createTableIfMissing: true`. esbuild bundles the JS but not the .sql, so
+// in production builds that auto-create fails with ENOENT. We create the
+// table ourselves at boot using the upstream schema (verbatim) and then turn
+// `createTableIfMissing` off.
+// Source: https://github.com/voxpelli/node-connect-pg-simple/blob/main/table.sql
+export async function ensureSessionTable(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "user_sessions" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL
+    ) WITH (OIDS=FALSE);
+  `);
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'user_sessions_pkey'
+      ) THEN
+        ALTER TABLE "user_sessions"
+          ADD CONSTRAINT "user_sessions_pkey"
+          PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+      END IF;
+    END $$;
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire"
+      ON "user_sessions" ("expire");
+  `);
+}
+
+// Enforce "one whatsapp_session row per user" at the DB layer so concurrent
+// `getOrCreateSession()` calls can't race into duplicate rows. We dedupe
+// any pre-existing duplicates first (keep the lowest id per user) so index
+// creation can't fail.
+//
+// We use a NON-partial unique index because `ON CONFLICT (user_id)` will
+// only match an index whose predicate is provably true for the inserted
+// row, and Drizzle's onConflictDoUpdate API doesn't expose a way to attach
+// the WHERE clause. Postgres treats NULLs as distinct in a regular unique
+// index, so the legacy null-userId case (if any survives) still inserts.
+export async function ensureWhatsappSessionUniqueUser(): Promise<void> {
+  await db.execute(sql`
+    DELETE FROM "whatsapp_session" a
+    USING "whatsapp_session" b
+    WHERE a.user_id IS NOT NULL
+      AND a.user_id = b.user_id
+      AND a.id > b.id;
+  `);
+  // Drop the older partial index if a prior boot installed it.
+  await db.execute(sql`
+    DROP INDEX IF EXISTS "whatsapp_session_user_id_unique";
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_session_user_id_key"
+      ON "whatsapp_session" ("user_id");
+  `);
+}
+
+// Helper used elsewhere — resolve a user's pinned WhatsApp owner phone, if any.
+export async function getOwnerPhoneForUser(
+  userId: number
+): Promise<string | null> {
+  const [row] = await db
+    .select()
+    .from(userWhatsappTable)
+    .where(eq(userWhatsappTable.userId, userId))
+    .limit(1);
+  return row?.ownerPhone ?? null;
+}
+
+// Helper used by whatsapp.ts when a user finishes pairing — persist the
+// userId↔ownerPhone binding (or update it if they re-paired a new number).
+export async function setOwnerPhoneForUser(
+  userId: number,
+  ownerPhone: string
+): Promise<void> {
+  await db
+    .insert(userWhatsappTable)
+    .values({ userId, ownerPhone })
+    .onConflictDoUpdate({
+      target: userWhatsappTable.userId,
+      set: { ownerPhone, updatedAt: new Date() },
+    });
+}

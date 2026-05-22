@@ -11,7 +11,7 @@ function rowToDto(r: typeof textShortcutsTable.$inferSelect) {
 
 router.get("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.json([]);
       return;
@@ -30,7 +30,7 @@ router.get("/", async (req, res): Promise<void> => {
 
 router.post("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;
@@ -67,7 +67,7 @@ router.post("/", async (req, res): Promise<void> => {
 
 router.put("/:id", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;
@@ -111,7 +111,7 @@ router.put("/:id", async (req, res): Promise<void> => {
 
 router.delete("/:id", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;

@@ -125,7 +125,7 @@ function bodyToInsert(b: z.infer<typeof ProductBody>) {
 
 router.get("/", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) return res.json([]);
     const rows = await db
       .select()
@@ -145,7 +145,7 @@ router.post("/", async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -179,7 +179,7 @@ router.put("/:id", async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -211,7 +211,7 @@ router.delete("/:id", async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: "Invalid id" });
     }
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -289,7 +289,7 @@ function rowToCsvField(v: unknown): string {
 
 router.get("/export.csv", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -321,7 +321,7 @@ router.get("/export.csv", async (req, res) => {
 
 router.get("/export.xlsx", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -505,7 +505,7 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
   }
   productImportInFlight = true;
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)

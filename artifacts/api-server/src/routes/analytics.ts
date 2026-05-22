@@ -11,7 +11,7 @@ router.get("/summary", async (req, res) => {
     // Per-phone isolation: when disconnected, every counter is zero — the
     // dashboard for "nobody logged in" must not show another account's
     // numbers. Once a phone connects, only its own data is aggregated.
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res.json({
         totalChats: 0,
@@ -76,7 +76,7 @@ router.get("/summary", async (req, res) => {
 router.get("/common-questions", async (req, res) => {
   try {
     // Scope keyword counting to the current account's inbound messages only.
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res.json([
         { question: "Pertanyaan harga", count: 0 },

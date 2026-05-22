@@ -7,6 +7,8 @@
  */
 
 export * from './analyticsSummary';
+export * from './authMeResponse';
+export * from './authUser';
 export * from './chat';
 export * from './chatMessage';
 export * from './chatMessageDirection';
@@ -39,6 +41,7 @@ export * from './knowledgeUpdate';
 export * from './listChatsParams';
 export * from './listChatsStatus';
 export * from './listChatsTag';
+export * from './loginInput';
 export * from './manualReplyInput';
 export * from './postStatusInput';
 export * from './product';

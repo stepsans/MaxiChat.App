@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
+import { runSeed } from "./lib/seed";
 
 const rawPort = process.env["PORT"];
 
@@ -16,13 +17,30 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
+// Run startup seeding (session table, user upserts, legacy auth migration)
+// BEFORE binding the port. If the session table doesn't exist yet, any
+// request that hits the express-session middleware will fail — so we must
+// not accept traffic until seed has finished. Fail-fast on seed errors.
+async function main(): Promise<void> {
+  try {
+    await runSeed();
+  } catch (e) {
+    logger.error({ err: e }, "Fatal: runSeed() failed; aborting startup");
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
+  app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+    logger.info({ port }, "Server listening");
+    // Baileys reconnects happen after the server is up so any per-user
+    // pairing UI is immediately reachable.
+    initWhatsapp().catch((e) =>
+      logger.error({ err: e }, "initWhatsapp failed (non-fatal)")
+    );
+  });
+}
 
-  initWhatsapp().catch((e) => logger.error({ err: e }, "Failed to auto-init WhatsApp"));
-});
+main();

@@ -59,7 +59,7 @@ export async function ensureKnowledgeTypesSeed(ownerPhone: string): Promise<void
 
 router.get("/", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) return res.json([]);
     await ensureKnowledgeTypesSeed(ownerPhone);
     const rows = await db
@@ -80,7 +80,7 @@ router.post("/", async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -113,7 +113,7 @@ router.delete("/:id", async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: "Invalid id" });
     }
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)

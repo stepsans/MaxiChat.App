@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type makeWASocketType from "@whiskeysockets/baileys";
 import qrcode from "qrcode";
 import path from "path";
@@ -17,9 +17,58 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { logger } from "../lib/logger";
+import {
+  getOwnerPhoneForUser,
+  setOwnerPhoneForUser,
+} from "../lib/seed";
 
-const AUTH_DIR = path.join(process.cwd(), ".whatsapp-auth");
+const AUTH_ROOT = path.join(process.cwd(), ".whatsapp-auth");
 export const MEDIA_DIR = path.join(process.cwd(), "media");
+
+// Per-user auth state dir. Pairing creds live here; wiping the dir forces a
+// fresh QR pairing. Kept under one root so we can scope IO per user without
+// re-architecting Baileys' file-based auth helpers.
+function authDirForUser(userId: number): string {
+  return path.join(AUTH_ROOT, String(userId));
+}
+
+type WASocket = Awaited<ReturnType<typeof makeWASocketType>>;
+
+// Everything that used to be module-level singleton state (`sock`,
+// `isConnecting`, `sessionEpoch`, `currentOwnerPhone`) is now per-user so
+// every signed-in account can hold its OWN live WhatsApp connection in
+// parallel without the accounts crossing wires.
+interface UserCtx {
+  sock: WASocket | null;
+  isConnecting: boolean;
+  // Bumped on disconnect/reset. Event handlers capture the epoch at attach
+  // time and refuse to persist if the per-user epoch has moved on — this
+  // prevents stale in-flight messages.upsert / messaging-history.set
+  // callbacks from a torn-down socket reinserting chats after /disconnect.
+  epoch: number;
+  // Digits-only phone of THIS user's currently linked WA account.
+  ownerPhone: string | null;
+}
+
+const userCtxs = new Map<number, UserCtx>();
+
+function getCtx(userId: number): UserCtx {
+  let c = userCtxs.get(userId);
+  if (!c) {
+    c = { sock: null, isConnecting: false, epoch: 0, ownerPhone: null };
+    userCtxs.set(userId, c);
+  }
+  return c;
+}
+
+// Convenience for route handlers — session middleware guarantees userId is set.
+function requireUserId(req: Request): number {
+  const id = req.session?.userId;
+  if (typeof id !== "number") {
+    throw new Error("Unauthenticated request reached WhatsApp router");
+  }
+  return id;
+}
 
 async function ensureMediaDir() {
   try {
@@ -42,8 +91,32 @@ async function saveBufferToMedia(
   return { url: `/api/media/${filename}`, filename: preferredFilename ?? filename };
 }
 
-export function getActiveSocket(): WASocket | null {
-  return sock;
+export function getActiveSocket(userId: number): WASocket | null {
+  return getCtx(userId).sock;
+}
+
+// Baileys' sock.user.id looks like "628111…:7@s.whatsapp.net" — strip every
+// non-digit to canonicalise. Returns null for empty / null input.
+function normalizeOwnerPhone(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const digits = String(input).replace(/[^0-9]/g, "");
+  return digits.length ? digits : null;
+}
+
+/**
+ * Returns the digits-only phone number of the WhatsApp account currently
+ * linked by `userId`, or null if that user has not paired yet. Source of
+ * truth is the `user_whatsapp` mapping table (persisted on first pairing);
+ * we cache it on the in-memory ctx to keep the hot path off the DB.
+ */
+export async function getCurrentOwnerPhone(
+  userId: number
+): Promise<string | null> {
+  const ctx = getCtx(userId);
+  if (ctx.ownerPhone) return ctx.ownerPhone;
+  const phone = await getOwnerPhoneForUser(userId);
+  if (phone) ctx.ownerPhone = phone;
+  return phone;
 }
 
 // Fetch a contact's WhatsApp profile picture URL via Baileys and cache it on
@@ -56,6 +129,7 @@ const PROFILE_PIC_TTL_MS = 6 * 60 * 60 * 1000;
 const profilePicInFlight = new Set<number>();
 
 export async function refreshChatProfilePic(
+  userId: number,
   chat: {
     id: number;
     ownerPhone: string;
@@ -64,7 +138,8 @@ export async function refreshChatProfilePic(
   },
   opts: { force?: boolean } = {}
 ): Promise<string | null> {
-  if (!sock) return null;
+  const ctx = getCtx(userId);
+  if (!ctx.sock) return null;
   if (profilePicInFlight.has(chat.id)) return null;
   if (
     !opts.force &&
@@ -74,10 +149,9 @@ export async function refreshChatProfilePic(
     return null;
   }
   // Re-verify that the chat still belongs to the currently-connected account
-  // before talking to Baileys. Prevents a refresh task spawned under account
-  // A from running its network call once the user has paired account B.
-  const currentOwner = await getCurrentOwnerPhone();
-  if (!currentOwner || currentOwner !== chat.ownerPhone) return null;
+  // for this user before talking to Baileys. Prevents a refresh task spawned
+  // under account A from running its network call once the user has paired B.
+  if (!ctx.ownerPhone || ctx.ownerPhone !== chat.ownerPhone) return null;
 
   // Reconstruct a JID from our stored phone number. Group rows already store
   // the full "<id>@g.us" JID; DMs store "+<digits>".
@@ -91,7 +165,7 @@ export async function refreshChatProfilePic(
   }
   profilePicInFlight.add(chat.id);
   try {
-    const url = (await sock.profilePictureUrl(jid, "image").catch(() => null)) ?? null;
+    const url = (await ctx.sock.profilePictureUrl(jid, "image").catch(() => null)) ?? null;
     // Owner-atomic write: the WHERE clause re-checks ownerPhone so a refresh
     // task started under the old account can never overwrite a row that has
     // since been reassigned to a different ownerPhone.
@@ -118,6 +192,7 @@ export async function refreshChatProfilePic(
 }
 
 export async function sendMediaToJid(
+  userId: number,
   jid: string,
   filepath: string,
   mimeType: string,
@@ -125,6 +200,7 @@ export async function sendMediaToJid(
   caption?: string,
   filename?: string
 ): Promise<string | null> {
+  const sock = getCtx(userId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   const buffer = await fs.readFile(filepath);
   let sent;
@@ -152,10 +228,12 @@ export async function sendMediaToJid(
 const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Parse and persist an incoming status broadcast. Called from messages.upsert
-// when key.remoteJid === "status@broadcast". Mirrors parseWaMessage's media
-// download flow but stores into whatsapp_statuses instead of chat_messages.
+// when key.remoteJid === "status@broadcast". ownerJid is passed in (rather
+// than read from the singleton sock) so we keep this helper independent of
+// any per-user state.
 async function persistWaStatus(
   ownerPhone: string,
+  ownerJid: string,
   msg: any,
   downloadMediaMessage: any,
   downloadMedia: boolean
@@ -165,7 +243,6 @@ async function persistWaStatus(
   const authorJid: string | undefined = msg.key?.participant ?? msg.participant;
   const fromMe = !!msg.key?.fromMe;
   if (!authorJid && !fromMe) return;
-  const ownerJid = sock?.user?.id ?? "";
   const effectiveAuthorJid = authorJid ?? ownerJid;
   const authorPhoneDigits = effectiveAuthorJid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
   if (!authorPhoneDigits) return;
@@ -196,7 +273,6 @@ async function persistWaStatus(
     textContent = inner.extendedTextMessage.text ?? "";
     const bgColor = inner.extendedTextMessage.backgroundArgb;
     if (typeof bgColor === "number") {
-      // Convert ARGB int to "#rrggbb"
       const r = (bgColor >> 16) & 0xff;
       const g = (bgColor >> 8) & 0xff;
       const b = bgColor & 0xff;
@@ -239,7 +315,6 @@ async function persistWaStatus(
     }
   }
 
-  // Author display name: prefer pushName, then existing chat row, then digits.
   let authorName = msg.pushName?.trim() || "";
   if (!authorName) {
     const rows = await db
@@ -279,15 +354,15 @@ async function persistWaStatus(
     });
 }
 
-// Post a text status broadcast from the connected account. Audience defaults
-// to every contact whose chat we have (mirrors WA's "My contacts" default).
+// Post a text status broadcast from the connected account.
 export async function postTextStatus(
+  userId: number,
   ownerPhone: string,
   text: string,
   backgroundColor: string
 ): Promise<typeof whatsappStatusesTable.$inferSelect> {
+  const sock = getCtx(userId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
-  // Derive audience JIDs from existing DM chats for the current owner.
   const dmChats = await db
     .select({ phoneNumber: chatsTable.phoneNumber })
     .from(chatsTable)
@@ -300,7 +375,6 @@ export async function postTextStatus(
     .filter((d) => d.length >= 7)
     .map((d) => `${d}@s.whatsapp.net`);
 
-  // Convert "#rrggbb" → ARGB int with full alpha.
   const hex = backgroundColor.replace(/^#/, "");
   const argb =
     hex.length === 6
@@ -323,10 +397,6 @@ export async function postTextStatus(
   const ownerDigits = ownerJid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
   const postedAt = new Date();
   const waMessageId = sent?.key?.id ?? null;
-  // Race-safe insert: the messages.upsert hook may have already persisted
-  // this same broadcast (same waMessageId) via persistWaStatus. We must not
-  // throw on the unique (owner_phone, wa_message_id) violation — instead,
-  // accept the existing row and return it.
   const inserted = await db
     .insert(whatsappStatusesTable)
     .values({
@@ -350,7 +420,6 @@ export async function postTextStatus(
     })
     .returning();
   if (inserted[0]) return inserted[0];
-  // Conflict — read back the existing row by (ownerPhone, waMessageId).
   if (waMessageId) {
     const existing = await db
       .select()
@@ -362,13 +431,14 @@ export async function postTextStatus(
       .limit(1);
     if (existing[0]) return existing[0];
   }
-  // Should not happen, but synthesize a response rather than failing.
   throw new Error("Status sent but local row could not be persisted");
 }
 
-// Bio / About — fetch own and update own. Baileys exposes these via
-// fetchStatus(jid) → { status, setAt } and updateProfileStatus(text).
-export async function fetchOwnBio(): Promise<{ bio: string | null; setAt: string | null }> {
+// Bio / About — fetch own and update own.
+export async function fetchOwnBio(
+  userId: number
+): Promise<{ bio: string | null; setAt: string | null }> {
+  const sock = getCtx(userId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   const ownerJid = sock.user?.id;
   if (!ownerJid) throw new Error("WhatsApp user not available");
@@ -377,7 +447,6 @@ export async function fetchOwnBio(): Promise<{ bio: string | null; setAt: string
       | { status?: string | null; setAt?: Date | string | null }
       | Array<{ status?: { status?: string | null; setAt?: Date | string | null } }>
       | null;
-    // Baileys 7.x can return either the single object or an array. Normalize.
     let normalised: { status?: string | null; setAt?: Date | string | null } | null = null;
     if (Array.isArray(result)) {
       normalised = result[0]?.status ?? null;
@@ -399,19 +468,24 @@ export async function fetchOwnBio(): Promise<{ bio: string | null; setAt: string
   }
 }
 
-export async function updateOwnBio(text: string): Promise<{ bio: string; setAt: string }> {
+export async function updateOwnBio(
+  userId: number,
+  text: string
+): Promise<{ bio: string; setAt: string }> {
+  const sock = getCtx(userId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   await (sock as any).updateProfileStatus(text);
   return { bio: text, setAt: new Date().toISOString() };
 }
 
 export async function sendContactToJid(
+  userId: number,
   jid: string,
   contactName: string,
   contactPhone: string
 ): Promise<string | null> {
+  const sock = getCtx(userId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
-  // Build vCard
   const cleanPhone = contactPhone.replace(/[^\d+]/g, "");
   const waNumber = cleanPhone.startsWith("+") ? cleanPhone.slice(1) : cleanPhone;
   const vcard =
@@ -429,58 +503,22 @@ export async function sendContactToJid(
   return sent?.key?.id ?? null;
 }
 
-type WASocket = Awaited<ReturnType<typeof makeWASocketType>>;
-
-let sock: WASocket | null = null;
-let isConnecting = false;
-// Bumped on every disconnect/reset. Event handlers capture the epoch at
-// attach time and refuse to persist if the global epoch has moved on — this
-// prevents stale in-flight messages.upsert / messaging-history.set callbacks
-// from a torn-down socket reinserting chats *after* /disconnect cleared them.
-let sessionEpoch = 0;
-
-// Digits-only phone number of the currently linked WhatsApp account. Set on
-// connection.open, cleared on disconnect. Every chat/message we persist while
-// connected is scoped to this owner so different operators (scanning their
-// own QR after a logout) see ONLY their own conversations.
-let currentOwnerPhone: string | null = null;
-
-// Baileys' sock.user.id looks like "628111…:7@s.whatsapp.net" — strip every
-// non-digit to canonicalise. Returns null for empty / null input.
-function normalizeOwnerPhone(input: string | null | undefined): string | null {
-  if (!input) return null;
-  const digits = String(input).replace(/[^0-9]/g, "");
-  return digits.length ? digits : null;
-}
-
-/**
- * Returns the digits-only phone number of the WhatsApp account currently
- * linked via QR, or null if disconnected. Used by chat / analytics routes
- * to scope every read & write to the active session — without this, a new
- * operator scanning their own QR would see the previous account's chats.
- */
-export async function getCurrentOwnerPhone(): Promise<string | null> {
-  if (currentOwnerPhone) return currentOwnerPhone;
-  // Cold-start path: server restart between connect events means the
-  // module-level cache is empty even though the DB still has the row.
-  const rows = await db
-    .select({ phoneNumber: whatsappSessionTable.phoneNumber, status: whatsappSessionTable.status })
-    .from(whatsappSessionTable)
-    .limit(1);
-  if (!rows.length || rows[0].status !== "connected") return null;
-  const normalized = normalizeOwnerPhone(rows[0].phoneNumber);
-  currentOwnerPhone = normalized;
-  return normalized;
-}
-
-async function getOrCreateSession() {
-  const sessions = await db.select().from(whatsappSessionTable).limit(1);
-  if (sessions.length > 0) return sessions[0];
-  const [created] = await db
+// Fetch (or lazily create) this user's whatsapp_session row. One row per
+// user is enforced by the unique index installed in seed.ts
+// (`whatsapp_session_user_id_key`). We use an atomic upsert so concurrent
+// callers (e.g. /connect + /status polling on first login) can't race into
+// duplicate rows. `onConflictDoUpdate` with a no-op SET is required because
+// `onConflictDoNothing` returns no row when there's a conflict.
+async function getOrCreateSession(userId: number) {
+  const [row] = await db
     .insert(whatsappSessionTable)
-    .values({ status: "disconnected" })
+    .values({ userId, status: "disconnected" })
+    .onConflictDoUpdate({
+      target: whatsappSessionTable.userId,
+      set: { userId },
+    })
     .returning();
-  return created;
+  return row;
 }
 
 async function setStatus(
@@ -496,9 +534,7 @@ async function setStatus(
   return updated;
 }
 
-// Extracts pin/archive metadata from a Baileys chat object. Returns a partial
-// update set; missing keys mean "leave the column as-is". An explicit
-// pinned=0/null clears any prior pin.
+// Extracts pin/archive metadata from a Baileys chat object.
 function extractChatListMeta(
   c: Record<string, unknown>
 ): { pinnedAt?: Date | null; isArchived?: boolean } {
@@ -506,11 +542,8 @@ function extractChatListMeta(
   if (Object.prototype.hasOwnProperty.call(c, "pinned")) {
     const p = (c as { pinned?: unknown }).pinned;
     if (typeof p === "number" && p > 0) {
-      // Baileys stores pin time as unix seconds.
       meta.pinnedAt = new Date(p * 1000);
     } else if (p === 0 || p === null) {
-      // Explicit unpin signal. Skip undefined / other values to avoid
-      // false clears from partial updates.
       meta.pinnedAt = null;
     }
   }
@@ -544,9 +577,6 @@ async function getOrCreateChat(
   contactName: string,
   opts: { isLid?: boolean } = {}
 ) {
-  // True upsert keyed on (owner_phone, phone_number) so the same conversation
-  // jid can exist independently under each WhatsApp account. ON CONFLICT DO
-  // UPDATE on a no-op column returns the row.
   const isLid = !!opts.isLid;
   const [row] = await db
     .insert(chatsTable)
@@ -562,9 +592,6 @@ async function getOrCreateChat(
     })
     .onConflictDoUpdate({
       target: [chatsTable.ownerPhone, chatsTable.phoneNumber],
-      // No-op write to make ON CONFLICT return the row. Never re-set `isLid`
-      // here — once a chat has been resolved to a real phone we must not
-      // regress it back to LID on a subsequent stray message.
       set: { phoneNumber: sql`${chatsTable.phoneNumber}` },
     })
     .returning();
@@ -577,8 +604,6 @@ async function generateAiReply(
   userMessage: string
 ): Promise<string | null> {
   try {
-    // Per-owner AI persona + knowledge base. Without this scoping the AI
-    // would happily answer with another account's products and prompts.
     const settingsRows = await db
       .select()
       .from(settingsTable)
@@ -676,8 +701,6 @@ async function parseWaMessage(
   const jid: string | undefined = msg.key?.remoteJid;
   if (!jid) return null;
 
-  // Skip broadcasts, status, newsletters. Groups ARE persisted (mirroring
-  // the user's WhatsApp client) but never auto-replied to.
   if (
     jid.endsWith("@broadcast") ||
     jid.endsWith("@newsletter") ||
@@ -688,7 +711,6 @@ async function parseWaMessage(
   const isGroup = isJidGroup(jid);
   if (!isGroup && !jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@lid")) return null;
 
-  // Unwrap ephemeral / viewOnce
   let inner: any = msg.message;
   for (let i = 0; i < 5; i++) {
     const next =
@@ -700,9 +722,7 @@ async function parseWaMessage(
     inner = next;
   }
 
-  // protocolMessage = edits/deletes/key changes — not real user content, skip
   if (inner.protocolMessage || inner.senderKeyDistributionMessage || inner.messageContextInfo) {
-    // messageContextInfo alone (no payload) also has no content
     const onlyMeta =
       !inner.conversation &&
       !inner.extendedTextMessage &&
@@ -716,7 +736,6 @@ async function parseWaMessage(
     if (inner.protocolMessage || onlyMeta) return null;
   }
 
-  // Reactions, pinned messages, polls votes — telemetry, not chat content
   if (inner.reactionMessage || inner.pollUpdateMessage) return null;
 
   let messageContent: string =
@@ -786,7 +805,6 @@ async function parseWaMessage(
         };
       }
     } else {
-      // History sync: skip download to avoid hammering WA & filling disk
       media = {
         mediaType: mediaKind,
         mediaUrl: null,
@@ -804,7 +822,6 @@ async function parseWaMessage(
       mediaFilename: displayName,
     };
   } else if (inner.stickerMessage) {
-    // Stickers are images but use a placeholder so they appear in chat list
     if (!messageContent) messageContent = "🏷️ Stiker";
   } else if (inner.locationMessage || inner.liveLocationMessage) {
     const loc = inner.locationMessage ?? inner.liveLocationMessage;
@@ -820,7 +837,6 @@ async function parseWaMessage(
   }
 
   if (!messageContent.trim() && !media) {
-    // Log unknown types once so we can extend later; only for live to avoid spam
     if (downloadMedia) {
       const keys = Object.keys(inner).slice(0, 5);
       logger.info({ keys, jid }, "skip: unrecognized message body");
@@ -833,18 +849,10 @@ async function parseWaMessage(
   let pushName: string;
 
   if (isGroup) {
-    // For groups, rawNumber holds the JID id (the part before @g.us). It's
-    // used as the numeric fallback display name and lets the contactName
-    // self-heal logic detect a stale fallback name. The persist layer maps
-    // this back to the full @g.us JID for the unique storage key.
     rawNumber = jid.split("@")[0];
     const groupName = resolveGroupName ? await resolveGroupName(jid) : null;
     pushName = groupName || rawNumber;
   } else {
-    // Baileys 7.x uses LID addressing for new contacts: msg.key.remoteJid is
-    // "<lid>@lid" and msg.key.remoteJidAlt carries the actual phone
-    // "<pn>@s.whatsapp.net". Prefer the phone-side JID for deriving the
-    // displayed number so chats appear under the user's real phone.
     const remoteJidAlt: string | undefined = msg.key?.remoteJidAlt;
     const phoneJid =
       jid.endsWith("@s.whatsapp.net")
@@ -894,26 +902,17 @@ function buildPreview(messageText: string, media?: IncomingMedia): string {
 }
 
 async function persistWaMessage(
+  userId: number,
   ownerPhone: string,
   parsed: ParsedWaMessage,
   opts: { incrementUnread: boolean }
 ): Promise<{ chat: typeof chatsTable.$inferSelect; inserted: boolean }> {
-  // DMs are stored as "+<phone>"; groups use the full "<id>@g.us" JID as the
-  // unique key so they coexist with phone-keyed DMs in the same table.
   const phoneNumber = parsed.isGroup ? parsed.jid : `+${parsed.rawNumber}`;
   const contactName = parsed.pushName || parsed.rawNumber;
 
-  // Heal pre-existing rows that were stored under the LID number (before we
-  // learned to prefer remoteJidAlt). When the same conversation now resolves
-  // to a real phone, merge messages from the LID-keyed chat into the canonical
-  // phone-keyed chat (or rename if no canonical row exists yet). Run in a
-  // transaction with row-level locks so concurrent ingestion can't race
-  // between the merge update and the chat delete. Scoped to ownerPhone so
-  // one account's LID heal can't touch another account's rows.
   if (!parsed.isGroup && parsed.lidRawNumber && parsed.lidRawNumber !== parsed.rawNumber) {
     const lidPhone = `+${parsed.lidRawNumber}`;
     await db.transaction(async (tx) => {
-      // Lock both candidate rows in a deterministic order to avoid deadlocks.
       const candidates = await tx
         .select()
         .from(chatsTable)
@@ -934,7 +933,6 @@ async function persistWaMessage(
           .set({ chatId: realChat.id })
           .where(eq(chatMessagesTable.chatId, lidChat.id));
         await tx.delete(chatsTable).where(eq(chatsTable.id, lidChat.id));
-        // Mark the surviving real chat as resolved (not LID).
         await tx
           .update(chatsTable)
           .set({ isLid: false })
@@ -956,9 +954,6 @@ async function persistWaMessage(
     });
   }
 
-  // A chat is LID-only when the JID is "@lid" with no phone alt — we ended
-  // up using the LID raw digits as the phone key because we have nothing
-  // better. parseWaMessage signals this by setting rawNumber === lidRawNumber.
   const isLidChat =
     !parsed.isGroup &&
     parsed.lidRawNumber !== null &&
@@ -1004,12 +999,6 @@ async function persistWaMessage(
 
   const preview = buildPreview(parsed.messageContent, parsed.media);
 
-  // Atomic, race-safe aggregate update:
-  // - lastMessage/lastMessageAt only overwrite if THIS message is newer
-  //   than what's currently stored (handled SQL-side via CASE).
-  // - unreadCount uses SQL increment so concurrent inserts don't lose counts.
-  // - contactName fills in only when the existing name is still the bare
-  //   phone number (i.e. we never got a real pushName before).
   const ts = parsed.timestamp;
   const updateSet: Record<string, unknown> = {
     lastMessage: sql`CASE WHEN ${chatsTable.lastMessageAt} IS NULL OR ${chatsTable.lastMessageAt} < ${ts} THEN ${preview} ELSE ${chatsTable.lastMessage} END`,
@@ -1018,9 +1007,6 @@ async function persistWaMessage(
   if (opts.incrementUnread && !parsed.fromMe) {
     updateSet.unreadCount = sql`${chatsTable.unreadCount} + 1`;
   }
-  // Self-heal contactName when we initially stored the numeric fallback (raw
-  // phone digits for DMs, or the JID id for groups) and a real name later
-  // becomes available via pushName / groupMetadata.
   if (
     parsed.pushName &&
     parsed.pushName !== parsed.rawNumber &&
@@ -1030,14 +1016,14 @@ async function persistWaMessage(
   }
   await db.update(chatsTable).set(updateSet).where(eq(chatsTable.id, chat.id));
 
-  // Lazily refresh profile picture in the background. Throttled via
-  // PROFILE_PIC_TTL_MS so this is essentially a no-op for most messages.
-  void refreshChatProfilePic(chat).catch(() => {});
+  // Lazily refresh profile picture in the background via THIS user's socket.
+  void refreshChatProfilePic(userId, chat).catch(() => {});
 
   return { chat, inserted };
 }
 
 async function maybeTriggerAutoReply(
+  userId: number,
   ownerPhone: string,
   epoch: number,
   chat: typeof chatsTable.$inferSelect,
@@ -1061,25 +1047,21 @@ async function maybeTriggerAutoReply(
 
   setTimeout(async () => {
     try {
-      // Cross-session safety: if /disconnect (epoch bump) or owner change has
-      // happened during the delay, abort. Without this, a delayed reply for
-      // owner A could be sent through owner B's active socket and persisted
-      // under owner A's chat row.
-      if (epoch !== sessionEpoch) return;
-      if (currentOwnerPhone !== ownerPhone) return;
+      const ctx = getCtx(userId);
+      // Cross-session safety per THIS user: bail if disconnect (epoch bump)
+      // or owner reassignment happened during the delay.
+      if (epoch !== ctx.epoch) return;
+      if (ctx.ownerPhone !== ownerPhone) return;
 
       const aiReply = await generateAiReply(ownerPhone, chat.id, messageText);
       const replyText = aiReply ?? settings.fallbackMessage;
 
-      // Re-check after the async AI call — same reasons as above.
-      if (epoch !== sessionEpoch) return;
-      if (currentOwnerPhone !== ownerPhone) return;
+      if (epoch !== ctx.epoch) return;
+      if (ctx.ownerPhone !== ownerPhone) return;
 
-      if (sock && replyText) {
-        const sent = await sock.sendMessage(jid, { text: replyText });
+      if (ctx.sock && replyText) {
+        const sent = await ctx.sock.sendMessage(jid, { text: replyText });
 
-        // Owner-atomic writes: every mutation includes owner_phone in the
-        // WHERE so even a stray late callback can't touch another account.
         await db
           .insert(chatMessagesTable)
           .values({
@@ -1108,10 +1090,13 @@ async function maybeTriggerAutoReply(
   }, delay);
 }
 
-async function startBaileys(sessionId: number) {
-  if (isConnecting || (sock && (sock as any).ws?.readyState === 1)) return;
-  isConnecting = true;
-  const myEpoch = ++sessionEpoch;
+async function startBaileys(userId: number) {
+  const ctx = getCtx(userId);
+  if (ctx.isConnecting || (ctx.sock && (ctx.sock as any).ws?.readyState === 1)) return;
+  ctx.isConnecting = true;
+  const myEpoch = ++ctx.epoch;
+  const session = await getOrCreateSession(userId);
+  const sessionId = session.id;
 
   try {
     const {
@@ -1124,19 +1109,20 @@ async function startBaileys(sessionId: number) {
     const { Boom } = await import("@hapi/boom");
     const { default: NodeCache } = await import("node-cache");
 
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const authDir = authDirForUser(userId);
+    await fs.mkdir(authDir, { recursive: true }).catch(() => {});
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const msgRetryCounterCache = new NodeCache();
 
-    sock = makeWASocket({
+    const sock = makeWASocket({
       auth: state,
       printQRInTerminal: false,
       msgRetryCounterCache,
       logger: (await import("pino")).default({ level: "warn" }),
-      // Pull historical chats & messages on initial connect so the dashboard
-      // mirrors the user's phone, not just messages received while online.
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
     });
+    ctx.sock = sock;
 
     sock.ev.on("creds.update", saveCreds);
 
@@ -1149,16 +1135,23 @@ async function startBaileys(sessionId: number) {
       }
 
       if (connection === "open") {
-        const rawId = sock?.user?.id ?? null;
+        const rawId = sock.user?.id ?? null;
         const phoneNumber = rawId?.split(":")[0] ?? null;
-        // Cache the digits-only owner phone for cheap per-request scoping.
-        currentOwnerPhone = normalizeOwnerPhone(phoneNumber);
+        const normalised = normalizeOwnerPhone(phoneNumber);
+        ctx.ownerPhone = normalised;
+        if (normalised) {
+          // Persist the user↔phone binding so it survives restart and so
+          // every owner-scoped query for this user resolves consistently.
+          await setOwnerPhoneForUser(userId, normalised).catch((err) =>
+            logger.error({ err, userId }, "Failed to persist user_whatsapp mapping")
+          );
+        }
         await setStatus(sessionId, "connected", {
           qrCode: null,
           phoneNumber,
           connectedAt: new Date(),
         });
-        isConnecting = false;
+        ctx.isConnecting = false;
       }
 
       if (connection === "close") {
@@ -1169,23 +1162,22 @@ async function startBaileys(sessionId: number) {
           phoneNumber: null,
           connectedAt: null,
         });
-        sock = null;
-        isConnecting = false;
-        currentOwnerPhone = null;
+        ctx.sock = null;
+        ctx.isConnecting = false;
+        ctx.ownerPhone = null;
         if (shouldReconnect) {
-          setTimeout(() => startBaileys(sessionId), 3000);
+          setTimeout(() => startBaileys(userId).catch(() => {}), 3000);
         }
       }
     });
 
     const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
 
-    // Cache group subjects (network call to WhatsApp; cheap once cached).
     const groupNameCache = new Map<string, string>();
     const resolveGroupName = async (jid: string): Promise<string | null> => {
       if (groupNameCache.has(jid)) return groupNameCache.get(jid) ?? null;
       try {
-        const meta = await sock?.groupMetadata(jid);
+        const meta = await sock.groupMetadata(jid);
         const name = meta?.subject ?? null;
         if (name) groupNameCache.set(jid, name);
         return name;
@@ -1194,14 +1186,11 @@ async function startBaileys(sessionId: number) {
       }
     };
 
-    // Live messages — full processing including media download + AI auto-reply
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
-      if (myEpoch !== sessionEpoch) return; // stale handler after disconnect
-      // Snapshot owner phone: the account that owns these messages is whichever
-      // account is currently linked. Skip if we somehow get a message before
-      // connection.open has set it (shouldn't happen, but defensive).
-      const ownerPhone = currentOwnerPhone;
+      if (myEpoch !== ctx.epoch) return;
+      const ownerPhone = ctx.ownerPhone;
       if (!ownerPhone) return;
+      const ownerJid = sock.user?.id ?? "";
       logger.info(
         { type, count: messages.length, jids: messages.map((m) => m.key.remoteJid) },
         "messages.upsert received"
@@ -1210,13 +1199,9 @@ async function startBaileys(sessionId: number) {
 
       for (const msg of messages) {
         try {
-          // Re-check epoch on every iteration: a long backlog must not keep
-          // writing (and re-creating chats) after /disconnect bumps the epoch.
-          if (myEpoch !== sessionEpoch) return;
-          // Route status broadcasts to the status table instead of chats.
-          // parseWaMessage explicitly skips them so we branch first.
+          if (myEpoch !== ctx.epoch) return;
           if (msg.key?.remoteJid === "status@broadcast") {
-            await persistWaStatus(ownerPhone, msg, downloadMediaMessage, true).catch(
+            await persistWaStatus(ownerPhone, ownerJid, msg, downloadMediaMessage, true).catch(
               (err) => logger.error({ err }, "Failed to persist live status")
             );
             continue;
@@ -1229,31 +1214,27 @@ async function startBaileys(sessionId: number) {
             resolveGroupName
           );
           if (!parsed) continue;
-          if (myEpoch !== sessionEpoch) return;
+          if (myEpoch !== ctx.epoch) return;
 
-          const { chat, inserted } = await persistWaMessage(ownerPhone, parsed, {
+          const { chat, inserted } = await persistWaMessage(userId, ownerPhone, parsed, {
             incrementUnread: true,
           });
           if (!inserted) continue;
           if (parsed.fromMe) continue;
-          // Never auto-reply in groups — too noisy and unsolicited.
           if (parsed.isGroup) continue;
 
-          await maybeTriggerAutoReply(ownerPhone, myEpoch, chat, parsed.jid, parsed.messageContent);
+          await maybeTriggerAutoReply(userId, ownerPhone, myEpoch, chat, parsed.jid, parsed.messageContent);
         } catch (err) {
           logger.error({ err }, "Failed to process incoming message");
         }
       }
     });
 
-    // Historical sync — chat list + past messages from the user's phone.
-    // Fires (potentially multiple times) right after pairing while WA pushes
-    // the backlog. We persist without downloading media and without firing AI
-    // replies, so the dashboard mirrors the phone without side effects.
     sock.ev.on("messaging-history.set", async (payload) => {
-      if (myEpoch !== sessionEpoch) return; // stale handler after disconnect
-      const ownerPhone = currentOwnerPhone;
+      if (myEpoch !== ctx.epoch) return;
+      const ownerPhone = ctx.ownerPhone;
       if (!ownerPhone) return;
+      const ownerJid = sock.user?.id ?? "";
       const { chats = [], messages = [], isLatest, syncType } = payload as {
         chats?: Array<{ id: string; name?: string | null }>;
         messages?: any[];
@@ -1265,7 +1246,6 @@ async function startBaileys(sessionId: number) {
         "messaging-history.set received"
       );
 
-      // Pre-create chat rows from the chat list so empty chats still appear.
       for (const c of chats) {
         try {
           if (!c?.id) continue;
@@ -1278,15 +1258,11 @@ async function startBaileys(sessionId: number) {
           const isGroup = (isJidGroup as (j: string) => boolean)(c.id);
           let key: string;
           if (isGroup) {
-            // Groups: store full @g.us JID as key, group subject as name.
             const groupName =
               c.name?.trim() || (await resolveGroupName(c.id)) || c.id.split("@")[0];
             await getOrCreateChat(ownerPhone, c.id, groupName);
             key = c.id;
           } else {
-            // Only seed canonical phone-number DMs. LID-only entries from the
-            // history list have no phone mapping here; they'll be created with
-            // the real phone once a live message arrives (which carries remoteJidAlt).
             if (!c.id.endsWith("@s.whatsapp.net")) continue;
             const rawNumber = c.id.split("@")[0].split(":")[0];
             const phoneNumber = `+${rawNumber}`;
@@ -1303,13 +1279,9 @@ async function startBaileys(sessionId: number) {
       let ingested = 0;
       for (const msg of messages) {
         try {
-          // Backlog can be tens of thousands of messages; abort the loop if
-          // the session was disconnected mid-sync.
-          if (myEpoch !== sessionEpoch) return;
+          if (myEpoch !== ctx.epoch) return;
           if (msg.key?.remoteJid === "status@broadcast") {
-            // History statuses: persist metadata only (no media download to
-            // avoid hammering WA during initial sync).
-            await persistWaStatus(ownerPhone, msg, downloadMediaMessage, false).catch(
+            await persistWaStatus(ownerPhone, ownerJid, msg, downloadMediaMessage, false).catch(
               (err) => logger.error({ err }, "Failed to persist history status")
             );
             continue;
@@ -1322,8 +1294,8 @@ async function startBaileys(sessionId: number) {
             resolveGroupName
           );
           if (!parsed) continue;
-          if (myEpoch !== sessionEpoch) return;
-          const { inserted } = await persistWaMessage(ownerPhone, parsed, {
+          if (myEpoch !== ctx.epoch) return;
+          const { inserted } = await persistWaMessage(userId, ownerPhone, parsed, {
             incrementUnread: false,
           });
           if (inserted) ingested++;
@@ -1334,9 +1306,6 @@ async function startBaileys(sessionId: number) {
       logger.info({ ingested }, "messaging-history.set done");
     });
 
-    // Contacts metadata — populates verified/business name (nickname) and
-    // refines contactName from the user's saved phonebook entry. Fires during
-    // initial sync and whenever WA updates contact info.
     const handleContacts = async (
       contacts: Array<{
         id?: string;
@@ -1345,14 +1314,12 @@ async function startBaileys(sessionId: number) {
         verifiedName?: string | null;
       }>
     ) => {
-      if (myEpoch !== sessionEpoch) return;
-      const ownerPhone = currentOwnerPhone;
+      if (myEpoch !== ctx.epoch) return;
+      const ownerPhone = ctx.ownerPhone;
       if (!ownerPhone) return;
       for (const c of contacts) {
         try {
           if (!c?.id) continue;
-          // Only canonical phone-number contacts; LID-only contacts can't be
-          // mapped to a chat phoneNumber here.
           if (!c.id.endsWith("@s.whatsapp.net")) continue;
           const rawNumber = c.id.split("@")[0].split(":")[0];
           const phoneNumber = `+${rawNumber}`;
@@ -1361,14 +1328,9 @@ async function startBaileys(sessionId: number) {
           const pushName = c.notify?.trim() || null;
 
           const updateSet: Record<string, unknown> = {};
-          // Only touch nickname when WA explicitly sent the field. A truthy
-          // value sets it; an explicit null/empty clears any stale business
-          // name. Missing key → leave the column as-is.
           if (Object.prototype.hasOwnProperty.call(c, "verifiedName")) {
             updateSet.nickname = verifiedName;
           }
-          // Prefer saved phonebook name; fall back to pushName when current
-          // contactName is still the bare phone-number fallback.
           const preferredName = savedName || pushName;
           if (preferredName) {
             updateSet.contactName = sql`CASE
@@ -1394,8 +1356,6 @@ async function startBaileys(sessionId: number) {
     sock.ev.on("contacts.upsert", handleContacts);
     sock.ev.on("contacts.update", handleContacts);
 
-    // Chat-level metadata (pin / archive). Pin status drives sort order in
-    // the UI, so we mirror it from WhatsApp.
     const keyForChatId = (id: string): string | null => {
       if (id.endsWith("@g.us")) return id;
       if (id.endsWith("@s.whatsapp.net")) {
@@ -1404,8 +1364,8 @@ async function startBaileys(sessionId: number) {
       return null;
     };
     const handleChatMeta = async (updates: Array<{ id?: string } & Record<string, unknown>>) => {
-      if (myEpoch !== sessionEpoch) return;
-      const ownerPhone = currentOwnerPhone;
+      if (myEpoch !== ctx.epoch) return;
+      const ownerPhone = ctx.ownerPhone;
       if (!ownerPhone) return;
       for (const c of updates) {
         try {
@@ -1421,7 +1381,8 @@ async function startBaileys(sessionId: number) {
     sock.ev.on("chats.upsert", handleChatMeta);
     sock.ev.on("chats.update", handleChatMeta);
   } catch (err) {
-    isConnecting = false;
+    ctx.isConnecting = false;
+    ctx.sock = null;
     await setStatus(sessionId, "disconnected");
     throw err;
   }
@@ -1429,13 +1390,7 @@ async function startBaileys(sessionId: number) {
 
 export async function initWhatsapp() {
   try {
-    // One-shot backfill for chats stored with a LID raw number as the phone
-    // key (pre-`is_lid` data). Heuristic: DM (not "@g.us"), digit count > 15
-    // (E.164 max is 15 — anything longer cannot be a real phone), and
-    // contactName is still the bare digits — i.e. we never got a real
-    // pushName/verifiedName. Also re-clear is_lid for rows that no longer
-    // look like LIDs (e.g. someone got a real name) so the flag self-heals.
-    // Safe to re-run; idempotent.
+    // Idempotent is_lid backfill (unchanged from pre-auth behavior).
     try {
       const setRes = await db.execute(sql`
         UPDATE chats
@@ -1445,10 +1400,6 @@ export async function initWhatsapp() {
            AND LENGTH(REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g')) >= 15
            AND (contact_name = SUBSTRING(phone_number FROM 2) OR contact_name IS NULL)
       `);
-      // Clear is_lid when the row no longer matches the LID profile. True
-      // inverse of the SET predicate so the column is fully self-healing:
-      // any row that has since acquired a real contact_name (or has a
-      // nickname, or is a group, or has a normal-length phone) gets cleared.
       const clearRes = await db.execute(sql`
         UPDATE chats
            SET is_lid = FALSE
@@ -1471,10 +1422,22 @@ export async function initWhatsapp() {
       logger.warn({ err }, "is_lid backfill failed (non-fatal)");
     }
 
-    const session = await getOrCreateSession();
-    if (session.status === "connected" || session.status === "connecting" || session.status === "qr_ready") {
-      await setStatus(session.id, "connecting");
-      startBaileys(session.id).catch(() => {});
+    // Auto-reconnect each user that was previously connected. We do NOT
+    // start a session for users who have never paired — they have to hit
+    // /connect from the UI first (which produces a QR).
+    const rows = await db
+      .select()
+      .from(whatsappSessionTable)
+      .where(
+        sql`${whatsappSessionTable.userId} IS NOT NULL
+            AND ${whatsappSessionTable.status} IN ('connected', 'connecting', 'qr_ready')`
+      );
+    for (const row of rows) {
+      if (row.userId == null) continue;
+      await setStatus(row.id, "connecting");
+      startBaileys(row.userId).catch((err) =>
+        logger.error({ err, userId: row.userId }, "Auto-reconnect failed")
+      );
     }
   } catch {
   }
@@ -1484,7 +1447,8 @@ const router = Router();
 
 router.get("/status", async (req, res) => {
   try {
-    const session = await getOrCreateSession();
+    const userId = requireUserId(req);
+    const session = await getOrCreateSession(userId);
     res.json({
       status: session.status,
       qrCode: session.qrCode ?? null,
@@ -1499,7 +1463,8 @@ router.get("/status", async (req, res) => {
 
 router.post("/connect", async (req, res) => {
   try {
-    const session = await getOrCreateSession();
+    const userId = requireUserId(req);
+    const session = await getOrCreateSession(userId);
     if (session.status === "connected") {
       return res.json({
         status: session.status,
@@ -1509,7 +1474,7 @@ router.post("/connect", async (req, res) => {
       });
     }
     await setStatus(session.id, "connecting");
-    startBaileys(session.id).catch((err) =>
+    startBaileys(userId).catch((err) =>
       req.log.error({ err }, "Baileys start failed")
     );
     res.json({ status: "connecting", qrCode: null, phoneNumber: null, connectedAt: null });
@@ -1521,12 +1486,13 @@ router.post("/connect", async (req, res) => {
 
 router.get("/profile/bio", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const userId = requireUserId(req);
+    const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;
     }
-    const result = await fetchOwnBio();
+    const result = await fetchOwnBio(userId);
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to fetch own bio");
@@ -1536,7 +1502,8 @@ router.get("/profile/bio", async (req, res): Promise<void> => {
 
 router.put("/profile/bio", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const userId = requireUserId(req);
+    const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;
@@ -1546,7 +1513,7 @@ router.put("/profile/bio", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Bio must be 1-139 characters" });
       return;
     }
-    const result = await updateOwnBio(bio);
+    const result = await updateOwnBio(userId, bio);
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to update own bio");
@@ -1556,37 +1523,36 @@ router.put("/profile/bio", async (req, res): Promise<void> => {
 
 router.post("/disconnect", async (req, res) => {
   try {
-    // Bump epoch FIRST so any in-flight handler callbacks abort before they
-    // try to persist into chats we're about to clear.
-    sessionEpoch++;
-    if (sock) {
+    const userId = requireUserId(req);
+    const ctx = getCtx(userId);
+    // Bump THIS user's epoch FIRST so any in-flight handler callbacks abort
+    // before they try to persist into chats we're about to clear.
+    ctx.epoch++;
+    if (ctx.sock) {
       try {
-        sock.ev.removeAllListeners("messages.upsert");
-        sock.ev.removeAllListeners("messaging-history.set");
-        sock.ev.removeAllListeners("connection.update");
-        sock.ev.removeAllListeners("contacts.upsert");
-        sock.ev.removeAllListeners("contacts.update");
-        sock.ev.removeAllListeners("chats.upsert");
-        sock.ev.removeAllListeners("chats.update");
+        ctx.sock.ev.removeAllListeners("messages.upsert");
+        ctx.sock.ev.removeAllListeners("messaging-history.set");
+        ctx.sock.ev.removeAllListeners("connection.update");
+        ctx.sock.ev.removeAllListeners("contacts.upsert");
+        ctx.sock.ev.removeAllListeners("contacts.update");
+        ctx.sock.ev.removeAllListeners("chats.upsert");
+        ctx.sock.ev.removeAllListeners("chats.update");
       } catch {}
-      await sock.logout().catch(() => {});
-      sock = null;
+      await ctx.sock.logout().catch(() => {});
+      ctx.sock = null;
     }
-    isConnecting = false;
-    // Wipe local auth credentials so the next /connect starts a fresh
-    // pairing flow (QR code). Without this, useMultiFileAuthState reads the
-    // now-invalidated creds.json and WhatsApp immediately rejects with
-    // DisconnectReason.loggedOut — so no QR is ever generated.
-    await fs.rm(AUTH_DIR, { recursive: true, force: true }).catch((err) => {
+    ctx.isConnecting = false;
+    // Wipe THIS user's local auth credentials so the next /connect starts
+    // a fresh pairing flow (QR). Other users' auth dirs are untouched.
+    await fs.rm(authDirForUser(userId), { recursive: true, force: true }).catch((err) => {
       req.log.warn({ err }, "Failed to wipe WhatsApp auth dir");
     });
-    // Per-phone isolation: do NOT delete chats. Each chat row is scoped by
-    // owner_phone, so once we clear the connected phone below the dashboard
-    // returns an empty list anyway. When the SAME number scans QR again,
-    // its history reappears; a DIFFERENT number sees its own clean slate
-    // and won't ever see the previous owner's messages.
-    currentOwnerPhone = null;
-    const session = await getOrCreateSession();
+    // Per-user isolation: do NOT delete chats. Each chat row is scoped by
+    // owner_phone, so once we clear this user's connected phone below the
+    // dashboard returns an empty list. When the SAME number scans QR again,
+    // its history reappears; a DIFFERENT number sees its own clean slate.
+    ctx.ownerPhone = null;
+    const session = await getOrCreateSession(userId);
     const updated = await setStatus(session.id, "disconnected", {
       qrCode: null,
       phoneNumber: null,

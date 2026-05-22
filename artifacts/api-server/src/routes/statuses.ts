@@ -9,7 +9,7 @@ const router = Router();
 // already past its 24h TTL — WhatsApp removes statuses then anyway.
 router.get("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.json([]);
       return;
@@ -105,7 +105,7 @@ router.get("/", async (req, res): Promise<void> => {
         )
         .limit(1);
       if (chatRows[0]) {
-        void refreshChatProfilePic(chatRows[0]).catch(() => {});
+        void refreshChatProfilePic(req.session.userId!, chatRows[0]).catch(() => {});
       }
     }
 
@@ -140,7 +140,7 @@ router.get("/", async (req, res): Promise<void> => {
 
 router.post("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;
@@ -154,7 +154,7 @@ router.post("/", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Status text must be 1-700 characters" });
       return;
     }
-    const row = await postTextStatus(ownerPhone, text, backgroundColor);
+    const row = await postTextStatus(req.session.userId!, ownerPhone, text, backgroundColor);
     res.json({
       id: row.id,
       statusType: row.statusType,
@@ -175,7 +175,7 @@ router.post("/", async (req, res): Promise<void> => {
 
 router.delete("/:id", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;

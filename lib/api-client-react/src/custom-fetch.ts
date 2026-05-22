@@ -360,7 +360,14 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // Send session cookies on every same-origin request so the browser-side
+  // express-session cookie ("vjchat.sid") is included automatically.
+  const response = await fetch(input, {
+    credentials: "include",
+    ...init,
+    method,
+    headers,
+  });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

@@ -63,7 +63,7 @@ function exportFilename(ext: string): string {
 
 router.get("/export.csv", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -95,7 +95,7 @@ router.get("/export.csv", async (req, res) => {
 
 router.get("/export.xlsx", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -147,7 +147,7 @@ router.get("/export.xlsx", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) return res.json([]);
     const entries = await db
       .select()
@@ -172,7 +172,7 @@ router.post("/", async (req, res) => {
     const parsed = CreateKnowledgeBody.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -203,7 +203,7 @@ router.put("/:id", async (req, res) => {
     const bodyParsed = UpdateKnowledgeBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -239,7 +239,7 @@ router.delete("/:id", async (req, res) => {
     const idParsed = DeleteKnowledgeParams.safeParse({ id: Number(req.params.id) });
     if (!idParsed.success) return res.status(400).json({ error: "Invalid id" });
 
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)
@@ -347,7 +347,7 @@ router.post("/import", upload.single("file"), async (req, res) => {
   }
   importInFlight = true;
   try {
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res
         .status(503)

@@ -304,11 +304,11 @@ function classifyMediaType(
   return "document";
 }
 
-async function jidForChat(chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
+async function jidForChat(userId: number, chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
   // Scope by current owner: a chat from another linked account must look like
   // "not found" to every route, so operators can't ever poke at someone
   // else's conversations even by guessing an id.
-  const ownerPhone = await getCurrentOwnerPhone();
+  const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return null;
   const [chat] = await db
     .select()
@@ -327,8 +327,8 @@ async function jidForChat(chatId: number): Promise<{ chat: typeof chatsTable.$in
 // belongs to the currently linked WhatsApp account. Null otherwise (which
 // every caller treats as 404 — indistinguishable from "doesn't exist"
 // to avoid leaking that another account's chat exists).
-async function loadOwnedChat(chatId: number) {
-  const ownerPhone = await getCurrentOwnerPhone();
+async function loadOwnedChat(userId: number, chatId: number) {
+  const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return null;
   const [chat] = await db
     .select()
@@ -346,7 +346,7 @@ router.get("/", async (req, res) => {
     // Per-phone isolation: when nobody is logged in, the list is empty (so
     // a freshly-opened browser before QR pairing shows no history). Once a
     // number connects, only its own chats become visible.
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       return res.json([]);
     }
@@ -380,7 +380,7 @@ router.get("/", async (req, res) => {
     // them on the next poll without blocking this response.
     for (const c of filtered) {
       if (!c.profilePicUrl) {
-        void refreshChatProfilePic(c).catch(() => {});
+        void refreshChatProfilePic(req.session.userId!, c).catch(() => {});
       }
     }
 
@@ -402,7 +402,7 @@ router.get("/:id", async (req, res) => {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
     if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
-    const chat = await loadOwnedChat(parsed.data.id);
+    const chat = await loadOwnedChat(req.session.userId!, parsed.data.id);
     if (!chat) return res.status(404).json({ error: "Chat not found" });
 
     const messages = await db
@@ -419,7 +419,7 @@ router.get("/:id", async (req, res) => {
     }
 
     if (!chat.profilePicUrl) {
-      void refreshChatProfilePic(chat).catch(() => {});
+      void refreshChatProfilePic(req.session.userId!, chat).catch(() => {});
     }
 
     res.json({
@@ -446,7 +446,7 @@ router.patch("/:id", async (req, res) => {
     const bodyParsed = UpdateChatBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
 
     const [updated] = await db
@@ -477,7 +477,7 @@ router.delete("/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid id" });
     }
 
-    const existing = await loadOwnedChat(id);
+    const existing = await loadOwnedChat(req.session.userId!, id);
     if (!existing) return res.status(404).json({ error: "Chat not found" });
 
     // Re-scope the delete itself by owner, so a session swap between the
@@ -503,7 +503,7 @@ router.post("/:id/reply", async (req, res) => {
     const bodyParsed = SendManualReplyBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const chat = await loadOwnedChat(idParsed.data.id);
+    const chat = await loadOwnedChat(req.session.userId!, idParsed.data.id);
     if (!chat) return res.status(404).json({ error: "Chat not found" });
 
     const [message] = await db
@@ -541,7 +541,7 @@ router.post("/:id/takeover", async (req, res) => {
     const bodyParsed = TakeoverChatBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const ownerPhone = await getCurrentOwnerPhone();
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
 
     const [updated] = await db
@@ -579,13 +579,13 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Missing file" });
     }
 
-    if (!getActiveSocket()) {
+    if (!getActiveSocket(req.session.userId!)) {
       // Clean up the file we just saved
       await fs.unlink(req.file.path).catch(() => {});
       return res.status(503).json({ error: "WhatsApp belum terhubung" });
     }
 
-    const target = await jidForChat(id);
+    const target = await jidForChat(req.session.userId!, id);
     if (!target) {
       await fs.unlink(req.file.path).catch(() => {});
       return res.status(404).json({ error: "Chat not found" });
@@ -599,6 +599,7 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     let waMessageId: string | null = null;
     try {
       waMessageId = await sendMediaToJid(
+        req.session.userId!,
         target.jid,
         req.file.path,
         mimeType,
@@ -674,16 +675,16 @@ router.post("/:id/contact", async (req, res) => {
       return res.status(400).json({ error: "Name and phone are required" });
     }
 
-    if (!getActiveSocket()) {
+    if (!getActiveSocket(req.session.userId!)) {
       return res.status(503).json({ error: "WhatsApp belum terhubung" });
     }
 
-    const target = await jidForChat(id);
+    const target = await jidForChat(req.session.userId!, id);
     if (!target) return res.status(404).json({ error: "Chat not found" });
 
     let waMessageId: string | null = null;
     try {
-      waMessageId = await sendContactToJid(target.jid, name, phone);
+      waMessageId = await sendContactToJid(req.session.userId!, target.jid, name, phone);
     } catch (err) {
       req.log.error({ err }, "Failed to send contact via WhatsApp");
       return res.status(500).json({ error: "Failed to send contact" });
@@ -739,11 +740,11 @@ router.post("/:id/product", async (req, res) => {
       return res.status(400).json({ error: "Invalid productId" });
     }
 
-    if (!getActiveSocket()) {
+    if (!getActiveSocket(req.session.userId!)) {
       return res.status(503).json({ error: "WhatsApp belum terhubung" });
     }
 
-    const target = await jidForChat(id);
+    const target = await jidForChat(req.session.userId!, id);
     if (!target) return res.status(404).json({ error: "Chat not found" });
 
     // Owner-scoped product lookup: an operator can only send products from
@@ -825,7 +826,7 @@ router.post("/:id/product", async (req, res) => {
 
     let waMessageId: string | null = null;
     if (imageBuffer && imageMimeType) {
-      const sock = getActiveSocket();
+      const sock = getActiveSocket(req.session.userId!);
       if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
       try {
         const sent = await sock.sendMessage(target.jid, {
@@ -843,7 +844,7 @@ router.post("/:id/product", async (req, res) => {
         return res.status(500).json({ error: "Failed to send product image" });
       }
     } else {
-      const sock = getActiveSocket();
+      const sock = getActiveSocket(req.session.userId!);
       if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
       try {
         const sent = await sock.sendMessage(target.jid, { text: caption });
@@ -884,7 +885,7 @@ router.post("/:id/product", async (req, res) => {
     //   4+) each videoUrl (text, WA renders link preview)
     // Each as its own message. 800ms throttle between sends keeps ordering
     // deterministic and gives WhatsApp time to resolve link previews.
-    const sock = getActiveSocket();
+    const sock = getActiveSocket(req.session.userId!);
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     let lastSentDescription: string | null = null;
 

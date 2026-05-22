@@ -9,6 +9,42 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Sign in with email and password
+ */
+
+
+
+export const LoginBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string().min(1)
+})
+
+export const LoginResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string().email()
+})
+
+
+/**
+ * @summary Sign out current session
+ */
+export const LogoutResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Get the currently signed in user
+ */
+export const GetMeResponse = zod.object({
+  "user": zod.union([zod.object({
+  "id": zod.number(),
+  "email": zod.string().email()
+}),zod.null()])
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
