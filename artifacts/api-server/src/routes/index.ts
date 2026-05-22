@@ -10,7 +10,8 @@ import analyticsRouter from "./analytics";
 import productsRouter from "./products";
 import statusesRouter from "./statuses";
 import shortcutsRouter from "./shortcuts";
-import { requireAuth } from "../lib/auth";
+import adminRouter from "./admin";
+import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,9 @@ router.use("/analytics", analyticsRouter);
 router.use("/products", productsRouter);
 router.use("/statuses", statusesRouter);
 router.use("/shortcuts", shortcutsRouter);
+
+// Super-admin only. requireAdmin re-checks the DB so a user demoted
+// mid-session loses admin access on their next /admin/* call.
+router.use("/admin", requireAdmin, adminRouter);
 
 export default router;

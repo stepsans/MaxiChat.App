@@ -1,0 +1,122 @@
+import { useEffect } from "react";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { Loader2, ShieldAlert, LogOut } from "lucide-react";
+import Login from "./pages/Login";
+import Users from "./pages/Users";
+import { useLogoutMutation } from "./lib/useLogoutMutation";
+
+const queryClient = new QueryClient();
+
+function Shell() {
+  const queryClientCtx = useQueryClient();
+  const { data, isLoading, isFetching, refetch } = useGetMe({
+    query: {
+      queryKey: getGetMeQueryKey(),
+      refetchInterval: 60_000,
+      retry: false,
+    },
+  });
+  const user = (data as any)?.user ?? null;
+  const logout = useLogoutMutation({
+    onSuccess: () => {
+      queryClientCtx.clear();
+      refetch();
+    },
+  });
+
+  useEffect(() => {
+    document.title = "VJ-Chat Admin";
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Memuat...
+      </div>
+    );
+  }
+
+  // Not signed in → show login form.
+  if (!user) {
+    return <Login />;
+  }
+
+  // Signed in but not admin → access denied with logout escape hatch.
+  if (user.role !== "admin") {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-sm w-full bg-card border border-border rounded-lg p-6 text-center space-y-4">
+          <div className="mx-auto w-10 h-10 rounded-full bg-destructive/15 flex items-center justify-center">
+            <ShieldAlert className="w-5 h-5 text-destructive" />
+          </div>
+          <div>
+            <h1 className="font-semibold">Akses ditolak</h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              Akun <span className="font-medium">{user.email}</span> bukan super admin.
+            </p>
+          </div>
+          <button
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            className="w-full h-9 rounded-md bg-muted text-foreground text-sm font-medium hover-elevate flex items-center justify-center gap-2"
+            data-testid="logout-button"
+          >
+            {logout.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+            Keluar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="h-14 px-4 sm:px-6 border-b border-border flex items-center justify-between bg-card">
+        <div className="flex items-center gap-3">
+          <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center">
+            VJ
+          </div>
+          <div>
+            <div className="text-sm font-semibold leading-tight">VJ-Chat Admin</div>
+            <div className="text-[11px] text-muted-foreground leading-tight">
+              Super admin
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            {user.email}
+          </span>
+          {isFetching && (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+          )}
+          <button
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+            data-testid="logout-button"
+            className="h-8 px-3 rounded-md bg-muted text-foreground text-xs font-medium flex items-center gap-1.5 hover-elevate"
+          >
+            {logout.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <LogOut className="w-3.5 h-3.5" />
+            )}
+            Keluar
+          </button>
+        </div>
+      </header>
+      <main className="flex-1 p-4 sm:p-6">
+        <Users currentUserId={user.id} />
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Shell />
+    </QueryClientProvider>
+  );
+}

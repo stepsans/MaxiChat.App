@@ -1,10 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
+import { eq } from "drizzle-orm";
+import { db, usersTable } from "@workspace/db";
 
 // Augment the session payload with the fields we set on login.
 declare module "express-session" {
   interface SessionData {
     userId?: number;
     userEmail?: string;
+    userRole?: "user" | "admin";
   }
 }
 
@@ -28,4 +31,36 @@ export function requireAuth(
     return;
   }
   next();
+}
+
+// Admin gate. Cached role on the session is the fast path; we still
+// re-check the DB as a defense in case role was revoked mid-session. Mount
+// after requireAuth.
+export async function requireAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const userId = getSessionUserId(req);
+  if (userId == null) {
+    res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+  try {
+    const [row] = await db
+      .select({ role: usersTable.role, status: usersTable.status })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    if (!row || row.status !== "active" || row.role !== "admin") {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+    // Keep the session's cached role in sync with the DB.
+    req.session.userRole = "admin";
+    next();
+  } catch (err) {
+    req.log.error({ err }, "requireAdmin DB check failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
 }

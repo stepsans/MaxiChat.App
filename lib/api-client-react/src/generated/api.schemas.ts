@@ -396,9 +396,105 @@ export interface WhatsappStatusAuthor {
   statuses: WhatsappStatus2[];
 }
 
+export type AuthUserRole = typeof AuthUserRole[keyof typeof AuthUserRole];
+
+
+export const AuthUserRole = {
+  user: 'user',
+  admin: 'admin',
+} as const;
+
+export type AuthUserStatus = typeof AuthUserStatus[keyof typeof AuthUserStatus];
+
+
+export const AuthUserStatus = {
+  pending: 'pending',
+  active: 'active',
+  disabled: 'disabled',
+} as const;
+
 export interface AuthUser {
   id: number;
   email: string;
+  role: AuthUserRole;
+  status: AuthUserStatus;
+}
+
+export interface SignupInput {
+  email: string;
+  /**
+     * @minLength 8
+     * @maxLength 200
+     */
+  password: string;
+}
+
+export type SignupResponseStatus = typeof SignupResponseStatus[keyof typeof SignupResponseStatus];
+
+
+export const SignupResponseStatus = {
+  pending: 'pending',
+} as const;
+
+export interface SignupResponse {
+  id: number;
+  email: string;
+  status: SignupResponseStatus;
+  message: string;
+}
+
+export type AdminUserRole = typeof AdminUserRole[keyof typeof AdminUserRole];
+
+
+export const AdminUserRole = {
+  user: 'user',
+  admin: 'admin',
+} as const;
+
+export type AdminUserStatus = typeof AdminUserStatus[keyof typeof AdminUserStatus];
+
+
+export const AdminUserStatus = {
+  pending: 'pending',
+  active: 'active',
+  disabled: 'disabled',
+} as const;
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  role: AdminUserRole;
+  status: AdminUserStatus;
+  createdAt: string;
+  /** @nullable */
+  approvedAt: string | null;
+  /**
+     * Linked WhatsApp number, if the user has paired a device.
+     * @nullable
+     */
+  ownerPhone: string | null;
+}
+
+export type AdminUpdateUserInputStatus = typeof AdminUpdateUserInputStatus[keyof typeof AdminUpdateUserInputStatus];
+
+
+export const AdminUpdateUserInputStatus = {
+  pending: 'pending',
+  active: 'active',
+  disabled: 'disabled',
+} as const;
+
+export type AdminUpdateUserInputRole = typeof AdminUpdateUserInputRole[keyof typeof AdminUpdateUserInputRole];
+
+
+export const AdminUpdateUserInputRole = {
+  user: 'user',
+  admin: 'admin',
+} as const;
+
+export interface AdminUpdateUserInput {
+  status?: AdminUpdateUserInputStatus;
+  role?: AdminUpdateUserInputRole;
 }
 
 export interface AuthMeResponse {

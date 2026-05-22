@@ -21,7 +21,9 @@ export const LoginBody = zod.object({
 
 export const LoginResponse = zod.object({
   "id": zod.number(),
-  "email": zod.string().email()
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled'])
 })
 
 
@@ -39,8 +41,74 @@ export const LogoutResponse = zod.object({
 export const GetMeResponse = zod.object({
   "user": zod.union([zod.object({
   "id": zod.number(),
-  "email": zod.string().email()
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled'])
 }),zod.null()])
+})
+
+
+/**
+ * @summary Self-register a new account (admin approval required before sign-in)
+ */
+export const signupBodyPasswordMin = 8;
+export const signupBodyPasswordMax = 200;
+
+
+
+export const SignupBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string().min(signupBodyPasswordMin).max(signupBodyPasswordMax)
+})
+
+
+/**
+ * @summary List all users (admin only)
+ */
+export const AdminListUsersResponseItem = zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "ownerPhone": zod.string().nullable().describe('Linked WhatsApp number, if the user has paired a device.')
+})
+export const AdminListUsersResponse = zod.array(AdminListUsersResponseItem)
+
+
+/**
+ * @summary Update a user's status or role (admin only)
+ */
+export const AdminUpdateUserParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminUpdateUserBody = zod.object({
+  "status": zod.enum(['pending', 'active', 'disabled']).optional(),
+  "role": zod.enum(['user', 'admin']).optional()
+})
+
+export const AdminUpdateUserResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "ownerPhone": zod.string().nullable().describe('Linked WhatsApp number, if the user has paired a device.')
+})
+
+
+/**
+ * @summary Delete a user permanently (admin only)
+ */
+export const AdminDeleteUserParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminDeleteUserResponse = zod.object({
+  "success": zod.boolean()
 })
 
 

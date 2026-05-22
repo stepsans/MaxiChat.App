@@ -6,15 +6,25 @@ import {
   integer,
 } from "drizzle-orm/pg-core";
 
-// Application users. Currently a fixed allowlist seeded at server startup; no
-// public signup endpoint. Passwords are stored as bcrypt hashes.
+// Application users. Self-signup is allowed but new accounts land in
+// `status = "pending"` and cannot sign in until a super admin approves them.
+// The fixed seed users (Stephen + the two test accounts) are inserted at
+// boot in `status = "active"`. Stephen is the sole `role = "admin"` and is
+// the only account that can call the /admin/* endpoints.
+//
+// status values: "pending" (awaiting admin approval), "active" (can log in),
+// "disabled" (sign-in blocked, data preserved).
+// role values:   "user" (default), "admin" (super admin).
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  role: text("role").notNull().default("user"),
+  status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
 });
 
 // Per-user binding to a WhatsApp account. The connected WhatsApp number is

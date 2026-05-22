@@ -16,17 +16,19 @@ import { logger } from "./logger";
 const SEED_USERS: ReadonlyArray<{
   email: string;
   password: string;
+  role: "admin" | "user";
   ownerPhone?: string;
 }> = [
   {
     email: "stephensan86@gmail.com",
     password: "AdminMaxipro$",
-    // Pre-existing data (628111198000) belongs to this user; we pin the
-    // mapping so they keep ownership across the auth migration.
+    // Sole super admin. Owns the pre-existing 628111198000 data (474 chats),
+    // pinned so it survives the auth migration.
+    role: "admin",
     ownerPhone: "628111198000",
   },
-  { email: "jc171088@gmail.com", password: "AdminMaxipro$" },
-  { email: "test@maxipro.co.id", password: "AdminMaxipro$" },
+  { email: "jc171088@gmail.com", password: "AdminMaxipro$", role: "user" },
+  { email: "test@maxipro.co.id", password: "AdminMaxipro$", role: "user" },
 ];
 
 const AUTH_ROOT = path.join(process.cwd(), ".whatsapp-auth");
@@ -74,18 +76,43 @@ export async function runSeed(): Promise<void> {
 
   const userIdsByEmail = new Map<string, number>();
   for (const seed of SEED_USERS) {
+    // Bootstrap-only: insert if the seed account is missing, but NEVER
+    // overwrite an existing user's password / role / status. Once the
+    // super admin has rotated their password or made admin decisions
+    // (disable/demote/delete), a server restart must not undo them.
+    const [existing] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, seed.email))
+      .limit(1);
+    if (existing) {
+      userIdsByEmail.set(seed.email, existing.id);
+      continue;
+    }
     const passwordHash = await bcrypt.hash(seed.password, 12);
-    // Upsert the user; if they already exist, refresh the password hash so a
-    // password change in code propagates without manual DB edits.
     const [row] = await db
       .insert(usersTable)
-      .values({ email: seed.email, passwordHash })
-      .onConflictDoUpdate({
-        target: usersTable.email,
-        set: { passwordHash },
+      .values({
+        email: seed.email,
+        passwordHash,
+        role: seed.role,
+        status: "active",
+        approvedAt: new Date(),
       })
+      // Defend against a concurrent insert (two boots racing) — fall back
+      // to reading the row that won.
+      .onConflictDoNothing({ target: usersTable.email })
       .returning();
-    userIdsByEmail.set(seed.email, row.id);
+    if (row) {
+      userIdsByEmail.set(seed.email, row.id);
+    } else {
+      const [winner] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, seed.email))
+        .limit(1);
+      if (winner) userIdsByEmail.set(seed.email, winner.id);
+    }
   }
 
   // Pin Stephen to the pre-existing WhatsApp number so historical data stays
