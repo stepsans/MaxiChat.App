@@ -8,6 +8,7 @@ import settingsRouter from "./settings";
 import analyticsRouter from "./analytics";
 import productsRouter from "./products";
 import statusesRouter from "./statuses";
+import shortcutsRouter from "./shortcuts";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use("/settings", settingsRouter);
 router.use("/analytics", analyticsRouter);
 router.use("/products", productsRouter);
 router.use("/statuses", statusesRouter);
+router.use("/shortcuts", shortcutsRouter);
 
 export default router;

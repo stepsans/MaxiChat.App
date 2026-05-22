@@ -48,6 +48,8 @@ export * from './settings';
 export * from './settingsUpdate';
 export * from './successResponse';
 export * from './takeoverInput';
+export * from './textShortcut';
+export * from './textShortcutInput';
 export * from './whatsappBio';
 export * from './whatsappBioInput';
 export * from './whatsappStatus';

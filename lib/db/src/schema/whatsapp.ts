@@ -7,6 +7,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -123,6 +124,29 @@ export const whatsappStatusesTable = pgTable(
 );
 
 export type WhatsappStatusRow = typeof whatsappStatusesTable.$inferSelect;
+
+// Per-owner text shortcuts (a.k.a. "text expander"). Operators type a short
+// trigger like "/almt" in the chat composer and it expands to a longer canned
+// phrase. Triggers are matched case-insensitively, so we store the shortcut
+// as-typed but enforce uniqueness on its lowercased form per owner.
+export const textShortcutsTable = pgTable(
+  "text_shortcuts",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    shortcut: text("shortcut").notNull(),
+    replacement: text("replacement").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    textShortcutsOwnerShortcutUnique: uniqueIndex(
+      "text_shortcuts_owner_shortcut_unique"
+    ).on(t.ownerPhone, sql`lower(${t.shortcut})`),
+  })
+);
+
+export type TextShortcutRow = typeof textShortcutsTable.$inferSelect;
 
 // All business-data tables below carry `ownerPhone` for per-WhatsApp-account
 // isolation. The app is multi-tenant by WhatsApp number: each operator who

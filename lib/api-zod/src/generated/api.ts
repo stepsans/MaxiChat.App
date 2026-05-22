@@ -619,6 +619,75 @@ export const DeleteStatusResponse = zod.object({
 
 
 /**
+ * @summary List text shortcuts for the connected account
+ */
+export const ListShortcutsResponseItem = zod.object({
+  "id": zod.number(),
+  "shortcut": zod.string(),
+  "replacement": zod.string()
+})
+export const ListShortcutsResponse = zod.array(ListShortcutsResponseItem)
+
+
+/**
+ * @summary Create a text shortcut
+ */
+export const createShortcutBodyShortcutMax = 64;
+
+export const createShortcutBodyReplacementMax = 4000;
+
+
+
+export const CreateShortcutBody = zod.object({
+  "shortcut": zod.string().min(1).max(createShortcutBodyShortcutMax).describe('Trigger token, e.g. \"\/almt\". Matched case-insensitively.'),
+  "replacement": zod.string().min(1).max(createShortcutBodyReplacementMax)
+})
+
+export const CreateShortcutResponse = zod.object({
+  "id": zod.number(),
+  "shortcut": zod.string(),
+  "replacement": zod.string()
+})
+
+
+/**
+ * @summary Update a text shortcut
+ */
+export const UpdateShortcutParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateShortcutBodyShortcutMax = 64;
+
+export const updateShortcutBodyReplacementMax = 4000;
+
+
+
+export const UpdateShortcutBody = zod.object({
+  "shortcut": zod.string().min(1).max(updateShortcutBodyShortcutMax).describe('Trigger token, e.g. \"\/almt\". Matched case-insensitively.'),
+  "replacement": zod.string().min(1).max(updateShortcutBodyReplacementMax)
+})
+
+export const UpdateShortcutResponse = zod.object({
+  "id": zod.number(),
+  "shortcut": zod.string(),
+  "replacement": zod.string()
+})
+
+
+/**
+ * @summary Delete a text shortcut
+ */
+export const DeleteShortcutParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteShortcutResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary Get analytics summary
  */
 export const GetAnalyticsSummaryResponse = zod.object({

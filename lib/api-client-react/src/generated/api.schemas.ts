@@ -396,6 +396,26 @@ export interface WhatsappStatusAuthor {
   statuses: WhatsappStatus2[];
 }
 
+export interface TextShortcut {
+  id: number;
+  shortcut: string;
+  replacement: string;
+}
+
+export interface TextShortcutInput {
+  /**
+     * Trigger token, e.g. "/almt". Matched case-insensitively.
+     * @minLength 1
+     * @maxLength 64
+     */
+  shortcut: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  replacement: string;
+}
+
 export interface PostStatusInput {
   /**
      * @minLength 1

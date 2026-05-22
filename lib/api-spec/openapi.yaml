@@ -758,6 +758,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
 
+  /shortcuts:
+    get:
+      operationId: listShortcuts
+      tags: [shortcuts]
+      summary: List text shortcuts for the connected account
+      responses:
+        "200":
+          description: Shortcut list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TextShortcut"
+    post:
+      operationId: createShortcut
+      tags: [shortcuts]
+      summary: Create a text shortcut
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextShortcutInput"
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextShortcut"
+
+  /shortcuts/{id}:
+    put:
+      operationId: updateShortcut
+      tags: [shortcuts]
+      summary: Update a text shortcut
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextShortcutInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextShortcut"
+    delete:
+      operationId: deleteShortcut
+      tags: [shortcuts]
+      summary: Delete a text shortcut
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
   /analytics/summary:
     get:
       operationId: getAnalyticsSummary
@@ -1240,6 +1314,31 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WhatsappStatus2"
+
+    TextShortcut:
+      type: object
+      required: [id, shortcut, replacement]
+      properties:
+        id:
+          type: integer
+        shortcut:
+          type: string
+        replacement:
+          type: string
+
+    TextShortcutInput:
+      type: object
+      required: [shortcut, replacement]
+      properties:
+        shortcut:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Trigger token, e.g. "/almt". Matched case-insensitively.
+        replacement:
+          type: string
+          minLength: 1
+          maxLength: 4000
 
     PostStatusInput:
       type: object

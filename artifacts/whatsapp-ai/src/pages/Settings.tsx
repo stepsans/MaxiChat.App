@@ -7,7 +7,13 @@ import {
   useGetWhatsappBio,
   useUpdateWhatsappBio,
   getGetWhatsappBioQueryKey,
+  useListShortcuts,
+  useCreateShortcut,
+  useUpdateShortcut,
+  useDeleteShortcut,
+  getListShortcutsQueryKey,
 } from "@workspace/api-client-react";
+import type { TextShortcut } from "@workspace/api-client-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare, User } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, User, Zap, Plus, Trash2, Pencil, X, Check } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -270,8 +276,240 @@ export default function Settings() {
         </Form>
 
         <BioCard />
+        <ShortcutsCard />
       </div>
     </div>
+  );
+}
+
+function ShortcutsCard() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { data, isLoading } = useListShortcuts({
+    query: { queryKey: getListShortcutsQueryKey() },
+  });
+  const shortcuts = (data ?? []) as TextShortcut[];
+
+  const [draftShortcut, setDraftShortcut] = useState("");
+  const [draftReplacement, setDraftReplacement] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editShortcut, setEditShortcut] = useState("");
+  const [editReplacement, setEditReplacement] = useState("");
+
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: getListShortcutsQueryKey() });
+
+  const onErr = (label: string) => (err: unknown) =>
+    toast({
+      title: label,
+      description: err instanceof Error ? err.message : "Coba lagi.",
+      variant: "destructive",
+    });
+
+  const create = useCreateShortcut({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        setDraftShortcut("");
+        setDraftReplacement("");
+        toast({ title: "Shortcut ditambahkan." });
+      },
+      onError: onErr("Gagal menambahkan shortcut"),
+    },
+  });
+  const update = useUpdateShortcut({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        setEditingId(null);
+        toast({ title: "Shortcut diperbarui." });
+      },
+      onError: onErr("Gagal memperbarui shortcut"),
+    },
+  });
+  const remove = useDeleteShortcut({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: "Shortcut dihapus." });
+      },
+      onError: onErr("Gagal menghapus shortcut"),
+    },
+  });
+
+  function normaliseShortcut(raw: string): string {
+    const t = raw.trim();
+    if (!t) return t;
+    return t.startsWith("/") ? t : "/" + t;
+  }
+
+  function startEdit(s: TextShortcut) {
+    setEditingId(s.id);
+    setEditShortcut(s.shortcut);
+    setEditReplacement(s.replacement);
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Zap className="w-4 h-4 text-primary" />
+          Shortcut / Text Expander
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Ketik kata pendek di kolom chat (mis. <code>/almt</code>) dan akan otomatis diganti dengan teks panjang. Tidak case-sensitive.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Add new row */}
+        <div className="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-2 items-start p-3 rounded-lg bg-sidebar-accent/40 border border-border">
+          <Input
+            data-testid="input-new-shortcut"
+            value={draftShortcut}
+            onChange={(e) => setDraftShortcut(e.target.value.slice(0, 64))}
+            placeholder="/almt"
+            className="font-mono text-sm"
+          />
+          <Textarea
+            data-testid="textarea-new-replacement"
+            value={draftReplacement}
+            onChange={(e) => setDraftReplacement(e.target.value.slice(0, 4000))}
+            placeholder={"Jl. Pakuwon City T12-18\nSurabaya"}
+            rows={2}
+            className="text-sm"
+          />
+          <Button
+            data-testid="button-add-shortcut"
+            size="sm"
+            onClick={() => {
+              const sc = normaliseShortcut(draftShortcut);
+              const rep = draftReplacement.trimEnd();
+              if (!sc || !rep) return;
+              create.mutate({ data: { shortcut: sc, replacement: rep } });
+            }}
+            disabled={
+              create.isPending || !draftShortcut.trim() || !draftReplacement.trim()
+            }
+            className="md:self-start gap-1.5"
+          >
+            {create.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Plus className="w-3.5 h-3.5" />
+            )}
+            Tambah
+          </Button>
+        </div>
+
+        {/* Existing rows */}
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat...
+          </div>
+        ) : shortcuts.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-4">
+            Belum ada shortcut. Tambahkan di atas.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {shortcuts.map((s) => {
+              const isEditing = editingId === s.id;
+              return (
+                <li
+                  key={s.id}
+                  data-testid={`shortcut-row-${s.id}`}
+                  className="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-2 items-start p-3 rounded-lg border border-border bg-[hsl(var(--wa-panel))]"
+                >
+                  {isEditing ? (
+                    <>
+                      <Input
+                        data-testid={`input-edit-shortcut-${s.id}`}
+                        value={editShortcut}
+                        onChange={(e) => setEditShortcut(e.target.value.slice(0, 64))}
+                        className="font-mono text-sm"
+                      />
+                      <Textarea
+                        data-testid={`textarea-edit-replacement-${s.id}`}
+                        value={editReplacement}
+                        onChange={(e) =>
+                          setEditReplacement(e.target.value.slice(0, 4000))
+                        }
+                        rows={Math.min(6, Math.max(2, editReplacement.split("\n").length))}
+                        className="text-sm"
+                      />
+                      <div className="flex gap-1 md:flex-col md:self-start">
+                        <Button
+                          data-testid={`button-save-shortcut-${s.id}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            const sc = normaliseShortcut(editShortcut);
+                            const rep = editReplacement.trimEnd();
+                            if (!sc || !rep) return;
+                            update.mutate({
+                              id: s.id,
+                              data: { shortcut: sc, replacement: rep },
+                            });
+                          }}
+                          disabled={update.isPending}
+                          className="text-primary"
+                        >
+                          {update.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          data-testid={`button-cancel-edit-${s.id}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditingId(null)}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <code className="font-mono text-sm bg-background/60 px-2 py-1.5 rounded h-fit">
+                        {s.shortcut}
+                      </code>
+                      <pre className="text-sm text-foreground whitespace-pre-wrap font-sans break-words m-0">
+                        {s.replacement}
+                      </pre>
+                      <div className="flex gap-1 md:flex-col md:self-start">
+                        <Button
+                          data-testid={`button-edit-shortcut-${s.id}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => startEdit(s)}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          data-testid={`button-delete-shortcut-${s.id}`}
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            if (confirm(`Hapus shortcut ${s.shortcut}?`)) {
+                              remove.mutate({ id: s.id });
+                            }
+                          }}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

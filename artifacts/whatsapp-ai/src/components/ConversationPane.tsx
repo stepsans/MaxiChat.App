@@ -69,6 +69,7 @@ import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
+import { useShortcutMap, expandShortcuts } from "@/lib/shortcuts";
 
 type MediaKind = "image" | "video" | "document";
 
@@ -84,6 +85,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [reply, setReply] = useState("");
+  const shortcutMap = useShortcutMap();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [pendingFileKind, setPendingFileKind] = useState<MediaKind>("document");
@@ -695,7 +697,14 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               data-testid="textarea-reply"
               placeholder="Ketik pesan"
               value={reply}
-              onChange={(e) => setReply(e.target.value)}
+              onChange={(e) => {
+                // Inline shortcut expansion: every keystroke we expand any
+                // "/token" that is now followed by whitespace. The trailing
+                // /token (no whitespace yet) is left alone until send, so the
+                // user can still finish typing it.
+                const next = expandShortcuts(e.target.value, shortcutMap, false);
+                setReply(next);
+              }}
               rows={1}
               className="w-full bg-transparent text-[15px] text-foreground placeholder:text-[hsl(var(--wa-meta))] focus:outline-none resize-none max-h-32"
               onInput={(e) => {
@@ -706,10 +715,11 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  if (reply.trim()) {
+                  const finalText = expandShortcuts(reply, shortcutMap, true).trim();
+                  if (finalText) {
                     sendReply.mutate({
                       id: chatId,
-                      data: { content: reply.trim() },
+                      data: { content: finalText },
                     });
                   }
                 }
@@ -721,8 +731,9 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
             data-testid="button-send-reply"
             type="button"
             onClick={() => {
-              if (reply.trim()) {
-                sendReply.mutate({ id: chatId, data: { content: reply.trim() } });
+              const finalText = expandShortcuts(reply, shortcutMap, true).trim();
+              if (finalText) {
+                sendReply.mutate({ id: chatId, data: { content: finalText } });
               }
             }}
             disabled={sendReply.isPending}

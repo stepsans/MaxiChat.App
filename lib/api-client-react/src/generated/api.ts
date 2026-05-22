@@ -53,6 +53,8 @@ import type {
   SettingsUpdate,
   SuccessResponse,
   TakeoverInput,
+  TextShortcut,
+  TextShortcutInput,
   WhatsappBio,
   WhatsappBioInput,
   WhatsappStatus,
@@ -2509,6 +2511,296 @@ export const useDeleteStatus = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteStatusMutationOptions(options));
+    }
+
+export const getListShortcutsUrl = () => {
+
+
+
+
+  return `/api/shortcuts`
+}
+
+/**
+ * @summary List text shortcuts for the connected account
+ */
+export const listShortcuts = async ( options?: RequestInit): Promise<TextShortcut[]> => {
+
+  return customFetch<TextShortcut[]>(getListShortcutsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListShortcutsQueryKey = () => {
+    return [
+    `/api/shortcuts`
+    ] as const;
+    }
+
+
+export const getListShortcutsQueryOptions = <TData = Awaited<ReturnType<typeof listShortcuts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShortcuts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListShortcutsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listShortcuts>>> = ({ signal }) => listShortcuts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listShortcuts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListShortcutsQueryResult = NonNullable<Awaited<ReturnType<typeof listShortcuts>>>
+export type ListShortcutsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List text shortcuts for the connected account
+ */
+
+export function useListShortcuts<TData = Awaited<ReturnType<typeof listShortcuts>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShortcuts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListShortcutsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateShortcutUrl = () => {
+
+
+
+
+  return `/api/shortcuts`
+}
+
+/**
+ * @summary Create a text shortcut
+ */
+export const createShortcut = async (textShortcutInput: TextShortcutInput, options?: RequestInit): Promise<TextShortcut> => {
+
+  return customFetch<TextShortcut>(getCreateShortcutUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      textShortcutInput,)
+  }
+);}
+
+
+
+
+export const getCreateShortcutMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createShortcut>>, TError,{data: BodyType<TextShortcutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createShortcut>>, TError,{data: BodyType<TextShortcutInput>}, TContext> => {
+
+const mutationKey = ['createShortcut'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createShortcut>>, {data: BodyType<TextShortcutInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createShortcut(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateShortcutMutationResult = NonNullable<Awaited<ReturnType<typeof createShortcut>>>
+    export type CreateShortcutMutationBody = BodyType<TextShortcutInput>
+    export type CreateShortcutMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a text shortcut
+ */
+export const useCreateShortcut = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createShortcut>>, TError,{data: BodyType<TextShortcutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createShortcut>>,
+        TError,
+        {data: BodyType<TextShortcutInput>},
+        TContext
+      > => {
+      return useMutation(getCreateShortcutMutationOptions(options));
+    }
+
+export const getUpdateShortcutUrl = (id: number,) => {
+
+
+
+
+  return `/api/shortcuts/${id}`
+}
+
+/**
+ * @summary Update a text shortcut
+ */
+export const updateShortcut = async (id: number,
+    textShortcutInput: TextShortcutInput, options?: RequestInit): Promise<TextShortcut> => {
+
+  return customFetch<TextShortcut>(getUpdateShortcutUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      textShortcutInput,)
+  }
+);}
+
+
+
+
+export const getUpdateShortcutMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateShortcut>>, TError,{id: number;data: BodyType<TextShortcutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateShortcut>>, TError,{id: number;data: BodyType<TextShortcutInput>}, TContext> => {
+
+const mutationKey = ['updateShortcut'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateShortcut>>, {id: number;data: BodyType<TextShortcutInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateShortcut(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateShortcutMutationResult = NonNullable<Awaited<ReturnType<typeof updateShortcut>>>
+    export type UpdateShortcutMutationBody = BodyType<TextShortcutInput>
+    export type UpdateShortcutMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a text shortcut
+ */
+export const useUpdateShortcut = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateShortcut>>, TError,{id: number;data: BodyType<TextShortcutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateShortcut>>,
+        TError,
+        {id: number;data: BodyType<TextShortcutInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateShortcutMutationOptions(options));
+    }
+
+export const getDeleteShortcutUrl = (id: number,) => {
+
+
+
+
+  return `/api/shortcuts/${id}`
+}
+
+/**
+ * @summary Delete a text shortcut
+ */
+export const deleteShortcut = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteShortcutUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteShortcutMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteShortcut>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteShortcut>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteShortcut'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteShortcut>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteShortcut(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteShortcutMutationResult = NonNullable<Awaited<ReturnType<typeof deleteShortcut>>>
+
+    export type DeleteShortcutMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a text shortcut
+ */
+export const useDeleteShortcut = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteShortcut>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteShortcut>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteShortcutMutationOptions(options));
     }
 
 export const getGetAnalyticsSummaryUrl = () => {
