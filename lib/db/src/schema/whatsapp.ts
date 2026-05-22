@@ -124,6 +124,7 @@ export const productsTable = pgTable(
     priceReseller: integer("price_reseller"),
     priceDistributor: integer("price_distributor"),
     imageUrl: text("image_url"),
+    flyerUrl: text("flyer_url"),
     productUrl: text("product_url"),
     videoUrls: text("video_urls").array().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

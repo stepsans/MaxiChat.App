@@ -41,6 +41,11 @@ export interface Product {
   priceDistributor: number | null;
   /** @nullable */
   imageUrl: string | null;
+  /**
+     * Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow.
+     * @nullable
+     */
+  flyerUrl: string | null;
   /** @nullable */
   productUrl: string | null;
   /**

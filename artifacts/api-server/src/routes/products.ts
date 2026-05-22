@@ -59,6 +59,7 @@ const ProductBody = z.object({
   priceReseller: z.number().int().nonnegative().nullable().optional(),
   priceDistributor: z.number().int().nonnegative().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
+  flyerUrl: z.string().nullable().optional(),
   productUrl: z.string().nullable().optional(),
   videoUrls: z.array(z.string()).max(10).optional(),
 });
@@ -98,6 +99,18 @@ function bodyToInsert(b: z.infer<typeof ProductBody>) {
     imageUrl: ((): string | null => {
       const v = norm(b.imageUrl);
       return v && isSafeMediaUrl(v) ? v : null;
+    })(),
+    // Flyer can be either an http(s) URL or an iframe embed HTML snippet
+    // (typically pasted from Google Drive's "Embed item" dialog). We store
+    // exactly what the user gave us; src extraction happens at send time.
+    flyerUrl: ((): string | null => {
+      const v = norm(b.flyerUrl);
+      if (!v) return null;
+      if (v.length > 4000) return null;
+      // Accept either plain http(s) URL or anything containing an iframe src.
+      if (isSafeHttpUrl(v)) return v;
+      if (/<iframe[^>]*\bsrc\s*=\s*["']https?:\/\//i.test(v)) return v;
+      return null;
     })(),
     productUrl: ((): string | null => {
       const v = norm(b.productUrl);
@@ -218,6 +231,7 @@ const EXPORT_HEADERS = [
   "priceReseller",
   "priceDistributor",
   "imageUrl",
+  "flyerUrl",
   "productUrl",
   "videoUrls",
 ] as const;
@@ -398,6 +412,11 @@ const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
   "image_url": "imageUrl",
   imageurl: "imageUrl",
   foto: "imageUrl",
+  "flyer url": "flyerUrl",
+  "flyer_url": "flyerUrl",
+  flyerurl: "flyerUrl",
+  flyer: "flyerUrl",
+  "link flyer": "flyerUrl",
   "product url": "productUrl",
   "product_url": "productUrl",
   producturl: "productUrl",
@@ -424,6 +443,7 @@ const EXPORT_HEADERS_MAP = {
   priceReseller: 0,
   priceDistributor: 0,
   imageUrl: 0,
+  flyerUrl: 0,
   productUrl: 0,
   videoUrls: 0,
 };
@@ -528,6 +548,13 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
         priceReseller: parseIntCell(cell(r, "priceReseller")),
         priceDistributor: parseIntCell(cell(r, "priceDistributor")),
         imageUrl: urlOrNull(cell(r, "imageUrl")),
+        flyerUrl: ((): string | null => {
+          const raw = cell(r, "flyerUrl");
+          if (!raw) return null;
+          if (raw.length > 4000) return null;
+          if (/<iframe[^>]*\bsrc\s*=\s*["']https?:\/\//i.test(raw)) return raw;
+          return urlOrNull(raw);
+        })(),
         productUrl: urlOrNull(cell(r, "productUrl")),
         videoUrls,
       });

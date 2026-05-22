@@ -62,6 +62,7 @@ type Product = {
   priceReseller: number | null;
   priceDistributor: number | null;
   imageUrl: string | null;
+  flyerUrl: string | null;
   productUrl: string | null;
   videoUrls: string[];
   createdAt: string;
@@ -111,6 +112,7 @@ export default function Products() {
     priceReseller: "",
     priceDistributor: "",
     productUrl: "",
+    flyerUrl: "",
   };
   const [form, setForm] = useState({ ...emptyForm });
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
@@ -182,6 +184,7 @@ export default function Products() {
       priceReseller: p.priceReseller !== null ? String(p.priceReseller) : "",
       priceDistributor: p.priceDistributor !== null ? String(p.priceDistributor) : "",
       productUrl: p.productUrl ?? "",
+      flyerUrl: p.flyerUrl ?? "",
     });
     setImageUrl(p.imageUrl);
     setVideoUrls(p.videoUrls ?? []);
@@ -240,6 +243,7 @@ export default function Products() {
       priceReseller: numOrNull(form.priceReseller),
       priceDistributor: numOrNull(form.priceDistributor),
       imageUrl: imageUrl ?? null,
+      flyerUrl: form.flyerUrl.trim() ? form.flyerUrl.trim() : null,
       productUrl: strOrNull(form.productUrl),
       videoUrls: videoUrls.map((s) => s.trim()).filter((s) => s.length > 0).slice(0, 10),
     };
@@ -681,6 +685,22 @@ export default function Products() {
                   placeholder="https://contoh.com/foto.jpg atau /api/media/…"
                   className="h-8 text-xs mt-1"
                   data-testid="input-product-image-url"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Link Flyer{" "}
+                  <span className="text-[10px] font-normal">
+                    (tempel iframe Google Drive atau URL gambar — dikirim sebagai foto ke-2)
+                  </span>
+                </label>
+                <textarea
+                  value={form.flyerUrl}
+                  onChange={(e) => setForm({ ...form, flyerUrl: e.target.value })}
+                  placeholder={`<iframe src="https://drive.google.com/file/d/.../preview" width="640" height="480"></iframe>`}
+                  className="mt-1 w-full text-xs rounded-md border border-input bg-background px-3 py-2 font-mono leading-tight resize-y min-h-[60px]"
+                  rows={3}
+                  data-testid="input-product-flyer-url"
                 />
               </div>
               <Field

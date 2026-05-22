@@ -979,7 +979,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, productUrl, videoUrls, createdAt, updatedAt]
+      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, flyerUrl, productUrl, videoUrls, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -1009,6 +1009,9 @@ components:
           description: "Internal only — never sent to customers"
         imageUrl:
           type: ["string", "null"]
+        flyerUrl:
+          type: ["string", "null"]
+          description: "Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow."
         productUrl:
           type: ["string", "null"]
         videoUrls:
@@ -1060,6 +1063,9 @@ components:
           minimum: 0
         imageUrl:
           type: ["string", "null"]
+        flyerUrl:
+          type: ["string", "null"]
+          description: "Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed)."
         productUrl:
           type: ["string", "null"]
         videoUrls:

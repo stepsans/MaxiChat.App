@@ -122,6 +122,67 @@ const safeImageDispatcher = new Agent({
   },
 });
 
+// Convert a "flyer" user input (which may be a raw http(s) URL or a pasted
+// `<iframe src="..."></iframe>` embed — typically from Google Drive's "Embed
+// item" dialog) into a direct image URL that fetchRemoteImageSafe can pull
+// bytes from. For Google Drive file IDs we use the thumbnail endpoint, which
+// returns a JPEG of the document (works for shared images and PDF previews).
+// Returns null if no usable URL can be derived.
+function flyerInputToImageUrl(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  // Extract a src URL: either from an <iframe ... src="..."> snippet, or
+  // treat the whole input as a URL.
+  let candidate: string | null = null;
+  const iframeMatch = trimmed.match(
+    /<iframe[^>]*\bsrc\s*=\s*["']([^"']+)["']/i
+  );
+  if (iframeMatch) {
+    candidate = iframeMatch[1];
+  } else if (/^https?:\/\//i.test(trimmed)) {
+    candidate = trimmed;
+  }
+  if (!candidate) return null;
+
+  // Try to pull a Google Drive file id from common URL shapes — only when
+  // the host is actually a Google Drive domain, so we don't mis-route
+  // unrelated URLs (e.g. some other site's /file/d/foo path) into Drive's
+  // thumbnail endpoint.
+  //   /file/d/<id>/...     (preview/view/edit pages, iframe src)
+  //   ?id=<id>             (open?id=, uc?id=, thumbnail?id=)
+  let driveId: string | null = null;
+  try {
+    const u = new URL(candidate);
+    const host = u.hostname.toLowerCase();
+    const isDriveHost =
+      host === "drive.google.com" ||
+      host === "docs.google.com" ||
+      host.endsWith(".drive.google.com") ||
+      host.endsWith(".docs.google.com");
+    if (isDriveHost) {
+      const pathMatch = u.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if (pathMatch) {
+        driveId = pathMatch[1];
+      } else {
+        const idParam = u.searchParams.get("id");
+        if (idParam && /^[a-zA-Z0-9_-]+$/.test(idParam)) driveId = idParam;
+      }
+    }
+  } catch {
+    // not a parseable URL — fall through to plain-URL passthrough
+  }
+  if (driveId) {
+    // sz=w2000 = max 2000px wide; comfortably above the 8MB cap and big
+    // enough for a flyer to look sharp in WhatsApp.
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(
+      driveId
+    )}&sz=w2000`;
+  }
+  // Not a Drive URL — pass through if it's a plain http(s) URL.
+  if (/^https?:\/\//i.test(candidate)) return candidate;
+  return null;
+}
+
 // Fetch a remote image URL safely:
 //   - block SSRF by resolving the hostname and rejecting private IPs (pre-check
 //     + connect-time re-check via the dispatcher above)
@@ -155,14 +216,16 @@ async function fetchRemoteImageSafe(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
+    // Allow redirects (up to undici's default of 5 hops). Each new connection
+    // goes through `safeImageDispatcher`, which re-validates the resolved IP
+    // at connect time — so a redirect target on a private network is still
+    // blocked. This is required for endpoints like Google Drive thumbnails
+    // that 302 to lh3.googleusercontent.com.
     const resp = await undiciFetch(urlStr, {
       signal: controller.signal,
-      redirect: "manual",
+      redirect: "follow",
       dispatcher: safeImageDispatcher,
     });
-    if (resp.status >= 300 && resp.status < 400) {
-      throw new Error(`Redirect not allowed (HTTP ${resp.status})`);
-    }
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const ctype = (resp.headers.get("content-type") || "").toLowerCase();
     if (!ctype.startsWith("image/")) {
@@ -731,12 +794,60 @@ router.post("/:id/product", async (req, res) => {
           .where(eq(chatMessagesTable.waMessageId, waMessageId!))
           .limit(1);
 
-    // Send link follow-ups: productUrl, then each videoUrl. Each as its own
-    // message so WhatsApp generates a link preview thumbnail per URL.
-    // link-preview-js (installed) makes Baileys auto-fetch the preview when
-    // we call sendMessage({ text: <url> }). A small delay between sends keeps
-    // ordering deterministic on the WA side and gives the preview fetch time.
+    // Follow-up sequence per UX spec:
+    //   2) flyer image (extracted from flyerUrl iframe/URL, sent as image)
+    //   3) productUrl (text, WA renders link preview)
+    //   4+) each videoUrl (text, WA renders link preview)
+    // Each as its own message. 800ms throttle between sends keeps ordering
+    // deterministic and gives WhatsApp time to resolve link previews.
     const sock = getActiveSocket();
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let lastSentDescription: string | null = null;
+
+    // Step 2: flyer image.
+    if (sock && product.flyerUrl && product.flyerUrl.length > 0) {
+      const flyerImageUrl = flyerInputToImageUrl(product.flyerUrl);
+      if (!flyerImageUrl) {
+        req.log.warn(
+          { productId, flyerUrl: product.flyerUrl },
+          "Flyer input did not contain a usable URL/iframe src — skipping"
+        );
+      } else {
+        try {
+          await sleep(800);
+          const fetched = await fetchRemoteImageSafe(flyerImageUrl);
+          const sent = await sock.sendMessage(target.jid, {
+            image: fetched.buffer,
+            mimetype: fetched.mimeType,
+          });
+          const flyerWaId = sent?.key?.id ?? null;
+          if (flyerWaId) {
+            await db
+              .insert(chatMessagesTable)
+              .values({
+                chatId: id,
+                direction: "outbound",
+                content: "",
+                isAiGenerated: false,
+                mediaType: "image",
+                mediaUrl: flyerImageUrl,
+                mediaMimeType: fetched.mimeType,
+                mediaFilename: `${product.name} - Flyer`,
+                waMessageId: flyerWaId,
+              })
+              .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+          }
+          lastSentDescription = "📄 Flyer";
+        } catch (err) {
+          req.log.warn(
+            { err, productId, flyerUrl: product.flyerUrl, flyerImageUrl },
+            "Failed to send product flyer — skipping"
+          );
+        }
+      }
+    }
+
+    // Steps 3+: link follow-ups (productUrl, then videoUrls).
     const followUps: string[] = [];
     if (product.productUrl && product.productUrl.length > 0) {
       followUps.push(product.productUrl);
@@ -746,13 +857,9 @@ router.post("/:id/product", async (req, res) => {
         if (v && v.length > 0) followUps.push(v);
       }
     }
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    let lastSentUrl: string | null = null;
     for (const url of followUps) {
       if (!sock) break;
       try {
-        // 800ms throttle between link sends — gives WA time to resolve the
-        // preview server-side before the next message arrives.
         await sleep(800);
         const sent = await sock.sendMessage(target.jid, { text: url });
         const followWaId = sent?.key?.id ?? null;
@@ -775,17 +882,14 @@ router.post("/:id/product", async (req, res) => {
             })
             .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
         }
-        lastSentUrl = url;
+        lastSentDescription = url;
       } catch (err) {
-        // Non-fatal: log and continue with remaining URLs.
         req.log.warn({ err, productId, url }, "Failed to send product link follow-up");
       }
     }
 
-    // Reflect the actual last message in the chat list summary. If any link
-    // follow-up was sent, the link itself is the latest outbound message;
-    // otherwise show the product preview.
-    const preview = lastSentUrl ?? `🛍️ ${product.name} — ${priceFmt}`;
+    // Reflect the actual last message in the chat list summary.
+    const preview = lastSentDescription ?? `🛍️ ${product.name} — ${priceFmt}`;
     await db
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })

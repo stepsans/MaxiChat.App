@@ -401,6 +401,7 @@ export const ListProductsResponseItem = zod.object({
   "priceReseller": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
   "imageUrl": zod.string().nullable(),
+  "flyerUrl": zod.string().nullable().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow.'),
   "productUrl": zod.string().nullable(),
   "videoUrls": zod.array(zod.string()).max(listProductsResponseVideoUrlsMax).describe('Up to 10 video URLs per product'),
   "createdAt": zod.string(),
@@ -441,6 +442,7 @@ export const CreateProductBody = zod.object({
   "priceReseller": zod.number().min(createProductBodyPriceResellerMin).nullish(),
   "priceDistributor": zod.number().min(createProductBodyPriceDistributorMin).nullish(),
   "imageUrl": zod.string().nullish(),
+  "flyerUrl": zod.string().nullish().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed).'),
   "productUrl": zod.string().nullish(),
   "videoUrls": zod.array(zod.string()).max(createProductBodyVideoUrlsMax).optional().describe('Up to 10 video URLs per product')
 })
@@ -482,6 +484,7 @@ export const UpdateProductBody = zod.object({
   "priceReseller": zod.number().min(updateProductBodyPriceResellerMin).nullish(),
   "priceDistributor": zod.number().min(updateProductBodyPriceDistributorMin).nullish(),
   "imageUrl": zod.string().nullish(),
+  "flyerUrl": zod.string().nullish().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed).'),
   "productUrl": zod.string().nullish(),
   "videoUrls": zod.array(zod.string()).max(updateProductBodyVideoUrlsMax).optional().describe('Up to 10 video URLs per product')
 })
@@ -502,6 +505,7 @@ export const UpdateProductResponse = zod.object({
   "priceReseller": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
   "imageUrl": zod.string().nullable(),
+  "flyerUrl": zod.string().nullable().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow.'),
   "productUrl": zod.string().nullable(),
   "videoUrls": zod.array(zod.string()).max(updateProductResponseVideoUrlsMax).describe('Up to 10 video URLs per product'),
   "createdAt": zod.string(),
