@@ -9,6 +9,13 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -100,6 +107,7 @@ export default function Products() {
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("__all__");
 
   const emptyForm = {
     code: "",
@@ -297,13 +305,41 @@ export default function Products() {
   const isPending = create.isPending || update.isPending;
 
   const q = search.trim().toLowerCase();
-  const filteredProducts = q
-    ? ((products as Product[] | undefined) ?? []).filter((p) =>
-        [p.code, p.name, p.category ?? ""].some((f) =>
-          f.toLowerCase().includes(q)
-        )
-      )
-    : ((products as Product[] | undefined) ?? []);
+  const allProducts = (products as Product[] | undefined) ?? [];
+
+  // Distinct categories from the current catalog, sorted alpabetis (id-ID,
+  // case-insensitive). "__none__" represents produk tanpa kategori.
+  const categoryOptions = (() => {
+    const seen = new Set<string>();
+    let hasUncategorized = false;
+    for (const p of allProducts) {
+      const c = (p.category ?? "").trim();
+      if (c) seen.add(c);
+      else hasUncategorized = true;
+    }
+    const list = Array.from(seen).sort((a, b) =>
+      a.localeCompare(b, "id-ID", { sensitivity: "base" })
+    );
+    return { list, hasUncategorized };
+  })();
+
+  const filteredProducts = allProducts.filter((p) => {
+    if (categoryFilter !== "__all__") {
+      const c = (p.category ?? "").trim();
+      if (categoryFilter === "__none__") {
+        if (c) return false;
+      } else if (c !== categoryFilter) {
+        return false;
+      }
+    }
+    if (q) {
+      return [p.code, p.name, p.category ?? ""].some((f) =>
+        f.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+  const isFiltered = q.length > 0 || categoryFilter !== "__all__";
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -311,14 +347,40 @@ export default function Products() {
         <div>
           <h1 className="text-base font-semibold">Katalog Produk</h1>
           <p className="text-xs text-muted-foreground">
-            {q
-              ? `${filteredProducts.length} dari ${products?.length ?? 0} produk`
-              : `${products?.length ?? 0} produk`}{" "}
+            {isFiltered
+              ? `${filteredProducts.length} dari ${allProducts.length} produk`
+              : `${allProducts.length} produk`}{" "}
             — harga silver/gold/platinum/reseller/distributor hanya tampil di app,
             tidak dikirim ke customer.
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Select
+            value={categoryFilter}
+            onValueChange={setCategoryFilter}
+          >
+            <SelectTrigger
+              data-testid="select-category-filter"
+              className="h-8 w-44 text-xs"
+            >
+              <SelectValue placeholder="Semua kategori" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Semua kategori</SelectItem>
+              {categoryOptions.hasUncategorized && (
+                <SelectItem value="__none__">
+                  <span className="italic text-muted-foreground">
+                    Tanpa kategori
+                  </span>
+                </SelectItem>
+              )}
+              {categoryOptions.list.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             <Input
