@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { knowledgeTypesTable, knowledgeTable } from "@workspace/db";
-import { eq, asc, sql } from "drizzle-orm";
+import { and, eq, asc, sql } from "drizzle-orm";
 import { z } from "zod";
+import { getCurrentOwnerPhone } from "./whatsapp";
 
 const router = Router();
 
@@ -35,22 +36,36 @@ const DEFAULT_TYPES: { value: string; label: string }[] = [
   { value: "website", label: "Website" },
 ];
 
-let seeded = false;
-export async function ensureKnowledgeTypesSeed(): Promise<void> {
-  if (seeded) return;
-  const existing = await db.select({ id: knowledgeTypesTable.id }).from(knowledgeTypesTable).limit(1);
+// Per-owner seed: each WhatsApp account gets its own copy of the default
+// knowledge types the first time they connect, so operators can immediately
+// start categorizing entries. Tracked in-memory per ownerPhone to avoid
+// repeated existence checks once seeded.
+const seededOwners = new Set<string>();
+export async function ensureKnowledgeTypesSeed(ownerPhone: string): Promise<void> {
+  if (seededOwners.has(ownerPhone)) return;
+  const existing = await db
+    .select({ id: knowledgeTypesTable.id })
+    .from(knowledgeTypesTable)
+    .where(eq(knowledgeTypesTable.ownerPhone, ownerPhone))
+    .limit(1);
   if (existing.length === 0) {
-    await db.insert(knowledgeTypesTable).values(DEFAULT_TYPES).onConflictDoNothing();
+    await db
+      .insert(knowledgeTypesTable)
+      .values(DEFAULT_TYPES.map((d) => ({ ...d, ownerPhone })))
+      .onConflictDoNothing();
   }
-  seeded = true;
+  seededOwners.add(ownerPhone);
 }
 
 router.get("/", async (req, res) => {
   try {
-    await ensureKnowledgeTypesSeed();
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) return res.json([]);
+    await ensureKnowledgeTypesSeed(ownerPhone);
     const rows = await db
       .select()
       .from(knowledgeTypesTable)
+      .where(eq(knowledgeTypesTable.ownerPhone, ownerPhone))
       .orderBy(asc(knowledgeTypesTable.id));
     res.json(rows.map(serialize));
   } catch (err) {
@@ -65,13 +80,21 @@ router.post("/", async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum menambah type." });
+    }
     const value = parsed.data.value.toLowerCase();
     const label = parsed.data.label;
 
     const inserted = await db
       .insert(knowledgeTypesTable)
-      .values({ value, label })
-      .onConflictDoNothing({ target: knowledgeTypesTable.value })
+      .values({ ownerPhone, value, label })
+      .onConflictDoNothing({
+        target: [knowledgeTypesTable.ownerPhone, knowledgeTypesTable.value],
+      })
       .returning();
 
     if (inserted.length === 0) {
@@ -90,11 +113,17 @@ router.delete("/:id", async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: "Invalid id" });
     }
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus type." });
+    }
     const result = await db.transaction(async (tx) => {
       const [type] = await tx
         .select()
         .from(knowledgeTypesTable)
-        .where(eq(knowledgeTypesTable.id, id))
+        .where(and(eq(knowledgeTypesTable.id, id), eq(knowledgeTypesTable.ownerPhone, ownerPhone)))
         .for("update")
         .limit(1);
       if (!type) return { status: 404 as const, error: "Type tidak ditemukan" };
@@ -102,7 +131,12 @@ router.delete("/:id", async (req, res) => {
       const [{ count }] = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(knowledgeTable)
-        .where(eq(knowledgeTable.type, type.value));
+        .where(
+          and(
+            eq(knowledgeTable.type, type.value),
+            eq(knowledgeTable.ownerPhone, ownerPhone)
+          )
+        );
       if (count > 0) {
         return {
           status: 409 as const,
@@ -110,7 +144,11 @@ router.delete("/:id", async (req, res) => {
         };
       }
 
-      await tx.delete(knowledgeTypesTable).where(eq(knowledgeTypesTable.id, id));
+      await tx
+        .delete(knowledgeTypesTable)
+        .where(
+          and(eq(knowledgeTypesTable.id, id), eq(knowledgeTypesTable.ownerPhone, ownerPhone))
+        );
       return { status: 200 as const };
     });
 

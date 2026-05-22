@@ -239,13 +239,26 @@ async function getOrCreateChat(
   return row;
 }
 
-async function generateAiReply(chatId: number, userMessage: string): Promise<string | null> {
+async function generateAiReply(
+  ownerPhone: string,
+  chatId: number,
+  userMessage: string
+): Promise<string | null> {
   try {
-    const settingsRows = await db.select().from(settingsTable).limit(1);
+    // Per-owner AI persona + knowledge base. Without this scoping the AI
+    // would happily answer with another account's products and prompts.
+    const settingsRows = await db
+      .select()
+      .from(settingsTable)
+      .where(eq(settingsTable.ownerPhone, ownerPhone))
+      .limit(1);
     const settings = settingsRows[0];
     if (!settings?.autoReplyEnabled) return null;
 
-    const knowledgeEntries = await db.select().from(knowledgeTable);
+    const knowledgeEntries = await db
+      .select()
+      .from(knowledgeTable)
+      .where(eq(knowledgeTable.ownerPhone, ownerPhone));
     const knowledgeContext = knowledgeEntries
       .map((e) => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content}`)
       .join("\n\n");
@@ -697,7 +710,11 @@ async function maybeTriggerAutoReply(
   if (chat.isHumanTakeover) return;
   if (!messageText.trim()) return;
 
-  const settingsRows = await db.select().from(settingsTable).limit(1);
+  const settingsRows = await db
+    .select()
+    .from(settingsTable)
+    .where(eq(settingsTable.ownerPhone, ownerPhone))
+    .limit(1);
   const settings = settingsRows[0];
   if (!settings?.autoReplyEnabled) return;
 
@@ -714,7 +731,7 @@ async function maybeTriggerAutoReply(
       if (epoch !== sessionEpoch) return;
       if (currentOwnerPhone !== ownerPhone) return;
 
-      const aiReply = await generateAiReply(chat.id, messageText);
+      const aiReply = await generateAiReply(ownerPhone, chat.id, messageText);
       const replyText = aiReply ?? settings.fallbackMessage;
 
       // Re-check after the async AI call — same reasons as above.

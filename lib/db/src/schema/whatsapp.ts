@@ -83,17 +83,32 @@ export const insertChatMessageSchema = createInsertSchema(chatMessagesTable).omi
 export type ChatMessage = typeof chatMessagesTable.$inferSelect;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 
-export const knowledgeTypesTable = pgTable("knowledge_types", {
-  id: serial("id").primaryKey(),
-  value: text("value").notNull().unique(),
-  label: text("label").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+// All business-data tables below carry `ownerPhone` for per-WhatsApp-account
+// isolation. The app is multi-tenant by WhatsApp number: each operator who
+// scans a QR gets their own catalog, settings, knowledge base, and AI
+// persona — none of it leaks across accounts.
+export const knowledgeTypesTable = pgTable(
+  "knowledge_types",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    value: text("value").notNull(),
+    label: text("label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    knowledgeTypesOwnerValueUnique: uniqueIndex("knowledge_types_owner_value_unique").on(
+      t.ownerPhone,
+      t.value
+    ),
+  })
+);
 
 export type KnowledgeType = typeof knowledgeTypesTable.$inferSelect;
 
 export const knowledgeTable = pgTable("knowledge_entries", {
   id: serial("id").primaryKey(),
+  ownerPhone: text("owner_phone").notNull(),
   type: text("type").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -110,15 +125,22 @@ export const insertKnowledgeSchema = createInsertSchema(knowledgeTable).omit({
 export type KnowledgeEntry = typeof knowledgeTable.$inferSelect;
 export type InsertKnowledge = z.infer<typeof insertKnowledgeSchema>;
 
-export const settingsTable = pgTable("settings", {
-  id: serial("id").primaryKey(),
-  systemPrompt: text("system_prompt").notNull(),
-  autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
-  replyDelayMin: integer("reply_delay_min").notNull().default(1),
-  replyDelayMax: integer("reply_delay_max").notNull().default(3),
-  fallbackMessage: text("fallback_message").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const settingsTable = pgTable(
+  "settings",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    systemPrompt: text("system_prompt").notNull(),
+    autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
+    replyDelayMin: integer("reply_delay_min").notNull().default(1),
+    replyDelayMax: integer("reply_delay_max").notNull().default(3),
+    fallbackMessage: text("fallback_message").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    settingsOwnerPhoneUnique: uniqueIndex("settings_owner_phone_unique").on(t.ownerPhone),
+  })
+);
 
 export type Settings = typeof settingsTable.$inferSelect;
 
@@ -126,6 +148,7 @@ export const productsTable = pgTable(
   "products",
   {
     id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
     code: text("code").notNull(),
     name: text("name").notNull(),
     category: text("category"),
@@ -143,7 +166,12 @@ export const productsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    productsCodeUnique: uniqueIndex("products_code_unique").on(t.code),
+    // Composite uniqueness: each owner has their own SKU namespace, so two
+    // different accounts can both have e.g. code "BUKU-01" without colliding.
+    productsOwnerCodeUnique: uniqueIndex("products_owner_code_unique").on(
+      t.ownerPhone,
+      t.code
+    ),
   })
 );
 

@@ -732,10 +732,18 @@ router.post("/:id/product", async (req, res) => {
     const target = await jidForChat(id);
     if (!target) return res.status(404).json({ error: "Chat not found" });
 
+    // Owner-scoped product lookup: an operator can only send products from
+    // their own catalog. Even a leaked product id from another account
+    // returns 404 here.
     const [product] = await db
       .select()
       .from(productsTable)
-      .where(eq(productsTable.id, productId));
+      .where(
+        and(
+          eq(productsTable.id, productId),
+          eq(productsTable.ownerPhone, target.chat.ownerPhone)
+        )
+      );
     if (!product) return res.status(404).json({ error: "Product not found" });
 
     const priceFmt = new Intl.NumberFormat("id-ID", {

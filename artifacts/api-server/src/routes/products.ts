@@ -7,9 +7,9 @@ import mime from "mime-types";
 import ExcelJS from "exceljs";
 import { db } from "@workspace/db";
 import { productsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { MEDIA_DIR } from "./whatsapp";
+import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
 
 const router = Router();
 
@@ -125,7 +125,13 @@ function bodyToInsert(b: z.infer<typeof ProductBody>) {
 
 router.get("/", async (req, res) => {
   try {
-    const rows = await db.select().from(productsTable).orderBy(productsTable.createdAt);
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) return res.json([]);
+    const rows = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .orderBy(productsTable.createdAt);
     res.json(rows.map(serialize));
   } catch (err) {
     req.log.error({ err }, "Failed to list products");
@@ -139,10 +145,16 @@ router.post("/", async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum menambah produk." });
+    }
     try {
       const [created] = await db
         .insert(productsTable)
-        .values(bodyToInsert(parsed.data))
+        .values({ ...bodyToInsert(parsed.data), ownerPhone })
         .returning();
       res.status(201).json(serialize(created));
     } catch (e: unknown) {
@@ -167,11 +179,17 @@ router.put("/:id", async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengubah produk." });
+    }
     try {
       const [updated] = await db
         .update(productsTable)
         .set({ ...bodyToInsert(parsed.data), updatedAt: new Date() })
-        .where(eq(productsTable.id, id))
+        .where(and(eq(productsTable.id, id), eq(productsTable.ownerPhone, ownerPhone)))
         .returning();
       if (!updated) return res.status(404).json({ error: "Product not found" });
       res.json(serialize(updated));
@@ -193,9 +211,15 @@ router.delete("/:id", async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: "Invalid id" });
     }
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus produk." });
+    }
     const deleted = await db
       .delete(productsTable)
-      .where(eq(productsTable.id, id))
+      .where(and(eq(productsTable.id, id), eq(productsTable.ownerPhone, ownerPhone)))
       .returning();
     if (deleted.length === 0) return res.status(404).json({ error: "Product not found" });
     res.json({ success: true });
@@ -265,7 +289,17 @@ function rowToCsvField(v: unknown): string {
 
 router.get("/export.csv", async (req, res) => {
   try {
-    const rows = await db.select().from(productsTable).orderBy(productsTable.id);
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor produk." });
+    }
+    const rows = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .orderBy(productsTable.id);
     const lines: string[] = [EXPORT_HEADERS.join(",")];
     for (const r of rows) {
       lines.push(
@@ -287,7 +321,17 @@ router.get("/export.csv", async (req, res) => {
 
 router.get("/export.xlsx", async (req, res) => {
   try {
-    const rows = await db.select().from(productsTable).orderBy(productsTable.id);
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor produk." });
+    }
+    const rows = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .orderBy(productsTable.id);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Products");
     ws.addRow([...EXPORT_HEADERS]);
@@ -461,6 +505,12 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
   }
   productImportInFlight = true;
   try {
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengimpor produk." });
+    }
     if (!req.file) return res.status(400).json({ error: "Missing file" });
     const name = (req.file.originalname || "").toLowerCase();
     let rows: string[][];
@@ -498,7 +548,9 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
     const cell = (r: string[], k: ProductCol): string =>
       colIndex[k] !== undefined ? (r[colIndex[k] as number] ?? "").toString().trim() : "";
 
-    const entries: (typeof productsTable.$inferInsert)[] = [];
+    // ownerPhone is added at insert time (line below) so the parsed array
+    // omits it here.
+    const entries: Omit<typeof productsTable.$inferInsert, "ownerPhone">[] = [];
     const seen = new Set<string>();
     const skipped: { row: number; reason: string }[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -567,9 +619,13 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Tidak ada baris valid di file." });
     }
 
+    // Owner-scoped wipe & replace: only this account's catalog is rebuilt;
+    // other operators' product catalogs are untouched.
     await db.transaction(async (tx) => {
-      await tx.delete(productsTable);
-      await tx.insert(productsTable).values(entries);
+      await tx.delete(productsTable).where(eq(productsTable.ownerPhone, ownerPhone));
+      await tx
+        .insert(productsTable)
+        .values(entries.map((e) => ({ ...e, ownerPhone })));
     });
 
     res.json({ imported: entries.length, skipped: skipped.length });

@@ -2,8 +2,9 @@ import { Router } from "express";
 import multer from "multer";
 import { db } from "@workspace/db";
 import { knowledgeTable, knowledgeTypesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ensureKnowledgeTypesSeed } from "./knowledge-types";
+import { getCurrentOwnerPhone } from "./whatsapp";
 import {
   CreateKnowledgeBody,
   UpdateKnowledgeBody,
@@ -22,9 +23,12 @@ const upload = multer({
 
 const EXPORT_COLUMNS = ["id", "type", "title", "content", "createdAt", "updatedAt"] as const;
 
-async function loadValidTypes(): Promise<Set<string>> {
-  await ensureKnowledgeTypesSeed();
-  const rows = await db.select({ value: knowledgeTypesTable.value }).from(knowledgeTypesTable);
+async function loadValidTypes(ownerPhone: string): Promise<Set<string>> {
+  await ensureKnowledgeTypesSeed(ownerPhone);
+  const rows = await db
+    .select({ value: knowledgeTypesTable.value })
+    .from(knowledgeTypesTable)
+    .where(eq(knowledgeTypesTable.ownerPhone, ownerPhone));
   return new Set(rows.map((r) => r.value));
 }
 
@@ -59,7 +63,17 @@ function exportFilename(ext: string): string {
 
 router.get("/export.csv", async (req, res) => {
   try {
-    const entries = await db.select().from(knowledgeTable).orderBy(knowledgeTable.id);
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor knowledge." });
+    }
+    const entries = await db
+      .select()
+      .from(knowledgeTable)
+      .where(eq(knowledgeTable.ownerPhone, ownerPhone))
+      .orderBy(knowledgeTable.id);
     const lines: string[] = [EXPORT_COLUMNS.join(",")];
     for (const e of entries) {
       const row: Record<string, unknown> = {
@@ -81,7 +95,17 @@ router.get("/export.csv", async (req, res) => {
 
 router.get("/export.xlsx", async (req, res) => {
   try {
-    const entries = await db.select().from(knowledgeTable).orderBy(knowledgeTable.id);
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor knowledge." });
+    }
+    const entries = await db
+      .select()
+      .from(knowledgeTable)
+      .where(eq(knowledgeTable.ownerPhone, ownerPhone))
+      .orderBy(knowledgeTable.id);
     const wb = new ExcelJS.Workbook();
     wb.creator = "Maxipro Assistant";
     wb.created = new Date();
@@ -123,7 +147,13 @@ router.get("/export.xlsx", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const entries = await db.select().from(knowledgeTable).orderBy(knowledgeTable.createdAt);
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) return res.json([]);
+    const entries = await db
+      .select()
+      .from(knowledgeTable)
+      .where(eq(knowledgeTable.ownerPhone, ownerPhone))
+      .orderBy(knowledgeTable.createdAt);
     res.json(
       entries.map((e) => ({
         ...e,
@@ -142,9 +172,16 @@ router.post("/", async (req, res) => {
     const parsed = CreateKnowledgeBody.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum menambah knowledge." });
+    }
+
     const [entry] = await db
       .insert(knowledgeTable)
-      .values(parsed.data)
+      .values({ ...parsed.data, ownerPhone })
       .returning();
 
     res.status(201).json({
@@ -166,10 +203,22 @@ router.put("/:id", async (req, res) => {
     const bodyParsed = UpdateKnowledgeBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengubah knowledge." });
+    }
+
     const [updated] = await db
       .update(knowledgeTable)
       .set({ ...bodyParsed.data, updatedAt: new Date() })
-      .where(eq(knowledgeTable.id, idParsed.data.id))
+      .where(
+        and(
+          eq(knowledgeTable.id, idParsed.data.id),
+          eq(knowledgeTable.ownerPhone, ownerPhone)
+        )
+      )
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Entry not found" });
@@ -190,9 +239,21 @@ router.delete("/:id", async (req, res) => {
     const idParsed = DeleteKnowledgeParams.safeParse({ id: Number(req.params.id) });
     if (!idParsed.success) return res.status(400).json({ error: "Invalid id" });
 
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus knowledge." });
+    }
+
     const deleted = await db
       .delete(knowledgeTable)
-      .where(eq(knowledgeTable.id, idParsed.data.id))
+      .where(
+        and(
+          eq(knowledgeTable.id, idParsed.data.id),
+          eq(knowledgeTable.ownerPhone, ownerPhone)
+        )
+      )
       .returning();
 
     if (deleted.length === 0) return res.status(404).json({ error: "Entry not found" });
@@ -286,6 +347,13 @@ router.post("/import", upload.single("file"), async (req, res) => {
   }
   importInFlight = true;
   try {
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum mengimpor knowledge." });
+    }
+
     const file = req.file;
     if (!file) return res.status(400).json({ error: "File tidak ditemukan di field 'file'" });
 
@@ -322,23 +390,32 @@ router.post("/import", upload.single("file"), async (req, res) => {
     const { entries, error } = rowsToEntries(rows);
     if (error) return res.status(400).json({ error });
 
-    const validTypes = await loadValidTypes();
+    const validTypes = await loadValidTypes(ownerPhone);
     const newTypes = new Set<string>();
     for (const e of entries) {
       if (!validTypes.has(e.type)) newTypes.add(e.type);
     }
 
+    // Import is owner-scoped: wipe & replace ONLY this account's entries,
+    // and seed any missing types under this owner. Other accounts'
+    // knowledge bases are untouched.
     await db.transaction(async (tx) => {
       if (newTypes.size > 0) {
         await tx
           .insert(knowledgeTypesTable)
           .values(
-            Array.from(newTypes).map((v) => ({ value: v, label: makeLabelFromValue(v) })),
+            Array.from(newTypes).map((v) => ({
+              ownerPhone,
+              value: v,
+              label: makeLabelFromValue(v),
+            })),
           )
           .onConflictDoNothing();
       }
-      await tx.delete(knowledgeTable);
-      await tx.insert(knowledgeTable).values(entries);
+      await tx.delete(knowledgeTable).where(eq(knowledgeTable.ownerPhone, ownerPhone));
+      await tx
+        .insert(knowledgeTable)
+        .values(entries.map((e) => ({ ...e, ownerPhone })));
     });
 
     res.json({ imported: entries.length });
