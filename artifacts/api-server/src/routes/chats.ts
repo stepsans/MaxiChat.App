@@ -2,6 +2,11 @@ import { Router } from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs/promises";
+import dns from "node:dns/promises";
+import dnsCallback from "node:dns";
+import net from "node:net";
+import { Agent, fetch as undiciFetch } from "undici";
+import ipaddr from "ipaddr.js";
 import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
@@ -45,6 +50,165 @@ const upload = multer({
   }),
   limits: { fileSize: 64 * 1024 * 1024 }, // 64MB
 });
+
+// SSRF guard: allow only globally-routable unicast IPs. Uses ipaddr.js for
+// canonical parsing so alternate IPv6 forms (e.g. "0:0:0:0:0:0:0:1",
+// "::ffff:7f00:1") are normalized before classification. Any IP whose range is
+// not "unicast" (loopback / private / linkLocal / uniqueLocal / multicast /
+// reserved / unspecified / broadcast / carrierGradeNat) is rejected, plus
+// IPv4-mapped IPv6 addresses are re-checked against IPv4 ranges.
+function isPrivateIp(ip: string): boolean {
+  let parsed: ipaddr.IPv4 | ipaddr.IPv6;
+  try {
+    parsed = ipaddr.parse(ip);
+  } catch {
+    return true; // unparseable → treat as unsafe
+  }
+  if (parsed.kind() === "ipv6") {
+    const v6 = parsed as ipaddr.IPv6;
+    if (v6.isIPv4MappedAddress()) {
+      return isPrivateIp(v6.toIPv4Address().toString());
+    }
+  }
+  const range = parsed.range();
+  return range !== "unicast";
+}
+
+// Undici dispatcher that re-validates the resolved IP at connect time. This
+// closes the DNS-rebinding TOCTOU gap left by a pure pre-check: even if a
+// hostname's DNS answer changes between the pre-check and the socket connect,
+// the connect call itself rejects any private IP.
+const safeImageDispatcher = new Agent({
+  connect: {
+    lookup: (hostname, options, cb) => {
+      dnsCallback.lookup(
+        hostname,
+        { ...options, all: false, verbatim: true },
+        (err, address, family) => {
+          if (err) return cb(err, "", 0);
+          if (isPrivateIp(address)) {
+            return cb(
+              new Error(
+                `Host resolved to private IP at connect time: ${hostname} → ${address}`
+              ),
+              "",
+              0
+            );
+          }
+          cb(null, address, family);
+        }
+      );
+    },
+  },
+});
+
+// Fetch a remote image URL safely:
+//   - block SSRF by resolving the hostname and rejecting private IPs (pre-check
+//     + connect-time re-check via the dispatcher above)
+//   - disable redirects so an attacker can't redirect into an internal host
+//   - stream-read the body with a hard 8MB cap (abort early if exceeded)
+//   - verify magic bytes match JPEG / PNG / WebP / GIF
+async function fetchRemoteImageSafe(
+  urlStr: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const MAX_BYTES = 8 * 1024 * 1024;
+  const TIMEOUT_MS = 10_000;
+  const url = new URL(urlStr);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`Unsupported protocol: ${url.protocol}`);
+  }
+  const host = url.hostname;
+  // Resolve hostname — reject literal private IPs and any DNS result that
+  // points at a private IP.
+  if (net.isIP(host)) {
+    if (isPrivateIp(host)) throw new Error(`Blocked private IP: ${host}`);
+  } else {
+    const records = await dns.lookup(host, { all: true, verbatim: true });
+    if (records.length === 0) throw new Error(`No DNS record for ${host}`);
+    for (const r of records) {
+      if (isPrivateIp(r.address)) {
+        throw new Error(`Host resolves to private IP: ${host} → ${r.address}`);
+      }
+    }
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const resp = await undiciFetch(urlStr, {
+      signal: controller.signal,
+      redirect: "manual",
+      dispatcher: safeImageDispatcher,
+    });
+    if (resp.status >= 300 && resp.status < 400) {
+      throw new Error(`Redirect not allowed (HTTP ${resp.status})`);
+    }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const ctype = (resp.headers.get("content-type") || "").toLowerCase();
+    if (!ctype.startsWith("image/")) {
+      throw new Error(`Not an image: content-type=${ctype || "(none)"}`);
+    }
+    const reader = resp.body?.getReader();
+    if (!reader) throw new Error("No response body");
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.byteLength;
+        if (total > MAX_BYTES) {
+          await reader.cancel();
+          throw new Error(`Image too large (>${MAX_BYTES} bytes)`);
+        }
+        chunks.push(value);
+      }
+    }
+    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)), total);
+
+    // Magic-byte sniff. Reject anything that isn't a real raster image
+    // (e.g. SVG/XML is rejected — it would be served as image/svg+xml but
+    // can carry script).
+    let mimeType: string;
+    if (
+      buffer.length >= 3 &&
+      buffer[0] === 0xff &&
+      buffer[1] === 0xd8 &&
+      buffer[2] === 0xff
+    ) {
+      mimeType = "image/jpeg";
+    } else if (
+      buffer.length >= 8 &&
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
+    ) {
+      mimeType = "image/png";
+    } else if (
+      buffer.length >= 12 &&
+      buffer.toString("ascii", 0, 4) === "RIFF" &&
+      buffer.toString("ascii", 8, 12) === "WEBP"
+    ) {
+      mimeType = "image/webp";
+    } else if (
+      buffer.length >= 6 &&
+      (buffer.toString("ascii", 0, 6) === "GIF87a" ||
+        buffer.toString("ascii", 0, 6) === "GIF89a")
+    ) {
+      mimeType = "image/gif";
+    } else {
+      throw new Error("Unsupported image format (expected JPEG/PNG/WebP/GIF)");
+    }
+    return { buffer, mimeType };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function classifyMediaType(
   mime: string
@@ -455,16 +619,19 @@ router.post("/:id/product", async (req, res) => {
     let mediaMimeType: string | null = null;
     let mediaFilename: string | null = null;
 
-    // If product has an image, try to resolve it on disk first. Missing files
-    // are recoverable (fall back to text). Send failures are NOT recoverable.
-    let imageFilePath: string | null = null;
+    // Resolve product image source:
+    //   - "/api/media/..."  → read from local disk
+    //   - "http(s)://..."   → fetch the bytes server-side and send the actual
+    //                         jpg/png to WhatsApp (so customers receive the
+    //                         photo, not a link). Capped at 8MB.
+    // Missing/unreachable images fall back to text-only caption.
+    let imageBuffer: Buffer | null = null;
     let imageMimeType: string | null = null;
     if (product.imageUrl && product.imageUrl.startsWith("/api/media/")) {
       const filename = path.basename(product.imageUrl);
       const candidate = path.join(MEDIA_DIR, filename);
       try {
-        await fs.access(candidate);
-        imageFilePath = candidate;
+        imageBuffer = await fs.readFile(candidate);
         imageMimeType = mime.lookup(filename) || "image/jpeg";
       } catch (err) {
         req.log.warn(
@@ -472,19 +639,34 @@ router.post("/:id/product", async (req, res) => {
           "Product image missing on disk, falling back to text"
         );
       }
+    } else if (
+      product.imageUrl &&
+      (product.imageUrl.startsWith("http://") ||
+        product.imageUrl.startsWith("https://"))
+    ) {
+      try {
+        const fetched = await fetchRemoteImageSafe(product.imageUrl);
+        imageBuffer = fetched.buffer;
+        imageMimeType = fetched.mimeType;
+      } catch (err) {
+        req.log.warn(
+          { err, productId, url: product.imageUrl },
+          "Failed to fetch remote product image, falling back to text"
+        );
+      }
     }
 
     let waMessageId: string | null = null;
-    if (imageFilePath && imageMimeType) {
+    if (imageBuffer && imageMimeType) {
+      const sock = getActiveSocket();
+      if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
       try {
-        waMessageId = await sendMediaToJid(
-          target.jid,
-          imageFilePath,
-          imageMimeType,
-          "image",
+        const sent = await sock.sendMessage(target.jid, {
+          image: imageBuffer,
           caption,
-          product.name
-        );
+          mimetype: imageMimeType,
+        });
+        waMessageId = sent?.key?.id ?? null;
         mediaType = "image";
         mediaUrl = product.imageUrl;
         mediaMimeType = imageMimeType;
