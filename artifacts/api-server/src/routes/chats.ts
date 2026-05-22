@@ -80,22 +80,42 @@ function isPrivateIp(ip: string): boolean {
 // the connect call itself rejects any private IP.
 const safeImageDispatcher = new Agent({
   connect: {
-    lookup: (hostname, options, cb) => {
+    lookup: (hostname: string, optsOrCb: any, maybeCb?: any) => {
+      // Normalize signatures. Undici 8 calls this with options that include
+      // `{ all: true }`, which means dns.lookup returns an array of
+      // {address, family} and the caller expects the same array shape back.
+      const cb: (err: NodeJS.ErrnoException | null, ...rest: any[]) => void =
+        typeof optsOrCb === "function" ? optsOrCb : maybeCb;
+      const opts =
+        typeof optsOrCb === "function" || optsOrCb == null ? {} : optsOrCb;
+      const wantAll = opts.all === true;
       dnsCallback.lookup(
         hostname,
-        { ...options, all: false, verbatim: true },
-        (err, address, family) => {
-          if (err) return cb(err, "", 0);
-          if (isPrivateIp(address)) {
+        {
+          family: typeof opts.family === "number" ? opts.family : 0,
+          hints: opts.hints,
+          verbatim: true,
+          all: true,
+        },
+        (err, addresses) => {
+          if (err) return cb(err);
+          const list = Array.isArray(addresses) ? addresses : [];
+          if (list.length === 0) {
+            return cb(new Error(`DNS lookup returned no address for ${hostname}`));
+          }
+          const safe = list.filter((a) => !isPrivateIp(a.address));
+          if (safe.length === 0) {
             return cb(
               new Error(
-                `Host resolved to private IP at connect time: ${hostname} → ${address}`
-              ),
-              "",
-              0
+                `Host resolves only to private IPs at connect time: ${hostname}`
+              )
             );
           }
-          cb(null, address, family);
+          if (wantAll) {
+            cb(null, safe);
+          } else {
+            cb(null, safe[0].address, safe[0].family);
+          }
         }
       );
     },
