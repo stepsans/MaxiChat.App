@@ -12,6 +12,7 @@ import {
   Loader2,
   PanelLeftClose,
   PanelLeftOpen,
+  CircleDashed,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ import {
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chats", label: "Chats", icon: MessageSquare },
+  { href: "/status", label: "Status", icon: CircleDashed },
   { href: "/knowledge", label: "Knowledge Base", icon: BookOpen },
   { href: "/products", label: "Products", icon: Package },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },

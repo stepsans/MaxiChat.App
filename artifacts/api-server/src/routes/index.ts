@@ -7,6 +7,7 @@ import knowledgeTypesRouter from "./knowledge-types";
 import settingsRouter from "./settings";
 import analyticsRouter from "./analytics";
 import productsRouter from "./products";
+import statusesRouter from "./statuses";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use("/knowledge", knowledgeRouter);
 router.use("/settings", settingsRouter);
 router.use("/analytics", analyticsRouter);
 router.use("/products", productsRouter);
+router.use("/statuses", statusesRouter);
 
 export default router;

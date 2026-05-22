@@ -4,14 +4,18 @@ import {
   useGetSettings,
   useUpdateSettings,
   getGetSettingsQueryKey,
+  useGetWhatsappBio,
+  useUpdateWhatsappBio,
+  getGetWhatsappBioQueryKey,
 } from "@workspace/api-client-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, User } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -264,7 +268,83 @@ export default function Settings() {
             </Button>
           </form>
         </Form>
+
+        <BioCard />
       </div>
     </div>
+  );
+}
+
+function BioCard() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { data, isLoading } = useGetWhatsappBio({
+    query: { queryKey: getGetWhatsappBioQueryKey(), retry: false },
+  });
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? data?.bio ?? "";
+
+  const update = useUpdateWhatsappBio({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetWhatsappBioQueryKey() });
+        toast({ title: "Bio diperbarui." });
+        setDraft(null);
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal memperbarui bio",
+          description: err instanceof Error ? err.message : "WhatsApp belum terhubung?",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <User className="w-4 h-4 text-primary" />
+          Bio / About WhatsApp
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Teks singkat yang muncul di profil WhatsApp Anda (maks 139 karakter).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <Skeleton className="h-9 w-full" />
+        ) : (
+          <>
+            <Input
+              data-testid="input-bio"
+              value={value}
+              onChange={(e) => setDraft(e.target.value.slice(0, 139))}
+              placeholder="Hey there! I am using WhatsApp"
+              maxLength={139}
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">{value.length}/139</span>
+              <Button
+                data-testid="button-save-bio"
+                size="sm"
+                onClick={() => update.mutate({ data: { bio: value.trim() } })}
+                disabled={
+                  update.isPending ||
+                  !value.trim() ||
+                  value.trim() === (data?.bio ?? "").trim()
+                }
+              >
+                {update.isPending && (
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                )}
+                Simpan Bio
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

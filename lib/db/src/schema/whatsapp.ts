@@ -85,6 +85,45 @@ export const insertChatMessageSchema = createInsertSchema(chatMessagesTable).omi
 export type ChatMessage = typeof chatMessagesTable.$inferSelect;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 
+// WhatsApp Status (a.k.a. "stories") — 24h-lived broadcasts. Scoped per
+// owner_phone like every other multi-tenant table. We persist both incoming
+// statuses from contacts (so the operator can review them in-app) AND
+// outbound statuses posted from the app (so we can show them under
+// "My Status"). Expired rows are filtered on read.
+export const whatsappStatusesTable = pgTable(
+  "whatsapp_statuses",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    // For incoming: the contact JID (participant) who posted. For mine: the
+    // owner's own JID. Used to group statuses by author in the UI.
+    authorJid: text("author_jid").notNull(),
+    authorPhone: text("author_phone").notNull(), // digits-only, for joining to chats
+    authorName: text("author_name").notNull(),
+    // "text" | "image" | "video"
+    statusType: text("status_type").notNull(),
+    textContent: text("text_content"),
+    // Background color for text statuses (hex string like "#0f3a4d"). Mirrors
+    // WhatsApp's coloured text-status backgrounds.
+    backgroundColor: text("background_color"),
+    mediaUrl: text("media_url"),
+    mediaMimeType: text("media_mime_type"),
+    caption: text("caption"),
+    waMessageId: text("wa_message_id"),
+    isMine: boolean("is_mine").notNull().default(false),
+    postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    statusesWaMessageIdUnique: uniqueIndex(
+      "whatsapp_statuses_wa_message_id_unique"
+    ).on(t.ownerPhone, t.waMessageId),
+  })
+);
+
+export type WhatsappStatusRow = typeof whatsappStatusesTable.$inferSelect;
+
 // All business-data tables below carry `ownerPhone` for per-WhatsApp-account
 // isolation. The app is multi-tenant by WhatsApp number: each operator who
 // scans a QR gets their own catalog, settings, knowledge base, and AI

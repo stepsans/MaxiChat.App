@@ -530,6 +530,95 @@ export const DeleteProductResponse = zod.object({
 
 
 /**
+ * @summary Get the connected WhatsApp account's bio (about / status text)
+ */
+export const GetWhatsappBioResponse = zod.object({
+  "bio": zod.string().nullable(),
+  "setAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Update the connected WhatsApp account's bio
+ */
+export const updateWhatsappBioBodyBioMax = 139;
+
+
+
+export const UpdateWhatsappBioBody = zod.object({
+  "bio": zod.string().min(1).max(updateWhatsappBioBodyBioMax)
+})
+
+export const UpdateWhatsappBioResponse = zod.object({
+  "bio": zod.string().nullable(),
+  "setAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary List WhatsApp statuses (mine + from contacts, last 24h)
+ */
+export const ListStatusesResponseItem = zod.object({
+  "authorJid": zod.string(),
+  "authorName": zod.string(),
+  "authorPhone": zod.string(),
+  "profilePicUrl": zod.string().nullable(),
+  "isMine": zod.boolean(),
+  "statuses": zod.array(zod.object({
+  "id": zod.number(),
+  "statusType": zod.enum(['text', 'image', 'video']),
+  "textContent": zod.string().nullable(),
+  "backgroundColor": zod.string().nullable(),
+  "mediaUrl": zod.string().nullable(),
+  "caption": zod.string().nullable(),
+  "isMine": zod.boolean(),
+  "authorName": zod.string(),
+  "postedAt": zod.string(),
+  "expiresAt": zod.string()
+}))
+})
+export const ListStatusesResponse = zod.array(ListStatusesResponseItem)
+
+
+/**
+ * @summary Post a text status (story) from the connected account
+ */
+export const postStatusBodyTextMax = 700;
+
+
+
+export const PostStatusBody = zod.object({
+  "text": zod.string().min(1).max(postStatusBodyTextMax),
+  "backgroundColor": zod.string().optional().describe('Hex color string e.g. \"#0f3a4d\" — defaults to WA green if omitted.')
+})
+
+export const PostStatusResponse = zod.object({
+  "id": zod.number(),
+  "statusType": zod.enum(['text', 'image', 'video']),
+  "textContent": zod.string().nullable(),
+  "backgroundColor": zod.string().nullable(),
+  "mediaUrl": zod.string().nullable(),
+  "caption": zod.string().nullable(),
+  "isMine": zod.boolean(),
+  "authorName": zod.string(),
+  "postedAt": zod.string(),
+  "expiresAt": zod.string()
+})
+
+
+/**
+ * @summary Delete one of my statuses (local row only)
+ */
+export const DeleteStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteStatusResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary Get analytics summary
  */
 export const GetAnalyticsSummaryResponse = zod.object({

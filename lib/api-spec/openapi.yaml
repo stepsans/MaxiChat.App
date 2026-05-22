@@ -677,6 +677,87 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
 
+  /whatsapp/profile/bio:
+    get:
+      operationId: getWhatsappBio
+      tags: [whatsapp]
+      summary: Get the connected WhatsApp account's bio (about / status text)
+      responses:
+        "200":
+          description: Current bio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappBio"
+    put:
+      operationId: updateWhatsappBio
+      tags: [whatsapp]
+      summary: Update the connected WhatsApp account's bio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsappBioInput"
+      responses:
+        "200":
+          description: Bio updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappBio"
+
+  /statuses:
+    get:
+      operationId: listStatuses
+      tags: [whatsapp]
+      summary: List WhatsApp statuses (mine + from contacts, last 24h)
+      responses:
+        "200":
+          description: Status feed grouped by author
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WhatsappStatusAuthor"
+    post:
+      operationId: postStatus
+      tags: [whatsapp]
+      summary: Post a text status (story) from the connected account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostStatusInput"
+      responses:
+        "200":
+          description: Status posted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatus2"
+
+  /statuses/{id}:
+    delete:
+      operationId: deleteStatus
+      tags: [whatsapp]
+      summary: Delete one of my statuses (local row only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
   /analytics/summary:
     get:
       operationId: getAnalyticsSummary
@@ -1094,3 +1175,80 @@ components:
           type: string
         count:
           type: integer
+
+    WhatsappBio:
+      type: object
+      required: [bio, setAt]
+      properties:
+        bio:
+          type: ["string", "null"]
+        setAt:
+          type: ["string", "null"]
+
+    WhatsappBioInput:
+      type: object
+      required: [bio]
+      properties:
+        bio:
+          type: string
+          minLength: 1
+          maxLength: 139
+
+    WhatsappStatus2:
+      type: object
+      required:
+        [id, statusType, textContent, backgroundColor, mediaUrl, caption,
+         isMine, authorName, postedAt, expiresAt]
+      properties:
+        id:
+          type: integer
+        statusType:
+          type: string
+          enum: [text, image, video]
+        textContent:
+          type: ["string", "null"]
+        backgroundColor:
+          type: ["string", "null"]
+        mediaUrl:
+          type: ["string", "null"]
+        caption:
+          type: ["string", "null"]
+        isMine:
+          type: boolean
+        authorName:
+          type: string
+        postedAt:
+          type: string
+        expiresAt:
+          type: string
+
+    WhatsappStatusAuthor:
+      type: object
+      required: [authorJid, authorName, authorPhone, profilePicUrl, isMine, statuses]
+      properties:
+        authorJid:
+          type: string
+        authorName:
+          type: string
+        authorPhone:
+          type: string
+        profilePicUrl:
+          type: ["string", "null"]
+        isMine:
+          type: boolean
+        statuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsappStatus2"
+
+    PostStatusInput:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 700
+        backgroundColor:
+          type: string
+          description: Hex color string e.g. "#0f3a4d" — defaults to WA green if omitted.

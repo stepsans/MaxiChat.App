@@ -45,6 +45,7 @@ import type {
   KnowledgeUpdate,
   ListChatsParams,
   ManualReplyInput,
+  PostStatusInput,
   Product,
   ProductInput,
   SendProductBody,
@@ -52,7 +53,11 @@ import type {
   SettingsUpdate,
   SuccessResponse,
   TakeoverInput,
-  WhatsappStatus
+  WhatsappBio,
+  WhatsappBioInput,
+  WhatsappStatus,
+  WhatsappStatus2,
+  WhatsappStatusAuthor
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -2138,6 +2143,372 @@ export const useDeleteProduct = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteProductMutationOptions(options));
+    }
+
+export const getGetWhatsappBioUrl = () => {
+
+
+
+
+  return `/api/whatsapp/profile/bio`
+}
+
+/**
+ * @summary Get the connected WhatsApp account's bio (about / status text)
+ */
+export const getWhatsappBio = async ( options?: RequestInit): Promise<WhatsappBio> => {
+
+  return customFetch<WhatsappBio>(getGetWhatsappBioUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsappBioQueryKey = () => {
+    return [
+    `/api/whatsapp/profile/bio`
+    ] as const;
+    }
+
+
+export const getGetWhatsappBioQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsappBio>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsappBio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsappBioQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsappBio>>> = ({ signal }) => getWhatsappBio({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsappBio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsappBioQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsappBio>>>
+export type GetWhatsappBioQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the connected WhatsApp account's bio (about / status text)
+ */
+
+export function useGetWhatsappBio<TData = Awaited<ReturnType<typeof getWhatsappBio>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsappBio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsappBioQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateWhatsappBioUrl = () => {
+
+
+
+
+  return `/api/whatsapp/profile/bio`
+}
+
+/**
+ * @summary Update the connected WhatsApp account's bio
+ */
+export const updateWhatsappBio = async (whatsappBioInput: WhatsappBioInput, options?: RequestInit): Promise<WhatsappBio> => {
+
+  return customFetch<WhatsappBio>(getUpdateWhatsappBioUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      whatsappBioInput,)
+  }
+);}
+
+
+
+
+export const getUpdateWhatsappBioMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWhatsappBio>>, TError,{data: BodyType<WhatsappBioInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateWhatsappBio>>, TError,{data: BodyType<WhatsappBioInput>}, TContext> => {
+
+const mutationKey = ['updateWhatsappBio'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateWhatsappBio>>, {data: BodyType<WhatsappBioInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateWhatsappBio(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateWhatsappBioMutationResult = NonNullable<Awaited<ReturnType<typeof updateWhatsappBio>>>
+    export type UpdateWhatsappBioMutationBody = BodyType<WhatsappBioInput>
+    export type UpdateWhatsappBioMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update the connected WhatsApp account's bio
+ */
+export const useUpdateWhatsappBio = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWhatsappBio>>, TError,{data: BodyType<WhatsappBioInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateWhatsappBio>>,
+        TError,
+        {data: BodyType<WhatsappBioInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateWhatsappBioMutationOptions(options));
+    }
+
+export const getListStatusesUrl = () => {
+
+
+
+
+  return `/api/statuses`
+}
+
+/**
+ * @summary List WhatsApp statuses (mine + from contacts, last 24h)
+ */
+export const listStatuses = async ( options?: RequestInit): Promise<WhatsappStatusAuthor[]> => {
+
+  return customFetch<WhatsappStatusAuthor[]>(getListStatusesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStatusesQueryKey = () => {
+    return [
+    `/api/statuses`
+    ] as const;
+    }
+
+
+export const getListStatusesQueryOptions = <TData = Awaited<ReturnType<typeof listStatuses>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStatuses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStatusesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStatuses>>> = ({ signal }) => listStatuses({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStatuses>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStatusesQueryResult = NonNullable<Awaited<ReturnType<typeof listStatuses>>>
+export type ListStatusesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List WhatsApp statuses (mine + from contacts, last 24h)
+ */
+
+export function useListStatuses<TData = Awaited<ReturnType<typeof listStatuses>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStatuses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStatusesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPostStatusUrl = () => {
+
+
+
+
+  return `/api/statuses`
+}
+
+/**
+ * @summary Post a text status (story) from the connected account
+ */
+export const postStatus = async (postStatusInput: PostStatusInput, options?: RequestInit): Promise<WhatsappStatus2> => {
+
+  return customFetch<WhatsappStatus2>(getPostStatusUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      postStatusInput,)
+  }
+);}
+
+
+
+
+export const getPostStatusMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postStatus>>, TError,{data: BodyType<PostStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postStatus>>, TError,{data: BodyType<PostStatusInput>}, TContext> => {
+
+const mutationKey = ['postStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postStatus>>, {data: BodyType<PostStatusInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  postStatus(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostStatusMutationResult = NonNullable<Awaited<ReturnType<typeof postStatus>>>
+    export type PostStatusMutationBody = BodyType<PostStatusInput>
+    export type PostStatusMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Post a text status (story) from the connected account
+ */
+export const usePostStatus = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postStatus>>, TError,{data: BodyType<PostStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof postStatus>>,
+        TError,
+        {data: BodyType<PostStatusInput>},
+        TContext
+      > => {
+      return useMutation(getPostStatusMutationOptions(options));
+    }
+
+export const getDeleteStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/statuses/${id}`
+}
+
+/**
+ * @summary Delete one of my statuses (local row only)
+ */
+export const deleteStatus = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteStatusUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteStatusMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStatus>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteStatus>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteStatus>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteStatus(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteStatusMutationResult = NonNullable<Awaited<ReturnType<typeof deleteStatus>>>
+
+    export type DeleteStatusMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete one of my statuses (local row only)
+ */
+export const useDeleteStatus = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStatus>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteStatus>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteStatusMutationOptions(options));
     }
 
 export const getGetAnalyticsSummaryUrl = () => {

@@ -345,6 +345,67 @@ export interface CommonQuestion {
   count: number;
 }
 
+export interface WhatsappBio {
+  /** @nullable */
+  bio: string | null;
+  /** @nullable */
+  setAt: string | null;
+}
+
+export interface WhatsappBioInput {
+  /**
+     * @minLength 1
+     * @maxLength 139
+     */
+  bio: string;
+}
+
+export type WhatsappStatus2StatusType = typeof WhatsappStatus2StatusType[keyof typeof WhatsappStatus2StatusType];
+
+
+export const WhatsappStatus2StatusType = {
+  text: 'text',
+  image: 'image',
+  video: 'video',
+} as const;
+
+export interface WhatsappStatus2 {
+  id: number;
+  statusType: WhatsappStatus2StatusType;
+  /** @nullable */
+  textContent: string | null;
+  /** @nullable */
+  backgroundColor: string | null;
+  /** @nullable */
+  mediaUrl: string | null;
+  /** @nullable */
+  caption: string | null;
+  isMine: boolean;
+  authorName: string;
+  postedAt: string;
+  expiresAt: string;
+}
+
+export interface WhatsappStatusAuthor {
+  authorJid: string;
+  authorName: string;
+  authorPhone: string;
+  /** @nullable */
+  profilePicUrl: string | null;
+  isMine: boolean;
+  statuses: WhatsappStatus2[];
+}
+
+export interface PostStatusInput {
+  /**
+     * @minLength 1
+     * @maxLength 700
+     */
+  text: string;
+  /** Hex color string e.g. "#0f3a4d" — defaults to WA green if omitted. */
+  backgroundColor?: string;
+}
+
 export type ListChatsParams = {
 status?: ListChatsStatus;
 tag?: ListChatsTag;

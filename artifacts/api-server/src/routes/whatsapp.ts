@@ -12,6 +12,7 @@ import {
   chatMessagesTable,
   knowledgeTable,
   settingsTable,
+  whatsappStatusesTable,
 } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
@@ -142,6 +143,266 @@ export async function sendMediaToJid(
     });
   }
   return sent?.key?.id ?? null;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// WhatsApp Status (Stories) — persistence + posting
+// ───────────────────────────────────────────────────────────────────────────
+
+const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
+
+// Parse and persist an incoming status broadcast. Called from messages.upsert
+// when key.remoteJid === "status@broadcast". Mirrors parseWaMessage's media
+// download flow but stores into whatsapp_statuses instead of chat_messages.
+async function persistWaStatus(
+  ownerPhone: string,
+  msg: any,
+  downloadMediaMessage: any,
+  downloadMedia: boolean
+): Promise<void> {
+  if (!msg?.message) return;
+  // participant is the actual author for status broadcasts
+  const authorJid: string | undefined = msg.key?.participant ?? msg.participant;
+  const fromMe = !!msg.key?.fromMe;
+  if (!authorJid && !fromMe) return;
+  const ownerJid = sock?.user?.id ?? "";
+  const effectiveAuthorJid = authorJid ?? ownerJid;
+  const authorPhoneDigits = effectiveAuthorJid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
+  if (!authorPhoneDigits) return;
+
+  // Unwrap ephemeral wrappers (status messages are almost always ephemeral).
+  let inner: any = msg.message;
+  for (let i = 0; i < 5; i++) {
+    const next =
+      inner.ephemeralMessage?.message ||
+      inner.viewOnceMessage?.message ||
+      inner.viewOnceMessageV2?.message;
+    if (!next) break;
+    inner = next;
+  }
+
+  if (inner.protocolMessage || inner.reactionMessage) return;
+
+  // Classify the status into text / image / video.
+  let statusType: "text" | "image" | "video" | null = null;
+  let textContent: string | null = null;
+  let backgroundColor: string | null = null;
+  let mediaMime: string | null = null;
+  let mediaKind: "image" | "video" | null = null;
+  let caption: string | null = null;
+
+  if (inner.extendedTextMessage) {
+    statusType = "text";
+    textContent = inner.extendedTextMessage.text ?? "";
+    const bgColor = inner.extendedTextMessage.backgroundArgb;
+    if (typeof bgColor === "number") {
+      // Convert ARGB int to "#rrggbb"
+      const r = (bgColor >> 16) & 0xff;
+      const g = (bgColor >> 8) & 0xff;
+      const b = bgColor & 0xff;
+      backgroundColor = `#${[r, g, b]
+        .map((n) => n.toString(16).padStart(2, "0"))
+        .join("")}`;
+    }
+  } else if (inner.conversation) {
+    statusType = "text";
+    textContent = inner.conversation;
+  } else if (inner.imageMessage) {
+    statusType = "image";
+    mediaKind = "image";
+    mediaMime = inner.imageMessage.mimetype ?? "image/jpeg";
+    caption = inner.imageMessage.caption ?? null;
+  } else if (inner.videoMessage) {
+    statusType = "video";
+    mediaKind = "video";
+    mediaMime = inner.videoMessage.mimetype ?? "video/mp4";
+    caption = inner.videoMessage.caption ?? null;
+  } else {
+    return;
+  }
+
+  let mediaUrl: string | null = null;
+  if (mediaKind && downloadMedia) {
+    try {
+      const buf = (await downloadMediaMessage(
+        { ...msg, message: inner } as any,
+        "buffer",
+        {}
+      )) as Buffer;
+      const saved = await saveBufferToMedia(
+        buf,
+        mediaMime ?? "application/octet-stream"
+      );
+      mediaUrl = saved.url;
+    } catch (err) {
+      logger.error({ err }, "Failed to download status media");
+    }
+  }
+
+  // Author display name: prefer pushName, then existing chat row, then digits.
+  let authorName = msg.pushName?.trim() || "";
+  if (!authorName) {
+    const rows = await db
+      .select({ contactName: chatsTable.contactName, nickname: chatsTable.nickname })
+      .from(chatsTable)
+      .where(
+        sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.phoneNumber} = ${"+" + authorPhoneDigits}`
+      )
+      .limit(1);
+    authorName = rows[0]?.nickname ?? rows[0]?.contactName ?? authorPhoneDigits;
+  }
+
+  const postedAt = new Date(toEpochMs(msg.messageTimestamp));
+  const expiresAt = new Date(postedAt.getTime() + STATUS_TTL_MS);
+  const waMessageId: string | null = msg.key?.id ?? null;
+
+  await db
+    .insert(whatsappStatusesTable)
+    .values({
+      ownerPhone,
+      authorJid: effectiveAuthorJid,
+      authorPhone: authorPhoneDigits,
+      authorName,
+      statusType,
+      textContent,
+      backgroundColor,
+      mediaUrl,
+      mediaMimeType: mediaMime,
+      caption,
+      waMessageId,
+      isMine: fromMe,
+      postedAt,
+      expiresAt,
+    })
+    .onConflictDoNothing({
+      target: [whatsappStatusesTable.ownerPhone, whatsappStatusesTable.waMessageId],
+    });
+}
+
+// Post a text status broadcast from the connected account. Audience defaults
+// to every contact whose chat we have (mirrors WA's "My contacts" default).
+export async function postTextStatus(
+  ownerPhone: string,
+  text: string,
+  backgroundColor: string
+): Promise<typeof whatsappStatusesTable.$inferSelect> {
+  if (!sock) throw new Error("WhatsApp is not connected");
+  // Derive audience JIDs from existing DM chats for the current owner.
+  const dmChats = await db
+    .select({ phoneNumber: chatsTable.phoneNumber })
+    .from(chatsTable)
+    .where(
+      sql`${chatsTable.ownerPhone} = ${ownerPhone}
+          AND ${chatsTable.phoneNumber} NOT LIKE '%@g.us'`
+    );
+  const statusJidList = dmChats
+    .map((c) => c.phoneNumber.replace(/^\+/, "").replace(/[^0-9]/g, ""))
+    .filter((d) => d.length >= 7)
+    .map((d) => `${d}@s.whatsapp.net`);
+
+  // Convert "#rrggbb" → ARGB int with full alpha.
+  const hex = backgroundColor.replace(/^#/, "");
+  const argb =
+    hex.length === 6
+      ? (0xff << 24) |
+        (parseInt(hex.slice(0, 2), 16) << 16) |
+        (parseInt(hex.slice(2, 4), 16) << 8) |
+        parseInt(hex.slice(4, 6), 16)
+      : 0xff128c7e;
+
+  const sent = await sock.sendMessage(
+    "status@broadcast",
+    {
+      text,
+      backgroundColor: argb,
+      font: 0,
+    } as any,
+    { statusJidList } as any
+  );
+  const ownerJid = sock.user?.id ?? `${ownerPhone}@s.whatsapp.net`;
+  const ownerDigits = ownerJid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
+  const postedAt = new Date();
+  const waMessageId = sent?.key?.id ?? null;
+  // Race-safe insert: the messages.upsert hook may have already persisted
+  // this same broadcast (same waMessageId) via persistWaStatus. We must not
+  // throw on the unique (owner_phone, wa_message_id) violation — instead,
+  // accept the existing row and return it.
+  const inserted = await db
+    .insert(whatsappStatusesTable)
+    .values({
+      ownerPhone,
+      authorJid: ownerJid,
+      authorPhone: ownerDigits,
+      authorName: "Saya",
+      statusType: "text",
+      textContent: text,
+      backgroundColor,
+      mediaUrl: null,
+      mediaMimeType: null,
+      caption: null,
+      waMessageId,
+      isMine: true,
+      postedAt,
+      expiresAt: new Date(postedAt.getTime() + STATUS_TTL_MS),
+    })
+    .onConflictDoNothing({
+      target: [whatsappStatusesTable.ownerPhone, whatsappStatusesTable.waMessageId],
+    })
+    .returning();
+  if (inserted[0]) return inserted[0];
+  // Conflict — read back the existing row by (ownerPhone, waMessageId).
+  if (waMessageId) {
+    const existing = await db
+      .select()
+      .from(whatsappStatusesTable)
+      .where(
+        sql`${whatsappStatusesTable.ownerPhone} = ${ownerPhone}
+            AND ${whatsappStatusesTable.waMessageId} = ${waMessageId}`
+      )
+      .limit(1);
+    if (existing[0]) return existing[0];
+  }
+  // Should not happen, but synthesize a response rather than failing.
+  throw new Error("Status sent but local row could not be persisted");
+}
+
+// Bio / About — fetch own and update own. Baileys exposes these via
+// fetchStatus(jid) → { status, setAt } and updateProfileStatus(text).
+export async function fetchOwnBio(): Promise<{ bio: string | null; setAt: string | null }> {
+  if (!sock) throw new Error("WhatsApp is not connected");
+  const ownerJid = sock.user?.id;
+  if (!ownerJid) throw new Error("WhatsApp user not available");
+  try {
+    const result = (await (sock as any).fetchStatus(ownerJid)) as
+      | { status?: string | null; setAt?: Date | string | null }
+      | Array<{ status?: { status?: string | null; setAt?: Date | string | null } }>
+      | null;
+    // Baileys 7.x can return either the single object or an array. Normalize.
+    let normalised: { status?: string | null; setAt?: Date | string | null } | null = null;
+    if (Array.isArray(result)) {
+      normalised = result[0]?.status ?? null;
+    } else {
+      normalised = result;
+    }
+    const bio = normalised?.status ?? null;
+    const setAtRaw = normalised?.setAt ?? null;
+    const setAt =
+      setAtRaw instanceof Date
+        ? setAtRaw.toISOString()
+        : typeof setAtRaw === "string"
+          ? setAtRaw
+          : null;
+    return { bio, setAt };
+  } catch (err) {
+    logger.warn({ err }, "fetchOwnBio failed");
+    return { bio: null, setAt: null };
+  }
+}
+
+export async function updateOwnBio(text: string): Promise<{ bio: string; setAt: string }> {
+  if (!sock) throw new Error("WhatsApp is not connected");
+  await (sock as any).updateProfileStatus(text);
+  return { bio: text, setAt: new Date().toISOString() };
 }
 
 export async function sendContactToJid(
@@ -952,6 +1213,14 @@ async function startBaileys(sessionId: number) {
           // Re-check epoch on every iteration: a long backlog must not keep
           // writing (and re-creating chats) after /disconnect bumps the epoch.
           if (myEpoch !== sessionEpoch) return;
+          // Route status broadcasts to the status table instead of chats.
+          // parseWaMessage explicitly skips them so we branch first.
+          if (msg.key?.remoteJid === "status@broadcast") {
+            await persistWaStatus(ownerPhone, msg, downloadMediaMessage, true).catch(
+              (err) => logger.error({ err }, "Failed to persist live status")
+            );
+            continue;
+          }
           const parsed = await parseWaMessage(
             msg,
             isJidGroup as (j: string) => boolean,
@@ -1037,6 +1306,14 @@ async function startBaileys(sessionId: number) {
           // Backlog can be tens of thousands of messages; abort the loop if
           // the session was disconnected mid-sync.
           if (myEpoch !== sessionEpoch) return;
+          if (msg.key?.remoteJid === "status@broadcast") {
+            // History statuses: persist metadata only (no media download to
+            // avoid hammering WA during initial sync).
+            await persistWaStatus(ownerPhone, msg, downloadMediaMessage, false).catch(
+              (err) => logger.error({ err }, "Failed to persist history status")
+            );
+            continue;
+          }
           const parsed = await parseWaMessage(
             msg,
             isJidGroup as (j: string) => boolean,
@@ -1238,6 +1515,41 @@ router.post("/connect", async (req, res) => {
     res.json({ status: "connecting", qrCode: null, phoneNumber: null, connectedAt: null });
   } catch (err) {
     req.log.error({ err }, "Failed to connect WhatsApp");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/profile/bio", async (req, res): Promise<void> => {
+  try {
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      res.status(409).json({ error: "WhatsApp not connected" });
+      return;
+    }
+    const result = await fetchOwnBio();
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch own bio");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/profile/bio", async (req, res): Promise<void> => {
+  try {
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      res.status(409).json({ error: "WhatsApp not connected" });
+      return;
+    }
+    const bio = String(req.body?.bio ?? "").trim();
+    if (!bio || bio.length > 139) {
+      res.status(400).json({ error: "Bio must be 1-139 characters" });
+      return;
+    }
+    const result = await updateOwnBio(bio);
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Failed to update own bio");
     res.status(500).json({ error: "Internal server error" });
   }
 });
