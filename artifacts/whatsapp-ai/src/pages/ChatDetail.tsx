@@ -61,7 +61,7 @@ import {
   Download,
   Package,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, resolveImageSrc } from "@/lib/utils";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -381,9 +381,13 @@ export default function ChatDetail() {
                         <div className="w-14 h-14 rounded-md bg-secondary flex-shrink-0 overflow-hidden flex items-center justify-center">
                           {p.imageUrl ? (
                             <img
-                              src={p.imageUrl}
+                              src={resolveImageSrc(p.imageUrl) ?? p.imageUrl}
                               alt={p.name}
                               className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
                             />
                           ) : (
                             <Package className="w-5 h-5 opacity-30" />

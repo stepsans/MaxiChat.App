@@ -58,6 +58,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { resolveImageSrc } from "@/lib/utils";
 
 type Product = {
   id: number;
@@ -531,9 +532,13 @@ export default function Products() {
                         {p.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={p.imageUrl}
+                            src={resolveImageSrc(p.imageUrl) ?? p.imageUrl}
                             alt={p.name}
                             className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = "none";
+                            }}
                           />
                         ) : (
                           <Package className="w-4 h-4 opacity-30" />
@@ -645,9 +650,10 @@ export default function Products() {
                   ) : imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={imageUrl}
+                      src={resolveImageSrc(imageUrl) ?? imageUrl}
                       alt="preview"
                       className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display = "none";
                       }}
