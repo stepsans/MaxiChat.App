@@ -21,7 +21,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare, User, Zap, Plus, Trash2, Pencil, X, Check } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload } from "lucide-react";
+import * as XLSX from "xlsx";
+import { useRef } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -295,6 +303,8 @@ function ShortcutsCard() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editShortcut, setEditShortcut] = useState("");
   const [editReplacement, setEditReplacement] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: getListShortcutsQueryKey() });
@@ -349,16 +359,186 @@ function ShortcutsCard() {
     setEditReplacement(s.replacement);
   }
 
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCsv() {
+    const header = ["shortcut", "replacement"];
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const lines = [
+      header.join(","),
+      ...shortcuts.map((s) => [escape(s.shortcut), escape(s.replacement)].join(",")),
+    ];
+    // Prepend UTF-8 BOM so Excel opens non-ASCII characters correctly.
+    const blob = new Blob(["\ufeff" + lines.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    triggerDownload(blob, "shortcuts.csv");
+  }
+
+  function exportXlsx() {
+    const ws = XLSX.utils.json_to_sheet(
+      shortcuts.map((s) => ({ shortcut: s.shortcut, replacement: s.replacement }))
+    );
+    ws["!cols"] = [{ wch: 16 }, { wch: 60 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Shortcuts");
+    const arr = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+    triggerDownload(
+      new Blob([arr], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      "shortcuts.xlsx"
+    );
+  }
+
+  async function handleImportFile(file: File) {
+    setImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheetName = wb.SheetNames[0];
+      if (!sheetName) throw new Error("File kosong");
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+        defval: "",
+      });
+      // Accept either lowercase or capitalised headers.
+      const pick = (r: Record<string, unknown>, ...keys: string[]) => {
+        for (const k of keys) {
+          const v = r[k];
+          if (typeof v === "string" && v.trim()) return v;
+          if (typeof v === "number") return String(v);
+        }
+        return "";
+      };
+      let added = 0;
+      let updated = 0;
+      let skipped = 0;
+      let failed = 0;
+      for (const row of rows) {
+        const rawSc = pick(row, "shortcut", "Shortcut", "SHORTCUT");
+        const rawRep = pick(row, "replacement", "Replacement", "REPLACEMENT");
+        const sc = normaliseShortcut(rawSc);
+        const rep = rawRep.trimEnd();
+        if (!sc || !rep) {
+          skipped++;
+          continue;
+        }
+        const existing = shortcuts.find(
+          (s) => s.shortcut.toLowerCase() === sc.toLowerCase()
+        );
+        try {
+          if (existing) {
+            await update.mutateAsync({
+              id: existing.id,
+              data: { shortcut: sc, replacement: rep },
+            });
+            updated++;
+          } else {
+            await create.mutateAsync({ data: { shortcut: sc, replacement: rep } });
+            added++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+      await invalidate();
+      toast({
+        title: "Import selesai",
+        description: `${added} ditambah, ${updated} diperbarui${
+          skipped ? `, ${skipped} dilewati` : ""
+        }${failed ? `, ${failed} gagal` : ""}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Gagal import file",
+        description: err instanceof Error ? err.message : "File tidak valid.",
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Zap className="w-4 h-4 text-primary" />
-          Shortcut / Text Expander
-        </CardTitle>
-        <CardDescription className="text-xs">
-          Ketik kata pendek di kolom chat (mis. <code>/hi</code>) dan akan otomatis diganti dengan teks panjang. Tidak case-sensitive.
-        </CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1.5 min-w-0">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              Shortcut / Text Expander
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Ketik kata pendek di kolom chat (mis. <code>/hi</code>) dan akan otomatis diganti dengan teks panjang. Tidak case-sensitive.
+            </CardDescription>
+          </div>
+          <div className="flex gap-1.5 shrink-0">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportFile(f);
+              }}
+            />
+            <Button
+              data-testid="button-import-shortcuts"
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+            >
+              {importing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              Import
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  data-testid="button-export-shortcuts"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={shortcuts.length === 0}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  data-testid="menu-export-csv"
+                  onClick={exportCsv}
+                >
+                  CSV (.csv)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="menu-export-xlsx"
+                  onClick={exportXlsx}
+                >
+                  Excel (.xlsx)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Add new row */}
@@ -418,7 +598,7 @@ function ShortcutsCard() {
                 <li
                   key={s.id}
                   data-testid={`shortcut-row-${s.id}`}
-                  className="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-2 items-start p-3 rounded-lg border border-border bg-[hsl(var(--wa-panel))]"
+                  className="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-2 items-stretch p-3 rounded-lg border border-border bg-[hsl(var(--wa-panel))]"
                 >
                   {isEditing ? (
                     <>
@@ -426,7 +606,7 @@ function ShortcutsCard() {
                         data-testid={`input-edit-shortcut-${s.id}`}
                         value={editShortcut}
                         onChange={(e) => setEditShortcut(e.target.value.slice(0, 64))}
-                        className="font-mono text-sm"
+                        className="font-mono text-sm h-full"
                       />
                       <Textarea
                         data-testid={`textarea-edit-replacement-${s.id}`}
@@ -435,9 +615,9 @@ function ShortcutsCard() {
                           setEditReplacement(e.target.value.slice(0, 4000))
                         }
                         rows={Math.min(6, Math.max(2, editReplacement.split("\n").length))}
-                        className="text-sm"
+                        className="text-sm min-h-10"
                       />
-                      <div className="flex gap-1 md:flex-col md:self-start">
+                      <div className="flex gap-1 md:flex-col md:self-stretch">
                         <Button
                           data-testid={`button-save-shortcut-${s.id}`}
                           size="icon"
