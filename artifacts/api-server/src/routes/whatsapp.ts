@@ -45,6 +45,77 @@ export function getActiveSocket(): WASocket | null {
   return sock;
 }
 
+// Fetch a contact's WhatsApp profile picture URL via Baileys and cache it on
+// the chat row. WA URLs are short-lived (token-signed S3-style), so we
+// re-check at most once per 6 hours per chat to keep avatars fresh while
+// avoiding rate limits. Errors are swallowed because a missing picture is
+// expected (privacy setting / unknown contact) and must never break message
+// ingestion or the chat list UI.
+const PROFILE_PIC_TTL_MS = 6 * 60 * 60 * 1000;
+const profilePicInFlight = new Set<number>();
+
+export async function refreshChatProfilePic(
+  chat: {
+    id: number;
+    ownerPhone: string;
+    phoneNumber: string;
+    profilePicCheckedAt: Date | null;
+  },
+  opts: { force?: boolean } = {}
+): Promise<string | null> {
+  if (!sock) return null;
+  if (profilePicInFlight.has(chat.id)) return null;
+  if (
+    !opts.force &&
+    chat.profilePicCheckedAt &&
+    Date.now() - chat.profilePicCheckedAt.getTime() < PROFILE_PIC_TTL_MS
+  ) {
+    return null;
+  }
+  // Re-verify that the chat still belongs to the currently-connected account
+  // before talking to Baileys. Prevents a refresh task spawned under account
+  // A from running its network call once the user has paired account B.
+  const currentOwner = await getCurrentOwnerPhone();
+  if (!currentOwner || currentOwner !== chat.ownerPhone) return null;
+
+  // Reconstruct a JID from our stored phone number. Group rows already store
+  // the full "<id>@g.us" JID; DMs store "+<digits>".
+  let jid: string;
+  if (chat.phoneNumber.endsWith("@g.us") || chat.phoneNumber.includes("@")) {
+    jid = chat.phoneNumber;
+  } else {
+    const digits = chat.phoneNumber.replace(/[^\d]/g, "");
+    if (!digits) return null;
+    jid = `${digits}@s.whatsapp.net`;
+  }
+  profilePicInFlight.add(chat.id);
+  try {
+    const url = (await sock.profilePictureUrl(jid, "image").catch(() => null)) ?? null;
+    // Owner-atomic write: the WHERE clause re-checks ownerPhone so a refresh
+    // task started under the old account can never overwrite a row that has
+    // since been reassigned to a different ownerPhone.
+    await db
+      .update(chatsTable)
+      .set({ profilePicUrl: url, profilePicCheckedAt: new Date() })
+      .where(
+        sql`${chatsTable.id} = ${chat.id} AND ${chatsTable.ownerPhone} = ${chat.ownerPhone}`
+      );
+    return url;
+  } catch {
+    // Mark as checked even on failure so we don't spam Baileys with retries.
+    await db
+      .update(chatsTable)
+      .set({ profilePicCheckedAt: new Date() })
+      .where(
+        sql`${chatsTable.id} = ${chat.id} AND ${chatsTable.ownerPhone} = ${chat.ownerPhone}`
+      )
+      .catch(() => {});
+    return null;
+  } finally {
+    profilePicInFlight.delete(chat.id);
+  }
+}
+
 export async function sendMediaToJid(
   jid: string,
   filepath: string,
@@ -697,6 +768,11 @@ async function persistWaMessage(
     updateSet.contactName = sql`CASE WHEN ${chatsTable.contactName} = ${parsed.rawNumber} OR ${chatsTable.contactName} IS NULL THEN ${parsed.pushName} ELSE ${chatsTable.contactName} END`;
   }
   await db.update(chatsTable).set(updateSet).where(eq(chatsTable.id, chat.id));
+
+  // Lazily refresh profile picture in the background. Throttled via
+  // PROFILE_PIC_TTL_MS so this is essentially a no-op for most messages.
+  void refreshChatProfilePic(chat).catch(() => {});
+
   return { chat, inserted };
 }
 

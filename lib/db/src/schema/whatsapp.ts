@@ -32,6 +32,8 @@ export const chatsTable = pgTable(
     isLid: boolean("is_lid").notNull().default(false),
     isArchived: boolean("is_archived").notNull().default(false),
     unreadCount: integer("unread_count").notNull().default(0),
+    profilePicUrl: text("profile_pic_url"),
+    profilePicCheckedAt: timestamp("profile_pic_checked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

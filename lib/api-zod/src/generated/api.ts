@@ -72,6 +72,7 @@ export const ListChatsResponseItem = zod.object({
   "isArchived": zod.boolean(),
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
   "createdAt": zod.string()
 })
 export const ListChatsResponse = zod.array(ListChatsResponseItem)
@@ -98,6 +99,7 @@ export const GetChatResponse = zod.object({
   "isArchived": zod.boolean(),
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
   "createdAt": zod.string(),
   "messages": zod.array(zod.object({
   "id": zod.number(),
@@ -136,6 +138,7 @@ export const UpdateChatResponse = zod.object({
   "isArchived": zod.boolean(),
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
   "createdAt": zod.string()
 })
 
@@ -219,6 +222,7 @@ export const TakeoverChatResponse = zod.object({
   "isArchived": zod.boolean(),
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
   "createdAt": zod.string()
 })
 

@@ -56,6 +56,19 @@
   --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
+  /* WhatsApp Web specific tokens */
+  --color-wa-panel-header: hsl(var(--wa-panel-header));
+  --color-wa-panel: hsl(var(--wa-panel));
+  --color-wa-conversation: hsl(var(--wa-conversation));
+  --color-wa-bubble-out: hsl(var(--wa-bubble-out));
+  --color-wa-bubble-in: hsl(var(--wa-bubble-in));
+  --color-wa-bubble-text: hsl(var(--wa-bubble-text));
+  --color-wa-meta: hsl(var(--wa-meta));
+  --color-wa-tick: hsl(var(--wa-tick));
+  --color-wa-tick-read: hsl(var(--wa-tick-read));
+  --color-wa-accent: hsl(var(--wa-accent));
+  --color-wa-divider: hsl(var(--wa-divider));
+
   --font-sans: var(--app-font-sans);
   --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
@@ -67,65 +80,79 @@
 }
 
 :root {
-  /* Default to dark mode theme because it's a premium war room */
+  /* WhatsApp Web dark theme — sampled from web.whatsapp.com */
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  /* Very dark gray/green tint */
-  --background: 215 15% 10%;
-  --foreground: 210 20% 98%;
-  --border: 215 15% 15%;
-  
-  --card: 215 15% 12%;
-  --card-foreground: 210 20% 98%;
-  --card-border: 215 15% 18%;
+  /* Base surface: conversation pane #0b141a */
+  --background: 200 30% 7%;
+  --foreground: 200 18% 92%;
+  --border: 200 16% 17%;
 
-  --sidebar: 215 15% 10%;
-  --sidebar-foreground: 210 20% 98%;
-  --sidebar-border: 215 15% 15%;
-  --sidebar-primary: 142 61% 33%;
+  --card: 200 19% 11%;
+  --card-foreground: 200 18% 92%;
+  --card-border: 200 16% 17%;
+
+  /* Sidebar = the icon rail (#202c33) */
+  --sidebar: 202 22% 16%;
+  --sidebar-foreground: 200 14% 80%;
+  --sidebar-border: 200 16% 20%;
+  --sidebar-primary: 168 100% 33%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 215 15% 16%;
-  --sidebar-accent-foreground: 210 20% 98%;
-  --sidebar-ring: 142 61% 33%;
+  --sidebar-accent: 200 16% 22%;
+  --sidebar-accent-foreground: 200 18% 95%;
+  --sidebar-ring: 168 100% 33%;
 
-  --popover: 215 15% 12%;
-  --popover-foreground: 210 20% 98%;
-  --popover-border: 215 15% 18%;
+  --popover: 200 19% 14%;
+  --popover-foreground: 200 18% 92%;
+  --popover-border: 200 16% 20%;
 
-  /* WhatsApp-like Green */
-  --primary: 142 71% 40%;
+  /* WhatsApp brand accent (#00a884) */
+  --primary: 168 100% 33%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 215 15% 18%;
-  --secondary-foreground: 210 20% 98%;
+  --secondary: 200 16% 19%;
+  --secondary-foreground: 200 18% 92%;
 
-  --muted: 215 15% 16%;
-  --muted-foreground: 215 10% 65%;
+  --muted: 200 16% 19%;
+  --muted-foreground: 200 8% 60%;
 
-  --accent: 215 15% 18%;
-  --accent-foreground: 210 20% 98%;
+  --accent: 200 16% 20%;
+  --accent-foreground: 200 18% 95%;
 
-  --destructive: 0 84% 60%;
+  --destructive: 0 70% 55%;
   --destructive-foreground: 0 0% 100%;
 
-  --input: 215 15% 18%;
-  --ring: 142 71% 40%;
-  
-  --chart-1: 142 71% 40%;
+  --input: 200 19% 14%;
+  --ring: 168 100% 33%;
+
+  --chart-1: 168 100% 33%;
   --chart-2: 210 90% 60%;
   --chart-3: 35 90% 60%;
   --chart-4: 280 80% 60%;
-  --chart-5: 0 84% 60%;
+  --chart-5: 0 70% 55%;
 
-  --app-font-sans: 'Inter', sans-serif;
+  /* WhatsApp Web tokens */
+  --wa-panel-header: 202 22% 16%;   /* #202c33 */
+  --wa-panel: 200 19% 11%;          /* #111b21 */
+  --wa-conversation: 200 30% 7%;    /* #0b141a */
+  --wa-bubble-out: 168 86% 17%;     /* #005c4b */
+  --wa-bubble-in: 202 22% 16%;      /* #202c33 */
+  --wa-bubble-text: 0 0% 95%;       /* #e9edef */
+  --wa-meta: 200 8% 65%;            /* #8696a0 */
+  --wa-tick: 200 8% 65%;
+  --wa-tick-read: 199 89% 60%;      /* #53bdeb */
+  --wa-accent: 168 100% 33%;        /* #00a884 */
+  --wa-divider: 200 16% 13%;
+
+  --app-font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: .5rem; 
-  
+  --radius: .5rem;
+
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 }
@@ -139,3 +166,71 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+/* WhatsApp doodle wallpaper. SVG repeating pattern of faint chat-app icons
+   on top of the #0b141a conversation surface — mimics the iconic web.whatsapp
+   conversation background without copying their proprietary asset. */
+.wa-doodle-bg {
+  background-color: hsl(var(--wa-conversation));
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320' viewBox='0 0 320 320'%3E%3Cg fill='%23ffffff' fill-opacity='0.025'%3E%3Cpath d='M40 28a12 12 0 1 0 .001 24.001A12 12 0 0 0 40 28zm-3 7h6v2h-6zm0 4h6v2h-6zm0 4h4v2h-4z'/%3E%3Cpath d='M120 60c0 8-6 14-14 14a14 14 0 0 1-7-2l-5 2 2-5a14 14 0 1 1 24-9zm-19 0a5 5 0 1 0 10 0 5 5 0 0 0-10 0zm9 0a5 5 0 1 0 10 0 5 5 0 0 0-10 0z'/%3E%3Cpath d='M200 110a10 10 0 1 1 .001-20.001A10 10 0 0 1 200 110zm-6-12h12v2h-12zm0 4h12v2h-12z'/%3E%3Cpath d='M260 200l-6 6h-8a4 4 0 0 1-4-4v-12a4 4 0 0 1 4-4h16a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4h-2zm-14-12v2h12v-2zm0 4v2h8v-2z'/%3E%3Cpath d='M80 240a14 14 0 1 1 0-28 14 14 0 0 1 0 28zm0-22a8 8 0 0 0-8 8h4a4 4 0 0 1 8 0h4a8 8 0 0 0-8-8z'/%3E%3Cpath d='M160 260c6 0 11 4 12 10h-4a8 8 0 0 0-16 0h-4c1-6 6-10 12-10zm0-2a6 6 0 1 1 0-12 6 6 0 0 1 0 12z'/%3E%3Cpath d='M280 60c-7 0-12 5-12 12 0 2 0 4 2 6l-2 6 6-2a12 12 0 1 0 6-22zm0 4a8 8 0 1 1 0 16 8 8 0 0 1-4-1l-3 1 1-3a8 8 0 0 1 6-13z'/%3E%3Cpath d='M40 160a10 10 0 1 1 .001-20.001A10 10 0 0 1 40 160zm-3-12h6v2h-6zm0 4h6v2h-6z'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+/* WhatsApp message bubble tail. Drawn as a small triangle via a pseudo
+   element so bubbles look like the iconic WA "speech bubble" shape. */
+.wa-bubble-out {
+  background-color: hsl(var(--wa-bubble-out));
+  color: hsl(var(--wa-bubble-text));
+  border-radius: 7.5px;
+  border-top-right-radius: 0;
+  position: relative;
+  box-shadow: 0 1px .5px rgba(0,0,0,.13);
+}
+.wa-bubble-out::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 10px 8px;
+  border-color: transparent transparent transparent hsl(var(--wa-bubble-out));
+}
+
+.wa-bubble-in {
+  background-color: hsl(var(--wa-bubble-in));
+  color: hsl(var(--wa-bubble-text));
+  border-radius: 7.5px;
+  border-top-left-radius: 0;
+  position: relative;
+  box-shadow: 0 1px .5px rgba(0,0,0,.13);
+}
+.wa-bubble-in::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 8px 10px 0;
+  border-color: transparent hsl(var(--wa-bubble-in)) transparent transparent;
+}
+
+/* Hide the tail for consecutive bubbles from the same direction */
+.wa-bubble-out.wa-bubble-cont,
+.wa-bubble-in.wa-bubble-cont {
+  border-top-right-radius: 7.5px;
+  border-top-left-radius: 7.5px;
+}
+.wa-bubble-out.wa-bubble-cont::before,
+.wa-bubble-in.wa-bubble-cont::before {
+  display: none;
+}
+
+/* Scrollbar styled like WhatsApp Web */
+.wa-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.wa-scroll::-webkit-scrollbar-track { background: transparent; }
+.wa-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+.wa-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }

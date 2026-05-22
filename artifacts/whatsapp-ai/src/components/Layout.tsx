@@ -12,7 +12,12 @@ import {
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { cn } from "@/lib/utils";
-import { useGetWhatsappStatus, useListChats } from "@workspace/api-client-react";
+import {
+  useGetWhatsappStatus,
+  useListChats,
+  getGetWhatsappStatusQueryKey,
+  getListChatsQueryKey,
+} from "@workspace/api-client-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -26,7 +31,7 @@ const navItems = [
 function useUnreadCount() {
   const { data: chats } = useListChats(
     {},
-    { query: { refetchInterval: 5000 } }
+    { query: { queryKey: getListChatsQueryKey(), refetchInterval: 5000 } }
   );
   if (!chats) return 0;
   return chats.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
@@ -34,7 +39,7 @@ function useUnreadCount() {
 
 function StatusBadge() {
   const { data: status } = useGetWhatsappStatus({
-    query: { refetchInterval: 5000 },
+    query: { queryKey: getGetWhatsappStatusQueryKey(), refetchInterval: 5000 },
   });
 
   if (!status) return null;

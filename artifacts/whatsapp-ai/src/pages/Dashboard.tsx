@@ -68,7 +68,7 @@ export default function Dashboard() {
   const { toast } = useToast();
 
   const { data: status, isLoading: statusLoading } = useGetWhatsappStatus({
-    query: { refetchInterval: 3000 },
+    query: { queryKey: getGetWhatsappStatusQueryKey(), refetchInterval: 3000 },
   });
   const { data: summary, isLoading: summaryLoading } = useGetAnalyticsSummary();
   const { data: chats } = useListChats();
@@ -145,7 +145,7 @@ export default function Dashboard() {
                 <Button
                   data-testid="button-connect-whatsapp"
                   size="sm"
-                  onClick={() => connect.mutate({})}
+                  onClick={() => connect.mutate()}
                   disabled={connect.isPending || isQrReady || isConnecting}
                 >
                   {connect.isPending || isConnecting ? (
@@ -162,7 +162,7 @@ export default function Dashboard() {
                   data-testid="button-disconnect-whatsapp"
                   size="sm"
                   variant="outline"
-                  onClick={() => disconnect.mutate({})}
+                  onClick={() => disconnect.mutate()}
                   disabled={disconnect.isPending}
                 >
                   Disconnect

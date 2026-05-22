@@ -28,6 +28,7 @@ import {
   sendMediaToJid,
   sendContactToJid,
   getActiveSocket,
+  refreshChatProfilePic,
 } from "./whatsapp";
 
 const router = Router();
@@ -374,6 +375,15 @@ router.get("/", async (req, res) => {
       filtered = filtered.filter((c) => c.tag === tag);
     }
 
+    // Opportunistically refresh missing profile pictures in the background
+    // (throttled by PROFILE_PIC_TTL_MS inside the helper), so the UI gets
+    // them on the next poll without blocking this response.
+    for (const c of filtered) {
+      if (!c.profilePicUrl) {
+        void refreshChatProfilePic(c).catch(() => {});
+      }
+    }
+
     res.json(
       filtered.map((c) => ({
         ...c,
@@ -406,6 +416,10 @@ router.get("/:id", async (req, res) => {
         .set({ unreadCount: 0 })
         .where(eq(chatsTable.id, chat.id))
         .catch(() => {});
+    }
+
+    if (!chat.profilePicUrl) {
+      void refreshChatProfilePic(chat).catch(() => {});
     }
 
     res.json({

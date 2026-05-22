@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "wouter";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetChat,
@@ -8,10 +8,13 @@ import {
   useTakeoverChat,
   getGetChatQueryKey,
   getListChatsQueryKey,
+  useListProducts,
+  getListProductsQueryKey,
+  useSendProductToChat,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChatAvatar } from "@/components/ChatAvatar";
 import {
   Select,
   SelectContent,
@@ -39,11 +42,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  useListProducts,
-  getListProductsQueryKey,
-  useSendProductToChat,
-} from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -60,20 +58,34 @@ import {
   User as UserIcon,
   Download,
   Package,
+  Smile,
+  Mic,
+  Check,
+  CheckCheck,
+  MoreVertical,
+  Search,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, isToday, isYesterday, isThisYear } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 
 type MediaKind = "image" | "video" | "document";
 
-export default function ChatDetail() {
-  const { id } = useParams<{ id: string }>();
-  const chatId = Number(id);
+function formatDayHeader(iso: string): string {
+  const d = new Date(iso);
+  if (isToday(d)) return "Hari ini";
+  if (isYesterday(d)) return "Kemarin";
+  if (isThisYear(d)) return format(d, "d MMMM", { locale: idLocale });
+  return format(d, "d MMMM yyyy", { locale: idLocale });
+}
+
+export default function ConversationPane({ chatId }: { chatId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [reply, setReply] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [pendingFileKind, setPendingFileKind] = useState<MediaKind>("document");
   const [uploading, setUploading] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -126,13 +138,12 @@ export default function ChatDetail() {
 
   function openFilePicker(kind: MediaKind) {
     setPendingFileKind(kind);
-    // defer one tick so the accept attr update applies
     setTimeout(() => fileInputRef.current?.click(), 0);
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking same file
+    e.target.value = "";
     if (!file) return;
 
     setUploading(true);
@@ -219,7 +230,6 @@ export default function ChatDetail() {
         setReply("");
         qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
         qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
-        toast({ title: "Reply sent." });
       },
     },
   });
@@ -233,68 +243,103 @@ export default function ChatDetail() {
     },
   });
 
+  // Mark list cache stale so unread badges clear when entering a chat.
   useEffect(() => {
     if (chat) {
       qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
     }
   }, [chat?.id]);
 
+  // Autoscroll to the most recent message whenever new messages arrive — the
+  // canonical WhatsApp UX (you always land at the bottom of the thread).
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [chat?.messages.length, chat?.id]);
+
   if (isLoading) {
     return (
-      <div className="p-6 space-y-3">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-96 w-full" />
+      <div className="flex-1 wa-doodle-bg flex flex-col">
+        <div className="h-[60px] bg-[hsl(var(--wa-panel-header))] border-b border-[hsl(var(--wa-divider))] flex items-center px-4 gap-3">
+          <Skeleton className="w-10 h-10 rounded-full" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--wa-meta))]" />
+        </div>
       </div>
     );
   }
 
   if (!chat) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        <p>Chat not found</p>
+      <div className="flex-1 wa-doodle-bg flex items-center justify-center text-[hsl(var(--wa-meta))]">
+        <p>Chat tidak ditemukan</p>
       </div>
     );
   }
 
+  const isGroup = chat.phoneNumber.endsWith("@g.us");
+  const displayName =
+    chat.nickname?.trim() ||
+    (chat.isLid ? "Kontak WhatsApp" : chat.contactName);
+  const subtitle = isGroup
+    ? "Grup"
+    : chat.isLid
+      ? "Nomor belum tertaut"
+      : chat.phoneNumber;
+
+  // Group messages by day so we can drop a "Hari ini / Kemarin / d MMMM"
+  // pill between them — same UX as WhatsApp.
+  const messagesByDay: { day: string; messages: any[] }[] = [];
+  for (const msg of chat.messages) {
+    const dayKey = format(new Date(msg.createdAt), "yyyy-MM-dd");
+    const lastGroup = messagesByDay[messagesByDay.length - 1];
+    if (lastGroup && lastGroup.day === dayKey) {
+      lastGroup.messages.push(msg);
+    } else {
+      messagesByDay.push({ day: dayKey, messages: [msg] });
+    }
+  }
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 h-14 border-b border-border flex-shrink-0">
+    <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--wa-conversation))]">
+      {/* Conversation header */}
+      <div className="flex items-center gap-3 px-4 h-[60px] bg-[hsl(var(--wa-panel-header))] border-b border-[hsl(var(--wa-divider))] flex-shrink-0">
         <Link
           href="/chats"
           data-testid="button-back-to-chats"
-          className="p-1.5 rounded-md hover:bg-accent transition-colors"
+          className="p-1.5 rounded-full hover:bg-white/5 transition-colors md:hidden"
         >
           <ArrowLeft className="w-4 h-4" />
         </Link>
-        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold flex-shrink-0">
-          {chat.isLid && !chat.nickname?.trim()
-            ? "?"
-            : (chat.nickname?.trim() || chat.contactName).charAt(0).toUpperCase()}
-        </div>
+        <ChatAvatar
+          name={displayName}
+          profilePicUrl={chat.profilePicUrl}
+          isGroup={isGroup}
+          isUnknown={chat.isLid && !chat.nickname?.trim()}
+          size={40}
+        />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">
-            {chat.nickname?.trim() ||
-              (chat.isLid ? "Kontak WhatsApp" : chat.contactName)}
+          <p className="text-[15px] font-medium text-foreground truncate leading-tight">
+            {displayName}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {chat.phoneNumber.endsWith("@g.us")
-              ? "Grup"
-              : chat.isLid
-              ? "Nomor belum tertaut"
-              : chat.phoneNumber}
+          <p className="text-[12px] text-[hsl(var(--wa-meta))] truncate">
+            {chat.isHumanTakeover ? "Mode manual — AI dinonaktifkan" : subtitle}
           </p>
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-3">
+        {/* Header actions */}
+        <div className="flex items-center gap-2">
           <Select
             value={chat.tag}
             onValueChange={(val) =>
               updateChat.mutate({ id: chatId, data: { tag: val as any } })
             }
           >
-            <SelectTrigger data-testid="select-chat-tag" className="h-7 w-32 text-xs">
+            <SelectTrigger
+              data-testid="select-chat-tag"
+              className="h-8 w-28 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -311,7 +356,10 @@ export default function ChatDetail() {
               updateChat.mutate({ id: chatId, data: { status: val as any } })
             }
           >
-            <SelectTrigger data-testid="select-chat-status" className="h-7 w-36 text-xs">
+            <SelectTrigger
+              data-testid="select-chat-status"
+              className="h-8 w-32 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -321,17 +369,29 @@ export default function ChatDetail() {
             </SelectContent>
           </Select>
 
+          <div className="flex items-center gap-1.5 px-2 h-8 rounded-md border border-[hsl(var(--wa-divider))]">
+            <Switch
+              data-testid="switch-human-takeover"
+              id="takeover"
+              checked={chat.isHumanTakeover}
+              onCheckedChange={(checked) =>
+                takeover.mutate({ id: chatId, data: { takeover: checked } })
+              }
+            />
+            <Label htmlFor="takeover" className="text-[11px] text-[hsl(var(--wa-meta))] cursor-pointer">
+              Manual
+            </Label>
+          </div>
+
           <Sheet open={productPanelOpen} onOpenChange={setProductPanelOpen}>
             <SheetTrigger asChild>
-              <Button
+              <button
                 data-testid="button-open-products"
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs gap-1.5"
+                className="p-2 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
+                title="Kirim Produk"
               >
-                <Package className="w-3.5 h-3.5" />
-                Kirim Produk
-              </Button>
+                <Package className="w-4 h-4" />
+              </button>
             </SheetTrigger>
             <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
               <SheetHeader className="px-4 py-3 border-b border-border">
@@ -397,9 +457,7 @@ export default function ChatDetail() {
                           <p className="text-[10px] text-muted-foreground font-mono">
                             {p.code}
                           </p>
-                          <p className="text-xs font-medium line-clamp-2">
-                            {p.name}
-                          </p>
+                          <p className="text-xs font-medium line-clamp-2">{p.name}</p>
                           <p className="text-xs font-semibold text-primary">
                             {formatIDR(p.price)}
                           </p>
@@ -425,151 +483,177 @@ export default function ChatDetail() {
             </SheetContent>
           </Sheet>
 
-          <div className="flex items-center gap-2">
-            <Switch
-              data-testid="switch-human-takeover"
-              id="takeover"
-              checked={chat.isHumanTakeover}
-              onCheckedChange={(checked) =>
-                takeover.mutate({ id: chatId, data: { takeover: checked } })
-              }
-            />
-            <Label htmlFor="takeover" className="text-xs text-muted-foreground">
-              Human mode
-            </Label>
-          </div>
+          <button
+            className="p-2 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
+            title="Cari"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          <button
+            className="p-2 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
+            title="Menu"
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      {/* Messages on doodle background */}
+      <div className="flex-1 overflow-y-auto wa-scroll wa-doodle-bg px-[8%] py-4">
         {chat.messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <p className="text-sm">No messages yet</p>
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-[hsl(var(--wa-meta))]">
+              <p className="text-sm">Belum ada pesan</p>
+            </div>
           </div>
         ) : (
-          chat.messages.map((msg: any) => {
-            const isOutbound = msg.direction === "outbound";
-            const mediaType: string | null = msg.mediaType ?? null;
-            const mediaUrl: string | null = msg.mediaUrl ?? null;
-            return (
-              <div
-                key={msg.id}
-                data-testid={`message-${msg.id}`}
-                className={cn("flex", isOutbound ? "justify-end" : "justify-start")}
-              >
-                <div
-                  className={cn(
-                    "max-w-[70%] rounded-lg px-3 py-2 text-sm space-y-1.5",
-                    isOutbound
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-foreground"
-                  )}
-                >
-                  {mediaType === "image" && mediaUrl && (
-                    <a href={mediaUrl} target="_blank" rel="noreferrer">
-                      <img
-                        src={mediaUrl}
-                        alt={msg.mediaFilename ?? "image"}
-                        className="rounded-md max-h-72 object-cover"
-                      />
-                    </a>
-                  )}
-                  {mediaType === "video" && mediaUrl && (
-                    <video
-                      src={mediaUrl}
-                      controls
-                      className="rounded-md max-h-72 w-full"
-                    />
-                  )}
-                  {mediaType === "audio" && mediaUrl && (
-                    <audio src={mediaUrl} controls className="w-full" />
-                  )}
-                  {mediaType === "document" && mediaUrl && (
-                    <a
-                      href={mediaUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      download={msg.mediaFilename ?? undefined}
-                      className={cn(
-                        "flex items-center gap-2 rounded-md px-2 py-1.5",
-                        isOutbound ? "bg-primary-foreground/10" : "bg-foreground/5"
-                      )}
-                    >
-                      <FileText className="w-5 h-5 flex-shrink-0 opacity-80" />
-                      <span className="truncate text-xs underline">
-                        {msg.mediaFilename ?? "Document"}
-                      </span>
-                      <Download className="w-3.5 h-3.5 opacity-60 ml-auto" />
-                    </a>
-                  )}
-                  {mediaType === "contact" && (
+          <>
+            {messagesByDay.map((group) => (
+              <div key={group.day}>
+                <div className="flex justify-center my-3">
+                  <span className="px-3 py-1 rounded-md bg-[hsl(var(--wa-panel-header))]/95 text-[12px] text-[hsl(var(--wa-meta))] shadow-sm">
+                    {formatDayHeader(group.messages[0].createdAt)}
+                  </span>
+                </div>
+                {group.messages.map((msg: any, idx: number) => {
+                  const isOutbound = msg.direction === "outbound";
+                  const prev = idx > 0 ? group.messages[idx - 1] : null;
+                  const isCont = prev && prev.direction === msg.direction;
+                  const mediaType: string | null = msg.mediaType ?? null;
+                  const mediaUrl: string | null = msg.mediaUrl ?? null;
+                  return (
                     <div
+                      key={msg.id}
+                      data-testid={`message-${msg.id}`}
                       className={cn(
-                        "flex items-center gap-2 rounded-md px-2 py-1.5",
-                        isOutbound ? "bg-primary-foreground/10" : "bg-foreground/5"
+                        "flex mb-0.5",
+                        isOutbound ? "justify-end pl-12" : "justify-start pr-12",
+                        isCont ? "mt-0.5" : "mt-2"
                       )}
                     >
-                      <UserIcon className="w-5 h-5 flex-shrink-0 opacity-80" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium truncate">
-                          {msg.mediaFilename ?? "Kontak"}
-                        </p>
-                        {msg.content && (
-                          <p className="text-[10px] opacity-70 truncate">
+                      <div
+                        className={cn(
+                          "max-w-[65%] min-w-[80px] px-2 py-1 text-[14.2px] leading-[19px]",
+                          isOutbound ? "wa-bubble-out" : "wa-bubble-in",
+                          isCont && "wa-bubble-cont"
+                        )}
+                      >
+                        {mediaType === "image" && mediaUrl && (
+                          <a href={mediaUrl} target="_blank" rel="noreferrer" className="block mb-1">
+                            <img
+                              src={mediaUrl}
+                              alt={msg.mediaFilename ?? "image"}
+                              className="rounded-md max-h-72 object-cover"
+                            />
+                          </a>
+                        )}
+                        {mediaType === "video" && mediaUrl && (
+                          <video
+                            src={mediaUrl}
+                            controls
+                            className="rounded-md max-h-72 w-full mb-1"
+                          />
+                        )}
+                        {mediaType === "audio" && mediaUrl && (
+                          <audio src={mediaUrl} controls className="w-full mb-1" />
+                        )}
+                        {mediaType === "document" && mediaUrl && (
+                          <a
+                            href={mediaUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            download={msg.mediaFilename ?? undefined}
+                            className="flex items-center gap-2 rounded-md px-2 py-1.5 bg-black/20 mb-1"
+                          >
+                            <FileText className="w-5 h-5 flex-shrink-0 opacity-80" />
+                            <span className="truncate text-xs underline">
+                              {msg.mediaFilename ?? "Document"}
+                            </span>
+                            <Download className="w-3.5 h-3.5 opacity-60 ml-auto" />
+                          </a>
+                        )}
+                        {mediaType === "contact" && (
+                          <div className="flex items-center gap-2 rounded-md px-2 py-1.5 bg-black/20 mb-1">
+                            <UserIcon className="w-5 h-5 flex-shrink-0 opacity-80" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium truncate">
+                                {msg.mediaFilename ?? "Kontak"}
+                              </p>
+                              {msg.content && (
+                                <p className="text-[10px] opacity-70 truncate">
+                                  {msg.content}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {msg.content && mediaType !== "contact" && (
+                          <p className="whitespace-pre-wrap break-words pr-14">
                             {msg.content}
                           </p>
                         )}
+                        <div className="flex items-center justify-end gap-1 -mt-3 -mb-0.5 float-right pl-2">
+                          {isOutbound && msg.isAiGenerated && (
+                            <Bot
+                              className="w-3 h-3 text-[hsl(var(--wa-meta))]"
+                              aria-label="AI generated"
+                            />
+                          )}
+                          <span className="text-[11px] text-[hsl(var(--wa-meta))] tabular-nums">
+                            {format(new Date(msg.createdAt), "HH:mm")}
+                          </span>
+                          {isOutbound && (
+                            <CheckCheck
+                              className="w-3.5 h-3.5 text-[hsl(var(--wa-tick-read))]"
+                              aria-label="Sent"
+                            />
+                          )}
+                        </div>
+                        <div className="clear-both" />
                       </div>
                     </div>
-                  )}
-                  {msg.content && mediaType !== "contact" && (
-                    <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                  )}
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] opacity-60">
-                      {format(new Date(msg.createdAt), "HH:mm")}
-                    </span>
-                    {isOutbound && msg.isAiGenerated && (
-                      <Bot className="w-2.5 h-2.5 opacity-60" />
-                    )}
-                    {isOutbound && !msg.isAiGenerated && (
-                      <UserCheck className="w-2.5 h-2.5 opacity-60" />
-                    )}
-                  </div>
-                </div>
+                  );
+                })}
               </div>
-            );
-          })
+            ))}
+            <div ref={messagesEndRef} />
+          </>
         )}
       </div>
 
-      {/* Reply Box */}
-      <div className="px-4 py-3 border-t border-border flex-shrink-0">
+      {/* Composer */}
+      <div className="px-4 py-2 bg-[hsl(var(--wa-panel-header))] flex-shrink-0">
         {chat.isHumanTakeover && (
-          <p className="text-xs text-yellow-400 mb-2 flex items-center gap-1">
+          <p className="text-[11px] text-yellow-400 mb-1.5 flex items-center gap-1">
             <UserCheck className="w-3 h-3" />
-            Human mode — AI auto-reply is paused for this chat
+            Mode manual — AI auto-reply dijeda untuk chat ini
           </p>
         )}
-        <div className="flex gap-2 items-end">
+        <div className="flex items-end gap-2">
+          <button
+            className="p-2 rounded-full text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
+            title="Emoji"
+            type="button"
+          >
+            <Smile className="w-5 h-5" />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
+              <button
                 data-testid="button-attach"
-                variant="outline"
-                size="sm"
-                className="self-end"
+                type="button"
+                className="p-2 rounded-full text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors disabled:opacity-50"
                 disabled={uploading}
+                title="Lampirkan"
               >
                 {uploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  <Paperclip className="w-4 h-4" />
+                  <Paperclip className="w-5 h-5" />
                 )}
-              </Button>
+              </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
+            <DropdownMenuContent align="start" side="top">
               <DropdownMenuItem
                 data-testid="menu-attach-image"
                 onClick={() => openFilePicker("image")}
@@ -606,39 +690,53 @@ export default function ChatDetail() {
             data-testid="input-file"
           />
 
-          <Textarea
-            data-testid="textarea-reply"
-            placeholder="Ketik balasan atau caption..."
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            rows={2}
-            className="resize-none text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (reply.trim()) {
-                  sendReply.mutate({ id: chatId, data: { content: reply.trim() } });
+          <div className="flex-1 bg-[hsl(var(--wa-panel))] rounded-lg px-3 py-2">
+            <textarea
+              data-testid="textarea-reply"
+              placeholder="Ketik pesan"
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              rows={1}
+              className="w-full bg-transparent text-[15px] text-foreground placeholder:text-[hsl(var(--wa-meta))] focus:outline-none resize-none max-h-32"
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = Math.min(el.scrollHeight, 128) + "px";
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (reply.trim()) {
+                    sendReply.mutate({
+                      id: chatId,
+                      data: { content: reply.trim() },
+                    });
+                  }
                 }
-              }
-            }}
-          />
-          <Button
+              }}
+            />
+          </div>
+
+          <button
             data-testid="button-send-reply"
+            type="button"
             onClick={() => {
               if (reply.trim()) {
                 sendReply.mutate({ id: chatId, data: { content: reply.trim() } });
               }
             }}
-            disabled={sendReply.isPending || !reply.trim()}
-            size="sm"
-            className="self-end"
+            disabled={sendReply.isPending}
+            className="p-2 rounded-full text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors disabled:opacity-50"
+            title={reply.trim() ? "Kirim" : "Pesan suara"}
           >
             {sendReply.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : reply.trim() ? (
+              <Send className="w-5 h-5 text-[hsl(var(--wa-accent))]" />
             ) : (
-              <Send className="w-4 h-4" />
+              <Mic className="w-5 h-5" />
             )}
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -684,10 +782,11 @@ export default function ChatDetail() {
               disabled={sendingContact || !contactName.trim() || !contactPhone.trim()}
             >
               {sendingContact ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
               ) : (
-                "Kirim"
+                <Send className="w-4 h-4 mr-2" />
               )}
+              Kirim
             </Button>
           </DialogFooter>
         </DialogContent>

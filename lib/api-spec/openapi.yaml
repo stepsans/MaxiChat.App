@@ -745,7 +745,7 @@ components:
 
     Chat:
       type: object
-      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, createdAt]
+      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt]
       properties:
         id:
           type: integer
@@ -775,6 +775,8 @@ components:
           type: boolean
         unreadCount:
           type: integer
+        profilePicUrl:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -798,7 +800,7 @@ components:
 
     ChatWithMessages:
       type: object
-      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, createdAt, messages]
+      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, messages]
       properties:
         id:
           type: integer
@@ -828,6 +830,8 @@ components:
           type: boolean
         unreadCount:
           type: integer
+        profilePicUrl:
+          type: ["string", "null"]
         createdAt:
           type: string
         messages:

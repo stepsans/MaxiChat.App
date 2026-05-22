@@ -27,6 +27,8 @@ export interface ChatWithMessages {
   isArchived: boolean;
   isLid: boolean;
   unreadCount: number;
+  /** @nullable */
+  profilePicUrl: string | null;
   createdAt: string;
   messages: ChatMessage[];
 }

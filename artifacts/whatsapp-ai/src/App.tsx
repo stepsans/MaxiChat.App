@@ -6,7 +6,6 @@ import NotFound from "@/pages/not-found";
 import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Chats from "@/pages/Chats";
-import ChatDetail from "@/pages/ChatDetail";
 import Knowledge from "@/pages/Knowledge";
 import Settings from "@/pages/Settings";
 import Analytics from "@/pages/Analytics";
@@ -27,7 +26,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/chats" component={Chats} />
-        <Route path="/chats/:id" component={ChatDetail} />
+        <Route path="/chats/:id" component={Chats} />
         <Route path="/knowledge" component={Knowledge} />
         <Route path="/products" component={Products} />
         <Route path="/settings" component={Settings} />
