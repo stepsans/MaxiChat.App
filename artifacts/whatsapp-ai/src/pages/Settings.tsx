@@ -357,7 +357,7 @@ function ShortcutsCard() {
           Shortcut / Text Expander
         </CardTitle>
         <CardDescription className="text-xs">
-          Ketik kata pendek di kolom chat (mis. <code>/almt</code>) dan akan otomatis diganti dengan teks panjang. Tidak case-sensitive.
+          Ketik kata pendek di kolom chat (mis. <code>/hi</code>) dan akan otomatis diganti dengan teks panjang. Tidak case-sensitive.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -367,14 +367,14 @@ function ShortcutsCard() {
             data-testid="input-new-shortcut"
             value={draftShortcut}
             onChange={(e) => setDraftShortcut(e.target.value.slice(0, 64))}
-            placeholder="/almt"
+            placeholder="/hi"
             className="font-mono text-sm"
           />
           <Textarea
             data-testid="textarea-new-replacement"
             value={draftReplacement}
             onChange={(e) => setDraftReplacement(e.target.value.slice(0, 4000))}
-            placeholder={"Jl. Pakuwon City T12-18\nSurabaya"}
+            placeholder={"hello, nice to know you"}
             rows={2}
             className="text-sm"
           />
