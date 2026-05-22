@@ -14,6 +14,12 @@ export const chatsTable = pgTable(
   "chats",
   {
     id: serial("id").primaryKey(),
+    // Phone number of the WhatsApp account that owns this chat (the account
+    // currently linked via QR pairing). Scoping every chat by ownerPhone is
+    // what makes the dashboard a true per-account view: when a different
+    // operator scans their own QR, they see only their own conversations,
+    // not the previous account's history.
+    ownerPhone: text("owner_phone").notNull(),
     phoneNumber: text("phone_number").notNull(),
     contactName: text("contact_name").notNull(),
     nickname: text("nickname"),
@@ -29,7 +35,13 @@ export const chatsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    chatsPhoneNumberUnique: uniqueIndex("chats_phone_number_unique").on(t.phoneNumber),
+    // Composite uniqueness: the same conversation jid can exist independently
+    // under each WhatsApp account. The old single-column unique on
+    // phone_number is replaced by this composite to enforce isolation.
+    chatsOwnerPhoneUnique: uniqueIndex("chats_owner_phone_number_unique").on(
+      t.ownerPhone,
+      t.phoneNumber
+    ),
   })
 );
 

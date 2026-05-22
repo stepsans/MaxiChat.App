@@ -1,13 +1,35 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { eq, sql, inArray } from "drizzle-orm";
+import { getCurrentOwnerPhone } from "./whatsapp";
 
 const router = Router();
 
 router.get("/summary", async (req, res) => {
   try {
-    const chats = await db.select().from(chatsTable);
+    // Per-phone isolation: when disconnected, every counter is zero — the
+    // dashboard for "nobody logged in" must not show another account's
+    // numbers. Once a phone connects, only its own data is aggregated.
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res.json({
+        totalChats: 0,
+        aiHandled: 0,
+        needsHuman: 0,
+        closed: 0,
+        hotLeads: 0,
+        closingLeads: 0,
+        coldLeads: 0,
+        totalMessages: 0,
+        todayChats: 0,
+        closingRate: 0,
+      });
+    }
+    const chats = await db
+      .select()
+      .from(chatsTable)
+      .where(eq(chatsTable.ownerPhone, ownerPhone));
 
     const totalChats = chats.length;
     const aiHandled = chats.filter((c) => c.status === "ai_handled").length;
@@ -17,9 +39,13 @@ router.get("/summary", async (req, res) => {
     const closingLeads = chats.filter((c) => c.tag === "closing").length;
     const coldLeads = chats.filter((c) => c.tag === "cold").length;
 
-    const [msgCount] = await db
-      .select({ count: sql<number>`cast(count(*) as int)` })
-      .from(chatMessagesTable);
+    const chatIds = chats.map((c) => c.id);
+    const [msgCount] = chatIds.length
+      ? await db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(chatMessagesTable)
+          .where(inArray(chatMessagesTable.chatId, chatIds))
+      : [{ count: 0 }];
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -49,10 +75,32 @@ router.get("/summary", async (req, res) => {
 
 router.get("/common-questions", async (req, res) => {
   try {
-    const inboundMessages = await db
-      .select({ content: chatMessagesTable.content })
-      .from(chatMessagesTable)
-      .where(sql`${chatMessagesTable.direction} = 'inbound'`);
+    // Scope keyword counting to the current account's inbound messages only.
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res.json([
+        { question: "Pertanyaan harga", count: 0 },
+        { question: "Cara order", count: 0 },
+        { question: "Info produk", count: 0 },
+      ]);
+    }
+    const ownedChats = await db
+      .select({ id: chatsTable.id })
+      .from(chatsTable)
+      .where(eq(chatsTable.ownerPhone, ownerPhone));
+    const ownedChatIds = ownedChats.map((c) => c.id);
+    const inboundMessages = ownedChatIds.length
+      ? await db
+          .select({ content: chatMessagesTable.content })
+          .from(chatMessagesTable)
+          .where(
+            sql`${chatMessagesTable.direction} = 'inbound'
+                AND ${chatMessagesTable.chatId} IN (${sql.join(
+              ownedChatIds.map((id) => sql`${id}`),
+              sql`, `
+            )})`
+          )
+      : [];
 
     const keywords: Record<string, string[]> = {
       "Pertanyaan harga": ["harga", "berapa", "price", "cost", "murah", "mahal"],

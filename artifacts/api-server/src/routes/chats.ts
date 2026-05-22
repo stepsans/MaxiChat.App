@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
+import { getCurrentOwnerPhone } from "./whatsapp";
 import { eq, desc, and, sql } from "drizzle-orm";
 import {
   ListChatsQueryParams,
@@ -303,7 +304,15 @@ function classifyMediaType(
 }
 
 async function jidForChat(chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
-  const [chat] = await db.select().from(chatsTable).where(eq(chatsTable.id, chatId));
+  // Scope by current owner: a chat from another linked account must look like
+  // "not found" to every route, so operators can't ever poke at someone
+  // else's conversations even by guessing an id.
+  const ownerPhone = await getCurrentOwnerPhone();
+  if (!ownerPhone) return null;
+  const [chat] = await db
+    .select()
+    .from(chatsTable)
+    .where(sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`);
   if (!chat) return null;
   // Groups: phoneNumber column already holds the full "<id>@g.us" JID.
   if (chat.phoneNumber.includes("@")) {
@@ -313,18 +322,41 @@ async function jidForChat(chatId: number): Promise<{ chat: typeof chatsTable.$in
   return { chat, jid: `${cleaned}@s.whatsapp.net` };
 }
 
+// Centralised ownership-aware loader: returns the chat row only if it
+// belongs to the currently linked WhatsApp account. Null otherwise (which
+// every caller treats as 404 — indistinguishable from "doesn't exist"
+// to avoid leaking that another account's chat exists).
+async function loadOwnedChat(chatId: number) {
+  const ownerPhone = await getCurrentOwnerPhone();
+  if (!ownerPhone) return null;
+  const [chat] = await db
+    .select()
+    .from(chatsTable)
+    .where(sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`);
+  return chat ?? null;
+}
+
 router.get("/", async (req, res) => {
   try {
     const parsed = ListChatsQueryParams.safeParse(req.query);
     const status = parsed.success ? parsed.data.status : undefined;
     const tag = parsed.success ? parsed.data.tag : undefined;
 
+    // Per-phone isolation: when nobody is logged in, the list is empty (so
+    // a freshly-opened browser before QR pairing shows no history). Once a
+    // number connects, only its own chats become visible.
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) {
+      return res.json([]);
+    }
+
     // Sort: (1) pinned chats first (most recently pinned at top),
     // (2) non-archived next, (3) by last message time desc with chats that
     // have any history above empty ones, (4) finally createdAt as tiebreaker.
-    let query = db
+    const results = await db
       .select()
       .from(chatsTable)
+      .where(eq(chatsTable.ownerPhone, ownerPhone))
       .orderBy(
         sql`(${chatsTable.pinnedAt} IS NOT NULL) DESC,
             ${chatsTable.pinnedAt} DESC NULLS LAST,
@@ -333,7 +365,6 @@ router.get("/", async (req, res) => {
             ${chatsTable.lastMessageAt} DESC NULLS LAST,
             ${chatsTable.createdAt} DESC`
       );
-    const results = await query;
 
     let filtered = results;
     if (status && status !== "all") {
@@ -361,7 +392,7 @@ router.get("/:id", async (req, res) => {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
     if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
-    const [chat] = await db.select().from(chatsTable).where(eq(chatsTable.id, parsed.data.id));
+    const chat = await loadOwnedChat(parsed.data.id);
     if (!chat) return res.status(404).json({ error: "Chat not found" });
 
     const messages = await db
@@ -401,10 +432,15 @@ router.patch("/:id", async (req, res) => {
     const bodyParsed = UpdateChatBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
+
     const [updated] = await db
       .update(chatsTable)
       .set(bodyParsed.data)
-      .where(eq(chatsTable.id, idParsed.data.id))
+      .where(
+        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
+      )
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Chat not found" });
@@ -427,10 +463,16 @@ router.delete("/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid id" });
     }
 
-    const [existing] = await db.select().from(chatsTable).where(eq(chatsTable.id, id));
+    const existing = await loadOwnedChat(id);
     if (!existing) return res.status(404).json({ error: "Chat not found" });
 
-    await db.delete(chatsTable).where(eq(chatsTable.id, id));
+    // Re-scope the delete itself by owner, so a session swap between the
+    // load and the delete still leaves the previous owner's row intact.
+    await db
+      .delete(chatsTable)
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${existing.ownerPhone}`
+      );
 
     res.json({ success: true });
   } catch (err) {
@@ -447,7 +489,7 @@ router.post("/:id/reply", async (req, res) => {
     const bodyParsed = SendManualReplyBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const [chat] = await db.select().from(chatsTable).where(eq(chatsTable.id, idParsed.data.id));
+    const chat = await loadOwnedChat(idParsed.data.id);
     if (!chat) return res.status(404).json({ error: "Chat not found" });
 
     const [message] = await db
@@ -460,10 +502,15 @@ router.post("/:id/reply", async (req, res) => {
       })
       .returning();
 
+    // Owner-atomic: include ownerPhone in WHERE so a /disconnect that
+    // happens between loadOwnedChat and this update can't write into a
+    // chat that no longer belongs to the current session.
     await db
       .update(chatsTable)
       .set({ lastMessage: bodyParsed.data.content, lastMessageAt: new Date() })
-      .where(eq(chatsTable.id, idParsed.data.id));
+      .where(
+        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.ownerPhone} = ${chat.ownerPhone}`
+      );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
@@ -480,13 +527,18 @@ router.post("/:id/takeover", async (req, res) => {
     const bodyParsed = TakeoverChatBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
+    const ownerPhone = await getCurrentOwnerPhone();
+    if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
+
     const [updated] = await db
       .update(chatsTable)
       .set({
         isHumanTakeover: bodyParsed.data.takeover,
         status: bodyParsed.data.takeover ? "needs_human" : "ai_handled",
       })
-      .where(eq(chatsTable.id, idParsed.data.id))
+      .where(
+        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
+      )
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Chat not found" });
@@ -584,7 +636,9 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     await db
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })
-      .where(eq(chatsTable.id, id));
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${target.chat.ownerPhone}`
+      );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
@@ -648,7 +702,9 @@ router.post("/:id/contact", async (req, res) => {
     await db
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })
-      .where(eq(chatsTable.id, id));
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${target.chat.ownerPhone}`
+      );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
@@ -894,12 +950,17 @@ router.post("/:id/product", async (req, res) => {
       }
     }
 
-    // Reflect the actual last message in the chat list summary.
+    // Reflect the actual last message in the chat list summary. Owner-scoped
+    // so the long-running multi-step product send (with 800ms throttle between
+    // each flyer/link) can't write into another account's chat if the operator
+    // disconnects + reconnects mid-flight.
     const preview = lastSentDescription ?? `🛍️ ${product.name} — ${priceFmt}`;
     await db
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })
-      .where(eq(chatsTable.id, id));
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${target.chat.ownerPhone}`
+      );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
