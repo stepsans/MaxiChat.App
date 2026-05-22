@@ -412,6 +412,9 @@ const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
   "image_url": "imageUrl",
   imageurl: "imageUrl",
   foto: "imageUrl",
+  "link foto": "imageUrl",
+  "link gambar": "imageUrl",
+  gambar: "imageUrl",
   "flyer url": "flyerUrl",
   "flyer_url": "flyerUrl",
   flyerurl: "flyerUrl",
@@ -488,7 +491,7 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
     if (colIndex.code === undefined || colIndex.name === undefined || colIndex.price === undefined) {
       return res.status(400).json({
         error:
-          "Header wajib: Kode Product, Nama Barang, Harga Pricelist. Header lain (Category, Harga Silver/Gold/Platinum/Reseller/Distributor, Foto, Link Website, Link Video) opsional.",
+          "Header wajib: Kode Product, Nama Barang, Harga Pricelist. Header lain (Category, Harga Silver/Gold/Platinum/Reseller/Distributor, Link Foto, Link Flyer, Link Website, Link Video) opsional.",
       });
     }
 
