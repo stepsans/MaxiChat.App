@@ -537,6 +537,94 @@ export interface PostStatusInput {
   backgroundColor?: string;
 }
 
+export type FlowNodeType = typeof FlowNodeType[keyof typeof FlowNodeType];
+
+
+export const FlowNodeType = {
+  trigger: 'trigger',
+  message: 'message',
+  question: 'question',
+  end: 'end',
+} as const;
+
+export type FlowNodePosition = {
+  x: number;
+  y: number;
+};
+
+export type FlowNodeDataMatchType = typeof FlowNodeDataMatchType[keyof typeof FlowNodeDataMatchType];
+
+
+export const FlowNodeDataMatchType = {
+  default: 'default',
+  keyword: 'keyword',
+} as const;
+
+export type FlowNodeDataOptionsItem = {
+  id: string;
+  label: string;
+};
+
+export type FlowNodeData = {
+  matchType?: FlowNodeDataMatchType;
+  keywords?: string[];
+  text?: string;
+  options?: FlowNodeDataOptionsItem[];
+};
+
+export interface FlowNode {
+  id: string;
+  type: FlowNodeType;
+  position: FlowNodePosition;
+  data: FlowNodeData;
+}
+
+export interface FlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  /** @nullable */
+  sourceHandle?: string | null;
+}
+
+export interface FlowGraph {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+}
+
+export interface FlowSummary {
+  id: number;
+  name: string;
+  isActive: boolean;
+  updatedAt: string;
+}
+
+export interface Flow {
+  id: number;
+  name: string;
+  isActive: boolean;
+  graph: FlowGraph;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FlowCreateInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+}
+
+export interface FlowUpdateInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name?: string;
+  graph?: FlowGraph;
+}
+
 export type ListChatsParams = {
 status?: ListChatsStatus;
 tag?: ListChatsTag;

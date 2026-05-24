@@ -37,6 +37,10 @@ import type {
   DeleteKnowledgeType404,
   DeleteKnowledgeType409,
   ErrorResponse,
+  Flow,
+  FlowCreateInput,
+  FlowSummary,
+  FlowUpdateInput,
   HealthStatus,
   ImportKnowledge200,
   ImportKnowledge400,
@@ -3471,4 +3475,511 @@ export function useGetCommonQuestions<TData = Awaited<ReturnType<typeof getCommo
 
 
 
+
+export const getListFlowsUrl = () => {
+
+
+
+
+  return `/api/flows`
+}
+
+/**
+ * @summary List chatbot flows for the current owner
+ */
+export const listFlows = async ( options?: RequestInit): Promise<FlowSummary[]> => {
+
+  return customFetch<FlowSummary[]>(getListFlowsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListFlowsQueryKey = () => {
+    return [
+    `/api/flows`
+    ] as const;
+    }
+
+
+export const getListFlowsQueryOptions = <TData = Awaited<ReturnType<typeof listFlows>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFlows>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListFlowsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listFlows>>> = ({ signal }) => listFlows({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFlows>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListFlowsQueryResult = NonNullable<Awaited<ReturnType<typeof listFlows>>>
+export type ListFlowsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List chatbot flows for the current owner
+ */
+
+export function useListFlows<TData = Awaited<ReturnType<typeof listFlows>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFlows>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListFlowsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateFlowUrl = () => {
+
+
+
+
+  return `/api/flows`
+}
+
+/**
+ * @summary Create a new (empty) flow
+ */
+export const createFlow = async (flowCreateInput: FlowCreateInput, options?: RequestInit): Promise<Flow> => {
+
+  return customFetch<Flow>(getCreateFlowUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      flowCreateInput,)
+  }
+);}
+
+
+
+
+export const getCreateFlowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFlow>>, TError,{data: BodyType<FlowCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createFlow>>, TError,{data: BodyType<FlowCreateInput>}, TContext> => {
+
+const mutationKey = ['createFlow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFlow>>, {data: BodyType<FlowCreateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createFlow(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateFlowMutationResult = NonNullable<Awaited<ReturnType<typeof createFlow>>>
+    export type CreateFlowMutationBody = BodyType<FlowCreateInput>
+    export type CreateFlowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a new (empty) flow
+ */
+export const useCreateFlow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFlow>>, TError,{data: BodyType<FlowCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createFlow>>,
+        TError,
+        {data: BodyType<FlowCreateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateFlowMutationOptions(options));
+    }
+
+export const getGetFlowUrl = (id: number,) => {
+
+
+
+
+  return `/api/flows/${id}`
+}
+
+/**
+ * @summary Get a flow with its full graph
+ */
+export const getFlow = async (id: number, options?: RequestInit): Promise<Flow> => {
+
+  return customFetch<Flow>(getGetFlowUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFlowQueryKey = (id: number,) => {
+    return [
+    `/api/flows/${id}`
+    ] as const;
+    }
+
+
+export const getGetFlowQueryOptions = <TData = Awaited<ReturnType<typeof getFlow>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlow>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFlowQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFlow>>> = ({ signal }) => getFlow(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFlow>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFlowQueryResult = NonNullable<Awaited<ReturnType<typeof getFlow>>>
+export type GetFlowQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a flow with its full graph
+ */
+
+export function useGetFlow<TData = Awaited<ReturnType<typeof getFlow>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlow>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFlowQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateFlowUrl = (id: number,) => {
+
+
+
+
+  return `/api/flows/${id}`
+}
+
+/**
+ * @summary Update flow name and/or graph
+ */
+export const updateFlow = async (id: number,
+    flowUpdateInput: FlowUpdateInput, options?: RequestInit): Promise<Flow> => {
+
+  return customFetch<Flow>(getUpdateFlowUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      flowUpdateInput,)
+  }
+);}
+
+
+
+
+export const getUpdateFlowMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateFlow>>, TError,{id: number;data: BodyType<FlowUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateFlow>>, TError,{id: number;data: BodyType<FlowUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateFlow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateFlow>>, {id: number;data: BodyType<FlowUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateFlow(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateFlowMutationResult = NonNullable<Awaited<ReturnType<typeof updateFlow>>>
+    export type UpdateFlowMutationBody = BodyType<FlowUpdateInput>
+    export type UpdateFlowMutationError = ErrorType<void>
+
+    /**
+ * @summary Update flow name and/or graph
+ */
+export const useUpdateFlow = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateFlow>>, TError,{id: number;data: BodyType<FlowUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateFlow>>,
+        TError,
+        {id: number;data: BodyType<FlowUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateFlowMutationOptions(options));
+    }
+
+export const getDeleteFlowUrl = (id: number,) => {
+
+
+
+
+  return `/api/flows/${id}`
+}
+
+/**
+ * @summary Delete a flow
+ */
+export const deleteFlow = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteFlowUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteFlowMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteFlow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteFlow>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteFlow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteFlow>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteFlow(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteFlowMutationResult = NonNullable<Awaited<ReturnType<typeof deleteFlow>>>
+
+    export type DeleteFlowMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a flow
+ */
+export const useDeleteFlow = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteFlow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteFlow>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteFlowMutationOptions(options));
+    }
+
+export const getActivateFlowUrl = (id: number,) => {
+
+
+
+
+  return `/api/flows/${id}/activate`
+}
+
+/**
+ * @summary Set this flow as the single active flow for the owner
+ */
+export const activateFlow = async (id: number, options?: RequestInit): Promise<Flow> => {
+
+  return customFetch<Flow>(getActivateFlowUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getActivateFlowMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateFlow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof activateFlow>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['activateFlow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof activateFlow>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  activateFlow(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ActivateFlowMutationResult = NonNullable<Awaited<ReturnType<typeof activateFlow>>>
+
+    export type ActivateFlowMutationError = ErrorType<void>
+
+    /**
+ * @summary Set this flow as the single active flow for the owner
+ */
+export const useActivateFlow = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateFlow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof activateFlow>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getActivateFlowMutationOptions(options));
+    }
+
+export const getDeactivateActiveFlowUrl = () => {
+
+
+
+
+  return `/api/flows/active/deactivate`
+}
+
+/**
+ * @summary Deactivate whichever flow is currently active (none afterwards)
+ */
+export const deactivateActiveFlow = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeactivateActiveFlowUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDeactivateActiveFlowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateActiveFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deactivateActiveFlow>>, TError,void, TContext> => {
+
+const mutationKey = ['deactivateActiveFlow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deactivateActiveFlow>>, void> = () => {
+
+
+          return  deactivateActiveFlow(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeactivateActiveFlowMutationResult = NonNullable<Awaited<ReturnType<typeof deactivateActiveFlow>>>
+
+    export type DeactivateActiveFlowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Deactivate whichever flow is currently active (none afterwards)
+ */
+export const useDeactivateActiveFlow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateActiveFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deactivateActiveFlow>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeactivateActiveFlowMutationOptions(options));
+    }
 

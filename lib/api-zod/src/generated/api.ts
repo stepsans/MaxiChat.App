@@ -818,3 +818,191 @@ export const GetCommonQuestionsResponseItem = zod.object({
 export const GetCommonQuestionsResponse = zod.array(GetCommonQuestionsResponseItem)
 
 
+/**
+ * @summary List chatbot flows for the current owner
+ */
+export const ListFlowsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "isActive": zod.boolean(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListFlowsResponse = zod.array(ListFlowsResponseItem)
+
+
+/**
+ * @summary Create a new (empty) flow
+ */
+export const createFlowBodyNameMax = 120;
+
+
+
+export const CreateFlowBody = zod.object({
+  "name": zod.string().min(1).max(createFlowBodyNameMax)
+})
+
+
+/**
+ * @summary Get a flow with its full graph
+ */
+export const GetFlowParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetFlowResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "isActive": zod.boolean(),
+  "graph": zod.object({
+  "nodes": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['trigger', 'message', 'question', 'end']),
+  "position": zod.object({
+  "x": zod.number(),
+  "y": zod.number()
+}),
+  "data": zod.object({
+  "matchType": zod.enum(['default', 'keyword']).optional(),
+  "keywords": zod.array(zod.string()).optional(),
+  "text": zod.string().optional(),
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})).optional()
+})
+})),
+  "edges": zod.array(zod.object({
+  "id": zod.string(),
+  "source": zod.string(),
+  "target": zod.string(),
+  "sourceHandle": zod.string().nullish()
+}))
+}),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update flow name and/or graph
+ */
+export const UpdateFlowParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateFlowBodyNameMax = 120;
+
+
+
+export const UpdateFlowBody = zod.object({
+  "name": zod.string().min(1).max(updateFlowBodyNameMax).optional(),
+  "graph": zod.object({
+  "nodes": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['trigger', 'message', 'question', 'end']),
+  "position": zod.object({
+  "x": zod.number(),
+  "y": zod.number()
+}),
+  "data": zod.object({
+  "matchType": zod.enum(['default', 'keyword']).optional(),
+  "keywords": zod.array(zod.string()).optional(),
+  "text": zod.string().optional(),
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})).optional()
+})
+})),
+  "edges": zod.array(zod.object({
+  "id": zod.string(),
+  "source": zod.string(),
+  "target": zod.string(),
+  "sourceHandle": zod.string().nullish()
+}))
+}).optional()
+})
+
+export const UpdateFlowResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "isActive": zod.boolean(),
+  "graph": zod.object({
+  "nodes": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['trigger', 'message', 'question', 'end']),
+  "position": zod.object({
+  "x": zod.number(),
+  "y": zod.number()
+}),
+  "data": zod.object({
+  "matchType": zod.enum(['default', 'keyword']).optional(),
+  "keywords": zod.array(zod.string()).optional(),
+  "text": zod.string().optional(),
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})).optional()
+})
+})),
+  "edges": zod.array(zod.object({
+  "id": zod.string(),
+  "source": zod.string(),
+  "target": zod.string(),
+  "sourceHandle": zod.string().nullish()
+}))
+}),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a flow
+ */
+export const DeleteFlowParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Set this flow as the single active flow for the owner
+ */
+export const ActivateFlowParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ActivateFlowResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "isActive": zod.boolean(),
+  "graph": zod.object({
+  "nodes": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['trigger', 'message', 'question', 'end']),
+  "position": zod.object({
+  "x": zod.number(),
+  "y": zod.number()
+}),
+  "data": zod.object({
+  "matchType": zod.enum(['default', 'keyword']).optional(),
+  "keywords": zod.array(zod.string()).optional(),
+  "text": zod.string().optional(),
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})).optional()
+})
+})),
+  "edges": zod.array(zod.object({
+  "id": zod.string(),
+  "source": zod.string(),
+  "target": zod.string(),
+  "sourceHandle": zod.string().nullish()
+}))
+}),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+

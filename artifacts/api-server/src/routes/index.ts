@@ -10,6 +10,7 @@ import analyticsRouter from "./analytics";
 import productsRouter from "./products";
 import statusesRouter from "./statuses";
 import shortcutsRouter from "./shortcuts";
+import flowsRouter from "./flows";
 import adminRouter from "./admin";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
@@ -31,6 +32,7 @@ router.use("/analytics", analyticsRouter);
 router.use("/products", productsRouter);
 router.use("/statuses", statusesRouter);
 router.use("/shortcuts", shortcutsRouter);
+router.use("/flows", flowsRouter);
 
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.

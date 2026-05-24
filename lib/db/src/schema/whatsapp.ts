@@ -6,6 +6,7 @@ import {
   integer,
   timestamp,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -35,6 +36,10 @@ export const chatsTable = pgTable(
     unreadCount: integer("unread_count").notNull().default(0),
     profilePicUrl: text("profile_pic_url"),
     profilePicCheckedAt: timestamp("profile_pic_checked_at", { withTimezone: true }),
+    // Runtime chatbot-flow state. `{ flowId: number, currentNodeId: string }`
+    // when the chat is currently waiting on a reply inside a flow; null when
+    // not in a flow (AI handles the chat normally).
+    flowState: jsonb("flow_state"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

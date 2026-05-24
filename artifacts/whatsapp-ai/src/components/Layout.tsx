@@ -7,6 +7,7 @@ import {
   Package,
   Settings,
   BarChart3,
+  GitBranch,
   Wifi,
   WifiOff,
   Loader2,
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/status", label: "Status", icon: CircleDashed },
   { href: "/knowledge", label: "Knowledge Base", icon: BookOpen },
   { href: "/products", label: "Products", icon: Package },
+  { href: "/flows", label: "Chatbot Flow", icon: GitBranch },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

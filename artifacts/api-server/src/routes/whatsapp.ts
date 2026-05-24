@@ -13,8 +13,11 @@ import {
   knowledgeTable,
   settingsTable,
   whatsappStatusesTable,
+  chatbotFlowsTable,
+  type FlowGraph,
+  type FlowNode,
 } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { logger } from "../lib/logger";
 import {
@@ -1022,6 +1025,233 @@ async function persistWaMessage(
   return { chat, inserted };
 }
 
+// ---------- Chatbot flow engine ----------
+
+function renderQuestion(node: FlowNode): string {
+  const lines: string[] = [];
+  if (node.data.text) lines.push(node.data.text);
+  const opts = node.data.options ?? [];
+  opts.forEach((o, i) => lines.push(`${i + 1}. ${o.label}`));
+  return lines.join("\n");
+}
+
+function pickOption(node: FlowNode, text: string): string | null {
+  const opts = node.data.options ?? [];
+  if (opts.length === 0) return null;
+  const trimmed = text.trim().toLowerCase();
+  // Numeric pick: "1", "2", ...
+  const numMatch = trimmed.match(/^\d+/);
+  if (numMatch) {
+    const idx = parseInt(numMatch[0], 10) - 1;
+    if (idx >= 0 && idx < opts.length) return opts[idx]!.id;
+  }
+  // Label substring match.
+  for (const o of opts) {
+    if (trimmed.includes(o.label.toLowerCase())) return o.id;
+  }
+  return null;
+}
+
+async function sendFlowMessage(
+  userId: number,
+  epoch: number,
+  ownerPhone: string,
+  chatId: number,
+  jid: string,
+  text: string
+): Promise<boolean> {
+  const ctx = getCtx(userId);
+  if (epoch !== ctx.epoch) return false;
+  if (ctx.ownerPhone !== ownerPhone) return false;
+  if (!ctx.sock || !text) return false;
+
+  const sent = await ctx.sock.sendMessage(jid, { text });
+  await db
+    .insert(chatMessagesTable)
+    .values({
+      chatId,
+      direction: "outbound",
+      content: text,
+      isAiGenerated: false,
+      waMessageId: sent?.key?.id ?? null,
+    })
+    .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+  await db
+    .update(chatsTable)
+    .set({ lastMessage: text, lastMessageAt: new Date(), status: "ai_handled" })
+    .where(
+      sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
+    );
+  return true;
+}
+
+// Walk forward from `startNodeId` along straight (non-question) edges, sending
+// `message` nodes as they're hit. Stops at a `question` (asks it and persists
+// state), an `end` (clears state), or a dead-end (clears state).
+async function runFlowFrom(
+  userId: number,
+  epoch: number,
+  ownerPhone: string,
+  chatId: number,
+  jid: string,
+  flowId: number,
+  graph: FlowGraph,
+  startNodeId: string
+): Promise<void> {
+  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
+  let cursorId: string | null = startNodeId;
+  const visited = new Set<string>();
+
+  while (cursorId) {
+    if (visited.has(cursorId)) break; // cycle guard
+    visited.add(cursorId);
+    const node = nodesById.get(cursorId);
+    if (!node) break;
+
+    if (node.type === "message") {
+      if (node.data.text) {
+        const ok = await sendFlowMessage(userId, epoch, ownerPhone, chatId, jid, node.data.text);
+        if (!ok) return;
+      }
+      const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
+      cursorId = next?.target ?? null;
+      continue;
+    }
+
+    if (node.type === "question") {
+      const text = renderQuestion(node);
+      const ok = await sendFlowMessage(userId, epoch, ownerPhone, chatId, jid, text);
+      if (!ok) return;
+      await db
+        .update(chatsTable)
+        .set({ flowState: { flowId, currentNodeId: node.id } })
+        .where(eq(chatsTable.id, chatId));
+      return;
+    }
+
+    if (node.type === "end") {
+      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chatId));
+      return;
+    }
+
+    // Trigger or unknown — just follow first outgoing edge.
+    const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
+    cursorId = next?.target ?? null;
+  }
+
+  // Dead-end without an explicit end node — clear state so AI resumes later.
+  await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chatId));
+}
+
+// Returns true if the flow handled the inbound message (AI should be skipped).
+async function tryRunFlow(
+  userId: number,
+  ownerPhone: string,
+  epoch: number,
+  chat: typeof chatsTable.$inferSelect,
+  jid: string,
+  messageText: string
+): Promise<boolean> {
+  const text = messageText.trim();
+  if (!text) return false;
+
+  // Re-read chat to get fresh flowState (the upserted row may be stale).
+  // FOR UPDATE serialises concurrent inbound messages on the same chat so
+  // two simultaneous arrivals can't both advance the flow from the same
+  // currentNodeId and double-fire replies.
+  const [fresh] = await db
+    .select({ flowState: chatsTable.flowState })
+    .from(chatsTable)
+    .where(eq(chatsTable.id, chat.id))
+    .for("update")
+    .limit(1);
+  const state = (fresh?.flowState ?? null) as
+    | { flowId: number; currentNodeId: string }
+    | null;
+
+  // Case A: chat is mid-flow → try to advance from the current question.
+  if (state) {
+    const [flowRow] = await db
+      .select()
+      .from(chatbotFlowsTable)
+      .where(
+        and(
+          eq(chatbotFlowsTable.id, state.flowId),
+          eq(chatbotFlowsTable.ownerPhone, ownerPhone)
+        )
+      )
+      .limit(1);
+    if (!flowRow) {
+      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chat.id));
+      return false;
+    }
+    const graph = flowRow.graph as FlowGraph;
+    const node = graph.nodes.find((n) => n.id === state.currentNodeId);
+    if (!node || node.type !== "question") {
+      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chat.id));
+      return false;
+    }
+    const optId = pickOption(node, text);
+    if (!optId) return false; // unrecognised reply → fall through to AI
+
+    const edge = graph.edges.find(
+      (e) => e.source === node.id && e.sourceHandle === optId
+    );
+    if (!edge) {
+      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chat.id));
+      return false;
+    }
+    await runFlowFrom(
+      userId,
+      epoch,
+      ownerPhone,
+      chat.id,
+      jid,
+      flowRow.id,
+      graph,
+      edge.target
+    );
+    return true;
+  }
+
+  // Case B: not in a flow → try to match a trigger from the active flow.
+  const [active] = await db
+    .select()
+    .from(chatbotFlowsTable)
+    .where(
+      and(eq(chatbotFlowsTable.ownerPhone, ownerPhone), eq(chatbotFlowsTable.isActive, true))
+    )
+    .limit(1);
+  if (!active) return false;
+  const graph = active.graph as FlowGraph;
+  const lower = text.toLowerCase();
+
+  const triggers = graph.nodes.filter((n) => n.type === "trigger");
+  // Keyword triggers first (more specific), then default trigger.
+  const keywordHit = triggers.find(
+    (n) =>
+      (n.data.matchType ?? "keyword") === "keyword" &&
+      (n.data.keywords ?? []).some((k) => k && lower.includes(k.toLowerCase()))
+  );
+  const start = keywordHit ?? triggers.find((n) => n.data.matchType === "default");
+  if (!start) return false;
+
+  const firstEdge = graph.edges.find((e) => e.source === start.id);
+  if (!firstEdge) return false;
+
+  await runFlowFrom(
+    userId,
+    epoch,
+    ownerPhone,
+    chat.id,
+    jid,
+    active.id,
+    graph,
+    firstEdge.target
+  );
+  return true;
+}
+
 async function maybeTriggerAutoReply(
   userId: number,
   ownerPhone: string,
@@ -1032,6 +1262,15 @@ async function maybeTriggerAutoReply(
 ) {
   if (chat.isHumanTakeover) return;
   if (!messageText.trim()) return;
+
+  // Try chatbot flow before AI. If a flow handled the message (matched a
+  // trigger or advanced from a question), skip the AI auto-reply entirely.
+  try {
+    const handled = await tryRunFlow(userId, ownerPhone, epoch, chat, jid, messageText);
+    if (handled) return;
+  } catch (err) {
+    logger.error({ err }, "Flow engine failed; falling back to AI");
+  }
 
   const settingsRows = await db
     .select()

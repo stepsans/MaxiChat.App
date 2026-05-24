@@ -26,6 +26,8 @@ tags:
     description: Session authentication
   - name: admin
     description: Super admin user management
+  - name: flows
+    description: Chatbot flow builder
 paths:
   /auth/login:
     post:
@@ -1039,6 +1041,119 @@ paths:
                 items:
                   $ref: "#/components/schemas/CommonQuestion"
 
+  /flows:
+    get:
+      operationId: listFlows
+      tags: [flows]
+      summary: List chatbot flows for the current owner
+      responses:
+        "200":
+          description: Flow list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FlowSummary"
+    post:
+      operationId: createFlow
+      tags: [flows]
+      summary: Create a new (empty) flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlowCreateInput"
+      responses:
+        "201":
+          description: Created flow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flow"
+
+  /flows/{id}:
+    get:
+      operationId: getFlow
+      tags: [flows]
+      summary: Get a flow with its full graph
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Flow detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flow"
+        "404": { description: Not found }
+    patch:
+      operationId: updateFlow
+      tags: [flows]
+      summary: Update flow name and/or graph
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlowUpdateInput"
+      responses:
+        "200":
+          description: Updated flow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flow"
+        "404": { description: Not found }
+    delete:
+      operationId: deleteFlow
+      tags: [flows]
+      summary: Delete a flow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Not found }
+
+  /flows/{id}/activate:
+    post:
+      operationId: activateFlow
+      tags: [flows]
+      summary: Set this flow as the single active flow for the owner
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Activated flow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flow"
+        "404": { description: Not found }
+
+  /flows/active/deactivate:
+    post:
+      operationId: deactivateActiveFlow
+      tags: [flows]
+      summary: Deactivate whichever flow is currently active (none afterwards)
+      responses:
+        "204": { description: Deactivated }
+
 components:
   schemas:
     HealthStatus:
@@ -1628,3 +1743,96 @@ components:
         backgroundColor:
           type: string
           description: Hex color string e.g. "#0f3a4d" — defaults to WA green if omitted.
+
+    FlowNode:
+      type: object
+      required: [id, type, position, data]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [trigger, message, question, end]
+        position:
+          type: object
+          required: [x, y]
+          properties:
+            x: { type: number }
+            y: { type: number }
+        data:
+          type: object
+          properties:
+            matchType:
+              type: string
+              enum: [default, keyword]
+            keywords:
+              type: array
+              items: { type: string }
+            text: { type: string }
+            options:
+              type: array
+              items:
+                type: object
+                required: [id, label]
+                properties:
+                  id: { type: string }
+                  label: { type: string }
+
+    FlowEdge:
+      type: object
+      required: [id, source, target]
+      properties:
+        id: { type: string }
+        source: { type: string }
+        target: { type: string }
+        sourceHandle:
+          type: ["string", "null"]
+
+    FlowGraph:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/FlowNode" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/FlowEdge" }
+
+    FlowSummary:
+      type: object
+      required: [id, name, isActive, updatedAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        isActive: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+
+    Flow:
+      type: object
+      required: [id, name, isActive, graph, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        isActive: { type: boolean }
+        graph: { $ref: "#/components/schemas/FlowGraph" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    FlowCreateInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+
+    FlowUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        graph:
+          $ref: "#/components/schemas/FlowGraph"
