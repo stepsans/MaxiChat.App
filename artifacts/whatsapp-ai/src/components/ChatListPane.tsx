@@ -241,7 +241,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
               const isSelected = selectedChatId === chat.id;
               const displayName =
                 chat.nickname?.trim() ||
-                (chat.isLid ? "Kontak WhatsApp" : chat.contactName);
+                (chat.isLid ? chat.phoneNumber : chat.contactName);
               const subtitle = isGroupChat(chat)
                 ? "Grup"
                 : chat.isLid

@@ -283,7 +283,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const isGroup = chat.phoneNumber.endsWith("@g.us");
   const displayName =
     chat.nickname?.trim() ||
-    (chat.isLid ? "Kontak WhatsApp" : chat.contactName);
+    (chat.isLid ? chat.phoneNumber : chat.contactName);
   const subtitle = isGroup
     ? "Grup"
     : chat.isLid
