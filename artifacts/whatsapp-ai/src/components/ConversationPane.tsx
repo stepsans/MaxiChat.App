@@ -94,6 +94,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [sendingContact, setSendingContact] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [productPanelOpen, setProductPanelOpen] = useState(false);
   const [sendingProductId, setSendingProductId] = useState<number | null>(null);
   const [productSearch, setProductSearch] = useState("");
@@ -541,13 +542,18 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                         )}
                       >
                         {mediaType === "image" && mediaUrl && (
-                          <a href={mediaUrl} target="_blank" rel="noreferrer" className="block mb-1">
+                          <button
+                            type="button"
+                            onClick={() => setLightboxUrl(mediaUrl)}
+                            className="block mb-1 cursor-zoom-in"
+                            data-testid={`image-preview-${msg.id}`}
+                          >
                             <img
                               src={mediaUrl}
                               alt={msg.mediaFilename ?? "image"}
                               className="rounded-md max-h-72 object-cover"
                             />
-                          </a>
+                          </button>
                         )}
                         {mediaType === "video" && mediaUrl && (
                           <video
@@ -800,6 +806,21 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               Kirim
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!lightboxUrl} onOpenChange={(open) => !open && setLightboxUrl(null)}>
+        <DialogContent
+          className="max-w-[95vw] w-auto p-0 bg-transparent border-0 shadow-none flex items-center justify-center"
+          data-testid="image-lightbox"
+        >
+          {lightboxUrl && (
+            <img
+              src={lightboxUrl}
+              alt="preview"
+              className="max-h-[90vh] max-w-[95vw] w-auto h-auto object-contain rounded-md"
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
