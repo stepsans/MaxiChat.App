@@ -241,10 +241,16 @@ function FlowGuideDialog({
                     substring). Mengabaikan cooldown — selalu menang.
                   </li>
                   <li>
-                    <b>Default</b> — flow jalan untuk pesan apa pun.
-                    Dihormati cooldown: setelah End/AI dijalankan, Default
-                    tidak akan jalan lagi sampai cooldown habis (atur di
-                    Settings: 5/15/30/60/120 menit).
+                    <b>Default</b> — flow jalan untuk pesan apa pun, tapi
+                    <b> sekali jalan langsung di-jeda</b>. Setelah customer
+                    sampai ke node End atau AI, Default trigger <b>tidak akan
+                    memulai flow lagi</b> untuk customer yang sama selama
+                    periode jeda (5 / 15 / 30 / 60 / 120 menit, atur di
+                    Settings → Cooldown Flow). Tujuannya: supaya customer
+                    tidak terus-terusan dilempar ke menu awal setiap kali
+                    membalas. Setelah jeda habis, Default boleh memulai
+                    ulang. Keyword trigger tetap bisa memotong jeda ini
+                    kapan saja.
                   </li>
                 </ul>
               </div>
