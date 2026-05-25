@@ -6,10 +6,11 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import ExcelJS from "exceljs";
 import { db } from "@workspace/db";
-import { productsTable } from "@workspace/db";
+import { productsTable, knowledgeTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
+import { ensureKnowledgeTypesSeed } from "./knowledge-types";
 
 const router = Router();
 
@@ -634,6 +635,114 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   } finally {
     productImportInFlight = false;
+  }
+});
+
+// Title used for the auto-generated knowledge entry built from the product
+// catalog. Kept stable so each sync replaces the previous entry instead of
+// piling up duplicates.
+const PRODUCT_KB_TITLE = "Katalog Produk (auto-sync)";
+
+function formatIdr(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "-";
+  return "Rp " + n.toLocaleString("id-ID");
+}
+
+function buildKnowledgeContent(
+  rows: (typeof productsTable.$inferSelect)[],
+): string {
+  if (rows.length === 0) {
+    return "Belum ada produk di katalog.";
+  }
+  const groups = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const cat = (r.category ?? "").trim() || "Tanpa Kategori";
+    const list = groups.get(cat);
+    if (list) list.push(r);
+    else groups.set(cat, [r]);
+  }
+  const sortedCats = Array.from(groups.keys()).sort((a, b) =>
+    a.localeCompare(b, "id-ID", { sensitivity: "base" }),
+  );
+  const lines: string[] = [];
+  lines.push(
+    `Daftar produk toko (total ${rows.length} item, ${sortedCats.length} kategori). Gunakan data ini saat menjawab pertanyaan customer tentang nama produk, kategori, kode, atau harga pricelist.`,
+  );
+  for (const cat of sortedCats) {
+    const items = groups.get(cat)!.slice().sort((a, b) =>
+      a.name.localeCompare(b.name, "id-ID", { sensitivity: "base" }),
+    );
+    lines.push("");
+    lines.push(`== Kategori: ${cat} (${items.length} produk) ==`);
+    for (const p of items) {
+      lines.push(
+        `- ${p.name} | kode: ${p.code} | harga: ${formatIdr(p.price)}`,
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+// Per-owner in-flight lock prevents two concurrent sync calls (e.g. impatient
+// double-click on the UI button) from racing each other in the
+// delete-then-insert transaction below. Without this we could end up with
+// duplicate "Katalog Produk (auto-sync)" rows since the DB does not enforce
+// uniqueness on (owner_phone, title) — keeping the constraint out of schema
+// avoids breaking owners who legitimately have duplicate manual titles.
+const syncToKnowledgeInFlight = new Set<string>();
+
+// Snapshot the current product catalog into a single knowledge entry so the
+// AI (which is fed only from the knowledge base) can answer questions like
+// "produk apa saja di kategori X". Internal tier prices (silver/gold/etc.)
+// are intentionally excluded — they are app-only data, never for customers.
+router.post("/sync-to-knowledge", async (req, res) => {
+  let ownerPhone: string | null = null;
+  try {
+    ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
+    if (!ownerPhone) {
+      return res
+        .status(503)
+        .json({ error: "Hubungkan WhatsApp dulu sebelum sync ke knowledge base." });
+    }
+    if (syncToKnowledgeInFlight.has(ownerPhone)) {
+      return res
+        .status(409)
+        .json({ error: "Sync sedang berjalan, tunggu sebentar." });
+    }
+    syncToKnowledgeInFlight.add(ownerPhone);
+    await ensureKnowledgeTypesSeed(ownerPhone);
+    const rows = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .orderBy(productsTable.id);
+    const content = buildKnowledgeContent(rows);
+    const contentChars = content.length;
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(knowledgeTable)
+        .where(
+          and(
+            eq(knowledgeTable.ownerPhone, ownerPhone!),
+            eq(knowledgeTable.title, PRODUCT_KB_TITLE),
+          ),
+        );
+      await tx.insert(knowledgeTable).values({
+        ownerPhone: ownerPhone!,
+        type: "product",
+        title: PRODUCT_KB_TITLE,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+    res.json({ synced: rows.length, title: PRODUCT_KB_TITLE, contentChars });
+  } catch (err) {
+    req.log.error({ err }, "Failed to sync products to knowledge");
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (ownerPhone) syncToKnowledgeInFlight.delete(ownerPhone);
   }
 });
 

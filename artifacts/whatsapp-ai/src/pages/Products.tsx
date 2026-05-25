@@ -5,6 +5,7 @@ import {
   useCreateProduct,
   useUpdateProduct,
   useDeleteProduct,
+  useSyncProductsToKnowledge,
   getListProductsQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ import {
   ImagePlus,
   Upload,
   Download,
+  BookOpen,
   ExternalLink,
   Video,
   Search,
@@ -168,6 +170,31 @@ export default function Products() {
         }),
     },
   });
+  const syncKb = useSyncProductsToKnowledge({
+    mutation: {
+      onSuccess: (data: unknown) => {
+        const d = data as { synced?: number; contentChars?: number };
+        const kb = d?.contentChars ? Math.round(d.contentChars / 1024) : 0;
+        const sizeWarn =
+          kb > 100
+            ? ` ⚠️ Ukuran ~${kb} KB — biaya token AI per pesan masuk akan naik. Pertimbangkan menjaga katalog tetap ringkas.`
+            : kb > 0
+              ? ` Ukuran ~${kb} KB.`
+              : "";
+        toast({
+          title: "Sync ke Knowledge Base berhasil",
+          description: `${d?.synced ?? 0} produk dimasukkan.${sizeWarn}`,
+        });
+      },
+      onError: (e: unknown) =>
+        toast({
+          title: "Gagal sync ke Knowledge Base",
+          description: e instanceof Error ? e.message : "",
+          variant: "destructive",
+        }),
+    },
+  });
+
   const remove = useDeleteProduct({
     mutation: {
       onSuccess: () => {
@@ -465,6 +492,21 @@ export default function Products() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncKb.mutate()}
+            disabled={syncKb.isPending || allProducts.length === 0}
+            data-testid="button-sync-products-knowledge"
+            title="Snapshot katalog ke Knowledge Base agar bisa dipakai AI"
+          >
+            {syncKb.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+            )}
+            Sync ke AI
+          </Button>
           <Button data-testid="button-add-product" size="sm" onClick={openCreate}>
             <Plus className="w-3.5 h-3.5 mr-1.5" />
             Tambah Produk

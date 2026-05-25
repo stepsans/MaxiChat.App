@@ -479,6 +479,22 @@ export const DeleteKnowledgeTypeResponse = zod.object({
 
 
 /**
+ * Builds a text summary of all products (grouped by category, with name,
+code, and pricelist price) and replaces the auto-generated knowledge
+entry titled "Katalog Produk (auto-sync)" for the current owner. The AI
+reply pipeline reads only the knowledge base, so this is how product
+info reaches the AI. Internal tier prices are intentionally excluded.
+
+ * @summary Snapshot the product catalog into a single knowledge-base entry
+ */
+export const SyncProductsToKnowledgeResponse = zod.object({
+  "synced": zod.number(),
+  "title": zod.string(),
+  "contentChars": zod.number().describe('Total characters of generated KB content (rough proxy for AI prompt cost per inbound message).')
+})
+
+
+/**
  * Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
 Required headers (case-insensitive): Kode Product, Nama Barang, Harga Pricelist.
 Optional headers: Category, Harga Silver, Harga Gold, Harga Platinum,

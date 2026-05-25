@@ -717,6 +717,13 @@ export type DeleteKnowledgeType409 = {
   error?: string;
 };
 
+export type SyncProductsToKnowledge200 = {
+  synced: number;
+  title: string;
+  /** Total characters of generated KB content (rough proxy for AI prompt cost per inbound message). */
+  contentChars: number;
+};
+
 export type ImportProducts200 = {
   imported: number;
   skipped?: number;

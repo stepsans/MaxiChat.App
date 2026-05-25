@@ -63,6 +63,7 @@ import type {
   SignupInput,
   SignupResponse,
   SuccessResponse,
+  SyncProductsToKnowledge200,
   TakeoverInput,
   TextShortcut,
   TextShortcutInput,
@@ -2299,6 +2300,82 @@ export function useExportProductsXlsx<TData = Awaited<ReturnType<typeof exportPr
 
 
 
+
+export const getSyncProductsToKnowledgeUrl = () => {
+
+
+
+
+  return `/api/products/sync-to-knowledge`
+}
+
+/**
+ * Builds a text summary of all products (grouped by category, with name,
+code, and pricelist price) and replaces the auto-generated knowledge
+entry titled "Katalog Produk (auto-sync)" for the current owner. The AI
+reply pipeline reads only the knowledge base, so this is how product
+info reaches the AI. Internal tier prices are intentionally excluded.
+
+ * @summary Snapshot the product catalog into a single knowledge-base entry
+ */
+export const syncProductsToKnowledge = async ( options?: RequestInit): Promise<SyncProductsToKnowledge200> => {
+
+  return customFetch<SyncProductsToKnowledge200>(getSyncProductsToKnowledgeUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSyncProductsToKnowledgeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncProductsToKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncProductsToKnowledge>>, TError,void, TContext> => {
+
+const mutationKey = ['syncProductsToKnowledge'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncProductsToKnowledge>>, void> = () => {
+
+
+          return  syncProductsToKnowledge(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncProductsToKnowledgeMutationResult = NonNullable<Awaited<ReturnType<typeof syncProductsToKnowledge>>>
+
+    export type SyncProductsToKnowledgeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Snapshot the product catalog into a single knowledge-base entry
+ */
+export const useSyncProductsToKnowledge = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncProductsToKnowledge>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncProductsToKnowledge>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSyncProductsToKnowledgeMutationOptions(options));
+    }
 
 export const getImportProductsUrl = () => {
 

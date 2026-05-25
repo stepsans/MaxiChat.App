@@ -737,6 +737,46 @@ paths:
                 type: string
                 format: binary
 
+  /products/sync-to-knowledge:
+    post:
+      operationId: syncProductsToKnowledge
+      tags: [products]
+      summary: Snapshot the product catalog into a single knowledge-base entry
+      description: |
+        Builds a text summary of all products (grouped by category, with name,
+        code, and pricelist price) and replaces the auto-generated knowledge
+        entry titled "Katalog Produk (auto-sync)" for the current owner. The AI
+        reply pipeline reads only the knowledge base, so this is how product
+        info reaches the AI. Internal tier prices are intentionally excluded.
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [synced, title, contentChars]
+                properties:
+                  synced:
+                    type: integer
+                  title:
+                    type: string
+                  contentChars:
+                    type: integer
+                    description: Total characters of generated KB content (rough proxy for AI prompt cost per inbound message).
+        "409":
+          description: A sync for this owner is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: WhatsApp not connected yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /products/import:
     post:
       operationId: importProducts

@@ -75,6 +75,7 @@ export * from './signupInput';
 export * from './signupResponse';
 export * from './signupResponseStatus';
 export * from './successResponse';
+export * from './syncProductsToKnowledge200';
 export * from './takeoverInput';
 export * from './textShortcut';
 export * from './textShortcutInput';
