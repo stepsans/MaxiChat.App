@@ -9,9 +9,16 @@ import {
   useDeactivateActiveFlow,
   getListFlowsQueryKey,
 } from "@workspace/api-client-react";
-import { Plus, Trash2, Power, PowerOff, Pencil, GitBranch } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, Pencil, GitBranch, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Flows() {
@@ -19,6 +26,7 @@ export default function Flows() {
   const { toast } = useToast();
   const { data: flows, isLoading } = useListFlows();
   const [name, setName] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: getListFlowsQueryKey() });
@@ -56,13 +64,23 @@ export default function Flows() {
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="border-b border-border px-6 py-4 flex items-center gap-3">
         <GitBranch className="w-5 h-5 text-primary" />
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-semibold">Chatbot Flow</h1>
           <p className="text-xs text-muted-foreground">
             Susun alur balasan otomatis. Hanya 1 flow yang aktif untuk semua chat.
           </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setGuideOpen(true)}
+          data-testid="button-flow-guide"
+        >
+          <HelpCircle className="w-4 h-4 mr-1.5" /> Panduan
+        </Button>
       </div>
+
+      <FlowGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <form
@@ -165,5 +183,268 @@ export default function Flows() {
         )}
       </div>
     </div>
+  );
+}
+
+function FlowGuideDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Panduan Chatbot Flow</DialogTitle>
+          <DialogDescription>
+            Cara kerja flow, jenis node, dan kenapa kadang chat tidak masuk ke flow.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 text-sm leading-relaxed pt-2">
+          <section>
+            <h3 className="font-semibold text-base mb-2">1. Konsep Dasar</h3>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                Hanya <b>1 flow</b> yang bisa aktif (titik hijau). Flow lain
+                otomatis dimatikan saat satu diaktifkan.
+              </li>
+              <li>
+                Setiap pesan masuk dicek ke flow <b>sebelum</b> dijawab AI.
+                Kalau flow merespons, AI dilewati.
+              </li>
+              <li>
+                Flow harus punya minimal 1 <b>Trigger</b> yang tersambung ke
+                node lain. Trigger yang menggantung (tanpa edge keluar) akan
+                diabaikan.
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="font-semibold text-base mb-2">2. Jenis Node</h3>
+
+            <div className="space-y-3">
+              <div className="rounded-md border border-border p-3">
+                <div className="font-medium text-emerald-600 dark:text-emerald-400">
+                  ⚡ Trigger
+                </div>
+                <p className="mt-1">
+                  Titik masuk flow. Dua mode:
+                </p>
+                <ul className="list-disc pl-5 mt-1 space-y-1">
+                  <li>
+                    <b>Keyword</b> — flow jalan kalau pesan customer
+                    mengandung salah satu kata kunci (case-insensitive,
+                    substring). Mengabaikan cooldown — selalu menang.
+                  </li>
+                  <li>
+                    <b>Default</b> — flow jalan untuk pesan apa pun.
+                    Dihormati cooldown: setelah End/AI dijalankan, Default
+                    tidak akan jalan lagi sampai cooldown habis (atur di
+                    Settings: 5/15/30/60/120 menit).
+                  </li>
+                </ul>
+              </div>
+
+              <div className="rounded-md border border-border p-3">
+                <div className="font-medium text-sky-600 dark:text-sky-400">
+                  💬 Pesan (Message)
+                </div>
+                <p className="mt-1">
+                  Kirim teks ke customer, lalu otomatis lanjut ke node
+                  berikutnya. Pakai untuk sapaan, info singkat, instruksi.
+                </p>
+              </div>
+
+              <div className="rounded-md border border-border p-3">
+                <div className="font-medium text-violet-600 dark:text-violet-400">
+                  ❓ Pertanyaan (Question)
+                </div>
+                <p className="mt-1">
+                  Kirim pertanyaan + daftar opsi bernomor. Cabang flow
+                  mengikuti opsi yang customer pilih.
+                </p>
+                <ul className="list-disc pl-5 mt-1 space-y-1">
+                  <li>
+                    Customer bisa jawab dengan <b>angka</b> (1, 2, 3) atau
+                    <b> label</b> persis (mis. "Beli").
+                  </li>
+                  <li>
+                    <b>Toggle "Wajib pilih dari opsi"</b>: kalau ON, jawaban
+                    di luar opsi → pertanyaan dikirim ulang, flow tidak
+                    keluar, AI tidak ikut campur. Kalau OFF → flow keluar,
+                    AI ambil alih.
+                  </li>
+                </ul>
+              </div>
+
+              <div className="rounded-md border border-border p-3">
+                <div className="font-medium text-amber-600 dark:text-amber-400">
+                  🤖 AI (Handoff ke AI)
+                </div>
+                <p className="mt-1">
+                  Akhiri flow + alihkan ke AI assistant. Mengirim teks
+                  pembuka (mis. <i>"Baik, silakan tanya apa saja ya 🤖…"</i>),
+                  lalu pesan berikutnya dari customer <b>dijawab AI</b>
+                  (pakai Knowledge Base + Sales Prompt). Default trigger
+                  di-mute selama cooldown.
+                </p>
+              </div>
+
+              <div className="rounded-md border border-border p-3">
+                <div className="font-medium text-rose-600 dark:text-rose-400">
+                  ⛔ End
+                </div>
+                <p className="mt-1">
+                  Akhiri flow tanpa kirim pesan apa pun. Pesan customer
+                  berikutnya <b>tidak dibalas</b> (sampai cooldown habis atau
+                  keyword trigger memotong). Cocok untuk skenario "tutup
+                  percakapan", customer batal, atau bot harus diam karena
+                  admin manusia akan ambil alih.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-md border-2 border-primary/40 bg-primary/5 p-4">
+            <h3 className="font-semibold text-base mb-2">
+              3. End vs AI — Kapan Pakai yang Mana?
+            </h3>
+            <table className="w-full text-xs mt-2">
+              <thead>
+                <tr className="text-left border-b border-border">
+                  <th className="py-1.5 pr-2">Situasi</th>
+                  <th className="py-1.5 pr-2">Pakai</th>
+                  <th className="py-1.5">Alasan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                <tr>
+                  <td className="py-1.5 pr-2">Customer pilih "Tidak jadi"</td>
+                  <td className="py-1.5 pr-2"><b>End</b></td>
+                  <td className="py-1.5">Diam, jangan ganggu.</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-2">Customer pilih "Tanya admin manusia"</td>
+                  <td className="py-1.5 pr-2"><b>End</b></td>
+                  <td className="py-1.5">Bot mundur, admin yang jawab.</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-2">Customer pilih "Konsultasi / tanya bebas"</td>
+                  <td className="py-1.5 pr-2"><b>AI</b></td>
+                  <td className="py-1.5">AI bisa jawab pertanyaan apa pun pakai Knowledge Base.</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-2">Customer pilih "Lihat produk"</td>
+                  <td className="py-1.5 pr-2"><b>AI</b></td>
+                  <td className="py-1.5">Setelah sync katalog ke KB, AI bisa list/jawab harga.</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-2">Customer pilih "Cek resi"</td>
+                  <td className="py-1.5 pr-2"><b>End</b></td>
+                  <td className="py-1.5">Kirim instruksi lewat node Pesan, lalu End — admin lanjut manual.</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-2">Setelah ucapan terima kasih</td>
+                  <td className="py-1.5 pr-2"><b>End</b></td>
+                  <td className="py-1.5">Percakapan selesai.</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="mt-3 text-xs text-muted-foreground">
+              <b>Aturan ringkas:</b> kalau customer masih akan tanya hal yang
+              <b> bot/AI bisa jawab</b> → pakai <b>AI</b>. Kalau customer
+              butuh <b>manusia</b> atau memang sudah selesai → pakai <b>End</b>.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold text-base mb-2">4. Contoh Flow Lengkap</h3>
+            <pre className="bg-muted/50 border border-border rounded-md p-3 text-xs overflow-x-auto whitespace-pre-wrap">
+{`Trigger (Default)
+   ↓
+Pesan: "Halo 👋 Saya bot Toko ABC, ada yang bisa dibantu?"
+   ↓
+Pertanyaan: "Silakan pilih:"
+   ├─ 1. Lihat produk        → AI ("Baik, mau cari apa? Ketik bebas ya 🤖")
+   ├─ 2. Cek pesanan / resi  → Pesan ("Kirim nomor order Anda, admin akan cek") → End
+   ├─ 3. Chat admin          → End (admin manusia ambil alih)
+   └─ 4. Tanya bebas         → AI ("Silakan tanya apa saja 🤖")
+`}
+            </pre>
+          </section>
+
+          <section className="rounded-md border-2 border-amber-500/40 bg-amber-500/5 p-4">
+            <h3 className="font-semibold text-base mb-2">
+              5. Kenapa chat tidak masuk ke flow?
+            </h3>
+            <p className="mb-2">
+              Kalau fitur sudah aktif tapi customer kirim pesan tidak ditanggapi
+              flow, cek satu per satu:
+            </p>
+            <ol className="list-decimal pl-5 space-y-2">
+              <li>
+                <b>Flow benar-benar aktif?</b> Di halaman ini titik harus
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500 mx-1 align-middle" />
+                hijau. Cuma 1 flow yang boleh aktif.
+              </li>
+              <li>
+                <b>Trigger tersambung?</b> Buka editor → pastikan node Trigger
+                punya garis keluar ke node berikutnya. Trigger menggantung =
+                diabaikan.
+              </li>
+              <li>
+                <b>Mode Trigger sesuai?</b>
+                <ul className="list-disc pl-5 mt-1">
+                  <li>
+                    <b>Keyword</b>: cek kata kuncinya. Match-nya
+                    case-insensitive + substring (mis. keyword "menu" akan kena
+                    pesan "Saya mau lihat menu"). Tapi salah ketik / typo tidak
+                    kena.
+                  </li>
+                  <li>
+                    <b>Default</b>: pasti jalan untuk pesan pertama, tapi
+                    <b> tidak jalan</b> kalau chat masih dalam <b>cooldown</b>
+                    setelah End/AI sebelumnya.
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <b>Cooldown aktif?</b> Setelah flow customer berakhir di
+                End/AI, Default trigger di-mute 5–120 menit (atur di
+                Settings). Selama itu hanya Keyword trigger yang bisa
+                memotong. Mau test ulang? Tunggu cooldown habis atau pakai
+                keyword.
+              </li>
+              <li>
+                <b>Chat dalam "Human Takeover"?</b> Kalau di halaman Chat Anda
+                pernah klik "Ambil alih", flow & AI <b>dimatikan</b> untuk
+                chat itu sampai dilepas kembali.
+              </li>
+              <li>
+                <b>Customer di tengah Question?</b> Kalau flow sebelumnya
+                berhenti di node Pertanyaan dan customer baru balas sekarang,
+                jawaban diproses sebagai pilihan opsi — bukan trigger ulang.
+              </li>
+              <li>
+                <b>WhatsApp tersambung?</b> Cek halaman WhatsApp — status
+                harus "Connected". Tanpa koneksi, pesan tidak diterima sama
+                sekali.
+              </li>
+            </ol>
+            <p className="mt-3 text-xs">
+              <b>Tip debug cepat:</b> buat flow test dengan Keyword
+              <code className="mx-1 px-1 rounded bg-muted">test_bot</code>
+              → Pesan "Halo, bot aktif" → End. Kirim "test_bot" dari WA
+              customer; kalau dapat balasan, mesin flow bekerja dan masalahnya
+              ada di trigger flow utama Anda.
+            </p>
+          </section>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
