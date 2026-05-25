@@ -1039,15 +1039,19 @@ function pickOption(node: FlowNode, text: string): string | null {
   const opts = node.data.options ?? [];
   if (opts.length === 0) return null;
   const trimmed = text.trim().toLowerCase();
-  // Numeric pick: "1", "2", ...
-  const numMatch = trimmed.match(/^\d+/);
+  // Numeric pick: "1", "2", ... — accept leading number even with trailing
+  // punctuation like "1." or "1)" but NOT a number embedded in a sentence.
+  const numMatch = trimmed.match(/^(\d+)\s*[.)]?\s*$/);
   if (numMatch) {
-    const idx = parseInt(numMatch[0], 10) - 1;
+    const idx = parseInt(numMatch[1]!, 10) - 1;
     if (idx >= 0 && idx < opts.length) return opts[idx]!.id;
   }
-  // Label substring match.
+  // Exact label match (case-insensitive). Substring matching is intentionally
+  // avoided so natural-language questions like "ada berapa macam mesin
+  // laminating?" are NOT treated as picking the "Mesin Laminating" option —
+  // they should fall through to the AI instead.
   for (const o of opts) {
-    if (trimmed.includes(o.label.toLowerCase())) return o.id;
+    if (trimmed === o.label.toLowerCase()) return o.id;
   }
   return null;
 }
@@ -1130,7 +1134,12 @@ async function runFlowFrom(
     }
 
     if (node.type === "end") {
-      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chatId));
+      // Mute the Default trigger briefly so the next message is handled by
+      // AI instead of immediately re-entering the menu.
+      await db
+        .update(chatsTable)
+        .set({ flowState: { defaultMutedUntil: Date.now() + 30 * 60 * 1000 } })
+        .where(eq(chatsTable.id, chatId));
       return;
     }
 
@@ -1139,8 +1148,11 @@ async function runFlowFrom(
     cursorId = next?.target ?? null;
   }
 
-  // Dead-end without an explicit end node — clear state so AI resumes later.
-  await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chatId));
+  // Dead-end without an explicit end node — same cooldown as End.
+  await db
+    .update(chatsTable)
+    .set({ flowState: { defaultMutedUntil: Date.now() + 30 * 60 * 1000 } })
+    .where(eq(chatsTable.id, chatId));
 }
 
 // Returns true if the flow handled the inbound message (AI should be skipped).
@@ -1165,12 +1177,21 @@ async function tryRunFlow(
     .where(eq(chatsTable.id, chat.id))
     .for("update")
     .limit(1);
+  // flowState can be one of three shapes:
+  //  - null                                          → chat has never been in a flow
+  //  - { flowId, currentNodeId }                     → chat is mid-flow at a question
+  //  - { defaultMutedUntil }                         → flow recently exited; do not
+  //    auto-restart via the Default trigger until that timestamp passes.
+  //    Keyword triggers still match (explicit user intent).
   const state = (fresh?.flowState ?? null) as
-    | { flowId: number; currentNodeId: string }
+    | { flowId?: number; currentNodeId?: string; defaultMutedUntil?: number }
     | null;
+  // 30 min cooldown after any flow exit before Default trigger may re-fire.
+  const DEFAULT_MUTE_MS = 30 * 60 * 1000;
+  const muteState = { defaultMutedUntil: Date.now() + DEFAULT_MUTE_MS };
 
-  // Case A: chat is mid-flow → try to advance from the current question.
-  if (state) {
+  // Case A: chat is mid-flow at a question → try to advance.
+  if (state && state.flowId && state.currentNodeId) {
     const [flowRow] = await db
       .select()
       .from(chatbotFlowsTable)
@@ -1182,23 +1203,28 @@ async function tryRunFlow(
       )
       .limit(1);
     if (!flowRow) {
-      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chat.id));
+      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
       return false;
     }
     const graph = flowRow.graph as FlowGraph;
     const node = graph.nodes.find((n) => n.id === state.currentNodeId);
     if (!node || node.type !== "question") {
-      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chat.id));
+      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
       return false;
     }
     const optId = pickOption(node, text);
-    if (!optId) return false; // unrecognised reply → fall through to AI
+    if (!optId) {
+      // Unrecognised reply → user is asking a free-form question, let AI handle it.
+      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
+      return false;
+    }
 
     const edge = graph.edges.find(
       (e) => e.source === node.id && e.sourceHandle === optId
     );
     if (!edge) {
-      await db.update(chatsTable).set({ flowState: null }).where(eq(chatsTable.id, chat.id));
+      // Picked an option that the flow author never wired up → AI takes over.
+      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
       return false;
     }
     await runFlowFrom(
@@ -1230,13 +1256,17 @@ async function tryRunFlow(
   // orphan trigger (left behind during editing) must not block the flow.
   const hasOutgoing = (id: string) => graph.edges.some((e) => e.source === id);
   const triggers = graph.nodes.filter((n) => n.type === "trigger" && hasOutgoing(n.id));
-  // Keyword triggers first (more specific), then default trigger.
+  // Keyword triggers always win (explicit intent) and bypass the mute.
   const keywordHit = triggers.find(
     (n) =>
       (n.data.matchType ?? "keyword") === "keyword" &&
       (n.data.keywords ?? []).some((k) => k && lower.includes(k.toLowerCase()))
   );
-  const start = keywordHit ?? triggers.find((n) => n.data.matchType === "default");
+  const defaultMuted =
+    !!state?.defaultMutedUntil && Date.now() < state.defaultMutedUntil;
+  const start =
+    keywordHit ??
+    (defaultMuted ? undefined : triggers.find((n) => n.data.matchType === "default"));
   if (!start) return false;
 
   const firstEdge = graph.edges.find((e) => e.source === start.id);
