@@ -1374,7 +1374,7 @@ components:
 
     Settings:
       type: object
-      required: [id, systemPrompt, autoReplyEnabled, replyDelayMin, replyDelayMax, fallbackMessage, updatedAt]
+      required: [id, systemPrompt, autoReplyEnabled, replyDelayMin, replyDelayMax, fallbackMessage, flowCooldownMinutes, updatedAt]
       properties:
         id:
           type: integer
@@ -1388,6 +1388,10 @@ components:
           type: integer
         fallbackMessage:
           type: string
+        flowCooldownMinutes:
+          type: integer
+          enum: [5, 15, 30, 60, 120]
+          description: "Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups."
         updatedAt:
           type: string
 
@@ -1404,6 +1408,9 @@ components:
           type: integer
         fallbackMessage:
           type: string
+        flowCooldownMinutes:
+          type: integer
+          enum: [5, 15, 30, 60, 120]
 
     AnalyticsSummary:
       type: object

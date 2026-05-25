@@ -204,6 +204,20 @@ export interface KnowledgeTypeInput {
   label: string;
 }
 
+/**
+ * Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups.
+ */
+export type SettingsFlowCooldownMinutes = typeof SettingsFlowCooldownMinutes[keyof typeof SettingsFlowCooldownMinutes];
+
+
+export const SettingsFlowCooldownMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+  NUMBER_120: 120,
+} as const;
+
 export interface Settings {
   id: number;
   systemPrompt: string;
@@ -211,8 +225,21 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
+  /** Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. */
+  flowCooldownMinutes: SettingsFlowCooldownMinutes;
   updatedAt: string;
 }
+
+export type SettingsUpdateFlowCooldownMinutes = typeof SettingsUpdateFlowCooldownMinutes[keyof typeof SettingsUpdateFlowCooldownMinutes];
+
+
+export const SettingsUpdateFlowCooldownMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+  NUMBER_120: 120,
+} as const;
 
 export interface SettingsUpdate {
   systemPrompt?: string;
@@ -220,6 +247,7 @@ export interface SettingsUpdate {
   replyDelayMin?: number;
   replyDelayMax?: number;
   fallbackMessage?: string;
+  flowCooldownMinutes?: SettingsUpdateFlowCooldownMinutes;
 }
 
 export interface AnalyticsSummary {

@@ -50,6 +50,7 @@ export async function getOrCreateSettings(ownerPhone: string) {
       replyDelayMin: 1,
       replyDelayMax: 3,
       fallbackMessage: DEFAULT_FALLBACK,
+      flowCooldownMinutes: 5,
     })
     .onConflictDoNothing({ target: settingsTable.ownerPhone })
     .returning();
@@ -83,6 +84,7 @@ function defaultSettingsResponse() {
     replyDelayMin: 1,
     replyDelayMax: 3,
     fallbackMessage: DEFAULT_FALLBACK,
+    flowCooldownMinutes: 5,
     updatedAt: now.toISOString(),
   };
 }

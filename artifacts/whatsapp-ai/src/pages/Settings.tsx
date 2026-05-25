@@ -44,12 +44,20 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 
+const COOLDOWN_OPTIONS = [5, 15, 30, 60, 120] as const;
+
 const settingsSchema = z.object({
   systemPrompt: z.string().min(1, "System prompt is required"),
   autoReplyEnabled: z.boolean(),
   replyDelayMin: z.coerce.number().int().min(0).max(30),
   replyDelayMax: z.coerce.number().int().min(0).max(60),
   fallbackMessage: z.string().min(1, "Fallback message is required"),
+  flowCooldownMinutes: z.coerce
+    .number()
+    .int()
+    .refine((v) => (COOLDOWN_OPTIONS as readonly number[]).includes(v), {
+      message: "Pilih 5, 15, 30, 60, atau 120 menit",
+    }),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -76,6 +84,7 @@ export default function Settings() {
       replyDelayMin: 1,
       replyDelayMax: 3,
       fallbackMessage: "",
+      flowCooldownMinutes: 5,
     },
   });
 
@@ -87,12 +96,15 @@ export default function Settings() {
         replyDelayMin: settings.replyDelayMin,
         replyDelayMax: settings.replyDelayMax,
         fallbackMessage: settings.fallbackMessage,
+        flowCooldownMinutes: settings.flowCooldownMinutes,
       });
     }
   }, [settings, form]);
 
   const onSubmit = (data: SettingsForm) => {
-    update.mutate({ data });
+    // OpenAPI restricts flowCooldownMinutes to a literal union; the form
+    // already validates this against COOLDOWN_OPTIONS so the cast is safe.
+    update.mutate({ data: data as unknown as Parameters<typeof update.mutate>[0]["data"] });
   };
 
   if (isLoading) {
@@ -203,6 +215,47 @@ export default function Settings() {
                     )}
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" />
+                  Chatbot Flow Cooldown
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Setelah flow chatbot selesai (End / dead-end / jawaban tidak dikenal),
+                  Trigger Default akan di-mute selama durasi ini supaya AI bisa menjawab
+                  pertanyaan lanjutan. Keyword Trigger tetap aktif. Setelah waktu habis,
+                  state chat otomatis reset dan flow bisa dimulai lagi dari awal.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="flowCooldownMinutes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Durasi cooldown</FormLabel>
+                      <FormControl>
+                        <select
+                          data-testid="select-flow-cooldown"
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          value={String(field.value ?? 5)}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        >
+                          {COOLDOWN_OPTIONS.map((m) => (
+                            <option key={m} value={m}>
+                              {m} menit
+                            </option>
+                          ))}
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </CardContent>
             </Card>
 

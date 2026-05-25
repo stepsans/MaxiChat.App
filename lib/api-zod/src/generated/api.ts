@@ -400,6 +400,7 @@ export const GetSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
+  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
   "updatedAt": zod.string()
 })
 
@@ -412,7 +413,8 @@ export const UpdateSettingsBody = zod.object({
   "autoReplyEnabled": zod.boolean().optional(),
   "replyDelayMin": zod.number().optional(),
   "replyDelayMax": zod.number().optional(),
-  "fallbackMessage": zod.string().optional()
+  "fallbackMessage": zod.string().optional(),
+  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).optional()
 })
 
 export const UpdateSettingsResponse = zod.object({
@@ -422,6 +424,7 @@ export const UpdateSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
+  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
   "updatedAt": zod.string()
 })
 

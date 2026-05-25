@@ -205,6 +205,11 @@ export const settingsTable = pgTable(
     replyDelayMin: integer("reply_delay_min").notNull().default(1),
     replyDelayMax: integer("reply_delay_max").notNull().default(3),
     fallbackMessage: text("fallback_message").notNull(),
+    // How long the chatbot flow's Default trigger stays muted after a flow
+    // ends/exits, so the AI can handle follow-ups instead of immediately
+    // restarting the menu. Allowed: 5, 15, 30, 60, 120. Keyword triggers are
+    // never affected by this.
+    flowCooldownMinutes: integer("flow_cooldown_minutes").notNull().default(5),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

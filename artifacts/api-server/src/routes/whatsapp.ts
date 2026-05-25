@@ -1100,7 +1100,8 @@ async function runFlowFrom(
   jid: string,
   flowId: number,
   graph: FlowGraph,
-  startNodeId: string
+  startNodeId: string,
+  cooldownMs: number
 ): Promise<void> {
   const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
   let cursorId: string | null = startNodeId;
@@ -1135,10 +1136,11 @@ async function runFlowFrom(
 
     if (node.type === "end") {
       // Mute the Default trigger briefly so the next message is handled by
-      // AI instead of immediately re-entering the menu.
+      // AI instead of immediately re-entering the menu. Cooldown comes
+      // from the per-owner setting (configurable in /settings).
       await db
         .update(chatsTable)
-        .set({ flowState: { defaultMutedUntil: Date.now() + 5 * 60 * 1000 } })
+        .set({ flowState: { defaultMutedUntil: Date.now() + cooldownMs } })
         .where(eq(chatsTable.id, chatId));
       return;
     }
@@ -1151,7 +1153,7 @@ async function runFlowFrom(
   // Dead-end without an explicit end node — same cooldown as End.
   await db
     .update(chatsTable)
-    .set({ flowState: { defaultMutedUntil: Date.now() + 5 * 60 * 1000 } })
+    .set({ flowState: { defaultMutedUntil: Date.now() + cooldownMs } })
     .where(eq(chatsTable.id, chatId));
 }
 
@@ -1186,9 +1188,18 @@ async function tryRunFlow(
   const state = (fresh?.flowState ?? null) as
     | { flowId?: number; currentNodeId?: string; defaultMutedUntil?: number }
     | null;
-  // 30 min cooldown after any flow exit before Default trigger may re-fire.
-  const DEFAULT_MUTE_MS = 5 * 60 * 1000;
-  const muteState = { defaultMutedUntil: Date.now() + DEFAULT_MUTE_MS };
+  // Cooldown after any flow exit before the Default trigger may re-fire.
+  // Configurable per owner in Settings (5/15/30/60/120 minutes). We read
+  // just the column to avoid a circular import with routes/settings.ts and
+  // to avoid touching the rest of the settings row on every inbound msg.
+  const [settingsRow] = await db
+    .select({ flowCooldownMinutes: settingsTable.flowCooldownMinutes })
+    .from(settingsTable)
+    .where(eq(settingsTable.ownerPhone, ownerPhone))
+    .limit(1);
+  const cooldownMin = settingsRow?.flowCooldownMinutes ?? 5;
+  const cooldownMs = cooldownMin * 60 * 1000;
+  const muteState = { defaultMutedUntil: Date.now() + cooldownMs };
 
   // Case A: chat is mid-flow at a question → try to advance.
   if (state && state.flowId && state.currentNodeId) {
@@ -1235,7 +1246,8 @@ async function tryRunFlow(
       jid,
       flowRow.id,
       graph,
-      edge.target
+      edge.target,
+      cooldownMs
     );
     return true;
   }
@@ -1272,6 +1284,10 @@ async function tryRunFlow(
   const firstEdge = graph.edges.find((e) => e.source === start.id);
   if (!firstEdge) return false;
 
+  // If the muted period expired and we're re-entering via Default, drop the
+  // stale `defaultMutedUntil` marker so the chat state is clean going in.
+  // (runFlowFrom will overwrite flowState with either question or
+  // new mute on exit, but this keeps semantics tidy.)
   await runFlowFrom(
     userId,
     epoch,
@@ -1280,7 +1296,8 @@ async function tryRunFlow(
     jid,
     active.id,
     graph,
-    firstEdge.target
+    firstEdge.target,
+    cooldownMs
   );
   return true;
 }

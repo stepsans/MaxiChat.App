@@ -5,6 +5,7 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { SettingsUpdateFlowCooldownMinutes } from './settingsUpdateFlowCooldownMinutes';
 
 export interface SettingsUpdate {
   systemPrompt?: string;
@@ -12,4 +13,5 @@ export interface SettingsUpdate {
   replyDelayMin?: number;
   replyDelayMax?: number;
   fallbackMessage?: string;
+  flowCooldownMinutes?: SettingsUpdateFlowCooldownMinutes;
 }
