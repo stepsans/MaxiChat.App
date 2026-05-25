@@ -1145,6 +1145,22 @@ async function runFlowFrom(
       return;
     }
 
+    if (node.type === "ai") {
+      // Handoff node: send optional intro text, then exit the flow and mute
+      // the Default trigger for the cooldown so the AI engine answers the
+      // customer's subsequent messages naturally. Keyword triggers still
+      // override this if the customer types one.
+      if (node.data.text) {
+        const ok = await sendFlowMessage(userId, epoch, ownerPhone, chatId, jid, node.data.text);
+        if (!ok) return;
+      }
+      await db
+        .update(chatsTable)
+        .set({ flowState: { defaultMutedUntil: Date.now() + cooldownMs } })
+        .where(eq(chatsTable.id, chatId));
+      return;
+    }
+
     // Trigger or unknown — just follow first outgoing edge.
     const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
     cursorId = next?.target ?? null;
@@ -1225,6 +1241,14 @@ async function tryRunFlow(
     }
     const optId = pickOption(node, text);
     if (!optId) {
+      // Strict mode: customer must answer with one of the options. Re-send
+      // the question and keep the same flowState so the next reply is still
+      // judged against the same options. AI is NOT invoked.
+      if (node.data.strictOptions) {
+        const questionText = renderQuestion(node);
+        await sendFlowMessage(userId, epoch, ownerPhone, chat.id, jid, questionText);
+        return true;
+      }
       // Unrecognised reply → user is asking a free-form question, let AI handle it.
       await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
       return false;

@@ -39,7 +39,9 @@ import {
   MessageSquare,
   HelpCircle,
   CircleStop,
+  Bot,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,13 +49,14 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 
-type NodeKind = "trigger" | "message" | "question" | "end";
+type NodeKind = "trigger" | "message" | "question" | "end" | "ai";
 
 type FlowNodeData = {
   matchType?: "default" | "keyword";
   keywords?: string[];
   text?: string;
   options?: { id: string; label: string }[];
+  strictOptions?: boolean;
 };
 
 type RFNode = Node<FlowNodeData & { label?: string }, NodeKind>;
@@ -175,11 +178,32 @@ function EndNode({ selected }: NodeProps<RFNode>) {
   );
 }
 
+function AINode({ data, selected }: NodeProps<RFNode>) {
+  return (
+    <NodeShell
+      selected={!!selected}
+      borderClass="border-amber-500/60"
+      icon={<Bot className="w-3.5 h-3.5 text-amber-500" />}
+      title="AI"
+    >
+      <div>
+        {data.text || (
+          <span className="italic opacity-60">
+            (AI menjawab pesan berikutnya)
+          </span>
+        )}
+      </div>
+      <Handle type="target" position={Position.Top} />
+    </NodeShell>
+  );
+}
+
 const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
   message: MessageNode,
   question: QuestionNode,
   end: EndNode,
+  ai: AINode,
 } as unknown as NodeTypes;
 
 // ----- Editor body -----
@@ -264,6 +288,11 @@ function EditorInner({ flowId }: { flowId: number }) {
           { id: uid("opt"), label: "Pilihan 1" },
           { id: uid("opt"), label: "Pilihan 2" },
         ],
+        strictOptions: false,
+      };
+    if (type === "ai")
+      base.data = {
+        text: "Baik, silakan tanya apa saja ya 🤖 AI kami akan langsung membantu.",
       };
     setNodes((ns) => [...ns, base]);
     setSelectedId(id);
@@ -290,7 +319,9 @@ function EditorInner({ flowId }: { flowId: number }) {
               (e.sourceHandle ?? null) === (c.sourceHandle ?? null)
             )
         );
-        // For non-question (trigger/message): only 1 outgoing edge total.
+        // For non-question (trigger/message/ai/end): only 1 outgoing edge
+        // total. (AI/end nodes have no outgoing edges anyway — they're
+        // terminal — but treat them the same way defensively.)
         const sourceNode = nodes.find((n) => n.id === c.source);
         const stripAllFromSource =
           sourceNode && sourceNode.type !== "question";
@@ -468,6 +499,15 @@ function EditorInner({ flowId }: { flowId: number }) {
             data-testid="button-add-question"
           >
             <HelpCircle className="w-4 h-4 mr-2 text-purple-500" /> Pertanyaan
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start"
+            onClick={() => addNode("ai")}
+            data-testid="button-add-ai"
+          >
+            <Bot className="w-4 h-4 mr-2 text-amber-500" /> AI
           </Button>
           <Button
             variant="outline"
@@ -680,6 +720,40 @@ function Inspector({
             <p className="text-[11px] text-muted-foreground mt-2">
               Hubungkan tiap pilihan (titik di sisi kanan) ke node berikutnya.
               Pelanggan bisa membalas dengan nomor (1, 2…) atau teks pilihan.
+            </p>
+          </div>
+          <div className="flex items-start justify-between gap-3 pt-1">
+            <div className="space-y-0.5">
+              <Label className="text-xs">Wajib pilih dari opsi</Label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Jika ON: jawaban di luar pilihan akan membuat pertanyaan ini
+                dikirim ulang. Jika OFF: AI yang menjawab.
+              </p>
+            </div>
+            <Switch
+              data-testid="switch-strict-options"
+              checked={!!node.data.strictOptions}
+              onCheckedChange={(v) => onChange({ strictOptions: v })}
+            />
+          </div>
+        </div>
+      )}
+
+      {t === "ai" && (
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Pesan pembuka (opsional)</Label>
+            <Textarea
+              rows={4}
+              value={node.data.text ?? ""}
+              onChange={(e) => onChange({ text: e.target.value })}
+              placeholder="Baik, silakan tanya apa saja ya 🤖"
+              data-testid="input-ai-text"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+              Setelah node ini, flow keluar dan AI menjawab pesan-pesan
+              berikutnya selama durasi cooldown (atur di Settings). Keyword
+              Trigger tetap aktif.
             </p>
           </div>
         </div>

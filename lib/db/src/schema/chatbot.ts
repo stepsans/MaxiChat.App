@@ -42,18 +42,23 @@ export type ChatbotFlowRow = typeof chatbotFlowsTable.$inferSelect;
 
 export const flowNodeSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(["trigger", "message", "question", "end"]),
+  // "ai": handoff node — sends optional intro text, then AI takes over the
+  //       conversation (Default trigger muted by the per-owner cooldown).
+  type: z.enum(["trigger", "message", "question", "end", "ai"]),
   position: z.object({ x: z.number(), y: z.number() }),
   data: z.object({
     // trigger
     matchType: z.enum(["default", "keyword"]).optional(),
     keywords: z.array(z.string()).optional(),
-    // message / question
+    // message / question / ai
     text: z.string().optional(),
     // question
     options: z
       .array(z.object({ id: z.string().min(1), label: z.string().min(1) }))
       .optional(),
+    // question — when true, off-option replies re-ask the question instead
+    // of muting the flow and handing off to AI.
+    strictOptions: z.boolean().optional(),
   }),
 });
 

@@ -1758,7 +1758,7 @@ components:
         id: { type: string }
         type:
           type: string
-          enum: [trigger, message, question, end]
+          enum: [trigger, message, question, end, ai]
         position:
           type: object
           required: [x, y]
@@ -1783,6 +1783,9 @@ components:
                 properties:
                   id: { type: string }
                   label: { type: string }
+            strictOptions:
+              type: boolean
+              description: "Question only: re-ask question on off-option replies instead of handing off to AI."
 
     FlowEdge:
       type: object

@@ -573,6 +573,7 @@ export const FlowNodeType = {
   message: 'message',
   question: 'question',
   end: 'end',
+  ai: 'ai',
 } as const;
 
 export type FlowNodePosition = {
@@ -598,6 +599,8 @@ export type FlowNodeData = {
   keywords?: string[];
   text?: string;
   options?: FlowNodeDataOptionsItem[];
+  /** Question only: re-ask question on off-option replies instead of handing off to AI. */
+  strictOptions?: boolean;
 };
 
 export interface FlowNode {

@@ -14,4 +14,5 @@ export const FlowNodeType = {
   message: 'message',
   question: 'question',
   end: 'end',
+  ai: 'ai',
 } as const;

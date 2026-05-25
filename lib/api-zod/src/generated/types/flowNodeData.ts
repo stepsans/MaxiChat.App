@@ -13,4 +13,6 @@ export type FlowNodeData = {
   keywords?: string[];
   text?: string;
   options?: FlowNodeDataOptionsItem[];
+  /** Question only: re-ask question on off-option replies instead of handing off to AI. */
+  strictOptions?: boolean;
 };
