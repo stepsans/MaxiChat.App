@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -40,6 +40,8 @@ import {
   HelpCircle,
   CircleStop,
   Bot,
+  ImagePlus,
+  X as XIcon,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,7 @@ type FlowNodeData = {
   matchType?: "default" | "keyword";
   keywords?: string[];
   text?: string;
+  imageUrl?: string | null;
   options?: { id: string; label: string }[];
   strictOptions?: boolean;
 };
@@ -124,7 +127,16 @@ function MessageNode({ data, selected }: NodeProps<RFNode>) {
       icon={<MessageSquare className="w-3.5 h-3.5 text-blue-500" />}
       title="Pesan"
     >
-      {data.text || <span className="italic opacity-60">(kosong)</span>}
+      {data.imageUrl && (
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-blue-500">
+          <ImagePlus className="w-3 h-3" /> Gambar terlampir
+        </div>
+      )}
+      {data.text || (
+        <span className="italic opacity-60">
+          {data.imageUrl ? "(tanpa caption)" : "(kosong)"}
+        </span>
+      )}
       <Handle type="target" position={Position.Top} />
       <Handle type="source" position={Position.Bottom} />
     </NodeShell>
@@ -140,6 +152,11 @@ function QuestionNode({ data, selected }: NodeProps<RFNode>) {
       icon={<HelpCircle className="w-3.5 h-3.5 text-purple-500" />}
       title="Pertanyaan"
     >
+      {data.imageUrl && (
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-purple-500">
+          <ImagePlus className="w-3 h-3" /> Gambar terlampir
+        </div>
+      )}
       <div>{data.text || <span className="italic opacity-60">(pertanyaan kosong)</span>}</div>
       <div className="mt-1 space-y-0.5">
         {opts.length === 0 && (
@@ -639,14 +656,20 @@ function Inspector({
       )}
 
       {t === "message" && (
-        <div>
-          <Label className="text-xs">Teks Pesan</Label>
-          <Textarea
-            rows={5}
-            value={node.data.text ?? ""}
-            onChange={(e) => onChange({ text: e.target.value })}
-            placeholder="Halo! Selamat datang di toko kami."
-            data-testid="input-message-text"
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs">Teks Pesan</Label>
+            <Textarea
+              rows={5}
+              value={node.data.text ?? ""}
+              onChange={(e) => onChange({ text: e.target.value })}
+              placeholder="Halo! Selamat datang di toko kami."
+              data-testid="input-message-text"
+            />
+          </div>
+          <ImageField
+            value={node.data.imageUrl ?? null}
+            onChange={(url) => onChange({ imageUrl: url })}
           />
         </div>
       )}
@@ -663,6 +686,10 @@ function Inspector({
               data-testid="input-question-text"
             />
           </div>
+          <ImageField
+            value={node.data.imageUrl ?? null}
+            onChange={(url) => onChange({ imageUrl: url })}
+          />
           <div>
             <Label className="text-xs">Pilihan Jawaban</Label>
             <div className="space-y-1.5 mt-1">
@@ -764,6 +791,108 @@ function Inspector({
           Setelah node ini tercapai, AI biasa kembali menangani chat.
         </p>
       )}
+    </div>
+  );
+}
+
+function ImageField({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (url: string | null) => void;
+}) {
+  const { toast } = useToast();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/flows/upload-image", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Upload gagal");
+      }
+      const data = (await res.json()) as { url: string };
+      onChange(data.url);
+    } catch (err: unknown) {
+      toast({
+        title: "Gagal upload gambar",
+        description: err instanceof Error ? err.message : "",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <Label className="text-xs">Gambar (opsional)</Label>
+      <div className="mt-1 flex items-start gap-2">
+        <div className="relative w-20 h-20 rounded-md border border-dashed border-border bg-muted/40 overflow-hidden flex items-center justify-center">
+          {uploading ? (
+            <Loader2 className="w-4 h-4 animate-spin opacity-60" />
+          ) : value ? (
+            <>
+              <img
+                src={value}
+                alt="preview"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => onChange(null)}
+                className="absolute top-0.5 right-0.5 bg-background/90 rounded-full p-0.5 hover:bg-destructive hover:text-destructive-foreground transition"
+                data-testid="button-flow-image-clear"
+                aria-label="Hapus gambar"
+              >
+                <XIcon className="w-3 h-3" />
+              </button>
+            </>
+          ) : (
+            <ImagePlus className="w-5 h-5 text-muted-foreground" />
+          )}
+        </div>
+        <div className="flex-1 space-y-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            data-testid="button-flow-image-upload"
+          >
+            {value ? "Ganti gambar" : "Upload gambar"}
+          </Button>
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Dikirim ke customer bersama teks (teks jadi caption). Maks 16MB.
+          </p>
+        </div>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={onPick}
+        data-testid="input-flow-image"
+      />
     </div>
   );
 }

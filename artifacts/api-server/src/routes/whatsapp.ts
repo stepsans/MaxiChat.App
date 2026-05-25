@@ -1062,31 +1062,79 @@ async function sendFlowMessage(
   ownerPhone: string,
   chatId: number,
   jid: string,
-  text: string
+  text: string,
+  imageUrl?: string | null
 ): Promise<boolean> {
   const ctx = getCtx(userId);
   if (epoch !== ctx.epoch) return false;
   if (ctx.ownerPhone !== ownerPhone) return false;
-  if (!ctx.sock || !text) return false;
+  if (!ctx.sock) return false;
+  if (!text && !imageUrl) return false;
 
-  const sent = await ctx.sock.sendMessage(jid, { text });
+  // Try to resolve an image buffer if imageUrl is provided. Failure to load
+  // the image must not block the text — we fall back to sending text alone
+  // and log the error so the operator can fix the asset.
+  let imageBuffer: Buffer | null = null;
+  if (imageUrl) {
+    try {
+      imageBuffer = await loadImageBuffer(imageUrl);
+    } catch (err) {
+      logger.warn({ err, imageUrl, chatId }, "flow image load failed; sending text only");
+    }
+  }
+
+  let sent;
+  if (imageBuffer) {
+    sent = await ctx.sock.sendMessage(jid, {
+      image: imageBuffer,
+      caption: text || undefined,
+    });
+  } else if (text) {
+    sent = await ctx.sock.sendMessage(jid, { text });
+  } else {
+    // Image-only node whose image failed to load — bail out instead of
+    // sending an empty text message (which Baileys would reject anyway).
+    return false;
+  }
+  const stored = text || (imageBuffer ? "[gambar]" : "");
   await db
     .insert(chatMessagesTable)
     .values({
       chatId,
       direction: "outbound",
-      content: text,
+      content: stored,
       isAiGenerated: false,
       waMessageId: sent?.key?.id ?? null,
     })
     .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
   await db
     .update(chatsTable)
-    .set({ lastMessage: text, lastMessageAt: new Date(), status: "ai_handled" })
+    .set({ lastMessage: stored, lastMessageAt: new Date(), status: "ai_handled" })
     .where(
       sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
     );
   return true;
+}
+
+// Flow node images may ONLY be served from /api/media/* (i.e. files the user
+// uploaded through /api/flows/upload-image, which lands in MEDIA_DIR). We
+// deliberately do NOT fetch arbitrary http(s) URLs here, even though the
+// schema allows them, because doing so would expose the server to SSRF
+// (attacker-controlled URL → server-side request to internal hosts like
+// 127.0.0.1, 169.254.169.254, RFC1918 ranges, etc.). DNS-pre-resolution
+// guards are bypassable via DNS rebinding/TOCTOU and IPv6 encoding edge
+// cases, so the only robust mitigation is to reject external URLs outright.
+// If external image hosting is ever needed, route it through a vetted
+// dispatcher that pins the resolved IP for the actual TCP connection.
+async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
+  if (!imageUrl.startsWith("/api/media/")) {
+    throw new Error(
+      "Only internal /api/media/ image URLs are allowed (external URLs blocked to prevent SSRF)"
+    );
+  }
+  const filename = path.basename(imageUrl.slice("/api/media/".length));
+  const filepath = path.join(MEDIA_DIR, filename);
+  return await fs.readFile(filepath);
 }
 
 // Walk forward from `startNodeId` along straight (non-question) edges, sending
@@ -1114,8 +1162,16 @@ async function runFlowFrom(
     if (!node) break;
 
     if (node.type === "message") {
-      if (node.data.text) {
-        const ok = await sendFlowMessage(userId, epoch, ownerPhone, chatId, jid, node.data.text);
+      if (node.data.text || node.data.imageUrl) {
+        const ok = await sendFlowMessage(
+          userId,
+          epoch,
+          ownerPhone,
+          chatId,
+          jid,
+          node.data.text ?? "",
+          node.data.imageUrl ?? null
+        );
         if (!ok) return;
       }
       const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
@@ -1125,7 +1181,15 @@ async function runFlowFrom(
 
     if (node.type === "question") {
       const text = renderQuestion(node);
-      const ok = await sendFlowMessage(userId, epoch, ownerPhone, chatId, jid, text);
+      const ok = await sendFlowMessage(
+        userId,
+        epoch,
+        ownerPhone,
+        chatId,
+        jid,
+        text,
+        node.data.imageUrl ?? null
+      );
       if (!ok) return;
       await db
         .update(chatsTable)
@@ -1246,8 +1310,18 @@ async function tryRunFlow(
       // judged against the same options. AI is NOT invoked.
       if (node.data.strictOptions) {
         const questionText = renderQuestion(node);
-        await sendFlowMessage(userId, epoch, ownerPhone, chat.id, jid, questionText);
-        return true;
+        const ok = await sendFlowMessage(
+          userId,
+          epoch,
+          ownerPhone,
+          chat.id,
+          jid,
+          questionText,
+          node.data.imageUrl ?? null
+        );
+        // If the re-ask failed to send, don't claim the flow handled the
+        // message — fall through to AI so the customer isn't left in silence.
+        return ok;
       }
       // Unrecognised reply → user is asking a free-form question, let AI handle it.
       await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));

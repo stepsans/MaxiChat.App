@@ -1815,6 +1815,9 @@ components:
               type: array
               items: { type: string }
             text: { type: string }
+            imageUrl:
+              type: ["string", "null"]
+              description: "Message/Question only: optional image URL (http(s) or /api/media/...) sent with the text as caption."
             options:
               type: array
               items:

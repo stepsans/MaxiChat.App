@@ -12,6 +12,11 @@ export type FlowNodeData = {
   matchType?: FlowNodeDataMatchType;
   keywords?: string[];
   text?: string;
+  /**
+     * Message/Question only: optional image URL (http(s) or /api/media/...) sent with the text as caption.
+     * @nullable
+     */
+  imageUrl?: string | null;
   options?: FlowNodeDataOptionsItem[];
   /** Question only: re-ask question on off-option replies instead of handing off to AI. */
   strictOptions?: boolean;

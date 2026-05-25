@@ -884,6 +884,7 @@ export const GetFlowResponse = zod.object({
   "matchType": zod.enum(['default', 'keyword']).optional(),
   "keywords": zod.array(zod.string()).optional(),
   "text": zod.string().optional(),
+  "imageUrl": zod.string().nullish().describe('Message\/Question only: optional image URL (http(s) or \/api\/media\/...) sent with the text as caption.'),
   "options": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string()
@@ -928,6 +929,7 @@ export const UpdateFlowBody = zod.object({
   "matchType": zod.enum(['default', 'keyword']).optional(),
   "keywords": zod.array(zod.string()).optional(),
   "text": zod.string().optional(),
+  "imageUrl": zod.string().nullish().describe('Message\/Question only: optional image URL (http(s) or \/api\/media\/...) sent with the text as caption.'),
   "options": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string()
@@ -960,6 +962,7 @@ export const UpdateFlowResponse = zod.object({
   "matchType": zod.enum(['default', 'keyword']).optional(),
   "keywords": zod.array(zod.string()).optional(),
   "text": zod.string().optional(),
+  "imageUrl": zod.string().nullish().describe('Message\/Question only: optional image URL (http(s) or \/api\/media\/...) sent with the text as caption.'),
   "options": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string()
@@ -1010,6 +1013,7 @@ export const ActivateFlowResponse = zod.object({
   "matchType": zod.enum(['default', 'keyword']).optional(),
   "keywords": zod.array(zod.string()).optional(),
   "text": zod.string().optional(),
+  "imageUrl": zod.string().nullish().describe('Message\/Question only: optional image URL (http(s) or \/api\/media\/...) sent with the text as caption.'),
   "options": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string()

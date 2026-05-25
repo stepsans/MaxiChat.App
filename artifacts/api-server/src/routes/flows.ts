@@ -1,9 +1,14 @@
 import { Router } from "express";
+import multer from "multer";
+import path from "node:path";
+import fs from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatbotFlowsTable } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
-import { getCurrentOwnerPhone } from "./whatsapp";
+import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
 
 // Graph schema mirrors lib/db/schema/chatbot.ts but uses zod v3 (the API
 // server's installed zod version) so types align with the rest of routes/*.
@@ -15,11 +20,34 @@ const FlowNodeSchema = z.object({
     matchType: z.enum(["default", "keyword"]).optional(),
     keywords: z.array(z.string()).optional(),
     text: z.string().optional(),
+    imageUrl: z.string().nullish(),
     options: z
       .array(z.object({ id: z.string().min(1), label: z.string().min(1) }))
       .optional(),
     strictOptions: z.boolean().optional(),
   }),
+});
+
+const flowImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, cb) => {
+      try {
+        await fs.mkdir(MEDIA_DIR, { recursive: true });
+      } catch {}
+      cb(null, MEDIA_DIR);
+    },
+    filename: (_req, file, cb) => {
+      const ext = mime.extension(file.mimetype || "");
+      cb(null, `${randomUUID()}${ext ? "." + ext : ""}`);
+    },
+  }),
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image files are allowed"));
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 16 * 1024 * 1024 },
 });
 const FlowEdgeSchema = z.object({
   id: z.string().min(1),
@@ -53,6 +81,18 @@ function serializeFull(f: typeof chatbotFlowsTable.$inferSelect) {
     updatedAt: f.updatedAt.toISOString(),
   };
 }
+
+// --- Image upload for Message/Question nodes ---
+router.post("/upload-image", flowImageUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Missing file" });
+    const url = `/api/media/${path.basename(req.file.path)}`;
+    res.json({ url });
+  } catch (err) {
+    req.log.error({ err }, "Failed to upload flow image");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.get("/", async (req, res) => {
   const userId = req.session.userId!;

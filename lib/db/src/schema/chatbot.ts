@@ -52,6 +52,9 @@ export const flowNodeSchema = z.object({
     keywords: z.array(z.string()).optional(),
     // message / question / ai
     text: z.string().optional(),
+    // message / question — optional image to send along with text. Stored as
+    // a URL (either external http(s) or internal /api/media/<file>).
+    imageUrl: z.string().nullish(),
     // question
     options: z
       .array(z.object({ id: z.string().min(1), label: z.string().min(1) }))
