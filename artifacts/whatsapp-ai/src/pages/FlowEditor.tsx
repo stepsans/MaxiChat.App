@@ -24,6 +24,7 @@ import {
   useUpdateFlow,
   useActivateFlow,
   useDeactivateActiveFlow,
+  useListProducts,
   getGetFlowQueryKey,
   getListFlowsQueryKey,
 } from "@workspace/api-client-react";
@@ -41,6 +42,7 @@ import {
   CircleStop,
   Bot,
   ImagePlus,
+  Package,
   X as XIcon,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -51,7 +53,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 
-type NodeKind = "trigger" | "message" | "question" | "end" | "ai";
+type NodeKind = "trigger" | "message" | "question" | "end" | "ai" | "products";
 
 type FlowNodeData = {
   matchType?: "default" | "keyword";
@@ -61,6 +63,7 @@ type FlowNodeData = {
   options?: { id: string; label: string }[];
   strictOptions?: boolean;
   strictRetryMessage?: string;
+  productIds?: number[];
 };
 
 type RFNode = Node<FlowNodeData & { label?: string }, NodeKind>;
@@ -196,6 +199,30 @@ function EndNode({ selected }: NodeProps<RFNode>) {
   );
 }
 
+function ProductsNode({ data, selected }: NodeProps<RFNode>) {
+  const count = (data.productIds ?? []).length;
+  return (
+    <NodeShell
+      selected={!!selected}
+      borderClass="border-pink-500/60"
+      icon={<Package className="w-3.5 h-3.5 text-pink-500" />}
+      title="Products"
+    >
+      {count === 0 ? (
+        <span className="italic opacity-60">(belum ada produk dipilih)</span>
+      ) : (
+        <span>
+          {count} produk akan dikirim
+          <br />
+          <span className="opacity-70 text-[10px]">foto + Nama / Kode / Harga</span>
+        </span>
+      )}
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
+    </NodeShell>
+  );
+}
+
 function AINode({ data, selected }: NodeProps<RFNode>) {
   return (
     <NodeShell
@@ -222,6 +249,7 @@ const nodeTypes: NodeTypes = {
   question: QuestionNode,
   end: EndNode,
   ai: AINode,
+  products: ProductsNode,
 } as unknown as NodeTypes;
 
 // ----- Editor body -----
@@ -312,6 +340,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       base.data = {
         text: "Baik, silakan tanya apa saja ya 🤖 AI kami akan langsung membantu.",
       };
+    if (type === "products") base.data = { productIds: [] };
     setNodes((ns) => [...ns, base]);
     setSelectedId(id);
     markDirty();
@@ -526,6 +555,15 @@ function EditorInner({ flowId }: { flowId: number }) {
             data-testid="button-add-ai"
           >
             <Bot className="w-4 h-4 mr-2 text-amber-500" /> AI
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start"
+            onClick={() => addNode("products")}
+            data-testid="button-add-products"
+          >
+            <Package className="w-4 h-4 mr-2 text-pink-500" /> Products
           </Button>
           <Button
             variant="outline"
@@ -802,6 +840,13 @@ function Inspector({
         </div>
       )}
 
+      {t === "products" && (
+        <ProductsPicker
+          value={node.data.productIds ?? []}
+          onChange={(ids) => onChange({ productIds: ids })}
+        />
+      )}
+
       {t === "end" && (
         <p className="text-xs text-muted-foreground">
           Setelah node ini tercapai, AI biasa kembali menangani chat.
@@ -909,6 +954,106 @@ function ImageField({
         onChange={onPick}
         data-testid="input-flow-image"
       />
+    </div>
+  );
+}
+
+function ProductsPicker({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const { data: products, isLoading } = useListProducts();
+  const [query, setQuery] = useState("");
+  const selected = new Set(value);
+  const list = (products ?? []).filter((p) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q);
+  });
+  const toggle = (id: number) => {
+    if (selected.has(id)) onChange(value.filter((v) => v !== id));
+    else onChange([...value, id]);
+  };
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs">Pilih produk yang akan dikirim</Label>
+      <p className="text-[11px] text-muted-foreground leading-snug">
+        Setiap produk dikirim sebagai foto dengan caption: Nama, Kode, Harga.
+        Urutan pengiriman sesuai urutan dipilih.
+      </p>
+      <Input
+        placeholder="Cari nama atau kode…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="h-8 text-xs"
+        data-testid="input-products-search"
+      />
+      <div className="text-[11px] text-muted-foreground">
+        {value.length} produk dipilih
+        {value.length > 0 && (
+          <button
+            type="button"
+            className="ml-2 underline hover:text-foreground"
+            onClick={() => onChange([])}
+            data-testid="button-products-clear"
+          >
+            Kosongkan
+          </button>
+        )}
+      </div>
+      <div className="border border-border rounded-md max-h-64 overflow-y-auto divide-y divide-border/60">
+        {isLoading && (
+          <div className="p-3 text-xs text-muted-foreground">Memuat produk…</div>
+        )}
+        {!isLoading && list.length === 0 && (
+          <div className="p-3 text-xs text-muted-foreground italic">
+            {(products ?? []).length === 0
+              ? "Belum ada produk. Tambahkan di halaman Products dulu."
+              : "Tidak ada produk yang cocok."}
+          </div>
+        )}
+        {list.map((p) => {
+          const isOn = selected.has(p.id);
+          return (
+            <button
+              type="button"
+              key={p.id}
+              onClick={() => toggle(p.id)}
+              className={`flex items-center gap-2 w-full px-2 py-1.5 text-left text-xs hover:bg-accent ${
+                isOn ? "bg-accent/60" : ""
+              }`}
+              data-testid={`button-product-toggle-${p.id}`}
+            >
+              <input
+                type="checkbox"
+                checked={isOn}
+                readOnly
+                className="pointer-events-none"
+              />
+              {p.imageUrl ? (
+                <img
+                  src={p.imageUrl}
+                  alt=""
+                  className="w-8 h-8 rounded object-cover bg-muted shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded bg-muted shrink-0 flex items-center justify-center">
+                  <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="truncate font-medium text-foreground">{p.name}</div>
+                <div className="truncate text-muted-foreground">
+                  {p.code} · Rp {p.price.toLocaleString("id-ID")}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
 // server's installed zod version) so types align with the rest of routes/*.
 const FlowNodeSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(["trigger", "message", "question", "end", "ai"]),
+  type: z.enum(["trigger", "message", "question", "end", "ai", "products"]),
   position: z.object({ x: z.number(), y: z.number() }),
   data: z.object({
     matchType: z.enum(["default", "keyword"]).optional(),
@@ -26,6 +26,7 @@ const FlowNodeSchema = z.object({
       .optional(),
     strictOptions: z.boolean().optional(),
     strictRetryMessage: z.string().optional(),
+    productIds: z.array(z.number().int().positive()).optional(),
   }),
 });
 

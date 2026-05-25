@@ -1814,7 +1814,7 @@ components:
         id: { type: string }
         type:
           type: string
-          enum: [trigger, message, question, end, ai]
+          enum: [trigger, message, question, end, ai, products]
         position:
           type: object
           required: [x, y]
@@ -1848,6 +1848,10 @@ components:
             strictRetryMessage:
               type: string
               description: "Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip."
+            productIds:
+              type: array
+              items: { type: integer }
+              description: "Products only: list of product IDs to send (image + Nama/Kode/Harga caption)."
 
     FlowEdge:
       type: object

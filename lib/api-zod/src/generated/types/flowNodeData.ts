@@ -22,4 +22,6 @@ export type FlowNodeData = {
   strictOptions?: boolean;
   /** Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip. */
   strictRetryMessage?: string;
+  /** Products only: list of product IDs to send (image + Nama/Kode/Harga caption). */
+  productIds?: number[];
 };

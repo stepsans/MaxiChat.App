@@ -14,10 +14,11 @@ import {
   settingsTable,
   whatsappStatusesTable,
   chatbotFlowsTable,
+  productsTable,
   type FlowGraph,
   type FlowNode,
 } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, inArray } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { logger } from "../lib/logger";
 import {
@@ -1116,25 +1117,126 @@ async function sendFlowMessage(
   return true;
 }
 
-// Flow node images may ONLY be served from /api/media/* (i.e. files the user
-// uploaded through /api/flows/upload-image, which lands in MEDIA_DIR). We
-// deliberately do NOT fetch arbitrary http(s) URLs here, even though the
-// schema allows them, because doing so would expose the server to SSRF
-// (attacker-controlled URL → server-side request to internal hosts like
-// 127.0.0.1, 169.254.169.254, RFC1918 ranges, etc.). DNS-pre-resolution
-// guards are bypassable via DNS rebinding/TOCTOU and IPv6 encoding edge
-// cases, so the only robust mitigation is to reject external URLs outright.
-// If external image hosting is ever needed, route it through a vetted
-// dispatcher that pins the resolved IP for the actual TCP connection.
-async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
-  if (!imageUrl.startsWith("/api/media/")) {
-    throw new Error(
-      "Only internal /api/media/ image URLs are allowed (external URLs blocked to prevent SSRF)"
-    );
+const MAX_EXTERNAL_IMAGE_BYTES = 16 * 1024 * 1024;
+
+// Block list of IP ranges that the server must never make outbound HTTP
+// requests to (used as an SSRF guard when loading flow/product images by URL).
+// Covers loopback, RFC1918 private, link-local (incl. 169.254.169.254 cloud
+// metadata), CGNAT, multicast, reserved, and IPv6 equivalents.
+const SSRF_BLOCKLIST: import("node:net").BlockList = (() => {
+  // Lazy require to avoid the cost at module import in non-prod hot paths.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { BlockList } = require("node:net") as typeof import("node:net");
+  const bl = new BlockList();
+  bl.addSubnet("0.0.0.0", 8, "ipv4");
+  bl.addSubnet("10.0.0.0", 8, "ipv4");
+  bl.addSubnet("127.0.0.0", 8, "ipv4");
+  bl.addSubnet("169.254.0.0", 16, "ipv4");
+  bl.addSubnet("172.16.0.0", 12, "ipv4");
+  bl.addSubnet("192.168.0.0", 16, "ipv4");
+  bl.addSubnet("100.64.0.0", 10, "ipv4");
+  bl.addSubnet("224.0.0.0", 4, "ipv4");
+  bl.addSubnet("240.0.0.0", 4, "ipv4");
+  bl.addAddress("::", "ipv6");
+  bl.addAddress("::1", "ipv6");
+  bl.addSubnet("fc00::", 7, "ipv6");
+  bl.addSubnet("fe80::", 10, "ipv6");
+  bl.addSubnet("ff00::", 8, "ipv6");
+  return bl;
+})();
+
+// Unwrap IPv4-mapped IPv6 to IPv4 (handles both ::ffff:1.2.3.4 dotted and
+// ::ffff:0102:0304 hex forms) so we never miss private IPv4 ranges hidden
+// behind IPv6 encoding.
+function checkAddressBlocked(addr: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { isIP } = require("node:net") as typeof import("node:net");
+  const family = isIP(addr);
+  if (family === 4) return SSRF_BLOCKLIST.check(addr, "ipv4");
+  if (family !== 6) return true; // unknown → block
+  const lower = addr.toLowerCase();
+  const dotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(lower);
+  if (dotted) return SSRF_BLOCKLIST.check(dotted[1]!, "ipv4");
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(lower);
+  if (hex) {
+    const hi = parseInt(hex[1]!, 16);
+    const lo = parseInt(hex[2]!, 16);
+    const v4 = `${(hi >>> 8) & 255}.${hi & 255}.${(lo >>> 8) & 255}.${lo & 255}`;
+    return SSRF_BLOCKLIST.check(v4, "ipv4");
   }
-  const filename = path.basename(imageUrl.slice("/api/media/".length));
-  const filepath = path.join(MEDIA_DIR, filename);
-  return await fs.readFile(filepath);
+  return SSRF_BLOCKLIST.check(addr, "ipv6");
+}
+
+// Loads an image for sending via Baileys. Two source kinds are supported:
+//
+//   - "/api/media/<file>" — server-uploaded media (flow/product image uploads),
+//     read straight from disk.
+//   - "http(s)://…"      — external image URL. SSRF-hardened: DNS-resolves the
+//     host first and rejects if any returned address falls in a
+//     private/reserved range; refuses redirects (would re-introduce SSRF);
+//     requires an image/* content-type; caps body at MAX_EXTERNAL_IMAGE_BYTES;
+//     enforces a 10s timeout. Residual risk: DNS rebinding could in theory
+//     change the resolved address between our lookup() and fetch()'s actual
+//     connect; mitigating that fully requires pinning the resolved IP via a
+//     custom dispatcher. Accepted tradeoff for the small, admin-curated
+//     product catalog this serves.
+async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
+  if (imageUrl.startsWith("/api/media/")) {
+    const filename = path.basename(imageUrl.slice("/api/media/".length));
+    const filepath = path.join(MEDIA_DIR, filename);
+    return await fs.readFile(filepath);
+  }
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    throw new Error(`Unsupported image url: ${imageUrl}`);
+  }
+  const parsed = new URL(imageUrl);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("unsupported protocol");
+  }
+  const { lookup } = await import("node:dns/promises");
+  const addrs = await lookup(parsed.hostname, { all: true });
+  if (addrs.length === 0) throw new Error("dns: no addresses");
+  for (const a of addrs) {
+    if (checkAddressBlocked(a.address)) {
+      throw new Error(`blocked private/reserved host: ${a.address}`);
+    }
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(imageUrl, {
+      signal: controller.signal,
+      redirect: "error",
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.toLowerCase().startsWith("image/")) {
+      throw new Error(`unexpected content-type: ${ct}`);
+    }
+    const len = Number(res.headers.get("content-length") || 0);
+    if (len && len > MAX_EXTERNAL_IMAGE_BYTES) {
+      throw new Error(`content-length ${len} exceeds cap`);
+    }
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("no response body");
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.length;
+        if (total > MAX_EXTERNAL_IMAGE_BYTES) {
+          try { await reader.cancel(); } catch {}
+          throw new Error(`response exceeded ${MAX_EXTERNAL_IMAGE_BYTES} bytes`);
+        }
+        chunks.push(value);
+      }
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Walk forward from `startNodeId` along straight (non-question) edges, sending
@@ -1196,6 +1298,47 @@ async function runFlowFrom(
         .set({ flowState: { flowId, currentNodeId: node.id } })
         .where(eq(chatsTable.id, chatId));
       return;
+    }
+
+    if (node.type === "products") {
+      const ids = (node.data.productIds ?? []).filter((n) => Number.isInteger(n) && n > 0);
+      if (ids.length > 0) {
+        // Scope by ownerPhone so a flow can never leak another tenant's products
+        // if their ids happened to be referenced.
+        const rows = await db
+          .select({
+            id: productsTable.id,
+            code: productsTable.code,
+            name: productsTable.name,
+            price: productsTable.price,
+            imageUrl: productsTable.imageUrl,
+          })
+          .from(productsTable)
+          .where(and(eq(productsTable.ownerPhone, ownerPhone), inArray(productsTable.id, ids)));
+        // Preserve the author's ordering from the flow node.
+        const byId = new Map(rows.map((p) => [p.id, p]));
+        for (const pid of ids) {
+          const p = byId.get(pid);
+          if (!p) continue;
+          const caption =
+            `*${p.name}*\n` +
+            `Kode: ${p.code}\n` +
+            `Harga: Rp ${p.price.toLocaleString("id-ID")}`;
+          const ok = await sendFlowMessage(
+            userId,
+            epoch,
+            ownerPhone,
+            chatId,
+            jid,
+            caption,
+            p.imageUrl ?? null
+          );
+          if (!ok) return;
+        }
+      }
+      const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
+      cursorId = next?.target ?? null;
+      continue;
     }
 
     if (node.type === "end") {

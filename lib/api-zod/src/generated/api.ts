@@ -875,7 +875,7 @@ export const GetFlowResponse = zod.object({
   "graph": zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
-  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai']),
+  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai', 'products']),
   "position": zod.object({
   "x": zod.number(),
   "y": zod.number()
@@ -890,7 +890,8 @@ export const GetFlowResponse = zod.object({
   "label": zod.string()
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
-  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
 })
 })),
   "edges": zod.array(zod.object({
@@ -921,7 +922,7 @@ export const UpdateFlowBody = zod.object({
   "graph": zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
-  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai']),
+  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai', 'products']),
   "position": zod.object({
   "x": zod.number(),
   "y": zod.number()
@@ -936,7 +937,8 @@ export const UpdateFlowBody = zod.object({
   "label": zod.string()
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
-  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
 })
 })),
   "edges": zod.array(zod.object({
@@ -955,7 +957,7 @@ export const UpdateFlowResponse = zod.object({
   "graph": zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
-  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai']),
+  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai', 'products']),
   "position": zod.object({
   "x": zod.number(),
   "y": zod.number()
@@ -970,7 +972,8 @@ export const UpdateFlowResponse = zod.object({
   "label": zod.string()
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
-  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
 })
 })),
   "edges": zod.array(zod.object({
@@ -1007,7 +1010,7 @@ export const ActivateFlowResponse = zod.object({
   "graph": zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
-  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai']),
+  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai', 'products']),
   "position": zod.object({
   "x": zod.number(),
   "y": zod.number()
@@ -1022,7 +1025,8 @@ export const ActivateFlowResponse = zod.object({
   "label": zod.string()
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
-  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
 })
 })),
   "edges": zod.array(zod.object({

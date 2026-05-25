@@ -44,7 +44,7 @@ export const flowNodeSchema = z.object({
   id: z.string().min(1),
   // "ai": handoff node — sends optional intro text, then AI takes over the
   //       conversation (Default trigger muted by the per-owner cooldown).
-  type: z.enum(["trigger", "message", "question", "end", "ai"]),
+  type: z.enum(["trigger", "message", "question", "end", "ai", "products"]),
   position: z.object({ x: z.number(), y: z.number() }),
   data: z.object({
     // trigger
@@ -65,6 +65,8 @@ export const flowNodeSchema = z.object({
     // question — when strictOptions=true, this message is sent right before
     // the question is re-asked, to nudge the customer to pick a valid option.
     strictRetryMessage: z.string().optional(),
+    // products — list of product ids to send (image + Nama/Kode/Harga caption).
+    productIds: z.array(z.number().int().positive()).optional(),
   }),
 });
 
