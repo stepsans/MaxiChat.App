@@ -1226,7 +1226,10 @@ async function tryRunFlow(
   const graph = active.graph as FlowGraph;
   const lower = text.toLowerCase();
 
-  const triggers = graph.nodes.filter((n) => n.type === "trigger");
+  // Only consider triggers that actually have an outgoing edge — an
+  // orphan trigger (left behind during editing) must not block the flow.
+  const hasOutgoing = (id: string) => graph.edges.some((e) => e.source === id);
+  const triggers = graph.nodes.filter((n) => n.type === "trigger" && hasOutgoing(n.id));
   // Keyword triggers first (more specific), then default trigger.
   const keywordHit = triggers.find(
     (n) =>
