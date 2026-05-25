@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 
-const COOLDOWN_OPTIONS = [0, 5, 15, 30, 60, 120] as const;
+const COOLDOWN_OPTIONS = [5, 15, 30, 60, 120] as const;
 
 const settingsSchema = z.object({
   systemPrompt: z.string().min(1, "System prompt is required"),
@@ -247,7 +247,7 @@ export default function Settings() {
                         >
                           {COOLDOWN_OPTIONS.map((m) => (
                             <option key={m} value={m}>
-                              {m === 0 ? "0 menit (mode test — flow ulang tiap pesan)" : `${m} menit`}
+                              {m} menit
                             </option>
                           ))}
                         </select>

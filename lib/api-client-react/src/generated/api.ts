@@ -57,6 +57,7 @@ import type {
   PostStatusInput,
   Product,
   ProductInput,
+  ResetFlowCooldown200,
   SendProductBody,
   Settings,
   SettingsUpdate,
@@ -4058,5 +4059,75 @@ export const useDeactivateActiveFlow = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeactivateActiveFlowMutationOptions(options));
+    }
+
+export const getResetFlowCooldownUrl = () => {
+
+
+
+
+  return `/api/flows/reset-cooldown`
+}
+
+/**
+ * @summary Clear flow cooldown for all chats so the Default trigger fires again immediately (for testing)
+ */
+export const resetFlowCooldown = async ( options?: RequestInit): Promise<ResetFlowCooldown200> => {
+
+  return customFetch<ResetFlowCooldown200>(getResetFlowCooldownUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getResetFlowCooldownMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetFlowCooldown>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetFlowCooldown>>, TError,void, TContext> => {
+
+const mutationKey = ['resetFlowCooldown'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetFlowCooldown>>, void> = () => {
+
+
+          return  resetFlowCooldown(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetFlowCooldownMutationResult = NonNullable<Awaited<ReturnType<typeof resetFlowCooldown>>>
+
+    export type ResetFlowCooldownMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear flow cooldown for all chats so the Default trigger fires again immediately (for testing)
+ */
+export const useResetFlowCooldown = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetFlowCooldown>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetFlowCooldown>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResetFlowCooldownMutationOptions(options));
     }
 

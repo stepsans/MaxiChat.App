@@ -7,9 +7,10 @@ import {
   useDeleteFlow,
   useActivateFlow,
   useDeactivateActiveFlow,
+  useResetFlowCooldown,
   getListFlowsQueryKey,
 } from "@workspace/api-client-react";
-import { Plus, Trash2, Power, PowerOff, Pencil, GitBranch, HelpCircle } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, Pencil, GitBranch, HelpCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -59,6 +60,19 @@ export default function Flows() {
       },
     },
   });
+  const resetCooldown = useResetFlowCooldown({
+    mutation: {
+      onSuccess: (data) => {
+        toast({
+          title: "Cooldown direset",
+          description: `${data.cleared} chat siap memulai flow lagi tanpa menunggu.`,
+        });
+      },
+      onError: () => {
+        toast({ title: "Gagal reset cooldown", variant: "destructive" });
+      },
+    },
+  });
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -70,6 +84,17 @@ export default function Flows() {
             Susun alur balasan otomatis. Hanya 1 flow yang aktif untuk semua chat.
           </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={resetCooldown.isPending}
+          onClick={() => resetCooldown.mutate()}
+          data-testid="button-reset-cooldown"
+          title="Hapus cooldown semua chat — Default trigger akan langsung jalan di pesan berikutnya. Khusus testing."
+        >
+          <RefreshCw className={`w-4 h-4 mr-1.5 ${resetCooldown.isPending ? "animate-spin" : ""}`} />
+          Reset Cooldown
+        </Button>
         <Button
           variant="outline"
           size="sm"

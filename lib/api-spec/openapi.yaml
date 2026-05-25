@@ -1194,6 +1194,22 @@ paths:
       responses:
         "204": { description: Deactivated }
 
+  /flows/reset-cooldown:
+    post:
+      operationId: resetFlowCooldown
+      tags: [flows]
+      summary: Clear flow cooldown for all chats so the Default trigger fires again immediately (for testing)
+      responses:
+        "200":
+          description: Reset
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cleared]
+                properties:
+                  cleared: { type: integer }
+
 components:
   schemas:
     HealthStatus:
@@ -1430,8 +1446,8 @@ components:
           type: string
         flowCooldownMinutes:
           type: integer
-          enum: [0, 5, 15, 30, 60, 120]
-          description: "Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. 0 = no cooldown (test mode: flow restarts on every message)."
+          enum: [5, 15, 30, 60, 120]
+          description: "Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups."
         updatedAt:
           type: string
 
@@ -1450,7 +1466,7 @@ components:
           type: string
         flowCooldownMinutes:
           type: integer
-          enum: [0, 5, 15, 30, 60, 120]
+          enum: [5, 15, 30, 60, 120]
 
     AnalyticsSummary:
       type: object

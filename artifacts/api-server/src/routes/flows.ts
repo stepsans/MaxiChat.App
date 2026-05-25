@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
-import { chatbotFlowsTable } from "@workspace/db";
+import { chatbotFlowsTable, chatsTable } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
@@ -237,6 +237,20 @@ router.post("/:id/activate", async (req, res) => {
   });
   if (!updated) return res.status(404).json({ error: "not_found" });
   return res.json(serializeFull(updated));
+});
+
+// Clear flow cooldown / in-progress state for all chats of the current owner.
+// Useful for testing: lets the Default trigger fire on the next message
+// without waiting the configured cooldown window.
+router.post("/reset-cooldown", async (req, res) => {
+  const userId = req.session.userId!;
+  const ownerPhone = await getCurrentOwnerPhone(userId);
+  if (!ownerPhone) return res.json({ cleared: 0 });
+  const result = await db
+    .update(chatsTable)
+    .set({ flowState: null })
+    .where(eq(chatsTable.ownerPhone, ownerPhone));
+  return res.json({ cleared: result.rowCount ?? 0 });
 });
 
 router.post("/active/deactivate", async (req, res) => {
