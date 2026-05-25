@@ -1138,7 +1138,7 @@ async function runFlowFrom(
       // AI instead of immediately re-entering the menu.
       await db
         .update(chatsTable)
-        .set({ flowState: { defaultMutedUntil: Date.now() + 30 * 60 * 1000 } })
+        .set({ flowState: { defaultMutedUntil: Date.now() + 5 * 60 * 1000 } })
         .where(eq(chatsTable.id, chatId));
       return;
     }
@@ -1151,7 +1151,7 @@ async function runFlowFrom(
   // Dead-end without an explicit end node — same cooldown as End.
   await db
     .update(chatsTable)
-    .set({ flowState: { defaultMutedUntil: Date.now() + 30 * 60 * 1000 } })
+    .set({ flowState: { defaultMutedUntil: Date.now() + 5 * 60 * 1000 } })
     .where(eq(chatsTable.id, chatId));
 }
 
@@ -1187,7 +1187,7 @@ async function tryRunFlow(
     | { flowId?: number; currentNodeId?: string; defaultMutedUntil?: number }
     | null;
   // 30 min cooldown after any flow exit before Default trigger may re-fire.
-  const DEFAULT_MUTE_MS = 30 * 60 * 1000;
+  const DEFAULT_MUTE_MS = 5 * 60 * 1000;
   const muteState = { defaultMutedUntil: Date.now() + DEFAULT_MUTE_MS };
 
   // Case A: chat is mid-flow at a question → try to advance.
@@ -1410,13 +1410,54 @@ async function startBaileys(userId: number) {
         const rawId = sock.user?.id ?? null;
         const phoneNumber = rawId?.split(":")[0] ?? null;
         const normalised = normalizeOwnerPhone(phoneNumber);
-        ctx.ownerPhone = normalised;
+        // Data-isolation gate: persist the user↔phone mapping BEFORE we
+        // expose the phone via ctx.ownerPhone. If another app user already
+        // owns this WhatsApp number (unique constraint on
+        // user_whatsapp.owner_phone), refuse the connection — otherwise
+        // requests from this user would read the other user's chats.
         if (normalised) {
-          // Persist the user↔phone binding so it survives restart and so
-          // every owner-scoped query for this user resolves consistently.
-          await setOwnerPhoneForUser(userId, normalised).catch((err) =>
-            logger.error({ err, userId }, "Failed to persist user_whatsapp mapping")
-          );
+          try {
+            await setOwnerPhoneForUser(userId, normalised);
+          } catch (err: unknown) {
+            const code = (err as { code?: string } | null)?.code;
+            if (code === "23505") {
+              logger.warn(
+                { userId, normalised },
+                "WhatsApp number already paired to another account; rejecting connection"
+              );
+              ctx.ownerPhone = null;
+              await setStatus(sessionId, "disconnected", {
+                qrCode: null,
+                phoneNumber: null,
+                connectedAt: null,
+              });
+              try {
+                await sock.logout();
+              } catch {}
+              ctx.sock = null;
+              ctx.isConnecting = false;
+              return;
+            }
+            logger.error(
+              { err, userId },
+              "Failed to persist user_whatsapp mapping; refusing to expose ownerPhone"
+            );
+            ctx.ownerPhone = null;
+            await setStatus(sessionId, "disconnected", {
+              qrCode: null,
+              phoneNumber: null,
+              connectedAt: null,
+            });
+            try {
+              await sock.logout();
+            } catch {}
+            ctx.sock = null;
+            ctx.isConnecting = false;
+            return;
+          }
+          ctx.ownerPhone = normalised;
+        } else {
+          ctx.ownerPhone = null;
         }
         await setStatus(sessionId, "connected", {
           qrCode: null,
