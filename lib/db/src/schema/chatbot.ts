@@ -62,6 +62,9 @@ export const flowNodeSchema = z.object({
     // question — when true, off-option replies re-ask the question instead
     // of muting the flow and handing off to AI.
     strictOptions: z.boolean().optional(),
+    // question — when strictOptions=true, this message is sent right before
+    // the question is re-asked, to nudge the customer to pick a valid option.
+    strictRetryMessage: z.string().optional(),
   }),
 });
 

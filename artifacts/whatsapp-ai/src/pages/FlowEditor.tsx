@@ -60,6 +60,7 @@ type FlowNodeData = {
   imageUrl?: string | null;
   options?: { id: string; label: string }[];
   strictOptions?: boolean;
+  strictRetryMessage?: string;
 };
 
 type RFNode = Node<FlowNodeData & { label?: string }, NodeKind>;
@@ -763,6 +764,21 @@ function Inspector({
               onCheckedChange={(v) => onChange({ strictOptions: v })}
             />
           </div>
+          {node.data.strictOptions && (
+            <div>
+              <Label className="text-xs">Pesan error sebelum dikirim ulang</Label>
+              <Textarea
+                rows={2}
+                value={node.data.strictRetryMessage ?? ""}
+                onChange={(e) => onChange({ strictRetryMessage: e.target.value })}
+                placeholder="Anda belum memilih dengan tepat, tulis angka 1-2 untuk memilih"
+                data-testid="input-strict-retry-message"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                Dikirim sebelum pertanyaan diulang. Kosongkan untuk langsung mengirim ulang pertanyaan tanpa pesan error.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

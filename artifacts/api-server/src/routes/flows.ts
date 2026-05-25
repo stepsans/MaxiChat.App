@@ -25,6 +25,7 @@ const FlowNodeSchema = z.object({
       .array(z.object({ id: z.string().min(1), label: z.string().min(1) }))
       .optional(),
     strictOptions: z.boolean().optional(),
+    strictRetryMessage: z.string().optional(),
   }),
 });
 

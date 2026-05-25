@@ -20,4 +20,6 @@ export type FlowNodeData = {
   options?: FlowNodeDataOptionsItem[];
   /** Question only: re-ask question on off-option replies instead of handing off to AI. */
   strictOptions?: boolean;
+  /** Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip. */
+  strictRetryMessage?: string;
 };

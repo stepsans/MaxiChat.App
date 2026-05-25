@@ -889,7 +889,8 @@ export const GetFlowResponse = zod.object({
   "id": zod.string(),
   "label": zod.string()
 })).optional(),
-  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.')
+  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
 })
 })),
   "edges": zod.array(zod.object({
@@ -934,7 +935,8 @@ export const UpdateFlowBody = zod.object({
   "id": zod.string(),
   "label": zod.string()
 })).optional(),
-  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.')
+  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
 })
 })),
   "edges": zod.array(zod.object({
@@ -967,7 +969,8 @@ export const UpdateFlowResponse = zod.object({
   "id": zod.string(),
   "label": zod.string()
 })).optional(),
-  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.')
+  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
 })
 })),
   "edges": zod.array(zod.object({
@@ -1018,7 +1021,8 @@ export const ActivateFlowResponse = zod.object({
   "id": zod.string(),
   "label": zod.string()
 })).optional(),
-  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.')
+  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.')
 })
 })),
   "edges": zod.array(zod.object({

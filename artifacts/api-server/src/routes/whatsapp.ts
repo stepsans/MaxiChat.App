@@ -1309,6 +1309,21 @@ async function tryRunFlow(
       // the question and keep the same flowState so the next reply is still
       // judged against the same options. AI is NOT invoked.
       if (node.data.strictOptions) {
+        // Optional error nudge sent BEFORE the question is re-asked (e.g.
+        // "Anda belum memilih dengan tepat, tulis angka 1-2 untuk memilih").
+        const retryMsg = (node.data.strictRetryMessage ?? "").trim();
+        if (retryMsg) {
+          const okMsg = await sendFlowMessage(
+            userId,
+            epoch,
+            ownerPhone,
+            chat.id,
+            jid,
+            retryMsg,
+            null
+          );
+          if (!okMsg) return false;
+        }
         const questionText = renderQuestion(node);
         const ok = await sendFlowMessage(
           userId,
