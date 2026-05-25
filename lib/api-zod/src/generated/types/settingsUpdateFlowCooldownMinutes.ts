@@ -10,6 +10,7 @@ export type SettingsUpdateFlowCooldownMinutes = typeof SettingsUpdateFlowCooldow
 
 
 export const SettingsUpdateFlowCooldownMinutes = {
+  NUMBER_0: 0,
   NUMBER_5: 5,
   NUMBER_15: 15,
   NUMBER_30: 30,

@@ -205,12 +205,13 @@ export interface KnowledgeTypeInput {
 }
 
 /**
- * Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups.
+ * Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. 0 = no cooldown (test mode: flow restarts on every message).
  */
 export type SettingsFlowCooldownMinutes = typeof SettingsFlowCooldownMinutes[keyof typeof SettingsFlowCooldownMinutes];
 
 
 export const SettingsFlowCooldownMinutes = {
+  NUMBER_0: 0,
   NUMBER_5: 5,
   NUMBER_15: 15,
   NUMBER_30: 30,
@@ -225,7 +226,7 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
-  /** Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. */
+  /** Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. 0 = no cooldown (test mode: flow restarts on every message). */
   flowCooldownMinutes: SettingsFlowCooldownMinutes;
   updatedAt: string;
 }
@@ -234,6 +235,7 @@ export type SettingsUpdateFlowCooldownMinutes = typeof SettingsUpdateFlowCooldow
 
 
 export const SettingsUpdateFlowCooldownMinutes = {
+  NUMBER_0: 0,
   NUMBER_5: 5,
   NUMBER_15: 15,
   NUMBER_30: 30,

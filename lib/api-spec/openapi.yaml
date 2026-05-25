@@ -1430,8 +1430,8 @@ components:
           type: string
         flowCooldownMinutes:
           type: integer
-          enum: [5, 15, 30, 60, 120]
-          description: "Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups."
+          enum: [0, 5, 15, 30, 60, 120]
+          description: "Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. 0 = no cooldown (test mode: flow restarts on every message)."
         updatedAt:
           type: string
 
@@ -1450,7 +1450,7 @@ components:
           type: string
         flowCooldownMinutes:
           type: integer
-          enum: [5, 15, 30, 60, 120]
+          enum: [0, 5, 15, 30, 60, 120]
 
     AnalyticsSummary:
       type: object

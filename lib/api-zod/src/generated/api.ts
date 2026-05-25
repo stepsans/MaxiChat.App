@@ -400,7 +400,7 @@ export const GetSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
-  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
+  "flowCooldownMinutes": zod.union([zod.literal(0),zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups. 0 = no cooldown (test mode: flow restarts on every message).'),
   "updatedAt": zod.string()
 })
 
@@ -414,7 +414,7 @@ export const UpdateSettingsBody = zod.object({
   "replyDelayMin": zod.number().optional(),
   "replyDelayMax": zod.number().optional(),
   "fallbackMessage": zod.string().optional(),
-  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).optional()
+  "flowCooldownMinutes": zod.union([zod.literal(0),zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).optional()
 })
 
 export const UpdateSettingsResponse = zod.object({
@@ -424,7 +424,7 @@ export const UpdateSettingsResponse = zod.object({
   "replyDelayMin": zod.number(),
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
-  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
+  "flowCooldownMinutes": zod.union([zod.literal(0),zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups. 0 = no cooldown (test mode: flow restarts on every message).'),
   "updatedAt": zod.string()
 })
 

@@ -14,7 +14,7 @@ export interface Settings {
   replyDelayMin: number;
   replyDelayMax: number;
   fallbackMessage: string;
-  /** Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. */
+  /** Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. 0 = no cooldown (test mode: flow restarts on every message). */
   flowCooldownMinutes: SettingsFlowCooldownMinutes;
   updatedAt: string;
 }
