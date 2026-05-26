@@ -22,6 +22,7 @@ import {
   UpdateChatParams,
   SendManualReplyParams,
   TakeoverChatParams,
+  OpenChatByPhoneBody,
 } from "@workspace/api-zod";
 import {
   MEDIA_DIR,
@@ -393,6 +394,90 @@ router.get("/", async (req, res) => {
     );
   } catch (err) {
     req.log.error({ err }, "Failed to list chats");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * Normalise a user-typed phone number to a digits-only E.164-ish string with
+ * Indonesian-friendly defaults. Mirrors the frontend's normaliser so the user
+ * sees the same result regardless of which side runs it.
+ *   "08123…"  → "628123…"
+ *   "+62…"    → "62…"
+ *   "8123…"   → "628123…"  (bare local mobile prefix → assume ID)
+ *   "62…" / other international numbers are left alone.
+ */
+function normalisePhoneDigits(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0")) return "62" + digits.slice(1);
+  if (digits.startsWith("8") && digits.length >= 9 && digits.length <= 13) {
+    return "62" + digits;
+  }
+  return digits;
+}
+
+router.post("/open-by-phone", async (req, res) => {
+  try {
+    const parsed = OpenChatByPhoneBody.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid body" });
+    }
+    const digits = normalisePhoneDigits(parsed.data.phoneNumber);
+    if (digits.length < 8 || digits.length > 15) {
+      return res.status(400).json({ error: "Invalid phone number" });
+    }
+    // Personal chats are stored as "+<digits>"; group jids use "@g.us" and
+    // are not creatable from this UI.
+    const phoneNumber = "+" + digits;
+
+    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
+    if (!ownerPhone) {
+      return res
+        .status(409)
+        .json({ error: "WhatsApp belum terhubung. Pair akun WhatsApp terlebih dulu." });
+    }
+
+    // Deterministic "open-or-create": try INSERT … ON CONFLICT DO NOTHING. If
+    // RETURNING gives us a row, we created it. Otherwise the unique
+    // (ownerPhone, phoneNumber) row already existed and we re-select its id.
+    const contactName = parsed.data.contactName?.trim() || digits;
+    const inserted = await db
+      .insert(chatsTable)
+      .values({
+        ownerPhone,
+        phoneNumber,
+        contactName,
+        status: "ai_handled",
+        tag: "none",
+        isHumanTakeover: false,
+        unreadCount: 0,
+        isLid: false,
+      })
+      .onConflictDoNothing({
+        target: [chatsTable.ownerPhone, chatsTable.phoneNumber],
+      })
+      .returning({ id: chatsTable.id });
+
+    if (inserted[0]) {
+      return res.json({ chatId: inserted[0].id, created: true, phoneNumber });
+    }
+
+    const [existing] = await db
+      .select({ id: chatsTable.id })
+      .from(chatsTable)
+      .where(
+        sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
+      )
+      .limit(1);
+
+    if (!existing) {
+      // Should be impossible: insert was a no-op, so a row must exist.
+      return res.status(500).json({ error: "Failed to open chat" });
+    }
+    return res.json({ chatId: existing.id, created: false, phoneNumber });
+  } catch (err) {
+    req.log.error({ err }, "Failed to open chat by phone");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +12,10 @@ import { Button } from "@/components/ui/button";
 import {
   useListChats,
   useDeleteChat,
+  useOpenChatByPhone,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
+import { Loader2 } from "lucide-react";
 import type {} from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -387,17 +389,41 @@ function normalisePhone(raw: string): string {
 function NewChatButton() {
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState("");
+  const [, navigate] = useLocation();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
   const normalised = normalisePhone(phone);
-  // wa.me requires at least a country code + subscriber number — be lenient
-  // but reject obviously incomplete input.
   const isValid = normalised.length >= 8 && normalised.length <= 15;
+
+  const openChat = useOpenChatByPhone({
+    mutation: {
+      onSuccess: (result) => {
+        // Refresh the chat list so a newly created chat appears immediately
+        // (and re-orders if an existing one was just "reopened").
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        setOpen(false);
+        setPhone("");
+        if (result.created) {
+          toast({ title: "Chat baru dibuat", description: result.phoneNumber });
+        }
+        navigate(`/chats/${result.chatId}`);
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal membuka chat",
+          description:
+            err instanceof Error ? err.message : "Periksa koneksi WhatsApp Anda.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isValid) return;
-    window.open(`https://wa.me/${normalised}`, "_blank", "noopener,noreferrer");
-    setOpen(false);
-    setPhone("");
+    if (!isValid || openChat.isPending) return;
+    openChat.mutate({ data: { phoneNumber: phone } });
   }
 
   return (
@@ -422,9 +448,9 @@ function NewChatButton() {
         <DialogHeader>
           <DialogTitle>Mulai chat baru</DialogTitle>
           <DialogDescription>
-            Masukkan nomor WhatsApp tujuan. Anda akan diarahkan ke{" "}
-            <code className="text-foreground">wa.me</code> untuk memulai
-            percakapan.
+            Masukkan nomor WhatsApp tujuan. Jika chat dengan nomor ini sudah
+            ada di history, room-nya akan langsung dibuka. Jika belum, room
+            baru akan dibuat.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -447,8 +473,8 @@ function NewChatButton() {
               <p className="text-[11px] text-muted-foreground">
                 {isValid ? (
                   <>
-                    Akan dibuka:{" "}
-                    <code className="text-foreground">wa.me/{normalised}</code>
+                    Nomor tujuan:{" "}
+                    <code className="text-foreground">+{normalised}</code>
                   </>
                 ) : (
                   "Nomor belum valid. Gunakan format 08xx, 62xx, atau +62xx."
@@ -468,10 +494,13 @@ function NewChatButton() {
             <Button
               type="submit"
               size="sm"
-              data-testid="button-open-wa-me"
-              disabled={!isValid}
+              data-testid="button-open-chat"
+              disabled={!isValid || openChat.isPending}
             >
-              Mulai chat
+              {openChat.isPending && (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              )}
+              Buka chat
             </Button>
           </DialogFooter>
         </form>

@@ -60,6 +60,8 @@ import type {
   ListChatsParams,
   LoginInput,
   ManualReplyInput,
+  OpenChatByPhoneInput,
+  OpenChatByPhoneResult,
   PostStatusInput,
   Product,
   ProductInput,
@@ -986,6 +988,79 @@ export function useListChats<TData = Awaited<ReturnType<typeof listChats>>, TErr
 
 
 
+
+export const getOpenChatByPhoneUrl = () => {
+
+
+
+
+  return `/api/chats/open-by-phone`
+}
+
+/**
+ * Looks up a chat owned by the current WhatsApp account that matches the normalised phone number. If found, returns its id. If not, creates an empty chat placeholder and returns the new id. Use this for the "start a new chat" UX where the user types a number that may or may not already exist in their history.
+
+ * @summary Open (or create) a chat with the given phone number
+ */
+export const openChatByPhone = async (openChatByPhoneInput: OpenChatByPhoneInput, options?: RequestInit): Promise<OpenChatByPhoneResult> => {
+
+  return customFetch<OpenChatByPhoneResult>(getOpenChatByPhoneUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      openChatByPhoneInput,)
+  }
+);}
+
+
+
+
+export const getOpenChatByPhoneMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openChatByPhone>>, TError,{data: BodyType<OpenChatByPhoneInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof openChatByPhone>>, TError,{data: BodyType<OpenChatByPhoneInput>}, TContext> => {
+
+const mutationKey = ['openChatByPhone'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof openChatByPhone>>, {data: BodyType<OpenChatByPhoneInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  openChatByPhone(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OpenChatByPhoneMutationResult = NonNullable<Awaited<ReturnType<typeof openChatByPhone>>>
+    export type OpenChatByPhoneMutationBody = BodyType<OpenChatByPhoneInput>
+    export type OpenChatByPhoneMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Open (or create) a chat with the given phone number
+ */
+export const useOpenChatByPhone = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openChatByPhone>>, TError,{data: BodyType<OpenChatByPhoneInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof openChatByPhone>>,
+        TError,
+        {data: BodyType<OpenChatByPhoneInput>},
+        TContext
+      > => {
+      return useMutation(getOpenChatByPhoneMutationOptions(options));
+    }
 
 export const getGetChatUrl = (id: number,) => {
 

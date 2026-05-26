@@ -575,7 +575,7 @@ async function applyChatListMeta(
     );
 }
 
-async function getOrCreateChat(
+export async function getOrCreateChat(
   ownerPhone: string,
   phoneNumber: string,
   contactName: string,

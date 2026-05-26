@@ -183,6 +183,23 @@ export const ListChatsResponse = zod.array(ListChatsResponseItem)
 
 
 /**
+ * Looks up a chat owned by the current WhatsApp account that matches the normalised phone number. If found, returns its id. If not, creates an empty chat placeholder and returns the new id. Use this for the "start a new chat" UX where the user types a number that may or may not already exist in their history.
+
+ * @summary Open (or create) a chat with the given phone number
+ */
+export const OpenChatByPhoneBody = zod.object({
+  "phoneNumber": zod.string().describe('Raw phone number as typed by the user (digits, +, spaces, dashes are all accepted; server normalises).'),
+  "contactName": zod.string().optional().describe('Optional display name to use if a new chat is created.')
+})
+
+export const OpenChatByPhoneResponse = zod.object({
+  "chatId": zod.number(),
+  "created": zod.boolean().describe('True if a new chat row was inserted, false if an existing chat was returned.'),
+  "phoneNumber": zod.string().describe('The normalised phone number that was used to look up \/ create the chat (E.164-ish, with leading +).')
+})
+
+
+/**
  * @summary Get a specific chat with messages
  */
 export const GetChatParams = zod.object({

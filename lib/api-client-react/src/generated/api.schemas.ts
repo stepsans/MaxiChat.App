@@ -139,6 +139,21 @@ export interface ChatWithMessages {
   messages: ChatMessage[];
 }
 
+export interface OpenChatByPhoneInput {
+  /** Raw phone number as typed by the user (digits, +, spaces, dashes are all accepted; server normalises). */
+  phoneNumber: string;
+  /** Optional display name to use if a new chat is created. */
+  contactName?: string;
+}
+
+export interface OpenChatByPhoneResult {
+  chatId: number;
+  /** True if a new chat row was inserted, false if an existing chat was returned. */
+  created: boolean;
+  /** The normalised phone number that was used to look up / create the chat (E.164-ish, with leading +). */
+  phoneNumber: string;
+}
+
 export type ChatUpdateStatus = typeof ChatUpdateStatus[keyof typeof ChatUpdateStatus];
 
 

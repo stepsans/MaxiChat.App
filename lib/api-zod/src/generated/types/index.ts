@@ -76,6 +76,8 @@ export * from './listChatsStatus';
 export * from './listChatsTag';
 export * from './loginInput';
 export * from './manualReplyInput';
+export * from './openChatByPhoneInput';
+export * from './openChatByPhoneResult';
 export * from './postStatusInput';
 export * from './product';
 export * from './productInput';
