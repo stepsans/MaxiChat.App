@@ -384,9 +384,7 @@ export default function Products() {
           <p className="text-xs text-muted-foreground">
             {isFiltered
               ? `${filteredProducts.length} dari ${allProducts.length} produk`
-              : `${allProducts.length} produk`}{" "}
-            — harga silver/gold/platinum/reseller/distributor hanya tampil di app,
-            tidak dikirim ke customer.
+              : `${allProducts.length} produk`}
           </p>
         </div>
         <div className="flex items-center gap-2">
