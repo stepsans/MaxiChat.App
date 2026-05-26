@@ -100,7 +100,7 @@ export default function Login() {
           <div className="w-11 h-11 rounded-lg bg-primary flex items-center justify-center">
             <SiWhatsapp className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-lg font-semibold tracking-tight">VJ-Chat</h1>
+          <h1 className="text-lg font-semibold tracking-tight">MaxiCS</h1>
           <p className="text-xs text-muted-foreground">
             {isSignup
               ? "Buat akun baru — perlu persetujuan admin"

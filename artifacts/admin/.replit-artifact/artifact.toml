@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/admin/"
-title = "VJ-Chat Admin"
+title = "MaxiCS Admin"
 version = "1.0.0"
 id = "artifacts/admin"
 router = "path"
