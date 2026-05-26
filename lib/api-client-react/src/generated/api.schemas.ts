@@ -805,6 +805,60 @@ export interface KnowledgeSyncConfigInput {
   intervalMinutes?: KnowledgeSyncConfigInputIntervalMinutes;
 }
 
+export type ShortcutSyncConfigIntervalMinutes = typeof ShortcutSyncConfigIntervalMinutes[keyof typeof ShortcutSyncConfigIntervalMinutes];
+
+
+export const ShortcutSyncConfigIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export type ShortcutSyncConfigLastSyncStatus = typeof ShortcutSyncConfigLastSyncStatus[keyof typeof ShortcutSyncConfigLastSyncStatus];
+
+
+export const ShortcutSyncConfigLastSyncStatus = {
+  idle: 'idle',
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export interface ShortcutSyncConfig {
+  id: number;
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+  /** @minimum 1 */
+  headerRow: number;
+  autoSyncEnabled: boolean;
+  intervalMinutes: ShortcutSyncConfigIntervalMinutes;
+  lastSyncedAt?: string | null;
+  lastSyncStatus: ShortcutSyncConfigLastSyncStatus;
+  lastSyncError?: string | null;
+  updatedAt: string;
+}
+
+export type ShortcutSyncConfigInputIntervalMinutes = typeof ShortcutSyncConfigInputIntervalMinutes[keyof typeof ShortcutSyncConfigInputIntervalMinutes];
+
+
+export const ShortcutSyncConfigInputIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export interface ShortcutSyncConfigInput {
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+  /** @minimum 1 */
+  headerRow?: number;
+  autoSyncEnabled?: boolean;
+  intervalMinutes?: ShortcutSyncConfigInputIntervalMinutes;
+}
+
 export type ProductSyncConfigInputIntervalMinutes = typeof ProductSyncConfigInputIntervalMinutes[keyof typeof ProductSyncConfigInputIntervalMinutes];
 
 
@@ -885,6 +939,21 @@ export const ListChatsTag = {
 
 export type RefreshChatAvatar200 = {
   profilePicUrl: string | null;
+};
+
+export type GetShortcutSyncConfig200 = {
+  config?: ShortcutSyncConfig | null;
+};
+
+export type UpsertShortcutSyncConfig200 = {
+  config?: ShortcutSyncConfig | null;
+};
+
+export type RunShortcutSync200 = {
+  inserted: number;
+  updated: number;
+  deleted: number;
+  syncedAt?: string;
 };
 
 export type GetKnowledgeSyncConfig200 = {

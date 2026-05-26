@@ -466,6 +466,77 @@ export const UpdateSettingsResponse = zod.object({
 
 
 
+export const GetShortcutSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary Create or update the shortcut sync config (pass null to clear).
+ */
+export const upsertShortcutSyncConfigBodyOneHeaderRowDefault = 1;
+
+export const upsertShortcutSyncConfigBodyOneAutoSyncEnabledDefault = false;
+export const upsertShortcutSyncConfigBodyOneIntervalMinutesDefault = 15;
+
+export const UpsertShortcutSyncConfigBody = zod.union([zod.object({
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1).default(upsertShortcutSyncConfigBodyOneHeaderRowDefault),
+  "autoSyncEnabled": zod.boolean().default(upsertShortcutSyncConfigBodyOneAutoSyncEnabledDefault),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]).default(upsertShortcutSyncConfigBodyOneIntervalMinutesDefault)
+}),zod.null()])
+
+
+
+
+export const UpsertShortcutSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary Run a manual shortcut sync now. Sheet is the source of truth (deletes apply).
+ */
+export const RunShortcutSyncResponse = zod.object({
+  "inserted": zod.number(),
+  "updated": zod.number(),
+  "deleted": zod.number(),
+  "syncedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+
+
+
 export const GetKnowledgeSyncConfigResponse = zod.object({
   "config": zod.object({
   "id": zod.number(),

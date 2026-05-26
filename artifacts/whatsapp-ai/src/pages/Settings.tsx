@@ -14,6 +14,7 @@ import {
   getListShortcutsQueryKey,
 } from "@workspace/api-client-react";
 import type { TextShortcut } from "@workspace/api-client-react";
+import ShortcutSyncCard from "@/components/ShortcutSyncCard";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -605,6 +606,7 @@ function ShortcutsCard() {
 
   return (
     <Card>
+      <ShortcutSyncCard />
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1.5 min-w-0">

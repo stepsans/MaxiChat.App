@@ -623,6 +623,67 @@ paths:
               schema:
                 $ref: "#/components/schemas/Settings"
 
+  /shortcuts/sync-config:
+    get:
+      operationId: getShortcutSyncConfig
+      tags: [shortcuts]
+      summary: Get the Google Sheet sync config for the current WhatsApp account
+      responses:
+        "200":
+          description: Config, or null if not configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/ShortcutSyncConfig"
+    put:
+      operationId: upsertShortcutSyncConfig
+      tags: [shortcuts]
+      summary: Create or update the shortcut sync config (pass null to clear).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/ShortcutSyncConfigInput"
+                - type: "null"
+      responses:
+        "200":
+          description: Updated config (or null after clearing)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/ShortcutSyncConfig"
+
+  /shortcuts/sync-run:
+    post:
+      operationId: runShortcutSync
+      tags: [shortcuts]
+      summary: Run a manual shortcut sync now. Sheet is the source of truth (deletes apply).
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inserted, updated, deleted]
+                properties:
+                  inserted: { type: integer }
+                  updated: { type: integer }
+                  deleted: { type: integer }
+                  syncedAt: { type: string, format: date-time }
+
   /knowledge/sync-config:
     get:
       operationId: getKnowledgeSyncConfig
@@ -2283,6 +2344,35 @@ components:
         updatedAt: { type: string, format: date-time }
 
     KnowledgeSyncConfigInput:
+      type: object
+      required: [credentialId, spreadsheetId, sheetName]
+      properties:
+        credentialId: { type: integer }
+        spreadsheetId: { type: string }
+        sheetName: { type: string }
+        headerRow: { type: integer, minimum: 1, default: 1 }
+        autoSyncEnabled: { type: boolean, default: false }
+        intervalMinutes: { type: integer, enum: [5, 15, 30, 60], default: 15 }
+
+    ShortcutSyncConfig:
+      type: object
+      required:
+        [id, credentialId, spreadsheetId, sheetName, headerRow,
+         autoSyncEnabled, intervalMinutes, lastSyncStatus, updatedAt]
+      properties:
+        id: { type: integer }
+        credentialId: { type: integer }
+        spreadsheetId: { type: string }
+        sheetName: { type: string }
+        headerRow: { type: integer, minimum: 1 }
+        autoSyncEnabled: { type: boolean }
+        intervalMinutes: { type: integer, enum: [5, 15, 30, 60] }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+        lastSyncStatus: { type: string, enum: [idle, ok, error] }
+        lastSyncError: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time }
+
+    ShortcutSyncConfigInput:
       type: object
       required: [credentialId, spreadsheetId, sheetName]
       properties:

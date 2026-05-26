@@ -130,3 +130,38 @@ export const knowledgeSyncConfigTable = pgTable(
 );
 
 export type KnowledgeSyncConfig = typeof knowledgeSyncConfigTable.$inferSelect;
+
+// Per-WhatsApp-account binding from a Google Sheet → the `text_shortcuts`
+// table. Same shape and semantics as the knowledge/product sync configs:
+// sheet is the source of truth, deletes apply on each run.
+export const shortcutSyncConfigTable = pgTable(
+  "shortcut_sync_config",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    credentialId: integer("credential_id")
+      .notNull()
+      .references(() => credentialsTable.id, { onDelete: "cascade" }),
+    spreadsheetId: text("spreadsheet_id").notNull(),
+    sheetName: text("sheet_name").notNull(),
+    headerRow: integer("header_row").notNull().default(1),
+    autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(false),
+    intervalMinutes: integer("interval_minutes").notNull().default(15),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastSyncStatus: text("last_sync_status").notNull().default("idle"),
+    lastSyncError: text("last_sync_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    shortcutSyncOwnerPhoneUnique: uniqueIndex(
+      "shortcut_sync_owner_phone_unique"
+    ).on(t.ownerPhone),
+  })
+);
+
+export type ShortcutSyncConfig = typeof shortcutSyncConfigTable.$inferSelect;

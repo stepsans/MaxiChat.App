@@ -46,6 +46,7 @@ import type {
   FlowUpdateInput,
   GetKnowledgeSyncConfig200,
   GetProductSyncConfig200,
+  GetShortcutSyncConfig200,
   HealthStatus,
   ImportKnowledge200,
   ImportKnowledge400,
@@ -70,9 +71,11 @@ import type {
   ResetFlowCooldown200,
   RunKnowledgeSync200,
   RunProductSync200,
+  RunShortcutSync200,
   SendProductBody,
   Settings,
   SettingsUpdate,
+  ShortcutSyncConfigInput,
   SignupInput,
   SignupResponse,
   SpreadsheetRef,
@@ -84,6 +87,7 @@ import type {
   TextShortcutInput,
   UpsertKnowledgeSyncConfig200,
   UpsertProductSyncConfig200,
+  UpsertShortcutSyncConfig200,
   WhatsappBio,
   WhatsappBioInput,
   WhatsappStatus,
@@ -2006,6 +2010,224 @@ export const useUpdateSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateSettingsMutationOptions(options));
+    }
+
+export const getGetShortcutSyncConfigUrl = () => {
+
+
+
+
+  return `/api/shortcuts/sync-config`
+}
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+export const getShortcutSyncConfig = async ( options?: RequestInit): Promise<GetShortcutSyncConfig200> => {
+
+  return customFetch<GetShortcutSyncConfig200>(getGetShortcutSyncConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetShortcutSyncConfigQueryKey = () => {
+    return [
+    `/api/shortcuts/sync-config`
+    ] as const;
+    }
+
+
+export const getGetShortcutSyncConfigQueryOptions = <TData = Awaited<ReturnType<typeof getShortcutSyncConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShortcutSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetShortcutSyncConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getShortcutSyncConfig>>> = ({ signal }) => getShortcutSyncConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getShortcutSyncConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetShortcutSyncConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getShortcutSyncConfig>>>
+export type GetShortcutSyncConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+
+export function useGetShortcutSyncConfig<TData = Awaited<ReturnType<typeof getShortcutSyncConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getShortcutSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetShortcutSyncConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpsertShortcutSyncConfigUrl = () => {
+
+
+
+
+  return `/api/shortcuts/sync-config`
+}
+
+/**
+ * @summary Create or update the shortcut sync config (pass null to clear).
+ */
+export const upsertShortcutSyncConfig = async (shortcutSyncConfigInputNull: ShortcutSyncConfigInput | null, options?: RequestInit): Promise<UpsertShortcutSyncConfig200> => {
+
+  return customFetch<UpsertShortcutSyncConfig200>(getUpsertShortcutSyncConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      shortcutSyncConfigInputNull,)
+  }
+);}
+
+
+
+
+export const getUpsertShortcutSyncConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertShortcutSyncConfig>>, TError,{data: BodyType<ShortcutSyncConfigInput | null>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertShortcutSyncConfig>>, TError,{data: BodyType<ShortcutSyncConfigInput | null>}, TContext> => {
+
+const mutationKey = ['upsertShortcutSyncConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertShortcutSyncConfig>>, {data: BodyType<ShortcutSyncConfigInput | null>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertShortcutSyncConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertShortcutSyncConfigMutationResult = NonNullable<Awaited<ReturnType<typeof upsertShortcutSyncConfig>>>
+    export type UpsertShortcutSyncConfigMutationBody = BodyType<ShortcutSyncConfigInput | null>
+    export type UpsertShortcutSyncConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create or update the shortcut sync config (pass null to clear).
+ */
+export const useUpsertShortcutSyncConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertShortcutSyncConfig>>, TError,{data: BodyType<ShortcutSyncConfigInput | null>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertShortcutSyncConfig>>,
+        TError,
+        {data: BodyType<ShortcutSyncConfigInput | null>},
+        TContext
+      > => {
+      return useMutation(getUpsertShortcutSyncConfigMutationOptions(options));
+    }
+
+export const getRunShortcutSyncUrl = () => {
+
+
+
+
+  return `/api/shortcuts/sync-run`
+}
+
+/**
+ * @summary Run a manual shortcut sync now. Sheet is the source of truth (deletes apply).
+ */
+export const runShortcutSync = async ( options?: RequestInit): Promise<RunShortcutSync200> => {
+
+  return customFetch<RunShortcutSync200>(getRunShortcutSyncUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunShortcutSyncMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runShortcutSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runShortcutSync>>, TError,void, TContext> => {
+
+const mutationKey = ['runShortcutSync'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runShortcutSync>>, void> = () => {
+
+
+          return  runShortcutSync(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunShortcutSyncMutationResult = NonNullable<Awaited<ReturnType<typeof runShortcutSync>>>
+
+    export type RunShortcutSyncMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Run a manual shortcut sync now. Sheet is the source of truth (deletes apply).
+ */
+export const useRunShortcutSync = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runShortcutSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runShortcutSync>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunShortcutSyncMutationOptions(options));
     }
 
 export const getGetKnowledgeSyncConfigUrl = () => {
