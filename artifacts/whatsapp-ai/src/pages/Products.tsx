@@ -150,6 +150,7 @@ function SortableTh({
   sortDir,
   onToggle,
   align = "left",
+  className = "",
 }: {
   sortKey: SortKey;
   label: string;
@@ -157,11 +158,12 @@ function SortableTh({
   sortDir: "asc" | "desc";
   onToggle: (k: SortKey) => void;
   align?: "left" | "right";
+  className?: string;
 }) {
   const active = sortBy === sortKey;
   const Icon = !active ? ChevronsUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : ""}`}>
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : ""} ${className}`}>
       <button
         type="button"
         onClick={() => onToggle(sortKey)}
@@ -645,8 +647,8 @@ export default function Products() {
                   <SortableTh sortKey="id" label="ID" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <th className="px-3 py-2 font-medium">Foto</th>
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
-                  <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
-                  <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
+                  <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="min-w-[280px]" />
+                  <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-32" />
                   <SortableTh sortKey="price" label="Harga Pricelist" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                   {showInternalPrices && (
                     <>
@@ -689,10 +691,15 @@ export default function Products() {
                       </div>
                     </td>
                     <td className="px-3 py-2 font-mono">{p.code}</td>
-                    <td className="px-3 py-2 font-medium max-w-[200px] truncate" title={p.name}>
+                    <td className="px-3 py-2 font-medium min-w-[280px]" title={p.name}>
                       {p.name}
                     </td>
-                    <td className="px-3 py-2">{p.category ?? "—"}</td>
+                    <td
+                      className="px-3 py-2 w-32 max-w-[8rem] truncate text-muted-foreground"
+                      title={p.category ?? undefined}
+                    >
+                      {p.category ?? "—"}
+                    </td>
                     <td className="px-3 py-2 text-right font-semibold text-primary">
                       {formatIDR(p.price)}
                     </td>
