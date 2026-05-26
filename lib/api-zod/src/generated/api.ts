@@ -200,6 +200,20 @@ export const OpenChatByPhoneResponse = zod.object({
 
 
 /**
+ * Bypasses the TTL cache and asks Baileys for the latest profile picture URL for this chat. Returns the new URL (or null if WhatsApp didn't return one — typical for contacts with strict privacy settings or no photo set).
+
+ * @summary Force-refresh a chat's profile picture from WhatsApp
+ */
+export const RefreshChatAvatarParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RefreshChatAvatarResponse = zod.object({
+  "profilePicUrl": zod.string().nullable()
+})
+
+
+/**
  * @summary Get a specific chat with messages
  */
 export const GetChatParams = zod.object({

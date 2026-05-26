@@ -322,6 +322,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /chats/{id}/refresh-avatar:
+    post:
+      operationId: refreshChatAvatar
+      tags: [chats]
+      summary: Force-refresh a chat's profile picture from WhatsApp
+      description: >
+        Bypasses the TTL cache and asks Baileys for the latest profile picture
+        URL for this chat. Returns the new URL (or null if WhatsApp didn't
+        return one — typical for contacts with strict privacy settings or no
+        photo set).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Refresh result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profilePicUrl]
+                properties:
+                  profilePicUrl:
+                    type: string
+                    nullable: true
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}:
     get:
       operationId: getChat

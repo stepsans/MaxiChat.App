@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
-import { getCurrentOwnerPhone } from "./whatsapp";
+import { getCurrentOwnerPhone, refreshChatProfilePic } from "./whatsapp";
 import { eq, desc, and, sql } from "drizzle-orm";
 import {
   ListChatsQueryParams,
@@ -478,6 +478,24 @@ router.post("/open-by-phone", async (req, res) => {
     return res.json({ chatId: existing.id, created: false, phoneNumber });
   } catch (err) {
     req.log.error({ err }, "Failed to open chat by phone");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:id/refresh-avatar", async (req, res) => {
+  try {
+    const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
+    if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
+
+    const chat = await loadOwnedChat(req.session.userId!, parsed.data.id);
+    if (!chat) return res.status(404).json({ error: "Chat not found" });
+
+    const url = await refreshChatProfilePic(req.session.userId!, chat, {
+      force: true,
+    });
+    return res.json({ profilePicUrl: url });
+  } catch (err) {
+    req.log.error({ err }, "Failed to refresh chat avatar");
     res.status(500).json({ error: "Internal server error" });
   }
 });

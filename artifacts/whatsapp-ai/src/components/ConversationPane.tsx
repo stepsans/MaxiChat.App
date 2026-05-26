@@ -6,6 +6,7 @@ import {
   useUpdateChat,
   useSendManualReply,
   useTakeoverChat,
+  useRefreshChatAvatar,
   getGetChatQueryKey,
   getListChatsQueryKey,
   useListProducts,
@@ -64,6 +65,7 @@ import {
   CheckCheck,
   MoreVertical,
   Search,
+  RefreshCw,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -84,6 +86,34 @@ function formatDayHeader(iso: string): string {
 export default function ConversationPane({ chatId }: { chatId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+
+  const refreshAvatar = useRefreshChatAvatar({
+    mutation: {
+      onSuccess: (result) => {
+        // Always invalidate so the cached chat row picks up the new (or
+        // explicitly-null) profilePicUrl. Toast distinguishes the two so the
+        // user knows whether the contact actually has a picture available.
+        qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        toast({
+          title: result.profilePicUrl
+            ? "Foto profil diperbarui"
+            : "Foto tidak tersedia",
+          description: result.profilePicUrl
+            ? undefined
+            : "Kontak mungkin menyembunyikan foto profilnya atau belum mengatur foto.",
+        });
+      },
+      onError: (err) => {
+        toast({
+          title: "Gagal memperbarui foto",
+          description:
+            err instanceof Error ? err.message : "Coba lagi sebentar.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
   const [reply, setReply] = useState("");
   const shortcutMap = useShortcutMap();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -492,12 +522,31 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           >
             <Search className="w-4 h-4" />
           </button>
-          <button
-            className="p-2 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
-            title="Menu"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-2 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
+                title="Menu"
+                data-testid="button-chat-menu"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                data-testid="menu-refresh-avatar"
+                disabled={refreshAvatar.isPending}
+                onClick={() => refreshAvatar.mutate({ id: chatId })}
+              >
+                {refreshAvatar.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 mr-2" />
+                )}
+                Refresh foto profil
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

@@ -66,6 +66,7 @@ import type {
   Product,
   ProductInput,
   ProductSyncConfigInput,
+  RefreshChatAvatar200,
   ResetFlowCooldown200,
   RunKnowledgeSync200,
   RunProductSync200,
@@ -1060,6 +1061,78 @@ export const useOpenChatByPhone = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getOpenChatByPhoneMutationOptions(options));
+    }
+
+export const getRefreshChatAvatarUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/refresh-avatar`
+}
+
+/**
+ * Bypasses the TTL cache and asks Baileys for the latest profile picture URL for this chat. Returns the new URL (or null if WhatsApp didn't return one — typical for contacts with strict privacy settings or no photo set).
+
+ * @summary Force-refresh a chat's profile picture from WhatsApp
+ */
+export const refreshChatAvatar = async (id: number, options?: RequestInit): Promise<RefreshChatAvatar200> => {
+
+  return customFetch<RefreshChatAvatar200>(getRefreshChatAvatarUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRefreshChatAvatarMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshChatAvatar>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshChatAvatar>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['refreshChatAvatar'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshChatAvatar>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  refreshChatAvatar(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshChatAvatarMutationResult = NonNullable<Awaited<ReturnType<typeof refreshChatAvatar>>>
+
+    export type RefreshChatAvatarMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Force-refresh a chat's profile picture from WhatsApp
+ */
+export const useRefreshChatAvatar = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshChatAvatar>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshChatAvatar>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRefreshChatAvatarMutationOptions(options));
     }
 
 export const getGetChatUrl = (id: number,) => {

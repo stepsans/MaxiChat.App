@@ -883,6 +883,10 @@ export const ListChatsTag = {
   closing: 'closing',
 } as const;
 
+export type RefreshChatAvatar200 = {
+  profilePicUrl: string | null;
+};
+
 export type GetKnowledgeSyncConfig200 = {
   config?: KnowledgeSyncConfig | null;
 };

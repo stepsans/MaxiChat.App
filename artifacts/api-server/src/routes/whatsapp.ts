@@ -124,12 +124,14 @@ export async function getCurrentOwnerPhone(
 }
 
 // Fetch a contact's WhatsApp profile picture URL via Baileys and cache it on
-// the chat row. WA URLs are short-lived (token-signed S3-style), so we
-// re-check at most once per 6 hours per chat to keep avatars fresh while
-// avoiding rate limits. Errors are swallowed because a missing picture is
-// expected (privacy setting / unknown contact) and must never break message
-// ingestion or the chat list UI.
-const PROFILE_PIC_TTL_MS = 6 * 60 * 60 * 1000;
+// the chat row. WA URLs are token-signed and expire after a while, so we
+// re-check periodically — but with split TTLs: rows that *have* a pic refresh
+// more often (the cached URL may go stale) while rows that came back empty
+// back off longer (privacy / no-pic accounts shouldn't be re-polled every few
+// hours). `force: true` bypasses both TTLs and is used by the manual
+// "refresh avatar" UI action.
+const PROFILE_PIC_TTL_SUCCESS_MS = 2 * 60 * 60 * 1000; // 2h — URL freshness
+const PROFILE_PIC_TTL_FAILURE_MS = 12 * 60 * 60 * 1000; // 12h — privacy/no-pic
 const profilePicInFlight = new Set<number>();
 
 export async function refreshChatProfilePic(
@@ -138,6 +140,7 @@ export async function refreshChatProfilePic(
     id: number;
     ownerPhone: string;
     phoneNumber: string;
+    profilePicUrl: string | null;
     profilePicCheckedAt: Date | null;
   },
   opts: { force?: boolean } = {}
@@ -145,12 +148,13 @@ export async function refreshChatProfilePic(
   const ctx = getCtx(userId);
   if (!ctx.sock) return null;
   if (profilePicInFlight.has(chat.id)) return null;
-  if (
-    !opts.force &&
-    chat.profilePicCheckedAt &&
-    Date.now() - chat.profilePicCheckedAt.getTime() < PROFILE_PIC_TTL_MS
-  ) {
-    return null;
+  if (!opts.force && chat.profilePicCheckedAt) {
+    const ttl = chat.profilePicUrl
+      ? PROFILE_PIC_TTL_SUCCESS_MS
+      : PROFILE_PIC_TTL_FAILURE_MS;
+    if (Date.now() - chat.profilePicCheckedAt.getTime() < ttl) {
+      return null;
+    }
   }
   // Re-verify that the chat still belongs to the currently-connected account
   // for this user before talking to Baileys. Prevents a refresh task spawned

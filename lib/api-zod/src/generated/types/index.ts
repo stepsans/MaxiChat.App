@@ -86,6 +86,7 @@ export * from './productSyncConfigInput';
 export * from './productSyncConfigInputIntervalMinutes';
 export * from './productSyncConfigIntervalMinutes';
 export * from './productSyncConfigLastSyncStatus';
+export * from './refreshChatAvatar200';
 export * from './resetFlowCooldown200';
 export * from './runKnowledgeSync200';
 export * from './runProductSync200';
