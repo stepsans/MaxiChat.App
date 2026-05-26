@@ -51,6 +51,7 @@ import {
   Copy,
   ExternalLink,
   RotateCcw,
+  BookOpen,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 
@@ -350,9 +351,8 @@ function CredentialEditorDialog({
   const existing = isCreate ? null : state.credential;
   const type = isCreate ? state.type : existing!.type;
 
-  const [tab, setTab] = useState<"guide" | "connection" | "details">(
-    isCreate ? "guide" : "connection"
-  );
+  const [tab, setTab] = useState<"connection" | "details">("connection");
+  const [guideOpen, setGuideOpen] = useState(isCreate);
   const guide = CRED_GUIDES[type];
   const [name, setName] = useState(
     existing?.name ?? appLabel(type) + " account"
@@ -478,8 +478,8 @@ function CredentialEditorDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl p-0 overflow-hidden">
-        <div className="flex border-b border-border px-6 py-3 items-center justify-between">
-          <div>
+        <div className="flex border-b border-border px-6 py-3 items-center justify-between gap-3">
+          <div className="min-w-0">
             <DialogTitle className="text-base">{appLabel(type)}</DialogTitle>
             <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
               <StatusPill status={status} />
@@ -488,12 +488,17 @@ function CredentialEditorDialog({
               )}
             </div>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setGuideOpen(true)}
+          >
+            <BookOpen className="w-4 h-4 mr-1.5" /> Panduan
+          </Button>
         </div>
         <div className="grid grid-cols-[180px_1fr] min-h-[420px]">
           <div className="border-r border-border bg-muted/20 p-2 flex flex-col gap-1">
-            <TabBtn active={tab === "guide"} onClick={() => setTab("guide")}>
-              Panduan
-            </TabBtn>
             <TabBtn active={tab === "connection"} onClick={() => setTab("connection")}>
               Connection
             </TabBtn>
@@ -502,12 +507,7 @@ function CredentialEditorDialog({
             </TabBtn>
           </div>
           <div className="p-6 space-y-4 overflow-auto">
-            {tab === "guide" ? (
-              <SetupGuide
-                guide={guide}
-                onContinue={() => setTab("connection")}
-              />
-            ) : tab === "connection" ? (
+            {tab === "connection" ? (
               <>
                 <Field label="OAuth Redirect URL" hint="Paste this into Google Cloud Console → Authorized redirect URIs.">
                   <div className="flex gap-2">
@@ -609,6 +609,12 @@ function CredentialEditorDialog({
           </div>
         </div>
       </DialogContent>
+      <GuideDialog
+        open={guideOpen}
+        onOpenChange={setGuideOpen}
+        guide={guide}
+        title={appLabel(type)}
+      />
     </Dialog>
   );
 }
@@ -681,71 +687,84 @@ const CRED_GUIDES: Record<CredentialType, CredGuide> = {
   },
 };
 
-function SetupGuide({
+function GuideDialog({
+  open,
+  onOpenChange,
   guide,
-  onContinue,
+  title,
 }: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
   guide: CredGuide;
-  onContinue: () => void;
+  title: string;
 }) {
   return (
-    <div className="space-y-5 text-sm">
-      <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-          Tujuan & kegunaan
-        </h3>
-        <p className="text-foreground/90 leading-relaxed">{guide.purpose}</p>
-        <ul className="list-disc pl-5 mt-2 space-y-1 text-foreground/80">
-          {guide.useCases.map((u) => (
-            <li key={u}>{u}</li>
-          ))}
-        </ul>
-      </section>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl p-0 overflow-hidden flex flex-col max-h-[85vh]">
+        <DialogHeader className="px-6 py-4 border-b border-border flex-shrink-0">
+          <DialogTitle className="text-base flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-muted-foreground" />
+            Panduan — {title}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 text-sm">
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              Tujuan & kegunaan
+            </h3>
+            <p className="text-foreground/90 leading-relaxed">{guide.purpose}</p>
+            <ul className="list-disc pl-5 mt-3 space-y-1.5 text-foreground/80">
+              {guide.useCases.map((u) => (
+                <li key={u}>{u}</li>
+              ))}
+            </ul>
+          </section>
 
-      <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-          Contoh pemakaian
-        </h3>
-        <div className="rounded-md border border-border bg-muted/30 p-3 text-foreground/90 leading-relaxed">
-          {guide.example}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              Contoh pemakaian
+            </h3>
+            <div className="rounded-md border border-border bg-muted/30 p-3.5 text-foreground/90 leading-relaxed">
+              {guide.example}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+              Cara ambil Client ID & Client Secret
+            </h3>
+            <ol className="space-y-3.5">
+              {guide.steps.map((s, i) => (
+                <li key={s.title} className="flex gap-3">
+                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-semibold flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-medium">{s.title}</div>
+                    <div className="text-xs text-muted-foreground leading-relaxed mt-1">
+                      {s.body}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <a
+              href={guide.docsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-4"
+            >
+              Dokumentasi resmi Google <ExternalLink className="w-3 h-3" />
+            </a>
+          </section>
         </div>
-      </section>
-
-      <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-          Cara ambil Client ID & Client Secret
-        </h3>
-        <ol className="space-y-2.5">
-          {guide.steps.map((s, i) => (
-            <li key={s.title} className="flex gap-3">
-              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-semibold flex items-center justify-center mt-0.5">
-                {i + 1}
-              </div>
-              <div className="min-w-0">
-                <div className="font-medium">{s.title}</div>
-                <div className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-                  {s.body}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ol>
-        <a
-          href={guide.docsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-3"
-        >
-          Dokumentasi resmi Google <ExternalLink className="w-3 h-3" />
-        </a>
-      </section>
-
-      <div className="flex justify-end pt-2 border-t border-border">
-        <Button type="button" size="sm" onClick={onContinue}>
-          Lanjut ke Connection
-        </Button>
-      </div>
-    </div>
+        <div className="px-6 py-3 border-t border-border flex justify-end flex-shrink-0">
+          <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
+            Tutup
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
