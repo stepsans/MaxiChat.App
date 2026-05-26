@@ -66,6 +66,7 @@ import {
   MoreVertical,
   Search,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -121,6 +122,16 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const [pendingFileKind, setPendingFileKind] = useState<MediaKind>("document");
   const [uploading, setUploading] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Reset the in-chat search whenever we switch chats so the next room opens
+  // clean instead of inheriting the previous chat's filter.
+  useEffect(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  }, [chatId]);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [sendingContact, setSendingContact] = useState(false);
@@ -321,10 +332,21 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       ? "Nomor belum tertaut"
       : chat.phoneNumber;
 
+  // Apply in-chat search (client-side substring match on message text). Empty
+  // query passes everything through. Media-only messages with no text are
+  // hidden while a query is active — they have nothing to match against.
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const visibleMessages = trimmedQuery
+    ? chat.messages.filter((m: any) =>
+        typeof m.content === "string" &&
+        m.content.toLowerCase().includes(trimmedQuery)
+      )
+    : chat.messages;
+
   // Group messages by day so we can drop a "Hari ini / Kemarin / d MMMM"
   // pill between them — same UX as WhatsApp.
   const messagesByDay: { day: string; messages: any[] }[] = [];
-  for (const msg of chat.messages) {
+  for (const msg of visibleMessages) {
     const dayKey = format(new Date(msg.createdAt), "yyyy-MM-dd");
     const lastGroup = messagesByDay[messagesByDay.length - 1];
     if (lastGroup && lastGroup.day === dayKey) {
@@ -517,8 +539,25 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           </Sheet>
 
           <button
-            className="p-2 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
-            title="Cari"
+            className={cn(
+              "p-2 rounded-full hover:bg-white/5 transition-colors",
+              searchOpen
+                ? "text-foreground bg-white/10"
+                : "text-[hsl(var(--wa-meta))] hover:text-foreground"
+            )}
+            title="Cari pesan di chat ini"
+            data-testid="button-chat-search"
+            onClick={() => {
+              setSearchOpen((v) => {
+                const next = !v;
+                if (!next) setSearchQuery("");
+                if (next) {
+                  // Focus after the input is rendered.
+                  setTimeout(() => searchInputRef.current?.focus(), 0);
+                }
+                return next;
+              });
+            }}
           >
             <Search className="w-4 h-4" />
           </button>
@@ -550,9 +589,52 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
         </div>
       </div>
 
+      {/* In-chat search bar (toggled by the search button in the header). */}
+      {searchOpen && (
+        <div className="flex items-center gap-2 px-4 h-12 bg-[hsl(var(--wa-panel-header))] border-b border-[hsl(var(--wa-divider))] flex-shrink-0">
+          <Search className="w-4 h-4 text-[hsl(var(--wa-meta))] shrink-0" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearchOpen(false);
+                setSearchQuery("");
+              }
+            }}
+            placeholder="Cari pesan di chat ini…"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[hsl(var(--wa-meta))]"
+            data-testid="input-chat-search"
+          />
+          {trimmedQuery && (
+            <span className="text-[11px] text-[hsl(var(--wa-meta))] shrink-0">
+              {visibleMessages.length} hasil
+            </span>
+          )}
+          <button
+            className="p-1.5 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
+            title="Tutup pencarian"
+            onClick={() => {
+              setSearchOpen(false);
+              setSearchQuery("");
+            }}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Messages on doodle background */}
       <div className="flex-1 overflow-y-auto wa-scroll wa-doodle-bg px-[8%] py-4">
-        {chat.messages.length === 0 ? (
+        {trimmedQuery && visibleMessages.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-[hsl(var(--wa-meta))]">
+              <p className="text-sm">Tidak ada pesan yang cocok</p>
+            </div>
+          </div>
+        ) : chat.messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-[hsl(var(--wa-meta))]">
               <p className="text-sm">Belum ada pesan</p>
