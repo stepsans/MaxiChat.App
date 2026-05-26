@@ -200,7 +200,9 @@ function EndNode({ selected }: NodeProps<RFNode>) {
 }
 
 function ProductsNode({ data, selected }: NodeProps<RFNode>) {
-  const count = (data.productIds ?? []).length;
+  const pid = (data.productIds ?? [])[0];
+  const { data: products } = useListProducts();
+  const product = pid ? products?.find((p) => p.id === pid) : undefined;
   return (
     <NodeShell
       selected={!!selected}
@@ -208,14 +210,19 @@ function ProductsNode({ data, selected }: NodeProps<RFNode>) {
       icon={<Package className="w-3.5 h-3.5 text-pink-500" />}
       title="Products"
     >
-      {count === 0 ? (
+      {!pid && (
         <span className="italic opacity-60">(belum ada produk dipilih)</span>
-      ) : (
-        <span>
-          {count} produk akan dikirim
-          <br />
-          <span className="opacity-70 text-[10px]">foto + Nama / Kode / Harga</span>
-        </span>
+      )}
+      {pid && !product && (
+        <span className="italic opacity-60">Produk #{pid} (tidak ditemukan)</span>
+      )}
+      {product && (
+        <div className="space-y-0.5">
+          <div className="font-medium text-foreground line-clamp-2">{product.name}</div>
+          <div className="opacity-70 text-[10px]">
+            {product.code} · Rp {product.price.toLocaleString("id-ID")}
+          </div>
+        </div>
       )}
       <Handle type="target" position={Position.Top} />
       <Handle type="source" position={Position.Bottom} />
@@ -967,22 +974,23 @@ function ProductsPicker({
 }) {
   const { data: products, isLoading } = useListProducts();
   const [query, setQuery] = useState("");
-  const selected = new Set(value);
+  const selectedId = value[0];
   const list = (products ?? []).filter((p) => {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
     return p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q);
   });
-  const toggle = (id: number) => {
-    if (selected.has(id)) onChange(value.filter((v) => v !== id));
-    else onChange([...value, id]);
+  const pick = (id: number) => {
+    // Single-select: clicking the same item clears it; clicking another replaces.
+    if (selectedId === id) onChange([]);
+    else onChange([id]);
   };
   return (
     <div className="space-y-2">
       <Label className="text-xs">Pilih produk yang akan dikirim</Label>
       <p className="text-[11px] text-muted-foreground leading-snug">
-        Setiap produk dikirim sebagai foto dengan caption: Nama, Kode, Harga.
-        Urutan pengiriman sesuai urutan dipilih.
+        Pilih 1 produk. Akan dikirim sebagai foto dengan caption: Nama, Kode,
+        Harga. Untuk mengirim beberapa produk, buat node Products terpisah.
       </p>
       <Input
         placeholder="Cari nama atau kode…"
@@ -992,8 +1000,8 @@ function ProductsPicker({
         data-testid="input-products-search"
       />
       <div className="text-[11px] text-muted-foreground">
-        {value.length} produk dipilih
-        {value.length > 0 && (
+        {selectedId ? "1 produk dipilih" : "Belum ada produk dipilih"}
+        {selectedId !== undefined && (
           <button
             type="button"
             className="ml-2 underline hover:text-foreground"
@@ -1016,19 +1024,19 @@ function ProductsPicker({
           </div>
         )}
         {list.map((p) => {
-          const isOn = selected.has(p.id);
+          const isOn = selectedId === p.id;
           return (
             <button
               type="button"
               key={p.id}
-              onClick={() => toggle(p.id)}
+              onClick={() => pick(p.id)}
               className={`flex items-center gap-2 w-full px-2 py-1.5 text-left text-xs hover:bg-accent ${
                 isOn ? "bg-accent/60" : ""
               }`}
               data-testid={`button-product-toggle-${p.id}`}
             >
               <input
-                type="checkbox"
+                type="radio"
                 checked={isOn}
                 readOnly
                 className="pointer-events-none"
