@@ -350,7 +350,10 @@ function CredentialEditorDialog({
   const existing = isCreate ? null : state.credential;
   const type = isCreate ? state.type : existing!.type;
 
-  const [tab, setTab] = useState<"connection" | "details">("connection");
+  const [tab, setTab] = useState<"guide" | "connection" | "details">(
+    isCreate ? "guide" : "connection"
+  );
+  const guide = CRED_GUIDES[type];
   const [name, setName] = useState(
     existing?.name ?? appLabel(type) + " account"
   );
@@ -488,6 +491,9 @@ function CredentialEditorDialog({
         </div>
         <div className="grid grid-cols-[180px_1fr] min-h-[420px]">
           <div className="border-r border-border bg-muted/20 p-2 flex flex-col gap-1">
+            <TabBtn active={tab === "guide"} onClick={() => setTab("guide")}>
+              Panduan
+            </TabBtn>
             <TabBtn active={tab === "connection"} onClick={() => setTab("connection")}>
               Connection
             </TabBtn>
@@ -496,7 +502,12 @@ function CredentialEditorDialog({
             </TabBtn>
           </div>
           <div className="p-6 space-y-4 overflow-auto">
-            {tab === "connection" ? (
+            {tab === "guide" ? (
+              <SetupGuide
+                guide={guide}
+                onContinue={() => setTab("connection")}
+              />
+            ) : tab === "connection" ? (
               <>
                 <Field label="OAuth Redirect URL" hint="Paste this into Google Cloud Console → Authorized redirect URIs.">
                   <div className="flex gap-2">
@@ -599,6 +610,142 @@ function CredentialEditorDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+type CredGuide = {
+  purpose: string;
+  useCases: string[];
+  example: string;
+  steps: { title: string; body: string }[];
+  docsUrl: string;
+};
+
+const SHARED_OAUTH_STEPS: { title: string; body: string }[] = [
+  {
+    title: "Buka Google Cloud Console",
+    body: 'Masuk ke https://console.cloud.google.com. Buat project baru (atau pilih project yang sudah ada). Pastikan akun Google yang dipakai adalah akun yang memiliki spreadsheet produk Anda.',
+  },
+  {
+    title: "Aktifkan API yang dibutuhkan",
+    body: 'Di menu kiri pilih "APIs & Services" → "Library". Cari dan klik Enable untuk: (1) Google Sheets API, dan (2) Google Drive API. Drive API dipakai supaya VJ-Chat bisa menampilkan daftar spreadsheet milik Anda saat memilih sumber data.',
+  },
+  {
+    title: "Atur OAuth consent screen",
+    body: 'Buka "APIs & Services" → "OAuth consent screen". Pilih User Type "External" lalu Create. Isi App name (mis. "VJ-Chat"), User support email, dan Developer contact. Di tahap Scopes biarkan kosong (scope ditambahkan otomatis saat sign-in). Di tahap Test users, tambahkan alamat email Google Anda — wajib selama app masih "Testing".',
+  },
+  {
+    title: "Buat OAuth Client ID",
+    body: 'Buka "APIs & Services" → "Credentials" → "Create credentials" → "OAuth client ID". Application type: pilih "Web application". Beri nama (mis. "VJ-Chat Web").',
+  },
+  {
+    title: "Tempel Authorized redirect URI",
+    body: 'Di bagian "Authorized redirect URIs", klik Add URI, lalu tempel URL OAuth Redirect URL persis seperti yang tertera di tab Connection di bawah (tombol salin sudah disediakan). Tanpa langkah ini Google akan menolak login dengan error redirect_uri_mismatch.',
+  },
+  {
+    title: "Salin Client ID dan Client Secret",
+    body: 'Setelah klik Create, Google menampilkan pop-up berisi Client ID dan Client Secret. Salin keduanya, lalu tempel ke tab Connection di kanan. Client Secret hanya muncul sekali — kalau hilang, buat OAuth client baru atau Reset secret.',
+  },
+  {
+    title: "Klik Sign in with Google",
+    body: 'Di tab Connection, klik "Sign in with Google". Popup akan terbuka, pilih akun Google, lalu klik Allow. Setelah selesai status credential berubah jadi Connected dan token disimpan terenkripsi di server.',
+  },
+];
+
+const CRED_GUIDES: Record<CredentialType, CredGuide> = {
+  googleSheetsOAuth2Api: {
+    purpose:
+      "Credential ini menghubungkan VJ-Chat ke akun Google Anda agar bisa membaca isi spreadsheet — terutama untuk auto-sync katalog produk dari Google Sheets. Token disimpan terenkripsi (AES-256-GCM) di server.",
+    useCases: [
+      "Auto-sync katalog produk dari Google Sheets (sheet menjadi source of truth: baris hilang = produk terhapus).",
+      "Sync manual sekali klik dari halaman Products.",
+      "Memilih spreadsheet dan tab dari dropdown tanpa harus copy-paste ID.",
+    ],
+    example:
+      'Anda punya spreadsheet "Katalog Toko Saya" dengan kolom Kode Product, Nama Barang, Harga Pricelist, Link Foto, dll. Tim sales mengupdate harga langsung di sheet itu. Setelah credential ini terhubung, VJ-Chat menarik isi sheet tiap 5/15/30/60 menit (sesuai pilihan Anda) dan katalog di app selalu sama dengan sheet.',
+    steps: SHARED_OAUTH_STEPS,
+    docsUrl: "https://developers.google.com/sheets/api/quickstart/js",
+  },
+  googleSheetsTriggerOAuth2Api: {
+    purpose:
+      "Versi terpisah dari Google Sheets OAuth2 API yang ditujukan khusus untuk workflow berbasis trigger (misalnya kalau nanti VJ-Chat menambah flow yang dijalankan tiap kali baris baru muncul di sheet). Token-nya disimpan di slot berbeda supaya tidak bentrok dengan credential sync produk.",
+    useCases: [
+      "Memisahkan token untuk flow berbasis Sheets Trigger dari token sync produk.",
+      "Memakai akun Google yang berbeda untuk trigger vs sync (mis. akun ops vs akun marketing).",
+      "Mengisolasi izin: kalau salah satu di-revoke, yang lain tetap jalan.",
+    ],
+    example:
+      "Tim ops punya sheet 'Order Masuk' yang dipakai sebagai trigger membalas customer otomatis. Tim marketing punya sheet 'Katalog Produk' yang dipakai untuk sync. Pakai credential Trigger untuk akun ops, dan credential biasa untuk akun marketing — masing-masing punya scope dan riwayat login sendiri.",
+    steps: SHARED_OAUTH_STEPS,
+    docsUrl: "https://developers.google.com/sheets/api/quickstart/js",
+  },
+};
+
+function SetupGuide({
+  guide,
+  onContinue,
+}: {
+  guide: CredGuide;
+  onContinue: () => void;
+}) {
+  return (
+    <div className="space-y-5 text-sm">
+      <section>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+          Tujuan & kegunaan
+        </h3>
+        <p className="text-foreground/90 leading-relaxed">{guide.purpose}</p>
+        <ul className="list-disc pl-5 mt-2 space-y-1 text-foreground/80">
+          {guide.useCases.map((u) => (
+            <li key={u}>{u}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+          Contoh pemakaian
+        </h3>
+        <div className="rounded-md border border-border bg-muted/30 p-3 text-foreground/90 leading-relaxed">
+          {guide.example}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+          Cara ambil Client ID & Client Secret
+        </h3>
+        <ol className="space-y-2.5">
+          {guide.steps.map((s, i) => (
+            <li key={s.title} className="flex gap-3">
+              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-semibold flex items-center justify-center mt-0.5">
+                {i + 1}
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium">{s.title}</div>
+                <div className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                  {s.body}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <a
+          href={guide.docsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-3"
+        >
+          Dokumentasi resmi Google <ExternalLink className="w-3 h-3" />
+        </a>
+      </section>
+
+      <div className="flex justify-end pt-2 border-t border-border">
+        <Button type="button" size="sm" onClick={onContinue}>
+          Lanjut ke Connection
+        </Button>
+      </div>
+    </div>
   );
 }
 
