@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
   useListChats,
   useDeleteChat,
   getListChatsQueryKey,
@@ -25,6 +34,7 @@ import {
   Users,
   User,
   Filter,
+  MessageSquarePlus,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -129,8 +139,11 @@ export default function ChatListPane({ selectedChatId }: Props) {
       {/* Panel header: titlebar */}
       <div className="flex items-center justify-between px-4 h-[60px] bg-[hsl(var(--wa-panel-header))] flex-shrink-0">
         <h1 className="text-lg font-medium text-foreground">Chats</h1>
-        <div className="text-xs text-[hsl(var(--wa-meta))]">
-          {allChats.length} total
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[hsl(var(--wa-meta))]">
+            {allChats.length} total
+          </span>
+          <NewChatButton />
         </div>
       </div>
 
@@ -350,5 +363,119 @@ export default function ChatListPane({ selectedChatId }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Normalises a user-typed phone number to an E.164-ish digits-only string
+ * suitable for https://wa.me/<number>. Indonesian conventions:
+ *   - "08123…"  → "628123…"  (drop leading 0, prepend country code)
+ *   - "+62…"    → "62…"
+ *   - "8123…"   → "628123…"  (bare local mobile prefix → assume ID)
+ *   - already-international ("62…", "1…", "44…") is left alone
+ */
+function normalisePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0")) return "62" + digits.slice(1);
+  if (digits.startsWith("8") && digits.length >= 9 && digits.length <= 13) {
+    return "62" + digits;
+  }
+  return digits;
+}
+
+function NewChatButton() {
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState("");
+  const normalised = normalisePhone(phone);
+  // wa.me requires at least a country code + subscriber number — be lenient
+  // but reject obviously incomplete input.
+  const isValid = normalised.length >= 8 && normalised.length <= 15;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isValid) return;
+    window.open(`https://wa.me/${normalised}`, "_blank", "noopener,noreferrer");
+    setOpen(false);
+    setPhone("");
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) setPhone("");
+      }}
+    >
+      <button
+        type="button"
+        data-testid="button-new-chat"
+        onClick={() => setOpen(true)}
+        aria-label="Mulai chat baru"
+        title="Mulai chat baru"
+        className="h-9 w-9 rounded-lg flex items-center justify-center text-[hsl(var(--wa-meta))] hover:text-foreground hover:bg-[hsl(var(--wa-panel))] transition-colors"
+      >
+        <MessageSquarePlus className="w-4 h-4" />
+      </button>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Mulai chat baru</DialogTitle>
+          <DialogDescription>
+            Masukkan nomor WhatsApp tujuan. Anda akan diarahkan ke{" "}
+            <code className="text-foreground">wa.me</code> untuk memulai
+            percakapan.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1.5">
+            <label htmlFor="new-chat-phone" className="text-xs font-medium">
+              Nomor WhatsApp
+            </label>
+            <input
+              id="new-chat-phone"
+              data-testid="input-new-chat-phone"
+              type="tel"
+              autoFocus
+              inputMode="tel"
+              placeholder="cth. 08123456789 atau +628123456789"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {phone && (
+              <p className="text-[11px] text-muted-foreground">
+                {isValid ? (
+                  <>
+                    Akan dibuka:{" "}
+                    <code className="text-foreground">wa.me/{normalised}</code>
+                  </>
+                ) : (
+                  "Nomor belum valid. Gunakan format 08xx, 62xx, atau +62xx."
+                )}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              data-testid="button-open-wa-me"
+              disabled={!isValid}
+            >
+              Mulai chat
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
