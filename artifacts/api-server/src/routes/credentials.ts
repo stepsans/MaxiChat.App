@@ -231,6 +231,15 @@ router.post("/:id/oauth/start", async (req, res): Promise<void> => {
     const clientSecret = decryptString(row.clientSecretEnc);
     const redirectUri = buildRedirectUri(req);
     const oauth2 = new google.auth.OAuth2(row.clientId, clientSecret, redirectUri);
+    // Always re-read scopes from the type's canonical list so credentials
+    // created before a scope was added pick it up on the next reconnect.
+    const scopes = SCOPES_BY_TYPE[row.type] ?? row.scopes;
+    if (scopes !== row.scopes) {
+      await db
+        .update(credentialsTable)
+        .set({ scopes, updatedAt: new Date() })
+        .where(eq(credentialsTable.id, row.id));
+    }
     const nonce = randomBytes(16).toString("hex");
     // We bind the state ↔ session to prevent CSRF: the callback must arrive
     // on the same browser session that started the flow AND echo back the
@@ -246,7 +255,7 @@ router.post("/:id/oauth/start", async (req, res): Promise<void> => {
     const url = oauth2.generateAuthUrl({
       access_type: "offline",
       prompt: "consent", // force a refresh_token even on re-consent
-      scope: row.scopes,
+      scope: scopes,
       state: nonce,
       include_granted_scopes: true,
     });
