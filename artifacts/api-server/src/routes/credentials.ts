@@ -30,10 +30,12 @@ const SCOPES_BY_TYPE: Record<string, string[]> = {
   googleSheetsOAuth2Api: [
     "https://www.googleapis.com/auth/spreadsheets.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
   ],
   googleSheetsTriggerOAuth2Api: [
     "https://www.googleapis.com/auth/spreadsheets.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
   ],
 };
 
@@ -267,7 +269,7 @@ router.get("/oauth/callback", async (req, res): Promise<void> => {
 a{color:#60a5fa}</style></head>
 <body><div class="card"><h2><span class="dot"></span>${title}</h2><p>${message}</p>
 <p><a href="/credentials">Kembali ke Credentials</a></p>
-<script>try{window.opener&&window.opener.postMessage({type:"vjchat:oauth",ok:${ok ? "true" : "false"}},"*");setTimeout(function(){window.close()},800)}catch(e){}</script>
+<script>try{window.opener&&window.opener.postMessage({type:"vjchat:oauth",ok:${ok ? "true" : "false"},credentialId:${saved?.credentialId ?? "null"}},"*");setTimeout(function(){window.close()},800)}catch(e){}</script>
 </div></body></html>`);
   };
 
