@@ -647,7 +647,7 @@ export default function Products() {
                   <SortableTh sortKey="id" label="ID" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <th className="px-3 py-2 font-medium">Foto</th>
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
-                  <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[230px]" />
+                  <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[280px]" />
                   <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[180px]" />
                   <SortableTh sortKey="price" label="Harga Pricelist" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                   {showInternalPrices && (
@@ -692,7 +692,7 @@ export default function Products() {
                     </td>
                     <td className="px-3 py-2 font-mono">{p.code}</td>
                     <td
-                      className="px-3 py-2 font-medium w-[230px] max-w-[230px] truncate"
+                      className="px-3 py-2 font-medium w-[280px] max-w-[280px] truncate"
                       title={p.name}
                     >
                       {p.name}
