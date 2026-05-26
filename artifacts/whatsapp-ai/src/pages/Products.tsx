@@ -58,6 +58,9 @@ import {
   X,
   Eye,
   EyeOff,
+  ArrowUp,
+  ArrowDown,
+  ChevronsUpDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { resolveImageSrc } from "@/lib/utils";
@@ -103,6 +106,76 @@ const strOrNull = (s: string): string | null => {
   return t.length > 0 ? t : null;
 };
 
+type SortKey =
+  | "id"
+  | "code"
+  | "category"
+  | "name"
+  | "price"
+  | "priceSilver"
+  | "priceGold"
+  | "pricePlatinum"
+  | "priceReseller"
+  | "priceDistributor";
+
+function getSortValue(p: Product, key: SortKey): string | number | null {
+  switch (key) {
+    case "id":
+      return p.id;
+    case "code":
+      return p.code ?? "";
+    case "category":
+      return p.category ?? "";
+    case "name":
+      return p.name ?? "";
+    case "price":
+      return p.price;
+    case "priceSilver":
+      return p.priceSilver;
+    case "priceGold":
+      return p.priceGold;
+    case "pricePlatinum":
+      return p.pricePlatinum;
+    case "priceReseller":
+      return p.priceReseller;
+    case "priceDistributor":
+      return p.priceDistributor;
+  }
+}
+
+function SortableTh({
+  sortKey,
+  label,
+  sortBy,
+  sortDir,
+  onToggle,
+  align = "left",
+}: {
+  sortKey: SortKey;
+  label: string;
+  sortBy: SortKey | null;
+  sortDir: "asc" | "desc";
+  onToggle: (k: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = sortBy === sortKey;
+  const Icon = !active ? ChevronsUpDown : sortDir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : ""}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(sortKey)}
+        className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${
+          active ? "text-foreground" : "text-muted-foreground"
+        } ${align === "right" ? "flex-row-reverse" : ""}`}
+      >
+        <span>{label}</span>
+        <Icon className={`w-3 h-3 ${active ? "opacity-100" : "opacity-50"}`} />
+      </button>
+    </th>
+  );
+}
+
 export default function Products() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -118,6 +191,19 @@ export default function Products() {
   // sensitive — only shown in-app, never to customers. Default to hidden
   // so casual screen-sharing doesn't leak them; user can toggle on demand.
   const [showInternalPrices, setShowInternalPrices] = useState(false);
+  const [sortBy, setSortBy] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  function toggleSort(key: SortKey) {
+    if (sortBy !== key) {
+      setSortBy(key);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortBy(null);
+      setSortDir("asc");
+    }
+  }
 
   const emptyForm = {
     code: "",
@@ -374,6 +460,20 @@ export default function Products() {
     }
     return true;
   });
+  if (sortBy) {
+    const dir = sortDir === "asc" ? 1 : -1;
+    filteredProducts.sort((a, b) => {
+      const av = getSortValue(a, sortBy);
+      const bv = getSortValue(b, sortBy);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "number" && typeof bv === "number") {
+        return (av - bv) * dir;
+      }
+      return String(av).localeCompare(String(bv), "id-ID", { sensitivity: "base" }) * dir;
+    });
+  }
   const isFiltered = q.length > 0 || categoryFilter !== "__all__";
 
   return (
@@ -542,19 +642,19 @@ export default function Products() {
           <table className="w-full text-xs border-collapse">
             <thead className="bg-secondary sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
                 <tr className="text-left">
-                  <th className="px-3 py-2 font-medium">ID</th>
+                  <SortableTh sortKey="id" label="ID" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <th className="px-3 py-2 font-medium">Foto</th>
-                  <th className="px-3 py-2 font-medium">Category</th>
-                  <th className="px-3 py-2 font-medium">Kode Product</th>
-                  <th className="px-3 py-2 font-medium">Nama Barang</th>
-                  <th className="px-3 py-2 font-medium text-right">Harga Pricelist</th>
+                  <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
+                  <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
+                  <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
+                  <SortableTh sortKey="price" label="Harga Pricelist" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                   {showInternalPrices && (
                     <>
-                      <th className="px-3 py-2 font-medium text-right">Harga Silver</th>
-                      <th className="px-3 py-2 font-medium text-right">Harga Gold</th>
-                      <th className="px-3 py-2 font-medium text-right">Harga Platinum</th>
-                      <th className="px-3 py-2 font-medium text-right">Harga Reseller</th>
-                      <th className="px-3 py-2 font-medium text-right">Harga Distributor</th>
+                      <SortableTh sortKey="priceSilver" label="Harga Silver" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
+                      <SortableTh sortKey="priceGold" label="Harga Gold" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
+                      <SortableTh sortKey="pricePlatinum" label="Harga Platinum" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
+                      <SortableTh sortKey="priceReseller" label="Harga Reseller" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
+                      <SortableTh sortKey="priceDistributor" label="Harga Distributor" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                     </>
                   )}
                   <th className="px-3 py-2 font-medium">Link Website</th>
@@ -588,8 +688,8 @@ export default function Products() {
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-2">{p.category ?? "—"}</td>
                     <td className="px-3 py-2 font-mono">{p.code}</td>
+                    <td className="px-3 py-2">{p.category ?? "—"}</td>
                     <td className="px-3 py-2 font-medium max-w-[200px] truncate" title={p.name}>
                       {p.name}
                     </td>
