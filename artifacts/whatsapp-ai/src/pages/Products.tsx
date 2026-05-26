@@ -645,8 +645,8 @@ export default function Products() {
                   <SortableTh sortKey="id" label="ID" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <th className="px-3 py-2 font-medium">Foto</th>
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
-                  <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
+                  <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <SortableTh sortKey="price" label="Harga Pricelist" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                   {showInternalPrices && (
                     <>
@@ -689,10 +689,10 @@ export default function Products() {
                       </div>
                     </td>
                     <td className="px-3 py-2 font-mono">{p.code}</td>
-                    <td className="px-3 py-2">{p.category ?? "—"}</td>
                     <td className="px-3 py-2 font-medium max-w-[200px] truncate" title={p.name}>
                       {p.name}
                     </td>
+                    <td className="px-3 py-2">{p.category ?? "—"}</td>
                     <td className="px-3 py-2 text-right font-semibold text-primary">
                       {formatIDR(p.price)}
                     </td>
