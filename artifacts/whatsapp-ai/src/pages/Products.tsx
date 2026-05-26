@@ -647,8 +647,8 @@ export default function Products() {
                   <SortableTh sortKey="id" label="ID" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <th className="px-3 py-2 font-medium">Foto</th>
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
-                  <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="min-w-[280px]" />
-                  <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-32" />
+                  <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[230px]" />
+                  <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[180px]" />
                   <SortableTh sortKey="price" label="Harga Pricelist" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                   {showInternalPrices && (
                     <>
@@ -691,11 +691,14 @@ export default function Products() {
                       </div>
                     </td>
                     <td className="px-3 py-2 font-mono">{p.code}</td>
-                    <td className="px-3 py-2 font-medium min-w-[280px]" title={p.name}>
+                    <td
+                      className="px-3 py-2 font-medium w-[230px] max-w-[230px] truncate"
+                      title={p.name}
+                    >
                       {p.name}
                     </td>
                     <td
-                      className="px-3 py-2 w-32 max-w-[8rem] truncate text-muted-foreground"
+                      className="px-3 py-2 w-[180px] max-w-[180px] truncate text-muted-foreground"
                       title={p.category ?? undefined}
                     >
                       {p.category ?? "—"}
