@@ -633,6 +633,129 @@ export interface FlowGraph {
   edges: FlowEdge[];
 }
 
+export type CredentialType = typeof CredentialType[keyof typeof CredentialType];
+
+
+export const CredentialType = {
+  googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
+  googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
+} as const;
+
+export type CredentialStatus = typeof CredentialStatus[keyof typeof CredentialStatus];
+
+
+export const CredentialStatus = {
+  disconnected: 'disconnected',
+  connected: 'connected',
+  error: 'error',
+} as const;
+
+export interface Credential {
+  id: number;
+  name: string;
+  type: CredentialType;
+  clientId: string;
+  scopes: string[];
+  accountEmail?: string | null;
+  status: CredentialStatus;
+  tokenExpiresAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CredentialCreateInputType = typeof CredentialCreateInputType[keyof typeof CredentialCreateInputType];
+
+
+export const CredentialCreateInputType = {
+  googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
+  googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
+} as const;
+
+export interface CredentialCreateInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  type: CredentialCreateInputType;
+  /** @minLength 1 */
+  clientId: string;
+  /** @minLength 1 */
+  clientSecret: string;
+}
+
+export interface CredentialUpdateInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name?: string;
+  /** @minLength 1 */
+  clientId?: string;
+  /** @minLength 1 */
+  clientSecret?: string;
+}
+
+export interface SpreadsheetRef {
+  id: string;
+  name: string;
+  modifiedTime?: string | null;
+}
+
+export type ProductSyncConfigIntervalMinutes = typeof ProductSyncConfigIntervalMinutes[keyof typeof ProductSyncConfigIntervalMinutes];
+
+
+export const ProductSyncConfigIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export type ProductSyncConfigLastSyncStatus = typeof ProductSyncConfigLastSyncStatus[keyof typeof ProductSyncConfigLastSyncStatus];
+
+
+export const ProductSyncConfigLastSyncStatus = {
+  idle: 'idle',
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export interface ProductSyncConfig {
+  id: number;
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+  /** @minimum 1 */
+  headerRow: number;
+  autoSyncEnabled: boolean;
+  intervalMinutes: ProductSyncConfigIntervalMinutes;
+  lastSyncedAt?: string | null;
+  lastSyncStatus: ProductSyncConfigLastSyncStatus;
+  lastSyncError?: string | null;
+  updatedAt: string;
+}
+
+export type ProductSyncConfigInputIntervalMinutes = typeof ProductSyncConfigInputIntervalMinutes[keyof typeof ProductSyncConfigInputIntervalMinutes];
+
+
+export const ProductSyncConfigInputIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export interface ProductSyncConfigInput {
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+  /** @minimum 1 */
+  headerRow?: number;
+  autoSyncEnabled?: boolean;
+  intervalMinutes?: ProductSyncConfigInputIntervalMinutes;
+}
+
 export interface FlowSummary {
   id: number;
   name: string;
@@ -737,6 +860,25 @@ export type SyncProductsToKnowledge200 = {
 export type ImportProducts200 = {
   imported: number;
   skipped?: number;
+};
+
+export type StartCredentialOauth200 = {
+  url: string;
+};
+
+export type GetProductSyncConfig200 = {
+  config?: ProductSyncConfig | null;
+};
+
+export type UpsertProductSyncConfig200 = {
+  config?: ProductSyncConfig | null;
+};
+
+export type RunProductSync200 = {
+  inserted: number;
+  updated: number;
+  deleted: number;
+  syncedAt?: string;
 };
 
 export type ResetFlowCooldown200 = {

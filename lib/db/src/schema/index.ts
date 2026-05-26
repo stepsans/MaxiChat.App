@@ -2,3 +2,4 @@ export * from "./whatsapp";
 export * from "./whatsapp-session";
 export * from "./auth";
 export * from "./chatbot";
+export * from "./credentials";

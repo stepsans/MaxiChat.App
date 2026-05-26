@@ -1,0 +1,648 @@
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useListCredentials,
+  useCreateCredential,
+  useUpdateCredential,
+  useDeleteCredential,
+  useStartCredentialOauth,
+  getListCredentialsQueryKey,
+  type Credential,
+  type CredentialType,
+} from "@workspace/api-client-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
+import {
+  KeyRound,
+  Plus,
+  Loader2,
+  Search,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  Circle,
+  Copy,
+  ExternalLink,
+  RotateCcw,
+} from "lucide-react";
+import { SiGoogle } from "react-icons/si";
+
+const CRED_APPS: { type: CredentialType; label: string; description: string }[] = [
+  {
+    type: "googleSheetsOAuth2Api",
+    label: "Google Sheets OAuth2 API",
+    description: "Use OAuth2 to access Google Sheets on behalf of a user.",
+  },
+  {
+    type: "googleSheetsTriggerOAuth2Api",
+    label: "Google Sheets Trigger OAuth2 API",
+    description:
+      "OAuth2 credential dedicated to Sheets Trigger workflows (separate token store).",
+  },
+];
+
+function appLabel(t: string): string {
+  return CRED_APPS.find((a) => a.type === t)?.label ?? t;
+}
+
+function StatusPill({ status }: { status: string }) {
+  if (status === "connected") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
+        <CheckCircle2 className="w-3.5 h-3.5" /> Connected
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-destructive">
+        <AlertCircle className="w-3.5 h-3.5" /> Error
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+      <Circle className="w-3.5 h-3.5" /> Not connected
+    </span>
+  );
+}
+
+export default function CredentialsPage() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [editor, setEditor] = useState<
+    | { mode: "create"; type: CredentialType }
+    | { mode: "edit"; credential: Credential }
+    | null
+  >(null);
+  const [deleting, setDeleting] = useState<Credential | null>(null);
+
+  const { data, isLoading } = useListCredentials({
+    query: { queryKey: getListCredentialsQueryKey() },
+  });
+  const credentials: Credential[] = data ?? [];
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return credentials;
+    return credentials.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        appLabel(c.type).toLowerCase().includes(q) ||
+        (c.accountEmail ?? "").toLowerCase().includes(q)
+    );
+  }, [credentials, search]);
+
+  const deleteMut = useDeleteCredential({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListCredentialsQueryKey() });
+        toast({ title: "Credential dihapus" });
+        setDeleting(null);
+      },
+      onError: () => toast({ title: "Gagal menghapus", variant: "destructive" }),
+    },
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-6 h-14 border-b border-border flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <KeyRound className="w-5 h-5 text-muted-foreground" />
+          <h1 className="text-base font-semibold">Credentials</h1>
+        </div>
+        <Button size="sm" onClick={() => setPickerOpen(true)}>
+          <Plus className="w-4 h-4 mr-1" /> Add credential
+        </Button>
+      </div>
+
+      <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+        <div className="relative max-w-md w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search credentials..."
+            className="pl-9"
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto px-6 py-4">
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center py-16 text-muted-foreground">
+            <KeyRound className="w-10 h-10 mb-3 opacity-50" />
+            <p className="text-sm">Belum ada credential.</p>
+            <p className="text-xs mt-1">
+              Tambahkan credential Google untuk auto-sync produk dari Google Sheets.
+            </p>
+          </div>
+        ) : (
+          <div className="border border-border rounded-md overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40">
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">Name</th>
+                  <th className="px-4 py-2 font-medium">App</th>
+                  <th className="px-4 py-2 font-medium">Account</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c) => (
+                  <tr
+                    key={c.id}
+                    className="border-t border-border hover:bg-muted/30 cursor-pointer"
+                    onClick={() => setEditor({ mode: "edit", credential: c })}
+                  >
+                    <td className="px-4 py-2.5 font-medium">{c.name}</td>
+                    <td className="px-4 py-2.5">
+                      <span className="inline-flex items-center gap-1.5">
+                        <SiGoogle className="w-3.5 h-3.5 text-muted-foreground" />
+                        {appLabel(c.type)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-muted-foreground">
+                      {c.accountEmail ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <StatusPill status={c.status} />
+                    </td>
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => setEditor({ mode: "edit", credential: c })}
+                          >
+                            <Pencil className="w-4 h-4 mr-2" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => setDeleting(c)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <AppPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onPick={(type) => {
+          setPickerOpen(false);
+          setEditor({ mode: "create", type });
+        }}
+      />
+
+      {editor && (
+        <CredentialEditorDialog
+          state={editor}
+          onClose={() => setEditor(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: getListCredentialsQueryKey() });
+          }}
+        />
+      )}
+
+      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus credential?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Workflow / sync yang memakai credential ini akan gagal. Tindakan ini tidak
+              bisa dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleting && deleteMut.mutate({ id: deleting.id })}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function AppPickerDialog({
+  open,
+  onOpenChange,
+  onPick,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onPick: (t: CredentialType) => void;
+}) {
+  const [q, setQ] = useState("");
+  const filtered = CRED_APPS.filter(
+    (a) =>
+      a.label.toLowerCase().includes(q.toLowerCase()) ||
+      a.description.toLowerCase().includes(q.toLowerCase())
+  );
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add new credential</DialogTitle>
+        </DialogHeader>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            autoFocus
+            placeholder="Search for app..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="max-h-72 overflow-auto -mx-1">
+          {filtered.map((a) => (
+            <button
+              key={a.type}
+              type="button"
+              className="w-full text-left px-3 py-2.5 rounded-md hover:bg-muted/60 flex items-start gap-3"
+              onClick={() => onPick(a.type)}
+            >
+              <SiGoogle className="w-5 h-5 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium">{a.label}</div>
+                <div className="text-xs text-muted-foreground line-clamp-2">
+                  {a.description}
+                </div>
+              </div>
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <div className="text-xs text-muted-foreground px-3 py-6 text-center">
+              No matches.
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CredentialEditorDialog({
+  state,
+  onClose,
+  onSaved,
+}: {
+  state:
+    | { mode: "create"; type: CredentialType }
+    | { mode: "edit"; credential: Credential };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const isCreate = state.mode === "create";
+  const existing = isCreate ? null : state.credential;
+  const type = isCreate ? state.type : existing!.type;
+
+  const [tab, setTab] = useState<"connection" | "details">("connection");
+  const [name, setName] = useState(
+    existing?.name ?? appLabel(type) + " account"
+  );
+  const [clientId, setClientId] = useState(existing?.clientId ?? "");
+  const [clientSecret, setClientSecret] = useState("");
+  // Don't surface the stored secret. Empty input = keep existing secret on
+  // edit; required on create.
+  const [credentialId, setCredentialId] = useState<number | null>(
+    existing?.id ?? null
+  );
+  const [status, setStatus] = useState(existing?.status ?? "new");
+  const [accountEmail, setAccountEmail] = useState<string | null>(
+    existing?.accountEmail ?? null
+  );
+
+  const redirectUrl = `${window.location.protocol}//${window.location.host}/api/credentials/oauth/callback`;
+
+  const createMut = useCreateCredential();
+  const updateMut = useUpdateCredential();
+  const startMut = useStartCredentialOauth();
+
+  // Listen for the postMessage from the OAuth callback popup so we can
+  // refresh the in-dialog status without a full page reload.
+  useEffect(() => {
+    const handler = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const m = ev.data;
+      if (m?.type !== "vjchat:oauth") return;
+      if (typeof m.credentialId === "number" && m.credentialId === credentialId) {
+        if (m.ok) {
+          setStatus("connected");
+          if (typeof m.email === "string") setAccountEmail(m.email);
+          toast({ title: "Connected to Google" });
+          onSaved();
+        } else {
+          setStatus("error");
+          toast({
+            title: "OAuth gagal",
+            description: m.error || "Coba lagi.",
+            variant: "destructive",
+          });
+        }
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [credentialId, toast, onSaved]);
+
+  async function persist(): Promise<number | null> {
+    if (!name.trim()) {
+      toast({ title: "Nama wajib diisi", variant: "destructive" });
+      return null;
+    }
+    if (!clientId.trim()) {
+      toast({ title: "Client ID wajib diisi", variant: "destructive" });
+      return null;
+    }
+    try {
+      if (isCreate && credentialId === null) {
+        if (!clientSecret.trim()) {
+          toast({ title: "Client Secret wajib diisi", variant: "destructive" });
+          return null;
+        }
+        const created = await createMut.mutateAsync({
+          data: { name: name.trim(), type, clientId: clientId.trim(), clientSecret },
+        });
+        setCredentialId(created.id);
+        setStatus(created.status);
+        onSaved();
+        return created.id;
+      } else {
+        const id = credentialId!;
+        await updateMut.mutateAsync({
+          id,
+          data: {
+            name: name.trim(),
+            clientId: clientId.trim(),
+            ...(clientSecret.trim() ? { clientSecret } : {}),
+          },
+        });
+        onSaved();
+        return id;
+      }
+    } catch (e: unknown) {
+      const err = e as { data?: { error?: string }; message?: string };
+      toast({
+        title: "Gagal menyimpan",
+        description: err?.data?.error || err?.message || "Server error",
+        variant: "destructive",
+      });
+      return null;
+    }
+  }
+
+  async function signInWithGoogle() {
+    const id = await persist();
+    if (id === null) return;
+    try {
+      const res = await startMut.mutateAsync({ id });
+      const popup = window.open(
+        res.url,
+        "vjchat-oauth",
+        "width=520,height=640,menubar=no,toolbar=no"
+      );
+      if (!popup) {
+        toast({
+          title: "Popup diblokir",
+          description: "Izinkan popup lalu coba lagi.",
+          variant: "destructive",
+        });
+      }
+    } catch (e: unknown) {
+      const err = e as { data?: { error?: string }; message?: string };
+      toast({
+        title: "OAuth gagal dimulai",
+        description: err?.data?.error || err?.message || "Server error",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl p-0 overflow-hidden">
+        <div className="flex border-b border-border px-6 py-3 items-center justify-between">
+          <div>
+            <DialogTitle className="text-base">{appLabel(type)}</DialogTitle>
+            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+              <StatusPill status={status} />
+              {accountEmail && (
+                <span className="text-muted-foreground">· {accountEmail}</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-[180px_1fr] min-h-[420px]">
+          <div className="border-r border-border bg-muted/20 p-2 flex flex-col gap-1">
+            <TabBtn active={tab === "connection"} onClick={() => setTab("connection")}>
+              Connection
+            </TabBtn>
+            <TabBtn active={tab === "details"} onClick={() => setTab("details")}>
+              Details
+            </TabBtn>
+          </div>
+          <div className="p-6 space-y-4 overflow-auto">
+            {tab === "connection" ? (
+              <>
+                <Field label="OAuth Redirect URL" hint="Paste this into Google Cloud Console → Authorized redirect URIs.">
+                  <div className="flex gap-2">
+                    <Input value={redirectUrl} readOnly className="font-mono text-xs" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(redirectUrl);
+                        toast({ title: "Disalin" });
+                      }}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </Field>
+                <Field label="Client ID">
+                  <Input
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="123-abc.apps.googleusercontent.com"
+                  />
+                </Field>
+                <Field
+                  label="Client Secret"
+                  hint={
+                    existing
+                      ? "Kosongkan untuk pakai secret yang sudah tersimpan."
+                      : undefined
+                  }
+                >
+                  <Input
+                    type="password"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    placeholder={existing ? "••••••••" : ""}
+                  />
+                </Field>
+                <div className="pt-2 flex items-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={signInWithGoogle}
+                    disabled={createMut.isPending || updateMut.isPending || startMut.isPending}
+                  >
+                    {(createMut.isPending || updateMut.isPending || startMut.isPending) && (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    )}
+                    {status === "connected" ? (
+                      <>
+                        <RotateCcw className="w-4 h-4 mr-2" /> Reconnect
+                      </>
+                    ) : (
+                      <>
+                        <SiGoogle className="w-4 h-4 mr-2" /> Sign in with Google
+                      </>
+                    )}
+                  </Button>
+                  <a
+                    href="https://console.cloud.google.com/apis/credentials"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  >
+                    Google Cloud Console <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+                <div className="text-xs text-muted-foreground border-t border-border pt-3">
+                  Scopes: <code className="font-mono">spreadsheets.readonly</code>,{" "}
+                  <code className="font-mono">drive.readonly</code>
+                </div>
+              </>
+            ) : (
+              <>
+                <Field label="Credential Name">
+                  <Input value={name} onChange={(e) => setName(e.target.value)} />
+                </Field>
+                <Field label="Type">
+                  <Input value={appLabel(type)} readOnly />
+                </Field>
+                <div className="flex justify-end pt-2">
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      const id = await persist();
+                      if (id !== null)
+                        toast({ title: "Tersimpan" });
+                    }}
+                    disabled={createMut.isPending || updateMut.isPending}
+                  >
+                    {(createMut.isPending || updateMut.isPending) && (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    )}
+                    Save
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TabBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "text-left text-sm px-3 py-2 rounded-md " +
+        (active
+          ? "bg-background border border-border font-medium"
+          : "text-muted-foreground hover:bg-muted/60")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        {label}
+      </Label>
+      {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}

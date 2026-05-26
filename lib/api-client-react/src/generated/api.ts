@@ -32,6 +32,9 @@ import type {
   CommonQuestion,
   CreateKnowledgeType400,
   CreateKnowledgeType409,
+  Credential,
+  CredentialCreateInput,
+  CredentialUpdateInput,
   DeleteKnowledgeType200,
   DeleteKnowledgeType400,
   DeleteKnowledgeType404,
@@ -41,6 +44,7 @@ import type {
   FlowCreateInput,
   FlowSummary,
   FlowUpdateInput,
+  GetProductSyncConfig200,
   HealthStatus,
   ImportKnowledge200,
   ImportKnowledge400,
@@ -57,17 +61,22 @@ import type {
   PostStatusInput,
   Product,
   ProductInput,
+  ProductSyncConfigInput,
   ResetFlowCooldown200,
+  RunProductSync200,
   SendProductBody,
   Settings,
   SettingsUpdate,
   SignupInput,
   SignupResponse,
+  SpreadsheetRef,
+  StartCredentialOauth200,
   SuccessResponse,
   SyncProductsToKnowledge200,
   TakeoverInput,
   TextShortcut,
   TextShortcutInput,
+  UpsertProductSyncConfig200,
   WhatsappBio,
   WhatsappBioInput,
   WhatsappStatus,
@@ -2742,6 +2751,743 @@ export const useDeleteProduct = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteProductMutationOptions(options));
+    }
+
+export const getListCredentialsUrl = () => {
+
+
+
+
+  return `/api/credentials`
+}
+
+/**
+ * @summary List the signed-in user's saved credentials
+ */
+export const listCredentials = async ( options?: RequestInit): Promise<Credential[]> => {
+
+  return customFetch<Credential[]>(getListCredentialsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCredentialsQueryKey = () => {
+    return [
+    `/api/credentials`
+    ] as const;
+    }
+
+
+export const getListCredentialsQueryOptions = <TData = Awaited<ReturnType<typeof listCredentials>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentials>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCredentialsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCredentials>>> = ({ signal }) => listCredentials({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCredentials>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCredentialsQueryResult = NonNullable<Awaited<ReturnType<typeof listCredentials>>>
+export type ListCredentialsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the signed-in user's saved credentials
+ */
+
+export function useListCredentials<TData = Awaited<ReturnType<typeof listCredentials>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentials>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCredentialsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateCredentialUrl = () => {
+
+
+
+
+  return `/api/credentials`
+}
+
+/**
+ * @summary Create a new credential (Client ID/Secret only; OAuth happens after)
+ */
+export const createCredential = async (credentialCreateInput: CredentialCreateInput, options?: RequestInit): Promise<Credential> => {
+
+  return customFetch<Credential>(getCreateCredentialUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      credentialCreateInput,)
+  }
+);}
+
+
+
+
+export const getCreateCredentialMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCredential>>, TError,{data: BodyType<CredentialCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCredential>>, TError,{data: BodyType<CredentialCreateInput>}, TContext> => {
+
+const mutationKey = ['createCredential'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCredential>>, {data: BodyType<CredentialCreateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCredential(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof createCredential>>>
+    export type CreateCredentialMutationBody = BodyType<CredentialCreateInput>
+    export type CreateCredentialMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a new credential (Client ID/Secret only; OAuth happens after)
+ */
+export const useCreateCredential = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCredential>>, TError,{data: BodyType<CredentialCreateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCredential>>,
+        TError,
+        {data: BodyType<CredentialCreateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCredentialMutationOptions(options));
+    }
+
+export const getUpdateCredentialUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}`
+}
+
+/**
+ * @summary Rename or rotate Client ID/Secret. Rotating clears tokens.
+ */
+export const updateCredential = async (id: number,
+    credentialUpdateInput: CredentialUpdateInput, options?: RequestInit): Promise<Credential> => {
+
+  return customFetch<Credential>(getUpdateCredentialUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      credentialUpdateInput,)
+  }
+);}
+
+
+
+
+export const getUpdateCredentialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCredential>>, TError,{id: number;data: BodyType<CredentialUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCredential>>, TError,{id: number;data: BodyType<CredentialUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateCredential'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCredential>>, {id: number;data: BodyType<CredentialUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCredential(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof updateCredential>>>
+    export type UpdateCredentialMutationBody = BodyType<CredentialUpdateInput>
+    export type UpdateCredentialMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Rename or rotate Client ID/Secret. Rotating clears tokens.
+ */
+export const useUpdateCredential = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCredential>>, TError,{id: number;data: BodyType<CredentialUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCredential>>,
+        TError,
+        {id: number;data: BodyType<CredentialUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCredentialMutationOptions(options));
+    }
+
+export const getDeleteCredentialUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}`
+}
+
+/**
+ * @summary Delete a credential. Sync configs referencing it are cleared.
+ */
+export const deleteCredential = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteCredentialUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteCredentialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCredential>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCredential>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteCredential'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCredential>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteCredential(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCredential>>>
+
+    export type DeleteCredentialMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a credential. Sync configs referencing it are cleared.
+ */
+export const useDeleteCredential = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCredential>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCredential>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteCredentialMutationOptions(options));
+    }
+
+export const getStartCredentialOauthUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}/oauth/start`
+}
+
+/**
+ * @summary Begin the Google OAuth flow and return the consent URL
+ */
+export const startCredentialOauth = async (id: number, options?: RequestInit): Promise<StartCredentialOauth200> => {
+
+  return customFetch<StartCredentialOauth200>(getStartCredentialOauthUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getStartCredentialOauthMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startCredentialOauth>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startCredentialOauth>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['startCredentialOauth'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startCredentialOauth>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  startCredentialOauth(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartCredentialOauthMutationResult = NonNullable<Awaited<ReturnType<typeof startCredentialOauth>>>
+
+    export type StartCredentialOauthMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Begin the Google OAuth flow and return the consent URL
+ */
+export const useStartCredentialOauth = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startCredentialOauth>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startCredentialOauth>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getStartCredentialOauthMutationOptions(options));
+    }
+
+export const getListCredentialSpreadsheetsUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}/spreadsheets`
+}
+
+/**
+ * @summary List spreadsheets the connected Google account can read
+ */
+export const listCredentialSpreadsheets = async (id: number, options?: RequestInit): Promise<SpreadsheetRef[]> => {
+
+  return customFetch<SpreadsheetRef[]>(getListCredentialSpreadsheetsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCredentialSpreadsheetsQueryKey = (id: number,) => {
+    return [
+    `/api/credentials/${id}/spreadsheets`
+    ] as const;
+    }
+
+
+export const getListCredentialSpreadsheetsQueryOptions = <TData = Awaited<ReturnType<typeof listCredentialSpreadsheets>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentialSpreadsheets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCredentialSpreadsheetsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCredentialSpreadsheets>>> = ({ signal }) => listCredentialSpreadsheets(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCredentialSpreadsheets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCredentialSpreadsheetsQueryResult = NonNullable<Awaited<ReturnType<typeof listCredentialSpreadsheets>>>
+export type ListCredentialSpreadsheetsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List spreadsheets the connected Google account can read
+ */
+
+export function useListCredentialSpreadsheets<TData = Awaited<ReturnType<typeof listCredentialSpreadsheets>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentialSpreadsheets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCredentialSpreadsheetsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListCredentialSpreadsheetTabsUrl = (id: number,
+    spreadsheetId: string,) => {
+
+
+
+
+  return `/api/credentials/${id}/spreadsheets/${spreadsheetId}/tabs`
+}
+
+/**
+ * @summary List sheet tab names within a spreadsheet
+ */
+export const listCredentialSpreadsheetTabs = async (id: number,
+    spreadsheetId: string, options?: RequestInit): Promise<string[]> => {
+
+  return customFetch<string[]>(getListCredentialSpreadsheetTabsUrl(id,spreadsheetId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCredentialSpreadsheetTabsQueryKey = (id: number,
+    spreadsheetId: string,) => {
+    return [
+    `/api/credentials/${id}/spreadsheets/${spreadsheetId}/tabs`
+    ] as const;
+    }
+
+
+export const getListCredentialSpreadsheetTabsQueryOptions = <TData = Awaited<ReturnType<typeof listCredentialSpreadsheetTabs>>, TError = ErrorType<unknown>>(id: number,
+    spreadsheetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentialSpreadsheetTabs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCredentialSpreadsheetTabsQueryKey(id,spreadsheetId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCredentialSpreadsheetTabs>>> = ({ signal }) => listCredentialSpreadsheetTabs(id,spreadsheetId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id && spreadsheetId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCredentialSpreadsheetTabs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCredentialSpreadsheetTabsQueryResult = NonNullable<Awaited<ReturnType<typeof listCredentialSpreadsheetTabs>>>
+export type ListCredentialSpreadsheetTabsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List sheet tab names within a spreadsheet
+ */
+
+export function useListCredentialSpreadsheetTabs<TData = Awaited<ReturnType<typeof listCredentialSpreadsheetTabs>>, TError = ErrorType<unknown>>(
+ id: number,
+    spreadsheetId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentialSpreadsheetTabs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCredentialSpreadsheetTabsQueryOptions(id,spreadsheetId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetProductSyncConfigUrl = () => {
+
+
+
+
+  return `/api/products/sync-config`
+}
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+export const getProductSyncConfig = async ( options?: RequestInit): Promise<GetProductSyncConfig200> => {
+
+  return customFetch<GetProductSyncConfig200>(getGetProductSyncConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProductSyncConfigQueryKey = () => {
+    return [
+    `/api/products/sync-config`
+    ] as const;
+    }
+
+
+export const getGetProductSyncConfigQueryOptions = <TData = Awaited<ReturnType<typeof getProductSyncConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProductSyncConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProductSyncConfig>>> = ({ signal }) => getProductSyncConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProductSyncConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProductSyncConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getProductSyncConfig>>>
+export type GetProductSyncConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+
+export function useGetProductSyncConfig<TData = Awaited<ReturnType<typeof getProductSyncConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProductSyncConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpsertProductSyncConfigUrl = () => {
+
+
+
+
+  return `/api/products/sync-config`
+}
+
+/**
+ * @summary Create or update the sync config (pass null to clear).
+ */
+export const upsertProductSyncConfig = async (productSyncConfigInputNull: ProductSyncConfigInput | null, options?: RequestInit): Promise<UpsertProductSyncConfig200> => {
+
+  return customFetch<UpsertProductSyncConfig200>(getUpsertProductSyncConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      productSyncConfigInputNull,)
+  }
+);}
+
+
+
+
+export const getUpsertProductSyncConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertProductSyncConfig>>, TError,{data: BodyType<ProductSyncConfigInput | null>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertProductSyncConfig>>, TError,{data: BodyType<ProductSyncConfigInput | null>}, TContext> => {
+
+const mutationKey = ['upsertProductSyncConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertProductSyncConfig>>, {data: BodyType<ProductSyncConfigInput | null>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertProductSyncConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertProductSyncConfigMutationResult = NonNullable<Awaited<ReturnType<typeof upsertProductSyncConfig>>>
+    export type UpsertProductSyncConfigMutationBody = BodyType<ProductSyncConfigInput | null>
+    export type UpsertProductSyncConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create or update the sync config (pass null to clear).
+ */
+export const useUpsertProductSyncConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertProductSyncConfig>>, TError,{data: BodyType<ProductSyncConfigInput | null>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertProductSyncConfig>>,
+        TError,
+        {data: BodyType<ProductSyncConfigInput | null>},
+        TContext
+      > => {
+      return useMutation(getUpsertProductSyncConfigMutationOptions(options));
+    }
+
+export const getRunProductSyncUrl = () => {
+
+
+
+
+  return `/api/products/sync-run`
+}
+
+/**
+ * @summary Run a manual sync now. Sheet is the source of truth (deletes apply).
+ */
+export const runProductSync = async ( options?: RequestInit): Promise<RunProductSync200> => {
+
+  return customFetch<RunProductSync200>(getRunProductSyncUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunProductSyncMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runProductSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runProductSync>>, TError,void, TContext> => {
+
+const mutationKey = ['runProductSync'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runProductSync>>, void> = () => {
+
+
+          return  runProductSync(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunProductSyncMutationResult = NonNullable<Awaited<ReturnType<typeof runProductSync>>>
+
+    export type RunProductSyncMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Run a manual sync now. Sheet is the source of truth (deletes apply).
+ */
+export const useRunProductSync = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runProductSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runProductSync>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunProductSyncMutationOptions(options));
     }
 
 export const getGetWhatsappBioUrl = () => {

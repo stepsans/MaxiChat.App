@@ -12,6 +12,8 @@ import statusesRouter from "./statuses";
 import shortcutsRouter from "./shortcuts";
 import flowsRouter from "./flows";
 import adminRouter from "./admin";
+import credentialsRouter from "./credentials";
+import productsSyncRouter from "./products-sync";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -29,7 +31,13 @@ router.use("/knowledge-types", knowledgeTypesRouter);
 router.use("/knowledge", knowledgeRouter);
 router.use("/settings", settingsRouter);
 router.use("/analytics", analyticsRouter);
+// products-sync is mounted under /products so its routes (/products/sync-config,
+// /products/sync-run) sit alongside the existing product CRUD. Mounted BEFORE
+// productsRouter so the explicit /sync-* paths take priority over a CRUD
+// fallthrough that might otherwise treat "sync-config" as an id.
+router.use("/products", productsSyncRouter);
 router.use("/products", productsRouter);
+router.use("/credentials", credentialsRouter);
 router.use("/statuses", statusesRouter);
 router.use("/shortcuts", shortcutsRouter);
 router.use("/flows", flowsRouter);

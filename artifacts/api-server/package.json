@@ -23,6 +23,7 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
+    "googleapis": "^172.0.0",
     "ipaddr.js": "^2.4.0",
     "link-preview-js": "^4.0.3",
     "mime-types": "^3.0.2",

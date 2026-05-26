@@ -15,6 +15,7 @@ import Analytics from "@/pages/Analytics";
 import Products from "@/pages/Products";
 import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
+import Credentials from "@/pages/Credentials";
 import Login from "@/pages/Login";
 import { Loader2 } from "lucide-react";
 
@@ -86,6 +87,7 @@ function AuthGate() {
         <Route path="/products" component={Products} />
         <Route path="/flows" component={Flows} />
         <Route path="/flows/:id" component={FlowEditor} />
+        <Route path="/credentials" component={Credentials} />
         <Route path="/settings" component={Settings} />
         <Route path="/analytics" component={Analytics} />
         <Route component={NotFound} />

@@ -653,6 +653,196 @@ export const DeleteProductResponse = zod.object({
 
 
 /**
+ * @summary List the signed-in user's saved credentials
+ */
+export const ListCredentialsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api']),
+  "clientId": zod.string(),
+  "scopes": zod.array(zod.string()),
+  "accountEmail": zod.string().nullish(),
+  "status": zod.enum(['disconnected', 'connected', 'error']),
+  "tokenExpiresAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListCredentialsResponse = zod.array(ListCredentialsResponseItem)
+
+
+/**
+ * @summary Create a new credential (Client ID/Secret only; OAuth happens after)
+ */
+export const createCredentialBodyNameMax = 120;
+
+
+
+
+
+export const CreateCredentialBody = zod.object({
+  "name": zod.string().min(1).max(createCredentialBodyNameMax),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api']),
+  "clientId": zod.string().min(1),
+  "clientSecret": zod.string().min(1)
+})
+
+
+/**
+ * @summary Rename or rotate Client ID/Secret. Rotating clears tokens.
+ */
+export const UpdateCredentialParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateCredentialBodyNameMax = 120;
+
+
+
+
+
+export const UpdateCredentialBody = zod.object({
+  "name": zod.string().min(1).max(updateCredentialBodyNameMax).optional(),
+  "clientId": zod.string().min(1).optional(),
+  "clientSecret": zod.string().min(1).optional()
+})
+
+export const UpdateCredentialResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api']),
+  "clientId": zod.string(),
+  "scopes": zod.array(zod.string()),
+  "accountEmail": zod.string().nullish(),
+  "status": zod.enum(['disconnected', 'connected', 'error']),
+  "tokenExpiresAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a credential. Sync configs referencing it are cleared.
+ */
+export const DeleteCredentialParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteCredentialResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Begin the Google OAuth flow and return the consent URL
+ */
+export const StartCredentialOauthParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const StartCredentialOauthResponse = zod.object({
+  "url": zod.string()
+})
+
+
+/**
+ * @summary List spreadsheets the connected Google account can read
+ */
+export const ListCredentialSpreadsheetsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListCredentialSpreadsheetsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "modifiedTime": zod.coerce.date().nullish()
+})
+export const ListCredentialSpreadsheetsResponse = zod.array(ListCredentialSpreadsheetsResponseItem)
+
+
+/**
+ * @summary List sheet tab names within a spreadsheet
+ */
+export const ListCredentialSpreadsheetTabsParams = zod.object({
+  "id": zod.coerce.number(),
+  "spreadsheetId": zod.coerce.string()
+})
+
+export const ListCredentialSpreadsheetTabsResponseItem = zod.string()
+export const ListCredentialSpreadsheetTabsResponse = zod.array(ListCredentialSpreadsheetTabsResponseItem)
+
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+
+
+
+export const GetProductSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary Create or update the sync config (pass null to clear).
+ */
+export const upsertProductSyncConfigBodyOneHeaderRowDefault = 1;
+
+export const upsertProductSyncConfigBodyOneAutoSyncEnabledDefault = false;
+export const upsertProductSyncConfigBodyOneIntervalMinutesDefault = 15;
+
+export const UpsertProductSyncConfigBody = zod.union([zod.object({
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1).default(upsertProductSyncConfigBodyOneHeaderRowDefault),
+  "autoSyncEnabled": zod.boolean().default(upsertProductSyncConfigBodyOneAutoSyncEnabledDefault),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]).default(upsertProductSyncConfigBodyOneIntervalMinutesDefault)
+}),zod.null()])
+
+
+
+
+export const UpsertProductSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary Run a manual sync now. Sheet is the source of truth (deletes apply).
+ */
+export const RunProductSyncResponse = zod.object({
+  "inserted": zod.number(),
+  "updated": zod.number(),
+  "deleted": zod.number(),
+  "syncedAt": zod.coerce.date().optional()
+})
+
+
+/**
  * @summary Get the connected WhatsApp account's bio (about / status text)
  */
 export const GetWhatsappBioResponse = zod.object({

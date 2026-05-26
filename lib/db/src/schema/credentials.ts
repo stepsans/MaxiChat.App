@@ -1,0 +1,96 @@
+import {
+  pgTable,
+  serial,
+  integer,
+  text,
+  timestamp,
+  boolean,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+import { usersTable } from "./auth";
+
+// n8n-style OAuth2 credentials, owned by an app user (NOT a WhatsApp account).
+// Each row stores the user's own Google Cloud Console OAuth client (Client ID
+// and Client Secret), plus the access/refresh tokens we receive after they
+// complete the consent screen. Secret fields are stored encrypted-at-rest
+// using AES-256-GCM (see api-server/src/lib/crypto.ts); we never persist them
+// in plain text. `type` is the credential "app" the user picked in the modal
+// (e.g. googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api).
+export const credentialsTable = pgTable(
+  "credentials",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: text("type").notNull(),
+    clientId: text("client_id").notNull(),
+    // All three *_enc columns hold the base64(iv|ciphertext|tag) envelope
+    // produced by encryptString(). Decrypt with decryptString() — never
+    // expose these values to the API client.
+    clientSecretEnc: text("client_secret_enc").notNull(),
+    accessTokenEnc: text("access_token_enc"),
+    refreshTokenEnc: text("refresh_token_enc"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    scopes: text("scopes").array().notNull().default([]),
+    // Email of the Google account that completed the consent flow, surfaced
+    // in the UI so the user can tell which Google login is connected.
+    accountEmail: text("account_email"),
+    // "disconnected" → never signed in, "connected" → tokens present,
+    // "error" → last token refresh failed (UI shows "Reconnect").
+    status: text("status").notNull().default("disconnected"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    credentialsUserNameUnique: uniqueIndex("credentials_user_name_unique").on(
+      t.userId,
+      t.name
+    ),
+  })
+);
+
+export type Credential = typeof credentialsTable.$inferSelect;
+
+// Per-WhatsApp-account (ownerPhone) binding from a Google Sheet → the
+// `products` table. Sheet is the source of truth: each sync truncates rows
+// that no longer appear and upserts the rest. `headerRow` is 1-indexed so a
+// value of 1 means row 1 contains the column names.
+export const productSyncConfigTable = pgTable(
+  "product_sync_config",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    credentialId: integer("credential_id")
+      .notNull()
+      .references(() => credentialsTable.id, { onDelete: "cascade" }),
+    spreadsheetId: text("spreadsheet_id").notNull(),
+    sheetName: text("sheet_name").notNull(),
+    headerRow: integer("header_row").notNull().default(1),
+    autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(false),
+    intervalMinutes: integer("interval_minutes").notNull().default(15),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    // "idle" before first sync; "ok" / "error" after each run. lastSyncError
+    // is the human-readable message we surface in the UI.
+    lastSyncStatus: text("last_sync_status").notNull().default("idle"),
+    lastSyncError: text("last_sync_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    productSyncOwnerPhoneUnique: uniqueIndex(
+      "product_sync_owner_phone_unique"
+    ).on(t.ownerPhone),
+  })
+);
+
+export type ProductSyncConfig = typeof productSyncConfigTable.$inferSelect;

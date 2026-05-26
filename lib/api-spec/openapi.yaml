@@ -898,6 +898,183 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
 
+  /credentials:
+    get:
+      operationId: listCredentials
+      tags: [credentials]
+      summary: List the signed-in user's saved credentials
+      responses:
+        "200":
+          description: List of credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Credential" }
+    post:
+      operationId: createCredential
+      tags: [credentials]
+      summary: Create a new credential (Client ID/Secret only; OAuth happens after)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialCreateInput" }
+      responses:
+        "201":
+          description: Created credential
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Credential" }
+        "409":
+          description: Duplicate name for this user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /credentials/{id}:
+    patch:
+      operationId: updateCredential
+      tags: [credentials]
+      summary: Rename or rotate Client ID/Secret. Rotating clears tokens.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialUpdateInput" }
+      responses:
+        "200":
+          description: Updated credential
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Credential" }
+    delete:
+      operationId: deleteCredential
+      tags: [credentials]
+      summary: Delete a credential. Sync configs referencing it are cleared.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+
+  /credentials/{id}/oauth/start:
+    post:
+      operationId: startCredentialOauth
+      tags: [credentials]
+      summary: Begin the Google OAuth flow and return the consent URL
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Consent URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url: { type: string }
+
+  /credentials/{id}/spreadsheets:
+    get:
+      operationId: listCredentialSpreadsheets
+      tags: [credentials]
+      summary: List spreadsheets the connected Google account can read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Spreadsheets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SpreadsheetRef" }
+
+  /credentials/{id}/spreadsheets/{spreadsheetId}/tabs:
+    get:
+      operationId: listCredentialSpreadsheetTabs
+      tags: [credentials]
+      summary: List sheet tab names within a spreadsheet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: spreadsheetId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Tabs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+
+  /products/sync-config:
+    get:
+      operationId: getProductSyncConfig
+      tags: [products]
+      summary: Get the Google Sheet sync config for the current WhatsApp account
+      responses:
+        "200":
+          description: Config, or null if not configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/ProductSyncConfig"
+    put:
+      operationId: upsertProductSyncConfig
+      tags: [products]
+      summary: Create or update the sync config (pass null to clear).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/ProductSyncConfigInput"
+                - type: "null"
+      responses:
+        "200":
+          description: Updated config (or null after clearing)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/ProductSyncConfig"
+
+  /products/sync-run:
+    post:
+      operationId: runProductSync
+      tags: [products]
+      summary: Run a manual sync now. Sheet is the source of truth (deletes apply).
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inserted, updated, deleted]
+                properties:
+                  inserted: { type: integer }
+                  updated: { type: integer }
+                  deleted: { type: integer }
+                  syncedAt: { type: string, format: date-time }
+
   /whatsapp/profile/bio:
     get:
       operationId: getWhatsappBio
@@ -1873,6 +2050,74 @@ components:
         edges:
           type: array
           items: { $ref: "#/components/schemas/FlowEdge" }
+
+    Credential:
+      type: object
+      required: [id, name, type, clientId, scopes, status, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api] }
+        clientId: { type: string }
+        scopes: { type: array, items: { type: string } }
+        accountEmail: { type: string, nullable: true }
+        status: { type: string, enum: [disconnected, connected, error] }
+        tokenExpiresAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CredentialCreateInput:
+      type: object
+      required: [name, type, clientId, clientSecret]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api] }
+        clientId: { type: string, minLength: 1 }
+        clientSecret: { type: string, minLength: 1 }
+
+    CredentialUpdateInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        clientId: { type: string, minLength: 1 }
+        clientSecret: { type: string, minLength: 1 }
+
+    SpreadsheetRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        modifiedTime: { type: string, format: date-time, nullable: true }
+
+    ProductSyncConfig:
+      type: object
+      required:
+        [id, credentialId, spreadsheetId, sheetName, headerRow,
+         autoSyncEnabled, intervalMinutes, lastSyncStatus, updatedAt]
+      properties:
+        id: { type: integer }
+        credentialId: { type: integer }
+        spreadsheetId: { type: string }
+        sheetName: { type: string }
+        headerRow: { type: integer, minimum: 1 }
+        autoSyncEnabled: { type: boolean }
+        intervalMinutes: { type: integer, enum: [5, 15, 30, 60] }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+        lastSyncStatus: { type: string, enum: [idle, ok, error] }
+        lastSyncError: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time }
+
+    ProductSyncConfigInput:
+      type: object
+      required: [credentialId, spreadsheetId, sheetName]
+      properties:
+        credentialId: { type: integer }
+        spreadsheetId: { type: string }
+        sheetName: { type: string }
+        headerRow: { type: integer, minimum: 1, default: 1 }
+        autoSyncEnabled: { type: boolean, default: false }
+        intervalMinutes: { type: integer, enum: [5, 15, 30, 60], default: 15 }
 
     FlowSummary:
       type: object

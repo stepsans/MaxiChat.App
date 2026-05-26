@@ -1,4 +1,5 @@
 import app from "./app";
+import { startProductSyncScheduler } from "./routes/products-sync";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -40,6 +41,9 @@ async function main(): Promise<void> {
     initWhatsapp().catch((e) =>
       logger.error({ err: e }, "initWhatsapp failed (non-fatal)")
     );
+    // Auto-sync ticker for Google-Sheet → products bindings. Per-config rows
+    // with autoSyncEnabled=true are re-pulled at their configured interval.
+    startProductSyncScheduler();
   });
 }
 

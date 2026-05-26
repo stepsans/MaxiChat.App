@@ -8,6 +8,7 @@ import {
   Settings,
   BarChart3,
   GitBranch,
+  KeyRound,
   Wifi,
   WifiOff,
   Loader2,
@@ -42,6 +43,7 @@ const navItems = [
   { href: "/products", label: "Products", icon: Package },
   { href: "/flows", label: "Chatbot Flow", icon: GitBranch },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/credentials", label: "Credentials", icon: KeyRound },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

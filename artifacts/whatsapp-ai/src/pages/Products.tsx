@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { resolveImageSrc } from "@/lib/utils";
+import ProductSyncCard from "@/components/ProductSyncCard";
 
 type Product = {
   id: number;
@@ -513,6 +514,8 @@ export default function Products() {
           </Button>
         </div>
       </div>
+
+      <ProductSyncCard />
 
       <div className="flex-1 overflow-auto">
         {isLoading ? (

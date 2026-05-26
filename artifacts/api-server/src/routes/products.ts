@@ -361,7 +361,7 @@ router.get("/export.xlsx", async (req, res) => {
   }
 });
 
-function parseIntCell(v: unknown): number | null {
+export function parseIntCell(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
   if (!s) return null;
@@ -429,7 +429,7 @@ async function parseXlsxBuffer(buf: Buffer): Promise<string[][]> {
   return out;
 }
 
-const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
+export const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
   id: "id",
   code: "code",
   "kode product": "code",
@@ -479,7 +479,7 @@ const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
   "link video": "videoUrls",
 };
 
-const EXPORT_HEADERS_MAP = {
+export const EXPORT_HEADERS_MAP = {
   id: 0,
   code: 0,
   name: 0,
