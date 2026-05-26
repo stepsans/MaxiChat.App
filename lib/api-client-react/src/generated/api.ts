@@ -44,6 +44,7 @@ import type {
   FlowCreateInput,
   FlowSummary,
   FlowUpdateInput,
+  GetKnowledgeSyncConfig200,
   GetProductSyncConfig200,
   HealthStatus,
   ImportKnowledge200,
@@ -52,6 +53,7 @@ import type {
   ImportProducts200,
   KnowledgeEntry,
   KnowledgeInput,
+  KnowledgeSyncConfigInput,
   KnowledgeType,
   KnowledgeTypeInput,
   KnowledgeUpdate,
@@ -63,6 +65,7 @@ import type {
   ProductInput,
   ProductSyncConfigInput,
   ResetFlowCooldown200,
+  RunKnowledgeSync200,
   RunProductSync200,
   SendProductBody,
   Settings,
@@ -76,6 +79,7 @@ import type {
   TakeoverInput,
   TextShortcut,
   TextShortcutInput,
+  UpsertKnowledgeSyncConfig200,
   UpsertProductSyncConfig200,
   WhatsappBio,
   WhatsappBioInput,
@@ -1854,6 +1858,224 @@ export const useUpdateSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateSettingsMutationOptions(options));
+    }
+
+export const getGetKnowledgeSyncConfigUrl = () => {
+
+
+
+
+  return `/api/knowledge/sync-config`
+}
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+export const getKnowledgeSyncConfig = async ( options?: RequestInit): Promise<GetKnowledgeSyncConfig200> => {
+
+  return customFetch<GetKnowledgeSyncConfig200>(getGetKnowledgeSyncConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKnowledgeSyncConfigQueryKey = () => {
+    return [
+    `/api/knowledge/sync-config`
+    ] as const;
+    }
+
+
+export const getGetKnowledgeSyncConfigQueryOptions = <TData = Awaited<ReturnType<typeof getKnowledgeSyncConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKnowledgeSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKnowledgeSyncConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKnowledgeSyncConfig>>> = ({ signal }) => getKnowledgeSyncConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKnowledgeSyncConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKnowledgeSyncConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getKnowledgeSyncConfig>>>
+export type GetKnowledgeSyncConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+
+export function useGetKnowledgeSyncConfig<TData = Awaited<ReturnType<typeof getKnowledgeSyncConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKnowledgeSyncConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKnowledgeSyncConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpsertKnowledgeSyncConfigUrl = () => {
+
+
+
+
+  return `/api/knowledge/sync-config`
+}
+
+/**
+ * @summary Create or update the knowledge sync config (pass null to clear).
+ */
+export const upsertKnowledgeSyncConfig = async (knowledgeSyncConfigInputNull: KnowledgeSyncConfigInput | null, options?: RequestInit): Promise<UpsertKnowledgeSyncConfig200> => {
+
+  return customFetch<UpsertKnowledgeSyncConfig200>(getUpsertKnowledgeSyncConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      knowledgeSyncConfigInputNull,)
+  }
+);}
+
+
+
+
+export const getUpsertKnowledgeSyncConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertKnowledgeSyncConfig>>, TError,{data: BodyType<KnowledgeSyncConfigInput | null>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertKnowledgeSyncConfig>>, TError,{data: BodyType<KnowledgeSyncConfigInput | null>}, TContext> => {
+
+const mutationKey = ['upsertKnowledgeSyncConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertKnowledgeSyncConfig>>, {data: BodyType<KnowledgeSyncConfigInput | null>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertKnowledgeSyncConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertKnowledgeSyncConfigMutationResult = NonNullable<Awaited<ReturnType<typeof upsertKnowledgeSyncConfig>>>
+    export type UpsertKnowledgeSyncConfigMutationBody = BodyType<KnowledgeSyncConfigInput | null>
+    export type UpsertKnowledgeSyncConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create or update the knowledge sync config (pass null to clear).
+ */
+export const useUpsertKnowledgeSyncConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertKnowledgeSyncConfig>>, TError,{data: BodyType<KnowledgeSyncConfigInput | null>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertKnowledgeSyncConfig>>,
+        TError,
+        {data: BodyType<KnowledgeSyncConfigInput | null>},
+        TContext
+      > => {
+      return useMutation(getUpsertKnowledgeSyncConfigMutationOptions(options));
+    }
+
+export const getRunKnowledgeSyncUrl = () => {
+
+
+
+
+  return `/api/knowledge/sync-run`
+}
+
+/**
+ * @summary Run a manual knowledge sync now. Sheet is the source of truth (deletes apply).
+ */
+export const runKnowledgeSync = async ( options?: RequestInit): Promise<RunKnowledgeSync200> => {
+
+  return customFetch<RunKnowledgeSync200>(getRunKnowledgeSyncUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunKnowledgeSyncMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runKnowledgeSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runKnowledgeSync>>, TError,void, TContext> => {
+
+const mutationKey = ['runKnowledgeSync'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runKnowledgeSync>>, void> = () => {
+
+
+          return  runKnowledgeSync(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunKnowledgeSyncMutationResult = NonNullable<Awaited<ReturnType<typeof runKnowledgeSync>>>
+
+    export type RunKnowledgeSyncMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Run a manual knowledge sync now. Sheet is the source of truth (deletes apply).
+ */
+export const useRunKnowledgeSync = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runKnowledgeSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runKnowledgeSync>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunKnowledgeSyncMutationOptions(options));
     }
 
 export const getImportKnowledgeUrl = () => {

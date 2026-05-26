@@ -55,6 +55,7 @@ import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import KnowledgeSyncCard from "@/components/KnowledgeSyncCard";
 
 const TYPE_COLOR_PALETTE = [
   "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -355,6 +356,8 @@ export default function Knowledge() {
           </Button>
         </div>
       </div>
+
+      <KnowledgeSyncCard />
 
       <div className="flex-1 p-6">
         {isLoading ? (

@@ -1,5 +1,6 @@
 import app from "./app";
 import { startProductSyncScheduler } from "./routes/products-sync";
+import { startKnowledgeSyncScheduler } from "./routes/knowledge-sync";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
     // Auto-sync ticker for Google-Sheet → products bindings. Per-config rows
     // with autoSyncEnabled=true are re-pulled at their configured interval.
     startProductSyncScheduler();
+    startKnowledgeSyncScheduler();
   });
 }
 

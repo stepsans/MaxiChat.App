@@ -14,6 +14,7 @@ import flowsRouter from "./flows";
 import adminRouter from "./admin";
 import credentialsRouter from "./credentials";
 import productsSyncRouter from "./products-sync";
+import knowledgeSyncRouter from "./knowledge-sync";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -28,6 +29,9 @@ router.use(requireAuth);
 router.use("/whatsapp", whatsappRouter);
 router.use("/chats", chatsRouter);
 router.use("/knowledge-types", knowledgeTypesRouter);
+// knowledge-sync mounted BEFORE knowledgeRouter so explicit /sync-* paths
+// take priority over the generic /:id CRUD route.
+router.use("/knowledge", knowledgeSyncRouter);
 router.use("/knowledge", knowledgeRouter);
 router.use("/settings", settingsRouter);
 router.use("/analytics", analyticsRouter);

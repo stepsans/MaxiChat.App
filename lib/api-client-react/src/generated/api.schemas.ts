@@ -736,6 +736,60 @@ export interface ProductSyncConfig {
   updatedAt: string;
 }
 
+export type KnowledgeSyncConfigIntervalMinutes = typeof KnowledgeSyncConfigIntervalMinutes[keyof typeof KnowledgeSyncConfigIntervalMinutes];
+
+
+export const KnowledgeSyncConfigIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export type KnowledgeSyncConfigLastSyncStatus = typeof KnowledgeSyncConfigLastSyncStatus[keyof typeof KnowledgeSyncConfigLastSyncStatus];
+
+
+export const KnowledgeSyncConfigLastSyncStatus = {
+  idle: 'idle',
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export interface KnowledgeSyncConfig {
+  id: number;
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+  /** @minimum 1 */
+  headerRow: number;
+  autoSyncEnabled: boolean;
+  intervalMinutes: KnowledgeSyncConfigIntervalMinutes;
+  lastSyncedAt?: string | null;
+  lastSyncStatus: KnowledgeSyncConfigLastSyncStatus;
+  lastSyncError?: string | null;
+  updatedAt: string;
+}
+
+export type KnowledgeSyncConfigInputIntervalMinutes = typeof KnowledgeSyncConfigInputIntervalMinutes[keyof typeof KnowledgeSyncConfigInputIntervalMinutes];
+
+
+export const KnowledgeSyncConfigInputIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
+export interface KnowledgeSyncConfigInput {
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+  /** @minimum 1 */
+  headerRow?: number;
+  autoSyncEnabled?: boolean;
+  intervalMinutes?: KnowledgeSyncConfigInputIntervalMinutes;
+}
+
 export type ProductSyncConfigInputIntervalMinutes = typeof ProductSyncConfigInputIntervalMinutes[keyof typeof ProductSyncConfigInputIntervalMinutes];
 
 
@@ -813,6 +867,21 @@ export const ListChatsTag = {
   cold: 'cold',
   closing: 'closing',
 } as const;
+
+export type GetKnowledgeSyncConfig200 = {
+  config?: KnowledgeSyncConfig | null;
+};
+
+export type UpsertKnowledgeSyncConfig200 = {
+  config?: KnowledgeSyncConfig | null;
+};
+
+export type RunKnowledgeSync200 = {
+  inserted: number;
+  updated: number;
+  deleted: number;
+  syncedAt?: string;
+};
 
 export type ImportKnowledge200 = {
   imported: number;

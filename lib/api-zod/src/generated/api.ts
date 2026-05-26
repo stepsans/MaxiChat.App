@@ -430,6 +430,77 @@ export const UpdateSettingsResponse = zod.object({
 
 
 /**
+ * @summary Get the Google Sheet sync config for the current WhatsApp account
+ */
+
+
+
+export const GetKnowledgeSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary Create or update the knowledge sync config (pass null to clear).
+ */
+export const upsertKnowledgeSyncConfigBodyOneHeaderRowDefault = 1;
+
+export const upsertKnowledgeSyncConfigBodyOneAutoSyncEnabledDefault = false;
+export const upsertKnowledgeSyncConfigBodyOneIntervalMinutesDefault = 15;
+
+export const UpsertKnowledgeSyncConfigBody = zod.union([zod.object({
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1).default(upsertKnowledgeSyncConfigBodyOneHeaderRowDefault),
+  "autoSyncEnabled": zod.boolean().default(upsertKnowledgeSyncConfigBodyOneAutoSyncEnabledDefault),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]).default(upsertKnowledgeSyncConfigBodyOneIntervalMinutesDefault)
+}),zod.null()])
+
+
+
+
+export const UpsertKnowledgeSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "headerRow": zod.number().min(1),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary Run a manual knowledge sync now. Sheet is the source of truth (deletes apply).
+ */
+export const RunKnowledgeSyncResponse = zod.object({
+  "inserted": zod.number(),
+  "updated": zod.number(),
+  "deleted": zod.number(),
+  "syncedAt": zod.coerce.date().optional()
+})
+
+
+/**
  * Uploads a CSV or XLSX file via `multipart/form-data` with form field `file`.
 Required columns (header row, case-insensitive): type, title, content.
 Valid type values: product, faq, script, testimonial, website.

@@ -94,3 +94,39 @@ export const productSyncConfigTable = pgTable(
 );
 
 export type ProductSyncConfig = typeof productSyncConfigTable.$inferSelect;
+
+// Per-WhatsApp-account (ownerPhone) binding from a Google Sheet → the
+// `knowledge_entries` table. Same shape and semantics as productSyncConfigTable
+// but for the Knowledge Base. Sheet is the source of truth: each sync replaces
+// the owner's knowledge entries with the sheet contents.
+export const knowledgeSyncConfigTable = pgTable(
+  "knowledge_sync_config",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    credentialId: integer("credential_id")
+      .notNull()
+      .references(() => credentialsTable.id, { onDelete: "cascade" }),
+    spreadsheetId: text("spreadsheet_id").notNull(),
+    sheetName: text("sheet_name").notNull(),
+    headerRow: integer("header_row").notNull().default(1),
+    autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(false),
+    intervalMinutes: integer("interval_minutes").notNull().default(15),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastSyncStatus: text("last_sync_status").notNull().default("idle"),
+    lastSyncError: text("last_sync_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    knowledgeSyncOwnerPhoneUnique: uniqueIndex(
+      "knowledge_sync_owner_phone_unique"
+    ).on(t.ownerPhone),
+  })
+);
+
+export type KnowledgeSyncConfig = typeof knowledgeSyncConfigTable.$inferSelect;
