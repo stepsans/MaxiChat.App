@@ -260,7 +260,12 @@ router.post("/:id/oauth/start", async (req, res): Promise<void> => {
 router.get("/oauth/callback", async (req, res): Promise<void> => {
   // Render a tiny HTML page in all cases — this URL is opened in the
   // browser after Google's consent screen, so JSON would just look broken.
-  const respondHtml = (title: string, message: string, ok: boolean): void => {
+  const respondHtml = (
+    title: string,
+    message: string,
+    ok: boolean,
+    credId: number | null
+  ): void => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font-family:system-ui,sans-serif;background:#0b0b0b;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
@@ -269,14 +274,14 @@ router.get("/oauth/callback", async (req, res): Promise<void> => {
 a{color:#60a5fa}</style></head>
 <body><div class="card"><h2><span class="dot"></span>${title}</h2><p>${message}</p>
 <p><a href="/credentials">Kembali ke Credentials</a></p>
-<script>try{window.opener&&window.opener.postMessage({type:"vjchat:oauth",ok:${ok ? "true" : "false"},credentialId:${saved?.credentialId ?? "null"}},"*");setTimeout(function(){window.close()},800)}catch(e){}</script>
+<script>try{window.opener&&window.opener.postMessage({type:"vjchat:oauth",ok:${ok ? "true" : "false"},credentialId:${credId ?? "null"}},"*");setTimeout(function(){window.close()},800)}catch(e){}</script>
 </div></body></html>`);
   };
 
   try {
     const userId = req.session.userId;
     if (typeof userId !== "number") {
-      respondHtml("Sesi tidak ditemukan", "Silakan login dulu lalu coba lagi.", false);
+      respondHtml("Sesi tidak ditemukan", "Silakan login dulu lalu coba lagi.", false, null);
       return;
     }
     const stateParam = String(req.query["state"] ?? "");
@@ -286,20 +291,20 @@ a{color:#60a5fa}</style></head>
     // Wipe state regardless of outcome so it can't be replayed.
     delete req.session.oauthState;
     if (errParam) {
-      respondHtml("Login dibatalkan", `Google: ${errParam}`, false);
+      respondHtml("Login dibatalkan", `Google: ${errParam}`, false, saved?.credentialId ?? null);
       return;
     }
     if (!saved || !stateParam || saved.nonce !== stateParam) {
-      respondHtml("State tidak cocok", "Mulai ulang proses dari halaman Credentials.", false);
+      respondHtml("State tidak cocok", "Mulai ulang proses dari halaman Credentials.", false, saved?.credentialId ?? null);
       return;
     }
     if (!code) {
-      respondHtml("Tidak ada code", "Google tidak mengembalikan authorization code.", false);
+      respondHtml("Tidak ada code", "Google tidak mengembalikan authorization code.", false, saved.credentialId);
       return;
     }
     const row = await loadOwnedCredential(userId, saved.credentialId);
     if (!row) {
-      respondHtml("Credential tidak ditemukan", "Mungkin sudah dihapus.", false);
+      respondHtml("Credential tidak ditemukan", "Mungkin sudah dihapus.", false, saved.credentialId);
       return;
     }
     const clientSecret = decryptString(row.clientSecretEnc);
@@ -307,7 +312,7 @@ a{color:#60a5fa}</style></head>
     const oauth2 = new google.auth.OAuth2(row.clientId, clientSecret, redirectUri);
     const { tokens } = await oauth2.getToken(code);
     if (!tokens.access_token) {
-      respondHtml("Token kosong", "Google tidak mengembalikan access token.", false);
+      respondHtml("Token kosong", "Google tidak mengembalikan access token.", false, saved.credentialId);
       return;
     }
     oauth2.setCredentials(tokens);
@@ -335,13 +340,22 @@ a{color:#60a5fa}</style></head>
     respondHtml(
       "Akun terhubung",
       accountEmail ? `Tersambung sebagai <b>${accountEmail}</b>.` : "Tersambung.",
-      true
+      true,
+      saved.credentialId
     );
   } catch (err) {
     req.log.error({ err }, "oauth callback failed");
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.status(500).send(
-      `<p>Gagal menyelesaikan login Google. <a href="/credentials">Kembali</a></p>`
+    const detail =
+      (err as { response?: { data?: { error_description?: string; error?: string } } })
+        ?.response?.data?.error_description ||
+      (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+      (err as Error)?.message ||
+      "Unknown error";
+    respondHtml(
+      "Gagal menyelesaikan login Google",
+      `Google menolak: <code>${String(detail).replace(/</g, "&lt;")}</code>`,
+      false,
+      null
     );
   }
 });
