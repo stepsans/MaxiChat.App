@@ -157,6 +157,85 @@
   --spacing: 0.25rem;
 }
 
+/* Light theme — applied when <html class="light"> is set. Mirrors WhatsApp
+   Web's light look (panel header #f0f2f5, conversation #efeae2, out bubble
+   #d9fdd3) while keeping the same accent (#00a884). */
+.light {
+  --button-outline: rgba(0,0,0, .12);
+  --badge-outline: rgba(0,0,0, .06);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(0,0,0, .04);
+  --elevate-2: rgba(0,0,0, .08);
+
+  --background: 0 0% 100%;
+  --foreground: 200 18% 15%;
+  --border: 200 14% 88%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 200 18% 15%;
+  --card-border: 200 14% 88%;
+
+  --sidebar: 210 16% 95%;
+  --sidebar-foreground: 200 18% 22%;
+  --sidebar-border: 200 14% 86%;
+  --sidebar-primary: 168 100% 33%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 200 14% 90%;
+  --sidebar-accent-foreground: 200 18% 18%;
+  --sidebar-ring: 168 100% 33%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 200 18% 15%;
+  --popover-border: 200 14% 88%;
+
+  --primary: 168 100% 33%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 200 14% 94%;
+  --secondary-foreground: 200 18% 18%;
+
+  --muted: 200 14% 94%;
+  --muted-foreground: 200 8% 42%;
+
+  --accent: 200 14% 92%;
+  --accent-foreground: 200 18% 18%;
+
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 0 0% 100%;
+  --ring: 168 100% 33%;
+
+  --chart-1: 168 100% 33%;
+  --chart-2: 210 90% 50%;
+  --chart-3: 35 90% 50%;
+  --chart-4: 280 70% 55%;
+  --chart-5: 0 70% 50%;
+
+  --wa-panel-header: 210 16% 95%;   /* #f0f2f5 */
+  --wa-panel: 0 0% 100%;
+  --wa-conversation: 60 5% 91%;     /* #efeae2 */
+  --wa-bubble-out: 134 60% 90%;     /* #d9fdd3 */
+  --wa-bubble-in: 0 0% 100%;
+  --wa-bubble-text: 200 18% 15%;
+  --wa-meta: 200 8% 45%;
+  --wa-tick: 200 8% 55%;
+  --wa-tick-read: 199 89% 45%;
+  --wa-accent: 168 100% 33%;
+  --wa-divider: 200 14% 90%;
+}
+
+/* Doodle wallpaper for light mode — darker low-opacity glyphs on the
+   #efeae2 surface so the pattern is visible. */
+.light .wa-doodle-bg {
+  background-color: hsl(var(--wa-conversation));
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320' viewBox='0 0 320 320'%3E%3Cg fill='%23000000' fill-opacity='0.04'%3E%3Cpath d='M40 28a12 12 0 1 0 .001 24.001A12 12 0 0 0 40 28zm-3 7h6v2h-6zm0 4h6v2h-6zm0 4h4v2h-4z'/%3E%3Cpath d='M120 60c0 8-6 14-14 14a14 14 0 0 1-7-2l-5 2 2-5a14 14 0 1 1 24-9zm-19 0a5 5 0 1 0 10 0 5 5 0 0 0-10 0zm9 0a5 5 0 1 0 10 0 5 5 0 0 0-10 0z'/%3E%3Cpath d='M200 110a10 10 0 1 1 .001-20.001A10 10 0 0 1 200 110zm-6-12h12v2h-12zm0 4h12v2h-12z'/%3E%3Cpath d='M260 200l-6 6h-8a4 4 0 0 1-4-4v-12a4 4 0 0 1 4-4h16a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4h-2zm-14-12v2h12v-2zm0 4v2h8v-2z'/%3E%3Cpath d='M80 240a14 14 0 1 1 0-28 14 14 0 0 1 0 28zm0-22a8 8 0 0 0-8 8h4a4 4 0 0 1 8 0h4a8 8 0 0 0-8-8z'/%3E%3Cpath d='M160 260c6 0 11 4 12 10h-4a8 8 0 0 0-16 0h-4c1-6 6-10 12-10zm0-2a6 6 0 1 1 0-12 6 6 0 0 1 0 12z'/%3E%3Cpath d='M280 60c-7 0-12 5-12 12 0 2 0 4 2 6l-2 6 6-2a12 12 0 1 0 6-22zm0 4a8 8 0 1 1 0 16 8 8 0 0 1-4-1l-3 1 1-3a8 8 0 0 1 6-13z'/%3E%3Cpath d='M40 160a10 10 0 1 1 .001-20.001A10 10 0 0 1 40 160zm-3-12h6v2h-6zm0 4h6v2h-6z'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+.light .wa-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+.light .wa-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+
 @layer base {
   * {
     @apply border-border;

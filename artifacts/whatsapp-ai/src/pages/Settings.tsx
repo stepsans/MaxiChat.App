@@ -21,7 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor } from "lucide-react";
+import { useTheme, type Theme } from "@/hooks/use-theme";
 import * as XLSX from "xlsx";
 import { useRef } from "react";
 import {
@@ -117,18 +118,48 @@ export default function Settings() {
     );
   }
 
+  const isDirty = form.formState.isDirty;
+
   return (
     <div className="flex flex-col h-full overflow-auto">
-      <div className="flex items-center justify-between px-6 h-14 border-b border-border flex-shrink-0">
-        <div>
-          <h1 className="text-base font-semibold">Settings</h1>
-          <p className="text-xs text-muted-foreground">Configure AI behavior and auto-reply</p>
+      {/* Sticky header with Save button anchored to the right — solves the
+          "tombol save di tengah" problem and keeps it reachable while scrolling. */}
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 h-14 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex-shrink-0">
+        <div className="min-w-0">
+          <h1 className="text-base font-semibold">Pengaturan</h1>
+          <p className="text-xs text-muted-foreground truncate">
+            Konfigurasi perilaku AI, auto-reply, dan tampilan
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isDirty && (
+            <span className="hidden sm:inline text-xs text-muted-foreground">
+              Ada perubahan belum disimpan
+            </span>
+          )}
+          <Button
+            data-testid="button-save-settings"
+            type="submit"
+            form="settings-form"
+            size="sm"
+            disabled={update.isPending || !isDirty}
+          >
+            {update.isPending && (
+              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+            )}
+            Simpan
+          </Button>
         </div>
       </div>
 
-      <div className="flex-1 p-6 max-w-2xl space-y-5">
+      <div className="flex-1 p-6 max-w-6xl w-full mx-auto space-y-5">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <form
+            id="settings-form"
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-5"
+          >
+            {/* Auto reply — compact, kiri atas */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -136,7 +167,7 @@ export default function Settings() {
                   Auto Reply
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Enable AI to automatically reply to incoming WhatsApp messages
+                  Aktifkan AI untuk membalas pesan WhatsApp masuk secara otomatis
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -146,9 +177,9 @@ export default function Settings() {
                   render={({ field }) => (
                     <FormItem className="flex items-center justify-between">
                       <div>
-                        <FormLabel className="text-sm">Enable AI Auto Reply</FormLabel>
+                        <FormLabel className="text-sm">Aktifkan AI Auto Reply</FormLabel>
                         <FormDescription className="text-xs">
-                          AI will respond 24/7 to all incoming messages
+                          AI akan menjawab 24/7 semua pesan yang masuk
                         </FormDescription>
                       </div>
                       <FormControl>
@@ -164,24 +195,25 @@ export default function Settings() {
               </CardContent>
             </Card>
 
+            {/* Reply delay — sebelah kanan */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Clock className="w-4 h-4 text-primary" />
-                  Reply Delay
+                  Jeda Balasan
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Natural delay before AI sends a reply (makes it feel more human)
+                  Delay alami sebelum AI mengirim balasan supaya terasa lebih manusiawi
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="replyDelayMin"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs">Min delay (seconds)</FormLabel>
+                        <FormLabel className="text-xs">Min delay (detik)</FormLabel>
                         <FormControl>
                           <Input
                             data-testid="input-delay-min"
@@ -200,7 +232,7 @@ export default function Settings() {
                     name="replyDelayMax"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs">Max delay (seconds)</FormLabel>
+                        <FormLabel className="text-xs">Max delay (detik)</FormLabel>
                         <FormControl>
                           <Input
                             data-testid="input-delay-max"
@@ -218,17 +250,18 @@ export default function Settings() {
               </CardContent>
             </Card>
 
+            {/* Cooldown — kiri bawah */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Clock className="w-4 h-4 text-primary" />
-                  Chatbot Flow Cooldown
+                  Cooldown Flow Chatbot
                 </CardTitle>
                 <CardDescription className="text-xs">
                   Setelah flow chatbot selesai (End / dead-end / jawaban tidak dikenal),
-                  Trigger Default akan di-mute selama durasi ini supaya AI bisa menjawab
+                  Trigger Default di-mute selama durasi ini supaya AI bisa menjawab
                   pertanyaan lanjutan. Keyword Trigger tetap aktif. Setelah waktu habis,
-                  state chat otomatis reset dan flow bisa dimulai lagi dari awal.
+                  state chat reset dan flow bisa mulai dari awal.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -259,46 +292,15 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Bot className="w-4 h-4 text-primary" />
-                  AI System Prompt
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Instructions that define how the AI behaves as a customer service agent
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FormField
-                  control={form.control}
-                  name="systemPrompt"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Textarea
-                          data-testid="textarea-system-prompt"
-                          rows={10}
-                          className="resize-none font-mono text-xs"
-                          placeholder="Enter your AI system prompt..."
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
-
+            {/* Fallback message — sebelah cooldown */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-primary" />
-                  Fallback Message
+                  Pesan Fallback
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Sent when AI is not confident in its answer
+                  Dikirim ketika AI tidak yakin dengan jawabannya
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -310,9 +312,9 @@ export default function Settings() {
                       <FormControl>
                         <Textarea
                           data-testid="textarea-fallback-message"
-                          rows={3}
+                          rows={4}
                           className="resize-none text-sm"
-                          placeholder="e.g. Aku bantu cek dulu ya kak..."
+                          placeholder="cth. Aku bantu cek dulu ya kak..."
                           {...field}
                         />
                       </FormControl>
@@ -323,23 +325,101 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            <Button
-              data-testid="button-save-settings"
-              type="submit"
-              disabled={update.isPending}
-            >
-              {update.isPending && (
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-              )}
-              Save Settings
-            </Button>
+            {/* System prompt — selalu lebar penuh (textarea besar) */}
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-primary" />
+                  AI System Prompt
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Instruksi yang menentukan bagaimana AI berperilaku sebagai customer service
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="systemPrompt"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Textarea
+                          data-testid="textarea-system-prompt"
+                          rows={12}
+                          className="resize-y font-mono text-xs"
+                          placeholder="Tulis system prompt AI Anda di sini..."
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
           </form>
         </Form>
 
-        <BioCard />
+        {/* Cards di luar form — punya tombol save sendiri */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <ThemeCard />
+          <BioCard />
+        </div>
         <ShortcutsCard />
       </div>
     </div>
+  );
+}
+
+function ThemeCard() {
+  const { theme, setTheme } = useTheme();
+  const options: { value: Theme; label: string; icon: typeof Sun }[] = [
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+    { value: "system", label: "System", icon: Monitor },
+  ];
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Palette className="w-4 h-4 text-primary" />
+          Tampilan
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Pilih tema warna aplikasi. "System" mengikuti pengaturan perangkat Anda.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div
+          role="radiogroup"
+          aria-label="Tema tampilan"
+          className="grid grid-cols-3 gap-2"
+        >
+          {options.map(({ value, label, icon: Icon }) => {
+            const active = theme === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                data-testid={`theme-option-${value}`}
+                onClick={() => setTheme(value)}
+                className={
+                  "flex flex-col items-center justify-center gap-1.5 rounded-md border px-3 py-3 text-xs transition-colors " +
+                  (active
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border bg-background hover:bg-accent text-muted-foreground hover:text-foreground")
+                }
+              >
+                <Icon className="w-4 h-4" />
+                <span className="font-medium">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
