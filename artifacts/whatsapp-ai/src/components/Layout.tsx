@@ -9,6 +9,7 @@ import {
   BarChart3,
   GitBranch,
   KeyRound,
+  Users,
   Wifi,
   WifiOff,
   Loader2,
@@ -35,16 +36,30 @@ import {
   type AuthUser,
 } from "@workspace/api-client-react";
 
-const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/chats", label: "Chats", icon: MessageSquare },
-  { href: "/status", label: "Status", icon: CircleDashed },
-  { href: "/knowledge", label: "Knowledge Base", icon: BookOpen },
-  { href: "/products", label: "Products", icon: Package },
-  { href: "/flows", label: "Chatbot Flow", icon: GitBranch },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/credentials", label: "Credentials", icon: KeyRound },
-  { href: "/settings", label: "Settings", icon: Settings },
+type TeamRole = "super_admin" | "supervisor" | "agent";
+
+// Nav permissions per team role:
+//   super_admin: everything (sole "owner" of the WhatsApp account & billing).
+//   supervisor:  same as super_admin minus Agents/Credentials/Settings/Analytics
+//                — they can see and assign all chats, but team / billing /
+//                integrations stay with the owner.
+//   agent:       only Chats (filtered to assigned conversations on the server).
+const navItems: Array<{
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  roles: TeamRole[];
+}> = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["super_admin", "supervisor"] },
+  { href: "/chats", label: "Chats", icon: MessageSquare, roles: ["super_admin", "supervisor", "agent"] },
+  { href: "/status", label: "Status", icon: CircleDashed, roles: ["super_admin", "supervisor"] },
+  { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, roles: ["super_admin", "supervisor"] },
+  { href: "/products", label: "Products", icon: Package, roles: ["super_admin", "supervisor"] },
+  { href: "/flows", label: "Chatbot Flow", icon: GitBranch, roles: ["super_admin", "supervisor"] },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["super_admin"] },
+  { href: "/agents", label: "Agen & Tim", icon: Users, roles: ["super_admin", "supervisor", "agent"] },
+  { href: "/credentials", label: "Credentials", icon: KeyRound, roles: ["super_admin"] },
+  { href: "/settings", label: "Settings", icon: Settings, roles: ["super_admin"] },
 ];
 
 function useUnreadCount() {
@@ -225,7 +240,12 @@ export default function Layout({
             collapsed ? "px-1.5" : "px-2"
           )}
         >
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {navItems
+            .filter((it) => {
+              const tr = (user?.teamRole ?? "super_admin") as TeamRole;
+              return it.roles.includes(tr);
+            })
+            .map(({ href, label, icon: Icon }) => {
             const isActive =
               href === "/" ? location === "/" : location.startsWith(href);
             const isChats = href === "/chats";
@@ -301,9 +321,15 @@ export default function Layout({
                 className="flex-1 min-w-0 text-[11px] leading-tight"
                 data-testid="account-email"
               >
-                <div className="text-foreground/60">Masuk sebagai</div>
+                <div className="text-foreground/60">
+                  {user.teamRole === "super_admin"
+                    ? "Super Admin"
+                    : user.teamRole === "supervisor"
+                      ? "Supervisor"
+                      : "Agen"}
+                </div>
                 <div className="font-medium truncate text-foreground/90">
-                  {user.email}
+                  {user.name ?? user.email}
                 </div>
               </div>
             )}

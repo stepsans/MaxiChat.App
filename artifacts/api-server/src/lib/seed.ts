@@ -201,15 +201,21 @@ export async function ensureWhatsappSessionUniqueUser(): Promise<void> {
 }
 
 // Helper used elsewhere — resolve a user's pinned WhatsApp owner phone, if any.
+// For invited team members (supervisor / agent) the phone is on the
+// super_admin parent row, so we fall back to parent_user_id when the user
+// itself has no direct binding. Single LEFT JOIN to keep this on the hot path.
 export async function getOwnerPhoneForUser(
   userId: number
 ): Promise<string | null> {
-  const [row] = await db
-    .select()
-    .from(userWhatsappTable)
-    .where(eq(userWhatsappTable.userId, userId))
-    .limit(1);
-  return row?.ownerPhone ?? null;
+  const [row] = await db.execute<{ owner_phone: string | null }>(sql`
+    SELECT COALESCE(uw_self.owner_phone, uw_parent.owner_phone) AS owner_phone
+    FROM users u
+    LEFT JOIN user_whatsapp uw_self ON uw_self.user_id = u.id
+    LEFT JOIN user_whatsapp uw_parent ON uw_parent.user_id = u.parent_user_id
+    WHERE u.id = ${userId}
+    LIMIT 1
+  `);
+  return row?.owner_phone ?? null;
 }
 
 // Helper used by whatsapp.ts when a user finishes pairing — persist the

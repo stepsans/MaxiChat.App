@@ -21,6 +21,19 @@ export const usersTable = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("user"),
   status: text("status").notNull().default("pending"),
+  // Display name shown in the UI (nullable for backward-compat with pre-name accounts).
+  name: text("name"),
+  // Team hierarchy: when an "owner" user invites CS staff, the invitee's
+  // parentUserId points at the owner. NULL = top-level account (super_admin).
+  parentUserId: integer("parent_user_id"),
+  // Role inside the WhatsApp team. "super_admin" is the owner (parent_user_id
+  // NULL). Invited members are "supervisor" (sees all chats, can assign) or
+  // "agent" (sees only chats assigned to them).
+  teamRole: text("team_role").notNull().default("super_admin"),
+  // SaaS plan that caps how many invited team members the super_admin can
+  // create. Hard-coded limits: basic=2, pro=5, business=15. Inherited from
+  // parent for invited members but only the parent's value is used.
+  plan: text("plan").notNull().default("basic"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

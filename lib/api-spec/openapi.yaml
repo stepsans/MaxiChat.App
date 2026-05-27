@@ -491,6 +491,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChatMessage"
 
+  /chats/{id}/assign:
+    patch:
+      operationId: assignChat
+      tags: [chats]
+      summary: Assign (or unassign with null) a chat to a team member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignChatInput"
+      responses:
+        "200":
+          description: Updated chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
   /chats/{id}/takeover:
     post:
       operationId: takeoverChat
@@ -1207,6 +1232,70 @@ paths:
                 type: array
                 items: { type: string }
 
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List team members for the current owner account
+      responses:
+        "200":
+          description: Team listing + plan usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamListing"
+    post:
+      operationId: createAgent
+      tags: [agents]
+      summary: Invite a new team member (super admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAgentInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamAgent" }
+        "409":
+          description: Plan limit reached or email already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /agents/{id}:
+    patch:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update a team member (super admin only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAgentInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamAgent" }
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      summary: Remove a team member (super admin only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+
   /products/sync-config:
     get:
       operationId: getProductSyncConfig
@@ -1620,7 +1709,7 @@ components:
 
     Chat:
       type: object
-      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt]
+      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId]
       properties:
         id:
           type: integer
@@ -1654,6 +1743,8 @@ components:
           type: ["string", "null"]
         createdAt:
           type: string
+        assignedUserId:
+          type: ["integer", "null"]
 
     ChatMessage:
       type: object
@@ -1675,7 +1766,7 @@ components:
 
     ChatWithMessages:
       type: object
-      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, messages]
+      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId, messages]
       properties:
         id:
           type: integer
@@ -1709,6 +1800,8 @@ components:
           type: ["string", "null"]
         createdAt:
           type: string
+        assignedUserId:
+          type: ["integer", "null"]
         messages:
           type: array
           items:
@@ -2068,7 +2161,7 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, role, status]
+      required: [id, email, role, status, teamRole]
       properties:
         id:
           type: integer
@@ -2081,6 +2174,79 @@ components:
         status:
           type: string
           enum: [pending, active, disabled]
+        teamRole:
+          type: string
+          enum: [super_admin, supervisor, agent]
+        name:
+          type: ["string", "null"]
+        plan:
+          type: ["string", "null"]
+          enum: [basic, pro, business, null]
+        parentUserId:
+          type: ["integer", "null"]
+
+    TeamAgent:
+      type: object
+      required: [id, email, name, teamRole, status, createdAt]
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        name: { type: ["string", "null"] }
+        teamRole:
+          type: string
+          enum: [supervisor, agent]
+        status:
+          type: string
+          enum: [active, disabled]
+        createdAt:
+          type: string
+          format: date-time
+
+    TeamListing:
+      type: object
+      required: [plan, maxAgents, usedAgents, teamRole, agents]
+      properties:
+        plan:
+          type: string
+          enum: [basic, pro, business]
+        maxAgents: { type: integer }
+        usedAgents: { type: integer }
+        teamRole:
+          type: string
+          enum: [super_admin, supervisor, agent]
+        agents:
+          type: array
+          items: { $ref: "#/components/schemas/TeamAgent" }
+
+    CreateAgentInput:
+      type: object
+      required: [email, password, name, teamRole]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 200 }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        teamRole:
+          type: string
+          enum: [supervisor, agent]
+
+    UpdateAgentInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        teamRole:
+          type: string
+          enum: [supervisor, agent]
+        status:
+          type: string
+          enum: [active, disabled]
+        password: { type: string, minLength: 8, maxLength: 200 }
+
+    AssignChatInput:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: ["integer", "null"]
 
     SignupInput:
       type: object

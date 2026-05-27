@@ -7,8 +7,12 @@ import {
   useSendManualReply,
   useTakeoverChat,
   useRefreshChatAvatar,
+  useAssignChat,
+  useListAgents,
+  useGetMe,
   getGetChatQueryKey,
   getListChatsQueryKey,
+  getListAgentsQueryKey,
   useListProducts,
   getListProductsQueryKey,
   useSendProductToChat,
@@ -287,6 +291,32 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     },
   });
 
+  // Assignment: super_admin / supervisor can route a chat to a specific agent.
+  // The team list (useListAgents) is cheap and shared across all open chats,
+  // so it's fine to load it here unconditionally — the actual control is
+  // hidden for the "agent" team role.
+  const { data: me } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
+  const teamRole = me?.user?.teamRole ?? "super_admin";
+  const canAssign = teamRole === "super_admin" || teamRole === "supervisor";
+  const { data: agentsData } = useListAgents({
+    query: { queryKey: getListAgentsQueryKey(), enabled: canAssign },
+  });
+  const assignMut = useAssignChat({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+      },
+      onError: (err: any) => {
+        toast({
+          title: "Gagal assign chat",
+          description: err?.data?.error ?? err?.message ?? "Coba lagi.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   // Mark list cache stale so unread badges clear when entering a chat.
   useEffect(() => {
     if (chat) {
@@ -437,6 +467,38 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               Manual
             </Label>
           </div>
+
+          {canAssign && (
+            <Select
+              value={
+                chat.assignedUserId == null ? "__unassigned" : String(chat.assignedUserId)
+              }
+              onValueChange={(v) =>
+                assignMut.mutate({
+                  id: chatId,
+                  data: { userId: v === "__unassigned" ? null : Number(v) },
+                })
+              }
+            >
+              <SelectTrigger
+                data-testid="select-chat-assign"
+                className="h-8 w-36 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+              >
+                <SelectValue placeholder="Assign…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__unassigned">Belum di-assign</SelectItem>
+                {agentsData?.agents
+                  .filter((a) => a.status === "active")
+                  .map((a) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {a.name ?? a.email}
+                      {a.teamRole === "supervisor" ? " (Supv)" : ""}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <Sheet open={productPanelOpen} onOpenChange={setProductPanelOpen}>
             <SheetTrigger asChild>

@@ -30,5 +30,7 @@ export interface ChatWithMessages {
   /** @nullable */
   profilePicUrl: string | null;
   createdAt: string;
+  /** @nullable */
+  assignedUserId: number | null;
   messages: ChatMessage[];
 }

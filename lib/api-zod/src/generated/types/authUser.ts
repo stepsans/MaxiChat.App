@@ -5,12 +5,21 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { AuthUserPlan } from './authUserPlan';
 import type { AuthUserRole } from './authUserRole';
 import type { AuthUserStatus } from './authUserStatus';
+import type { AuthUserTeamRole } from './authUserTeamRole';
 
 export interface AuthUser {
   id: number;
   email: string;
   role: AuthUserRole;
   status: AuthUserStatus;
+  teamRole: AuthUserTeamRole;
+  /** @nullable */
+  name?: string | null;
+  /** @nullable */
+  plan?: AuthUserPlan;
+  /** @nullable */
+  parentUserId?: number | null;
 }

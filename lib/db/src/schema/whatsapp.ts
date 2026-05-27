@@ -36,6 +36,13 @@ export const chatsTable = pgTable(
     unreadCount: integer("unread_count").notNull().default(0),
     profilePicUrl: text("profile_pic_url"),
     profilePicCheckedAt: timestamp("profile_pic_checked_at", { withTimezone: true }),
+    // When a supervisor/super_admin assigns this chat to a specific agent user
+    // (users.id), only that agent + supervisors + the super_admin can see it
+    // in their /chats list. NULL = unassigned (visible to super_admin +
+    // supervisors only). Plain integer (no FK) to avoid a cross-schema
+    // circular reference; the chats route validates the user belongs to the
+    // same owner before writing.
+    assignedUserId: integer("assigned_user_id"),
     // Runtime chatbot-flow state. `{ flowId: number, currentNodeId: string }`
     // when the chat is currently waiting on a reply inside a flow; null when
     // not in a flow (AI handles the chat normally).

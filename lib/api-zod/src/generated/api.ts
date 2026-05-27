@@ -23,7 +23,11 @@ export const LoginResponse = zod.object({
   "id": zod.number(),
   "email": zod.string().email(),
   "role": zod.enum(['user', 'admin']),
-  "status": zod.enum(['pending', 'active', 'disabled'])
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "name": zod.string().nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal(null)]).nullish(),
+  "parentUserId": zod.number().nullish()
 })
 
 
@@ -43,7 +47,11 @@ export const GetMeResponse = zod.object({
   "id": zod.number(),
   "email": zod.string().email(),
   "role": zod.enum(['user', 'admin']),
-  "status": zod.enum(['pending', 'active', 'disabled'])
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "name": zod.string().nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal(null)]).nullish(),
+  "parentUserId": zod.number().nullish()
 }),zod.null()])
 })
 
@@ -177,7 +185,8 @@ export const ListChatsResponseItem = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
 })
 export const ListChatsResponse = zod.array(ListChatsResponseItem)
 
@@ -236,6 +245,7 @@ export const GetChatResponse = zod.object({
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
   "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable(),
   "messages": zod.array(zod.object({
   "id": zod.number(),
   "chatId": zod.number(),
@@ -274,7 +284,8 @@ export const UpdateChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
 })
 
 
@@ -333,6 +344,37 @@ export const SendManualReplyResponse = zod.object({
 
 
 /**
+ * @summary Assign (or unassign with null) a chat to a team member
+ */
+export const AssignChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AssignChatBody = zod.object({
+  "userId": zod.number().nullable()
+})
+
+export const AssignChatResponse = zod.object({
+  "id": zod.number(),
+  "phoneNumber": zod.string(),
+  "contactName": zod.string(),
+  "nickname": zod.string().nullable(),
+  "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
+  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
+  "isHumanTakeover": zod.boolean(),
+  "lastMessage": zod.string().nullable(),
+  "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
+  "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
+})
+
+
+/**
  * @summary Toggle human takeover for a chat
  */
 export const TakeoverChatParams = zod.object({
@@ -358,7 +400,8 @@ export const TakeoverChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
 })
 
 
@@ -942,6 +985,86 @@ export const ListCredentialSpreadsheetTabsParams = zod.object({
 
 export const ListCredentialSpreadsheetTabsResponseItem = zod.string()
 export const ListCredentialSpreadsheetTabsResponse = zod.array(ListCredentialSpreadsheetTabsResponseItem)
+
+
+/**
+ * @summary List team members for the current owner account
+ */
+export const ListAgentsResponse = zod.object({
+  "plan": zod.enum(['basic', 'pro', 'business']),
+  "maxAgents": zod.number(),
+  "usedAgents": zod.number(),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "agents": zod.array(zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "name": zod.string().nullable(),
+  "teamRole": zod.enum(['supervisor', 'agent']),
+  "status": zod.enum(['active', 'disabled']),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Invite a new team member (super admin only)
+ */
+export const createAgentBodyPasswordMin = 8;
+export const createAgentBodyPasswordMax = 200;
+
+export const createAgentBodyNameMax = 80;
+
+
+
+export const CreateAgentBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string().min(createAgentBodyPasswordMin).max(createAgentBodyPasswordMax),
+  "name": zod.string().min(1).max(createAgentBodyNameMax),
+  "teamRole": zod.enum(['supervisor', 'agent'])
+})
+
+
+/**
+ * @summary Update a team member (super admin only)
+ */
+export const UpdateAgentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateAgentBodyNameMax = 80;
+
+export const updateAgentBodyPasswordMin = 8;
+export const updateAgentBodyPasswordMax = 200;
+
+
+
+export const UpdateAgentBody = zod.object({
+  "name": zod.string().min(1).max(updateAgentBodyNameMax).optional(),
+  "teamRole": zod.enum(['supervisor', 'agent']).optional(),
+  "status": zod.enum(['active', 'disabled']).optional(),
+  "password": zod.string().min(updateAgentBodyPasswordMin).max(updateAgentBodyPasswordMax).optional()
+})
+
+export const UpdateAgentResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "name": zod.string().nullable(),
+  "teamRole": zod.enum(['supervisor', 'agent']),
+  "status": zod.enum(['active', 'disabled']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Remove a team member (super admin only)
+ */
+export const DeleteAgentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAgentResponse = zod.object({
+  "success": zod.boolean()
+})
 
 
 /**

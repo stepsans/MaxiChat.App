@@ -8,7 +8,30 @@ declare module "express-session" {
     userId?: number;
     userEmail?: string;
     userRole?: "user" | "admin";
+    teamRole?: "super_admin" | "supervisor" | "agent";
   }
+}
+
+export type TeamRole = "super_admin" | "supervisor" | "agent";
+
+// Resolve the user's owning account: super_admin → themselves; supervisor /
+// agent → their parent (the WhatsApp account owner). This is the user id all
+// ownerPhone / scoping logic should pivot on so an invited agent sees the
+// same WhatsApp data as the super_admin who invited them.
+export async function getEffectiveOwnerUserId(
+  userId: number
+): Promise<number> {
+  const [row] = await db
+    .select({
+      parentUserId: usersTable.parentUserId,
+      teamRole: usersTable.teamRole,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!row) return userId;
+  if (row.teamRole === "super_admin" || row.parentUserId == null) return userId;
+  return row.parentUserId;
 }
 
 // Resolve the signed-in user's id from the session, or null. Throws nothing —

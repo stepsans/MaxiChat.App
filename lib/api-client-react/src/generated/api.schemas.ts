@@ -77,6 +77,8 @@ export interface Chat {
   /** @nullable */
   profilePicUrl: string | null;
   createdAt: string;
+  /** @nullable */
+  assignedUserId: number | null;
 }
 
 export type ChatMessageDirection = typeof ChatMessageDirection[keyof typeof ChatMessageDirection];
@@ -136,6 +138,8 @@ export interface ChatWithMessages {
   /** @nullable */
   profilePicUrl: string | null;
   createdAt: string;
+  /** @nullable */
+  assignedUserId: number | null;
   messages: ChatMessage[];
 }
 
@@ -456,11 +460,150 @@ export const AuthUserStatus = {
   disabled: 'disabled',
 } as const;
 
+export type AuthUserTeamRole = typeof AuthUserTeamRole[keyof typeof AuthUserTeamRole];
+
+
+export const AuthUserTeamRole = {
+  super_admin: 'super_admin',
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AuthUserPlan = typeof AuthUserPlan[keyof typeof AuthUserPlan] | null;
+
+
+export const AuthUserPlan = {
+  basic: 'basic',
+  pro: 'pro',
+  business: 'business',
+} as const;
+
 export interface AuthUser {
   id: number;
   email: string;
   role: AuthUserRole;
   status: AuthUserStatus;
+  teamRole: AuthUserTeamRole;
+  /** @nullable */
+  name?: string | null;
+  /** @nullable */
+  plan?: AuthUserPlan;
+  /** @nullable */
+  parentUserId?: number | null;
+}
+
+export type TeamAgentTeamRole = typeof TeamAgentTeamRole[keyof typeof TeamAgentTeamRole];
+
+
+export const TeamAgentTeamRole = {
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export type TeamAgentStatus = typeof TeamAgentStatus[keyof typeof TeamAgentStatus];
+
+
+export const TeamAgentStatus = {
+  active: 'active',
+  disabled: 'disabled',
+} as const;
+
+export interface TeamAgent {
+  id: number;
+  email: string;
+  /** @nullable */
+  name: string | null;
+  teamRole: TeamAgentTeamRole;
+  status: TeamAgentStatus;
+  createdAt: string;
+}
+
+export type TeamListingPlan = typeof TeamListingPlan[keyof typeof TeamListingPlan];
+
+
+export const TeamListingPlan = {
+  basic: 'basic',
+  pro: 'pro',
+  business: 'business',
+} as const;
+
+export type TeamListingTeamRole = typeof TeamListingTeamRole[keyof typeof TeamListingTeamRole];
+
+
+export const TeamListingTeamRole = {
+  super_admin: 'super_admin',
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export interface TeamListing {
+  plan: TeamListingPlan;
+  maxAgents: number;
+  usedAgents: number;
+  teamRole: TeamListingTeamRole;
+  agents: TeamAgent[];
+}
+
+export type CreateAgentInputTeamRole = typeof CreateAgentInputTeamRole[keyof typeof CreateAgentInputTeamRole];
+
+
+export const CreateAgentInputTeamRole = {
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export interface CreateAgentInput {
+  email: string;
+  /**
+     * @minLength 8
+     * @maxLength 200
+     */
+  password: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  teamRole: CreateAgentInputTeamRole;
+}
+
+export type UpdateAgentInputTeamRole = typeof UpdateAgentInputTeamRole[keyof typeof UpdateAgentInputTeamRole];
+
+
+export const UpdateAgentInputTeamRole = {
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export type UpdateAgentInputStatus = typeof UpdateAgentInputStatus[keyof typeof UpdateAgentInputStatus];
+
+
+export const UpdateAgentInputStatus = {
+  active: 'active',
+  disabled: 'disabled',
+} as const;
+
+export interface UpdateAgentInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  teamRole?: UpdateAgentInputTeamRole;
+  status?: UpdateAgentInputStatus;
+  /**
+     * @minLength 8
+     * @maxLength 200
+     */
+  password?: string;
+}
+
+export interface AssignChatInput {
+  /** @nullable */
+  userId: number | null;
 }
 
 export interface SignupInput {

@@ -11,7 +11,6 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
-import { getCurrentOwnerPhone, refreshChatProfilePic } from "./whatsapp";
 import { eq, desc, and, sql } from "drizzle-orm";
 import {
   ListChatsQueryParams,
@@ -25,6 +24,7 @@ import {
   OpenChatByPhoneBody,
 } from "@workspace/api-zod";
 import {
+  getCurrentOwnerPhone,
   MEDIA_DIR,
   sendMediaToJid,
   sendContactToJid,
@@ -305,16 +305,44 @@ function classifyMediaType(
   return "document";
 }
 
-async function jidForChat(userId: number, chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
-  // Scope by current owner: a chat from another linked account must look like
-  // "not found" to every route, so operators can't ever poke at someone
-  // else's conversations even by guessing an id.
+// Resolve the effective team role from the DB rather than trusting the
+// session cache. A super_admin who demotes an agent mid-session must lose
+// the elevated view immediately, not after the next /auth/me poll.
+async function getEffectiveTeamRole(
+  userId: number
+): Promise<"super_admin" | "supervisor" | "agent"> {
+  const { usersTable } = await import("@workspace/db");
+  const [row] = await db
+    .select({ teamRole: usersTable.teamRole })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  const tr = row?.teamRole;
+  return tr === "supervisor" || tr === "agent" ? tr : "super_admin";
+}
+
+// Build the WHERE fragment used by every per-chat lookup. Layers two scopes:
+//   * ownerPhone (cross-tenant isolation — must always apply)
+//   * for the "agent" role, additionally require assigned_user_id = userId,
+//     so a guessed/leaked chat id from a different conversation looks like
+//     "not found" instead of leaking the row.
+async function authorizedChatWhere(userId: number, chatId: number) {
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return null;
-  const [chat] = await db
-    .select()
-    .from(chatsTable)
-    .where(sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`);
+  const teamRole = await getEffectiveTeamRole(userId);
+  const base = sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`;
+  return teamRole === "agent"
+    ? sql`${base} AND ${chatsTable.assignedUserId} = ${userId}`
+    : base;
+}
+
+async function jidForChat(userId: number, chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
+  // Scope by current owner + (for agents) by assignment — see
+  // authorizedChatWhere. Returning null on any failure lets callers reply 404
+  // without leaking whether the chat exists for another role.
+  const where = await authorizedChatWhere(userId, chatId);
+  if (!where) return null;
+  const [chat] = await db.select().from(chatsTable).where(where);
   if (!chat) return null;
   // Groups: phoneNumber column already holds the full "<id>@g.us" JID.
   if (chat.phoneNumber.includes("@")) {
@@ -325,16 +353,14 @@ async function jidForChat(userId: number, chatId: number): Promise<{ chat: typeo
 }
 
 // Centralised ownership-aware loader: returns the chat row only if it
-// belongs to the currently linked WhatsApp account. Null otherwise (which
-// every caller treats as 404 — indistinguishable from "doesn't exist"
-// to avoid leaking that another account's chat exists).
+// belongs to the currently linked WhatsApp account AND (for agents) is
+// assigned to the calling user. Null otherwise (which every caller treats
+// as 404 — indistinguishable from "doesn't exist" to avoid leaking that
+// another account's chat exists).
 async function loadOwnedChat(userId: number, chatId: number) {
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return null;
-  const [chat] = await db
-    .select()
-    .from(chatsTable)
-    .where(sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`);
+  const where = await authorizedChatWhere(userId, chatId);
+  if (!where) return null;
+  const [chat] = await db.select().from(chatsTable).where(where);
   return chat ?? null;
 }
 
@@ -347,10 +373,19 @@ router.get("/", async (req, res) => {
     // Per-phone isolation: when nobody is logged in, the list is empty (so
     // a freshly-opened browser before QR pairing shows no history). Once a
     // number connects, only its own chats become visible.
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
+    const userId = req.session.userId!;
+    const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       return res.json([]);
     }
+
+    // Role-aware filter: agents only see chats explicitly assigned to them;
+    // supervisors and the super_admin see everything under the owner phone.
+    const teamRole = req.session.teamRole ?? "super_admin";
+    const baseWhere =
+      teamRole === "agent"
+        ? sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.assignedUserId} = ${userId}`
+        : sql`${chatsTable.ownerPhone} = ${ownerPhone}`;
 
     // Sort: (1) pinned chats first (most recently pinned at top),
     // (2) non-archived next, (3) by last message time desc with chats that
@@ -358,7 +393,7 @@ router.get("/", async (req, res) => {
     const results = await db
       .select()
       .from(chatsTable)
-      .where(eq(chatsTable.ownerPhone, ownerPhone))
+      .where(baseWhere)
       .orderBy(
         sql`(${chatsTable.pinnedAt} IS NOT NULL) DESC,
             ${chatsTable.pinnedAt} DESC NULLS LAST,
@@ -644,8 +679,10 @@ router.post("/:id/takeover", async (req, res) => {
     const bodyParsed = TakeoverChatBody.safeParse(req.body);
     if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
+    // Same authz scope as the rest of the chat routes: agents may only
+    // toggle takeover on chats assigned to them.
+    const where = await authorizedChatWhere(req.session.userId!, idParsed.data.id);
+    if (!where) return res.status(404).json({ error: "Chat not found" });
 
     const [updated] = await db
       .update(chatsTable)
@@ -653,9 +690,7 @@ router.post("/:id/takeover", async (req, res) => {
         isHumanTakeover: bodyParsed.data.takeover,
         status: bodyParsed.data.takeover ? "needs_human" : "ai_handled",
       })
-      .where(
-        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
-      )
+      .where(where)
       .returning();
 
     if (!updated) return res.status(404).json({ error: "Chat not found" });
@@ -667,6 +702,62 @@ router.post("/:id/takeover", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to toggle takeover");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PATCH /chats/:id/assign — supervisor / super_admin only. Body:
+// { userId: number | null }. Assigning to null clears the assignment.
+// The candidate user must belong to the same team (parent_user_id matches
+// the effective owner, or is the owner themselves).
+router.patch("/:id/assign", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0)
+      return res.status(400).json({ error: "Invalid id" });
+    const teamRole = req.session.teamRole ?? "super_admin";
+    if (teamRole === "agent") {
+      return res.status(403).json({ error: "Agen tidak dapat melakukan assign" });
+    }
+    const userId = req.session.userId!;
+    const ownerPhone = await getCurrentOwnerPhone(userId);
+    if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
+
+    const raw = (req.body ?? {}) as { userId?: number | null };
+    const targetUserId =
+      raw.userId === null || raw.userId === undefined
+        ? null
+        : Number(raw.userId);
+    if (targetUserId !== null && (!Number.isInteger(targetUserId) || targetUserId <= 0)) {
+      return res.status(400).json({ error: "userId tidak valid" });
+    }
+
+    // Validate the candidate belongs to the same team as the current user.
+    if (targetUserId !== null) {
+      const { isAssignableUnderOwner } = await import("./agents");
+      const { getEffectiveOwnerUserId } = await import("../lib/auth");
+      const ownerId = await getEffectiveOwnerUserId(userId);
+      const ok = await isAssignableUnderOwner(ownerId, targetUserId);
+      if (!ok) {
+        return res.status(400).json({ error: "User bukan anggota tim Anda" });
+      }
+    }
+
+    const [updated] = await db
+      .update(chatsTable)
+      .set({ assignedUserId: targetUserId })
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
+      )
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Chat not found" });
+    res.json({
+      ...updated,
+      lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
+      createdAt: updated.createdAt.toISOString(),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to assign chat");
     res.status(500).json({ error: "Internal server error" });
   }
 });

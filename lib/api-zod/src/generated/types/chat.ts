@@ -29,4 +29,6 @@ export interface Chat {
   /** @nullable */
   profilePicUrl: string | null;
   createdAt: string;
+  /** @nullable */
+  assignedUserId: number | null;
 }

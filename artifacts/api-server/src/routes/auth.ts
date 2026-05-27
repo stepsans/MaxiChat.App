@@ -56,6 +56,10 @@ router.post("/login", async (req, res): Promise<void> => {
     req.session.userId = user.id;
     req.session.userEmail = user.email;
     req.session.userRole = user.role === "admin" ? "admin" : "user";
+    req.session.teamRole =
+      user.teamRole === "supervisor" || user.teamRole === "agent"
+        ? user.teamRole
+        : "super_admin";
     await new Promise<void>((resolve, reject) =>
       req.session.save((err) => (err ? reject(err) : resolve()))
     );
@@ -64,6 +68,10 @@ router.post("/login", async (req, res): Promise<void> => {
       email: user.email,
       role: user.role,
       status: user.status,
+      teamRole: req.session.teamRole,
+      name: user.name,
+      plan: user.plan,
+      parentUserId: user.parentUserId,
     });
   } catch (err) {
     req.log.error({ err }, "Login failed");
@@ -99,6 +107,10 @@ router.get("/me", async (req, res): Promise<void> => {
         email: usersTable.email,
         role: usersTable.role,
         status: usersTable.status,
+        teamRole: usersTable.teamRole,
+        name: usersTable.name,
+        plan: usersTable.plan,
+        parentUserId: usersTable.parentUserId,
       })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
@@ -110,12 +122,23 @@ router.get("/me", async (req, res): Promise<void> => {
       });
       return;
     }
+    // Keep session.teamRole in sync with the DB so a role change (e.g.
+    // supervisor → agent) takes effect on the next /me poll.
+    const tr =
+      row.teamRole === "supervisor" || row.teamRole === "agent"
+        ? row.teamRole
+        : "super_admin";
+    if (req.session.teamRole !== tr) req.session.teamRole = tr;
     res.json({
       user: {
         id: row.id,
         email: row.email,
         role: row.role,
         status: row.status,
+        teamRole: tr,
+        name: row.name,
+        plan: row.plan,
+        parentUserId: row.parentUserId,
       },
     });
   } catch (err) {

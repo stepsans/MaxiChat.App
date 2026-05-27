@@ -23,6 +23,7 @@ import type {
   AdminUpdateUserInput,
   AdminUser,
   AnalyticsSummary,
+  AssignChatInput,
   AuthMeResponse,
   AuthUser,
   Chat,
@@ -30,6 +31,7 @@ import type {
   ChatUpdate,
   ChatWithMessages,
   CommonQuestion,
+  CreateAgentInput,
   CreateKnowledgeType400,
   CreateKnowledgeType409,
   Credential,
@@ -83,8 +85,11 @@ import type {
   SuccessResponse,
   SyncProductsToKnowledge200,
   TakeoverInput,
+  TeamAgent,
+  TeamListing,
   TextShortcut,
   TextShortcutInput,
+  UpdateAgentInput,
   UpsertKnowledgeSyncConfig200,
   UpsertProductSyncConfig200,
   UpsertShortcutSyncConfig200,
@@ -1500,6 +1505,78 @@ export const useSendManualReply = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSendManualReplyMutationOptions(options));
+    }
+
+export const getAssignChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/assign`
+}
+
+/**
+ * @summary Assign (or unassign with null) a chat to a team member
+ */
+export const assignChat = async (id: number,
+    assignChatInput: AssignChatInput, options?: RequestInit): Promise<Chat> => {
+
+  return customFetch<Chat>(getAssignChatUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      assignChatInput,)
+  }
+);}
+
+
+
+
+export const getAssignChatMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignChat>>, TError,{id: number;data: BodyType<AssignChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignChat>>, TError,{id: number;data: BodyType<AssignChatInput>}, TContext> => {
+
+const mutationKey = ['assignChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignChat>>, {id: number;data: BodyType<AssignChatInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  assignChat(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignChatMutationResult = NonNullable<Awaited<ReturnType<typeof assignChat>>>
+    export type AssignChatMutationBody = BodyType<AssignChatInput>
+    export type AssignChatMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Assign (or unassign with null) a chat to a team member
+ */
+export const useAssignChat = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignChat>>, TError,{id: number;data: BodyType<AssignChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignChat>>,
+        TError,
+        {id: number;data: BodyType<AssignChatInput>},
+        TContext
+      > => {
+      return useMutation(getAssignChatMutationOptions(options));
     }
 
 export const getTakeoverChatUrl = (id: number,) => {
@@ -3863,6 +3940,296 @@ export function useListCredentialSpreadsheetTabs<TData = Awaited<ReturnType<type
 
 
 
+
+export const getListAgentsUrl = () => {
+
+
+
+
+  return `/api/agents`
+}
+
+/**
+ * @summary List team members for the current owner account
+ */
+export const listAgents = async ( options?: RequestInit): Promise<TeamListing> => {
+
+  return customFetch<TeamListing>(getListAgentsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAgentsQueryKey = () => {
+    return [
+    `/api/agents`
+    ] as const;
+    }
+
+
+export const getListAgentsQueryOptions = <TData = Awaited<ReturnType<typeof listAgents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAgentsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAgents>>> = ({ signal }) => listAgents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAgents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAgentsQueryResult = NonNullable<Awaited<ReturnType<typeof listAgents>>>
+export type ListAgentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List team members for the current owner account
+ */
+
+export function useListAgents<TData = Awaited<ReturnType<typeof listAgents>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAgentsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAgentUrl = () => {
+
+
+
+
+  return `/api/agents`
+}
+
+/**
+ * @summary Invite a new team member (super admin only)
+ */
+export const createAgent = async (createAgentInput: CreateAgentInput, options?: RequestInit): Promise<TeamAgent> => {
+
+  return customFetch<TeamAgent>(getCreateAgentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createAgentInput,)
+  }
+);}
+
+
+
+
+export const getCreateAgentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgent>>, TError,{data: BodyType<CreateAgentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgent>>, TError,{data: BodyType<CreateAgentInput>}, TContext> => {
+
+const mutationKey = ['createAgent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgent>>, {data: BodyType<CreateAgentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgent(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgentMutationResult = NonNullable<Awaited<ReturnType<typeof createAgent>>>
+    export type CreateAgentMutationBody = BodyType<CreateAgentInput>
+    export type CreateAgentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Invite a new team member (super admin only)
+ */
+export const useCreateAgent = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgent>>, TError,{data: BodyType<CreateAgentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgent>>,
+        TError,
+        {data: BodyType<CreateAgentInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAgentMutationOptions(options));
+    }
+
+export const getUpdateAgentUrl = (id: number,) => {
+
+
+
+
+  return `/api/agents/${id}`
+}
+
+/**
+ * @summary Update a team member (super admin only)
+ */
+export const updateAgent = async (id: number,
+    updateAgentInput: UpdateAgentInput, options?: RequestInit): Promise<TeamAgent> => {
+
+  return customFetch<TeamAgent>(getUpdateAgentUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateAgentInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAgentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgent>>, TError,{id: number;data: BodyType<UpdateAgentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAgent>>, TError,{id: number;data: BodyType<UpdateAgentInput>}, TContext> => {
+
+const mutationKey = ['updateAgent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAgent>>, {id: number;data: BodyType<UpdateAgentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAgent(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAgentMutationResult = NonNullable<Awaited<ReturnType<typeof updateAgent>>>
+    export type UpdateAgentMutationBody = BodyType<UpdateAgentInput>
+    export type UpdateAgentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a team member (super admin only)
+ */
+export const useUpdateAgent = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgent>>, TError,{id: number;data: BodyType<UpdateAgentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAgent>>,
+        TError,
+        {id: number;data: BodyType<UpdateAgentInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAgentMutationOptions(options));
+    }
+
+export const getDeleteAgentUrl = (id: number,) => {
+
+
+
+
+  return `/api/agents/${id}`
+}
+
+/**
+ * @summary Remove a team member (super admin only)
+ */
+export const deleteAgent = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteAgentUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAgentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgent>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAgent>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAgent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAgent>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAgent(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAgentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAgent>>>
+
+    export type DeleteAgentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove a team member (super admin only)
+ */
+export const useDeleteAgent = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgent>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAgent>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAgentMutationOptions(options));
+    }
 
 export const getGetProductSyncConfigUrl = () => {
 
