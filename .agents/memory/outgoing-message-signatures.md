@@ -3,7 +3,7 @@ name: Outgoing WA message signatures
 description: How and where outgoing WhatsApp messages get tagged with `_<sender>_` italic signatures, and which paths intentionally skip signing.
 ---
 
-Every outgoing WhatsApp message in MaxiCS is signed with a trailing italic tag (`\n\n_<sender>_`) so the recipient can tell whether a human agent, the chatbot flow, or the AI produced it. WhatsApp italic is single underscores.
+Every outgoing WhatsApp message in MaxiChat is signed with a trailing italic tag (`\n\n_<sender>_`) so the recipient can tell whether a human agent, the chatbot flow, or the AI produced it. WhatsApp italic is single underscores.
 
 The central helper is `artifacts/api-server/src/lib/sender-tag.ts` (`withTag`, `resolveAgentTag`, `stripTrailingTag`, `CHATBOT_TAG`, `AI_TAG`). All signing happens at send-time, not in stored config.
 

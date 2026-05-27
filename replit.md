@@ -1,4 +1,4 @@
-# MaxiCS
+# MaxiChat
 
 Indonesian-language WhatsApp AI automation: a hosted dashboard where each user pairs a WhatsApp account and a Baileys-driven backend answers customer chats via a configurable AI + visual chatbot flow.
 

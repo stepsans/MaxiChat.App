@@ -370,7 +370,7 @@ export default function Users(props: { currentUserId: number }) {
       </div>
 
       <p className="text-[11px] text-muted-foreground">
-        Tip: User baru yang mendaftar lewat halaman login MaxiCS akan muncul di
+        Tip: User baru yang mendaftar lewat halaman login MaxiChat akan muncul di
         sini dengan status <strong>Menunggu</strong>. Klik <em>Setujui</em>{" "}
         untuk mengizinkan mereka login.
       </p>

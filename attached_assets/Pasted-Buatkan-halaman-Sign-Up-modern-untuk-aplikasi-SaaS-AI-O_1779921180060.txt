@@ -1,0 +1,153 @@
+Buatkan halaman Sign Up modern untuk aplikasi SaaS AI Omnichannel bernama MaxiCS dengan style:
+
+* Modern Minimal SaaS
+* Clean UI
+* Professional
+* AI startup vibe
+* Fast response platform
+* Warna utama biru
+* Accent ungu
+* Font Plus Jakarta Sans / Inter
+* Responsive desktop & mobile
+* Rounded corner modern
+* Soft shadow
+* Banyak whitespace
+* UI mirip Intercom, Linear, Slack, atau HubSpot modern
+
+Tujuan halaman:
+
+* Membuat user mudah daftar
+* Trustworthy
+* Simple dan cepat
+* Conversion tinggi
+
+Halaman Sign Up harus memiliki:
+
+1. Logo MaxiCS
+
+2. Headline utama:
+   “Maximizing Your CS”
+
+3. Subheadline:
+   “Manage all customer conversations in one powerful AI omnichannel platform.”
+
+4. Form Sign Up:
+
+* Full Name
+* Company Name
+* Email
+* Phone Number (optional)
+* Password
+* Confirm Password
+
+5. Password requirement indicator:
+
+* Minimal 8 karakter
+* Huruf besar
+* Angka
+* Symbol
+
+6. Tombol utama:
+   “Create Account”
+
+7. Social login:
+
+* Continue with Google
+* Continue with Microsoft
+
+8. Checkbox:
+   “I agree to Terms & Privacy Policy”
+
+9. Link:
+   “Already have an account? Sign In”
+
+10. Tambahkan section benefit singkat:
+
+* Unified Inbox
+* AI Customer Service
+* Multi-Agent Support
+* WhatsApp Integration
+* Fast Response Analytics
+
+11. Tambahkan ilustrasi/dashboard preview modern di sisi kanan (desktop).
+
+12. Tambahkan loading state dan disabled state pada button.
+
+13. Tambahkan validasi form:
+
+* Email harus valid
+* Password harus match
+* Error message clean dan modern
+* Required field validation
+
+14. Setelah signup berhasil:
+    Redirect ke halaman:
+    “Verify Your Email”
+
+Buat halaman Verify Email modern dengan:
+
+* Icon email besar
+* Judul:
+  “Verify Your Email”
+* Deskripsi:
+  “We’ve sent a verification link to your email address.”
+* Tombol:
+  “Resend Email”
+* Countdown resend 60 detik
+* Link:
+  “Change Email Address”
+
+15. Email verification flow:
+
+* Generate secure verification token
+* Token expired dalam 24 jam
+* Klik link email → account verified
+* Redirect ke onboarding/dashboard
+
+16. Buat template email verification professional:
+    Subject:
+    “Verify Your MaxiCS Account”
+
+Isi email:
+
+* Sapaan nama user
+* Tombol Verify Email
+* Link fallback
+* Info expired 24 jam
+* Branding MaxiCS
+
+17. Tambahkan security best practice:
+
+* Password hashing
+* Rate limit signup
+* Prevent duplicate email
+* Email verification required before login
+* Anti spam protection
+* CSRF protection
+* Secure token validation
+
+18. Tambahkan UX modern:
+
+* Smooth animation
+* Micro interaction
+* Hover effect
+* Success state
+* Error state
+* Mobile-first responsive
+
+19. Style coding:
+
+* Clean component structure
+* Reusable components
+* Modern SaaS design system
+* Accessible UI
+* Dark mode ready
+
+20. Output yang diinginkan:
+
+* Full frontend UI
+* Backend signup flow
+* Email verification logic
+* Database schema recommendation
+* API endpoint structure
+* Best practice folder structure

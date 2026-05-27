@@ -26,7 +26,7 @@ function Shell() {
   });
 
   useEffect(() => {
-    document.title = "MaxiCS Admin";
+    document.title = "MaxiChat Admin";
   }, []);
 
   if (isLoading) {
@@ -78,7 +78,7 @@ function Shell() {
             VJ
           </div>
           <div>
-            <div className="text-sm font-semibold leading-tight">MaxiCS Admin</div>
+            <div className="text-sm font-semibold leading-tight">MaxiChat Admin</div>
             <div className="text-[11px] text-muted-foreground leading-tight">
               Super admin
             </div>

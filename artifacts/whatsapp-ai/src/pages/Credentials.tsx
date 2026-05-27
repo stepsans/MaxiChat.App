@@ -634,15 +634,15 @@ const SHARED_OAUTH_STEPS: { title: string; body: string }[] = [
   },
   {
     title: "Aktifkan API yang dibutuhkan",
-    body: 'Di menu kiri pilih "APIs & Services" → "Library". Cari dan klik Enable untuk: (1) Google Sheets API, dan (2) Google Drive API. Drive API dipakai supaya MaxiCS bisa menampilkan daftar spreadsheet milik Anda saat memilih sumber data.',
+    body: 'Di menu kiri pilih "APIs & Services" → "Library". Cari dan klik Enable untuk: (1) Google Sheets API, dan (2) Google Drive API. Drive API dipakai supaya MaxiChat bisa menampilkan daftar spreadsheet milik Anda saat memilih sumber data.',
   },
   {
     title: "Atur OAuth consent screen",
-    body: 'Buka "APIs & Services" → "OAuth consent screen". Pilih User Type "External" lalu Create. Isi App name (mis. "MaxiCS"), User support email, dan Developer contact. Di tahap Scopes biarkan kosong (scope ditambahkan otomatis saat sign-in). Di tahap Test users, tambahkan alamat email Google Anda — wajib selama app masih "Testing".',
+    body: 'Buka "APIs & Services" → "OAuth consent screen". Pilih User Type "External" lalu Create. Isi App name (mis. "MaxiChat"), User support email, dan Developer contact. Di tahap Scopes biarkan kosong (scope ditambahkan otomatis saat sign-in). Di tahap Test users, tambahkan alamat email Google Anda — wajib selama app masih "Testing".',
   },
   {
     title: "Buat OAuth Client ID",
-    body: 'Buka "APIs & Services" → "Credentials" → "Create credentials" → "OAuth client ID". Application type: pilih "Web application". Beri nama (mis. "MaxiCS Web").',
+    body: 'Buka "APIs & Services" → "Credentials" → "Create credentials" → "OAuth client ID". Application type: pilih "Web application". Beri nama (mis. "MaxiChat Web").',
   },
   {
     title: "Tempel Authorized redirect URI",
@@ -661,20 +661,20 @@ const SHARED_OAUTH_STEPS: { title: string; body: string }[] = [
 const CRED_GUIDES: Record<CredentialType, CredGuide> = {
   googleSheetsOAuth2Api: {
     purpose:
-      "Credential ini menghubungkan MaxiCS ke akun Google Anda agar bisa membaca isi spreadsheet — terutama untuk auto-sync katalog produk dari Google Sheets. Token disimpan terenkripsi (AES-256-GCM) di server.",
+      "Credential ini menghubungkan MaxiChat ke akun Google Anda agar bisa membaca isi spreadsheet — terutama untuk auto-sync katalog produk dari Google Sheets. Token disimpan terenkripsi (AES-256-GCM) di server.",
     useCases: [
       "Auto-sync katalog produk dari Google Sheets (sheet menjadi source of truth: baris hilang = produk terhapus).",
       "Sync manual sekali klik dari halaman Products.",
       "Memilih spreadsheet dan tab dari dropdown tanpa harus copy-paste ID.",
     ],
     example:
-      'Anda punya spreadsheet "Katalog Toko Saya" dengan kolom Kode Product, Nama Barang, Harga Pricelist, Link Foto, dll. Tim sales mengupdate harga langsung di sheet itu. Setelah credential ini terhubung, MaxiCS menarik isi sheet tiap 5/15/30/60 menit (sesuai pilihan Anda) dan katalog di app selalu sama dengan sheet.',
+      'Anda punya spreadsheet "Katalog Toko Saya" dengan kolom Kode Product, Nama Barang, Harga Pricelist, Link Foto, dll. Tim sales mengupdate harga langsung di sheet itu. Setelah credential ini terhubung, MaxiChat menarik isi sheet tiap 5/15/30/60 menit (sesuai pilihan Anda) dan katalog di app selalu sama dengan sheet.',
     steps: SHARED_OAUTH_STEPS,
     docsUrl: "https://developers.google.com/sheets/api/quickstart/js",
   },
   googleSheetsTriggerOAuth2Api: {
     purpose:
-      "Versi terpisah dari Google Sheets OAuth2 API yang ditujukan khusus untuk workflow berbasis trigger (misalnya kalau nanti MaxiCS menambah flow yang dijalankan tiap kali baris baru muncul di sheet). Token-nya disimpan di slot berbeda supaya tidak bentrok dengan credential sync produk.",
+      "Versi terpisah dari Google Sheets OAuth2 API yang ditujukan khusus untuk workflow berbasis trigger (misalnya kalau nanti MaxiChat menambah flow yang dijalankan tiap kali baris baru muncul di sheet). Token-nya disimpan di slot berbeda supaya tidak bentrok dengan credential sync produk.",
     useCases: [
       "Memisahkan token untuk flow berbasis Sheets Trigger dari token sync produk.",
       "Memakai akun Google yang berbeda untuk trigger vs sync (mis. akun ops vs akun marketing).",

@@ -45,7 +45,7 @@ export default function Login() {
           <div className="w-11 h-11 rounded-lg bg-primary flex items-center justify-center">
             <ShieldCheck className="w-5 h-5 text-primary-foreground" />
           </div>
-          <h1 className="text-lg font-semibold">MaxiCS Admin</h1>
+          <h1 className="text-lg font-semibold">MaxiChat Admin</h1>
           <p className="text-xs text-muted-foreground">
             Khusus untuk super admin
           </p>

@@ -1,6 +1,6 @@
 ---
 name: WhatsApp team ownership model
-description: How team WhatsApp pairing is shared across super_admin / supervisor / agent users in MaxiCS, and the rule every per-user WA helper must follow.
+description: How team WhatsApp pairing is shared across super_admin / supervisor / agent users in MaxiChat, and the rule every per-user WA helper must follow.
 ---
 
 Only the **super_admin** (users.parent_user_id IS NULL) pairs a WhatsApp number. Invited team members (**supervisor**, **agent**, identified by users.parent_user_id pointing at the super_admin) do NOT pair their own — they inherit the parent's live Baileys socket, on-disk auth dir, and `whatsapp_session` row.

@@ -212,7 +212,7 @@ export default function Layout({
                 <SiWhatsapp className="w-4 h-4 text-white" />
               </div>
               <span className="text-sm font-semibold text-foreground tracking-tight truncate">
-                MaxiCS
+                MaxiChat
               </span>
             </div>
           )}

@@ -38,7 +38,7 @@ export default function Chats() {
               <SiWhatsapp className="w-16 h-16 text-[hsl(var(--wa-meta))]" />
             </div>
             <h2 className="text-[28px] font-light text-foreground mb-3">
-              MaxiCS
+              MaxiChat
             </h2>
             <p className="text-[14px] text-[hsl(var(--wa-meta))] mb-2 leading-relaxed">
               Kirim &amp; terima pesan tanpa perlu HP online. AI menjawab otomatis

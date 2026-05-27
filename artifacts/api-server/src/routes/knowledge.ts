@@ -118,7 +118,7 @@ router.get("/export.xlsx", async (req, res) => {
       .where(eq(knowledgeTable.ownerPhone, ownerPhone))
       .orderBy(knowledgeTable.id);
     const wb = new ExcelJS.Workbook();
-    wb.creator = "MaxiCS";
+    wb.creator = "MaxiChat";
     wb.created = new Date();
     const ws = wb.addWorksheet("Knowledge Base");
     ws.columns = [
