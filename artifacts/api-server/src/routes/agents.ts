@@ -152,22 +152,29 @@ router.get("/", async (req, res): Promise<void> => {
       .from(usersTable)
       .where(eq(usersTable.parentUserId, owner.ownerId))
       .orderBy(usersTable.createdAt);
-    // Always read assignmentMode off the owner row (super_admin), not the
-    // caller — supervisors and agents both see the same team-wide setting.
+    // Always read the owner row (super_admin) in full — we need its
+    // assignmentMode AND we surface the owner as the first table entry so
+    // it shows alongside invited teammates in the management UI.
     const [ownerRow] = await db
-      .select({ mode: usersTable.assignmentMode })
+      .select()
       .from(usersTable)
       .where(eq(usersTable.id, owner.ownerId))
       .limit(1);
     const assignmentMode =
-      ownerRow?.mode === "round_robin" ? "round_robin" : "manual";
+      ownerRow?.assignmentMode === "round_robin" ? "round_robin" : "manual";
+    // Prepend the super_admin row so the team table includes the owner.
+    // usedAgents stays as the count of *invited* members (rows), since the
+    // plan cap is about invited seats — the owner doesn't consume a seat.
+    const agents = ownerRow
+      ? [serialize(ownerRow), ...rows.map(serialize)]
+      : rows.map(serialize);
     res.json({
       plan: owner.plan,
       maxAgents: PLAN_LIMITS[owner.plan],
       usedAgents: rows.length,
       teamRole: owner.teamRole,
       assignmentMode,
-      agents: rows.map(serialize),
+      agents,
     });
   } catch (err) {
     req.log.error({ err }, "List agents failed");

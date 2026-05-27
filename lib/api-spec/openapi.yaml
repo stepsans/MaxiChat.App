@@ -2315,7 +2315,7 @@ components:
         profilePhotoUrl: { type: ["string", "null"] }
         teamRole:
           type: string
-          enum: [supervisor, agent]
+          enum: [super_admin, supervisor, agent]
         status:
           type: string
           enum: [active, disabled]

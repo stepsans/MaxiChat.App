@@ -211,13 +211,17 @@ export default function Agents() {
 
   function openEdit(agent: TeamAgent) {
     setEditTarget(agent);
+    // The super_admin row is rendered without an Edit button (see table
+    // actions cell), so this fallback only matters for the type narrowing.
+    const editableRole: "supervisor" | "agent" =
+      agent.teamRole === "supervisor" ? "supervisor" : "agent";
     setEditForm({
       email: agent.email,
       name: agent.name ?? "",
       password: "",
       mobilePhone: agent.mobilePhone ?? "",
       profilePhotoUrl: agent.profilePhotoUrl ?? "",
-      teamRole: agent.teamRole,
+      teamRole: editableRole,
     });
   }
 
@@ -413,12 +417,18 @@ export default function Agents() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-xs">
-                        {agent.teamRole === "supervisor" ? (
+                        {agent.teamRole === "super_admin" ? (
+                          <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                        ) : agent.teamRole === "supervisor" ? (
                           <ShieldCheck className="w-3.5 h-3.5 text-primary" />
                         ) : (
                           <Eye className="w-3.5 h-3.5 text-muted-foreground" />
                         )}
-                        {agent.teamRole === "supervisor" ? "Supervisor" : "Agen"}
+                        {agent.teamRole === "super_admin"
+                          ? "Super Admin"
+                          : agent.teamRole === "supervisor"
+                            ? "Supervisor"
+                            : "Agen"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -434,37 +444,48 @@ export default function Agents() {
                     </td>
                     {isSuperAdmin && (
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs"
-                          onClick={() => toggleStatus(agent)}
-                          data-testid={`button-toggle-${agent.id}`}
-                        >
-                          {agent.status === "active" ? "Nonaktifkan" : "Aktifkan"}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => openEdit(agent)}
-                          data-testid={`button-edit-${agent.id}`}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-400 hover:text-red-300"
-                          onClick={() => {
-                            if (confirm(`Hapus agen ${agent.email}?`)) {
-                              deleteMut.mutate({ id: agent.id });
-                            }
-                          }}
-                          data-testid={`button-delete-${agent.id}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        {agent.teamRole === "super_admin" ? (
+                          // Super Admin row has no edit/delete/toggle —
+                          // the owner can't be deactivated or removed from
+                          // their own team.
+                          <span className="text-xs text-muted-foreground italic">
+                            Pemilik akun
+                          </span>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs"
+                              onClick={() => toggleStatus(agent)}
+                              data-testid={`button-toggle-${agent.id}`}
+                            >
+                              {agent.status === "active" ? "Nonaktifkan" : "Aktifkan"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEdit(agent)}
+                              data-testid={`button-edit-${agent.id}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-400 hover:text-red-300"
+                              onClick={() => {
+                                if (confirm(`Hapus agen ${agent.email}?`)) {
+                                  deleteMut.mutate({ id: agent.id });
+                                }
+                              }}
+                              data-testid={`button-delete-${agent.id}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </>
+                        )}
                       </td>
                     )}
                   </tr>

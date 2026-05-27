@@ -530,6 +530,7 @@ export type TeamAgentTeamRole = typeof TeamAgentTeamRole[keyof typeof TeamAgentT
 
 
 export const TeamAgentTeamRole = {
+  super_admin: 'super_admin',
   supervisor: 'supervisor',
   agent: 'agent',
 } as const;

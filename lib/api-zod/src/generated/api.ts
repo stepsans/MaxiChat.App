@@ -1002,7 +1002,7 @@ export const ListAgentsResponse = zod.object({
   "name": zod.string().nullable(),
   "mobilePhone": zod.string().nullable(),
   "profilePhotoUrl": zod.string().nullable(),
-  "teamRole": zod.enum(['supervisor', 'agent']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
   "status": zod.enum(['active', 'disabled']),
   "createdAt": zod.coerce.date()
 }))
@@ -1098,7 +1098,7 @@ export const UpdateAgentResponse = zod.object({
   "name": zod.string().nullable(),
   "mobilePhone": zod.string().nullable(),
   "profilePhotoUrl": zod.string().nullable(),
-  "teamRole": zod.enum(['supervisor', 'agent']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
   "status": zod.enum(['active', 'disabled']),
   "createdAt": zod.coerce.date()
 })
