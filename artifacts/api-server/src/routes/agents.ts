@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
+import { touchHeartbeat } from "../lib/round-robin";
 
 const router = Router();
 
@@ -123,11 +124,21 @@ router.get("/", async (req, res): Promise<void> => {
       .from(usersTable)
       .where(eq(usersTable.parentUserId, owner.ownerId))
       .orderBy(usersTable.createdAt);
+    // Always read assignmentMode off the owner row (super_admin), not the
+    // caller — supervisors and agents both see the same team-wide setting.
+    const [ownerRow] = await db
+      .select({ mode: usersTable.assignmentMode })
+      .from(usersTable)
+      .where(eq(usersTable.id, owner.ownerId))
+      .limit(1);
+    const assignmentMode =
+      ownerRow?.mode === "round_robin" ? "round_robin" : "manual";
     res.json({
       plan: owner.plan,
       maxAgents: PLAN_LIMITS[owner.plan],
       usedAgents: rows.length,
       teamRole: owner.teamRole,
+      assignmentMode,
       agents: rows.map(serialize),
     });
   } catch (err) {
@@ -279,6 +290,49 @@ router.delete("/:id", async (req, res): Promise<void> => {
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Delete agent failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /agents/settings — super_admin only. Currently only carries
+// assignmentMode ("manual" | "round_robin"). The setting lives on the
+// super_admin's own users row so it's tenant-scoped without a new table.
+const SettingsBody = z.object({
+  assignmentMode: z.enum(["manual", "round_robin"]),
+});
+router.put("/settings", async (req, res): Promise<void> => {
+  const userId = getSessionUserId(req)!;
+  try {
+    const owner = await resolveOwner(userId);
+    if (!owner || owner.teamRole !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin yang dapat mengubah pengaturan tim" });
+      return;
+    }
+    const parsed = SettingsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Body tidak valid", details: parsed.error.issues });
+      return;
+    }
+    await db
+      .update(usersTable)
+      .set({ assignmentMode: parsed.data.assignmentMode })
+      .where(eq(usersTable.id, owner.ownerId));
+    res.json({ assignmentMode: parsed.data.assignmentMode });
+  } catch (err) {
+    req.log.error({ err }, "Update team settings failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /agents/heartbeat — every signed-in user pings this every ~30s while
+// their tab is active so round-robin can tell who's actually online.
+router.post("/heartbeat", async (req, res): Promise<void> => {
+  const userId = getSessionUserId(req)!;
+  try {
+    await touchHeartbeat(userId);
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Heartbeat failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

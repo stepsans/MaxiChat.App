@@ -995,6 +995,7 @@ export const ListAgentsResponse = zod.object({
   "maxAgents": zod.number(),
   "usedAgents": zod.number(),
   "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "assignmentMode": zod.enum(['manual', 'round_robin']),
   "agents": zod.array(zod.object({
   "id": zod.number(),
   "email": zod.string().email(),
@@ -1021,6 +1022,26 @@ export const CreateAgentBody = zod.object({
   "password": zod.string().min(createAgentBodyPasswordMin).max(createAgentBodyPasswordMax),
   "name": zod.string().min(1).max(createAgentBodyNameMax),
   "teamRole": zod.enum(['supervisor', 'agent'])
+})
+
+
+/**
+ * @summary Update team-wide settings (super admin only)
+ */
+export const UpdateTeamSettingsBody = zod.object({
+  "assignmentMode": zod.enum(['manual', 'round_robin'])
+})
+
+export const UpdateTeamSettingsResponse = zod.object({
+  "assignmentMode": zod.enum(['manual', 'round_robin'])
+})
+
+
+/**
+ * @summary Mark the current user as online (for round-robin)
+ */
+export const HeartbeatResponse = zod.object({
+  "success": zod.boolean()
 })
 
 

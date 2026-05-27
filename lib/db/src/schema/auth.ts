@@ -34,6 +34,19 @@ export const usersTable = pgTable("users", {
   // create. Hard-coded limits: basic=2, pro=5, business=15. Inherited from
   // parent for invited members but only the parent's value is used.
   plan: text("plan").notNull().default("basic"),
+  // Updated by a frontend heartbeat (every ~30s while the tab is active).
+  // Used as the "online" signal for round-robin chat assignment: an agent
+  // counts as online if lastSeenAt > now - 2 minutes.
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  // How incoming chats are routed to agents. Only the super_admin row's
+  // value is used (per-tenant setting); invited rows mirror the default.
+  //   "manual"      → new chats land unassigned; supervisor must assign.
+  //   "round_robin" → new chats are auto-assigned to the next online agent.
+  assignmentMode: text("assignment_mode").notNull().default("manual"),
+  // Cursor for round-robin: the users.id of the most recently auto-assigned
+  // agent. The next pick is the smallest id > cursor (wrapping). Only the
+  // super_admin row uses it.
+  roundRobinCursor: integer("round_robin_cursor").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

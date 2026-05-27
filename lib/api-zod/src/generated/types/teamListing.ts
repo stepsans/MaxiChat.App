@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TeamAgent } from './teamAgent';
+import type { TeamListingAssignmentMode } from './teamListingAssignmentMode';
 import type { TeamListingPlan } from './teamListingPlan';
 import type { TeamListingTeamRole } from './teamListingTeamRole';
 
@@ -14,5 +15,6 @@ export interface TeamListing {
   maxAgents: number;
   usedAgents: number;
   teamRole: TeamListingTeamRole;
+  assignmentMode: TeamListingAssignmentMode;
   agents: TeamAgent[];
 }

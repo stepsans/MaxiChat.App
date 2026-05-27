@@ -21,8 +21,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function Flows() {
+  const { can } = usePermissions();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data: flows, isLoading } = useListFlows();
@@ -84,17 +86,19 @@ export default function Flows() {
             Susun alur balasan otomatis. Hanya 1 flow yang aktif untuk semua chat.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={resetCooldown.isPending}
-          onClick={() => resetCooldown.mutate()}
-          data-testid="button-reset-cooldown"
-          title="Hapus cooldown semua chat — Default trigger akan langsung jalan di pesan berikutnya. Khusus testing."
-        >
-          <RefreshCw className={`w-4 h-4 mr-1.5 ${resetCooldown.isPending ? "animate-spin" : ""}`} />
-          Reset Cooldown
-        </Button>
+        {can.mutateFlows && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={resetCooldown.isPending}
+            onClick={() => resetCooldown.mutate()}
+            data-testid="button-reset-cooldown"
+            title="Hapus cooldown semua chat — Default trigger akan langsung jalan di pesan berikutnya. Khusus testing."
+          >
+            <RefreshCw className={`w-4 h-4 mr-1.5 ${resetCooldown.isPending ? "animate-spin" : ""}`} />
+            Reset Cooldown
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -108,29 +112,31 @@ export default function Flows() {
       <FlowGuideDialog open={guideOpen} onOpenChange={setGuideOpen} />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        <form
-          className="flex gap-2 max-w-md"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const v = name.trim();
-            if (!v) return;
-            create.mutate({ data: { name: v } });
-          }}
-        >
-          <Input
-            placeholder="Nama flow baru (mis. Greeting Toko)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            data-testid="input-flow-name"
-          />
-          <Button
-            type="submit"
-            disabled={create.isPending || !name.trim()}
-            data-testid="button-create-flow"
+        {can.mutateFlows && (
+          <form
+            className="flex gap-2 max-w-md"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const v = name.trim();
+              if (!v) return;
+              create.mutate({ data: { name: v } });
+            }}
           >
-            <Plus className="w-4 h-4 mr-1" /> Buat Flow
-          </Button>
-        </form>
+            <Input
+              placeholder="Nama flow baru (mis. Greeting Toko)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              data-testid="input-flow-name"
+            />
+            <Button
+              type="submit"
+              disabled={create.isPending || !name.trim()}
+              data-testid="button-create-flow"
+            >
+              <Plus className="w-4 h-4 mr-1" /> Buat Flow
+            </Button>
+          </form>
+        )}
 
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Memuat…</p>
@@ -165,10 +171,10 @@ export default function Flows() {
                 <div className="flex items-center gap-2">
                   <Link href={`/flows/${f.id}`}>
                     <Button variant="outline" size="sm" data-testid={`button-edit-${f.id}`}>
-                      <Pencil className="w-4 h-4 mr-1" /> Edit
+                      <Pencil className="w-4 h-4 mr-1" /> {can.mutateFlows ? "Edit" : "Lihat"}
                     </Button>
                   </Link>
-                  {f.isActive ? (
+                  {can.mutateFlows && (f.isActive ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -187,20 +193,22 @@ export default function Flows() {
                     >
                       <Power className="w-4 h-4 mr-1" /> Aktifkan
                     </Button>
+                  ))}
+                  {can.mutateFlows && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={remove.isPending}
+                      onClick={() => {
+                        if (confirm(`Hapus flow "${f.name}"?`)) {
+                          remove.mutate({ id: f.id });
+                        }
+                      }}
+                      data-testid={`button-delete-${f.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled={remove.isPending}
-                    onClick={() => {
-                      if (confirm(`Hapus flow "${f.name}"?`)) {
-                        remove.mutate({ id: f.id });
-                      }
-                    }}
-                    data-testid={`button-delete-${f.id}`}
-                  >
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
                 </div>
               </div>
             ))}

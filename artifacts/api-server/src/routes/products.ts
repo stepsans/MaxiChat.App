@@ -11,8 +11,16 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
 import { ensureKnowledgeTypesSeed } from "./knowledge-types";
+import { requireSupervisorOrAbove } from "../lib/team-permissions";
 
 const router = Router();
+// Agen view-only untuk produk; semua mutasi/import/upload butuh supervisor+.
+router.post("/", requireSupervisorOrAbove);
+router.put("/:id", requireSupervisorOrAbove);
+router.delete("/:id", requireSupervisorOrAbove);
+router.post("/upload-image", requireSupervisorOrAbove);
+router.post("/import", requireSupervisorOrAbove);
+router.post("/sync-to-knowledge", requireSupervisorOrAbove);
 
 const imageUpload = multer({
   storage: multer.diskStorage({

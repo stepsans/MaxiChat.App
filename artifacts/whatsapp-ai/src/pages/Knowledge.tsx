@@ -11,6 +11,7 @@ import {
   useDeleteKnowledgeType,
   getListKnowledgeTypesQueryKey,
 } from "@workspace/api-client-react";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,6 +95,7 @@ type KnowledgeEntry = {
 export default function Knowledge() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { can } = usePermissions();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<KnowledgeEntry | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -332,28 +334,32 @@ export default function Knowledge() {
             data-testid="input-import-file"
             onChange={handleFilePick}
           />
-          <Button
-            data-testid="button-import-knowledge"
-            size="sm"
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="w-3.5 h-3.5 mr-1.5" />
-            Import
-          </Button>
-          <Button
-            data-testid="button-manage-types"
-            size="sm"
-            variant="outline"
-            onClick={() => setTypesDialogOpen(true)}
-          >
-            <Settings2 className="w-3.5 h-3.5 mr-1.5" />
-            Kelola Type
-          </Button>
-          <Button data-testid="button-add-knowledge" size="sm" onClick={openCreate}>
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            Add Entry
-          </Button>
+          {can.mutateKnowledge && (
+            <>
+              <Button
+                data-testid="button-import-knowledge"
+                size="sm"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="w-3.5 h-3.5 mr-1.5" />
+                Import
+              </Button>
+              <Button
+                data-testid="button-manage-types"
+                size="sm"
+                variant="outline"
+                onClick={() => setTypesDialogOpen(true)}
+              >
+                <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                Kelola Type
+              </Button>
+              <Button data-testid="button-add-knowledge" size="sm" onClick={openCreate}>
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add Entry
+              </Button>
+            </>
+          )}
         </div>
       </div>
 

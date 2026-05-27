@@ -5,6 +5,7 @@ import {
   useCreateAgent,
   useUpdateAgent,
   useDeleteAgent,
+  useUpdateTeamSettings,
   getListAgentsQueryKey,
   type TeamAgent,
 } from "@workspace/api-client-react";
@@ -120,6 +121,22 @@ export default function Agents() {
   const isSuperAdmin = data?.teamRole === "super_admin";
   const isAtLimit = data ? data.usedAgents >= data.maxAgents : false;
 
+  const settingsMut = useUpdateTeamSettings({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: "Mode penugasan diperbarui" });
+      },
+      onError: (err: any) => {
+        toast({
+          title: "Gagal menyimpan mode",
+          description: err?.data?.error ?? err?.message ?? "Coba lagi.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   function openEdit(agent: TeamAgent) {
     setEditTarget(agent);
     setEditForm({
@@ -180,6 +197,40 @@ export default function Agents() {
             </Button>
           )}
         </div>
+
+        {data && isSuperAdmin && (
+          <div className="rounded-lg border bg-card p-4 mb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold">Mode Penugasan Chat Baru</h2>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                  Manual: chat baru tidak ditugaskan otomatis, supervisor yang
+                  membagikan. Round-robin: chat baru dibagi merata ke agen yang
+                  sedang online (aktif dalam 2 menit terakhir).
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {(["manual", "round_robin"] as const).map((mode) => {
+                  const active = data.assignmentMode === mode;
+                  return (
+                    <Button
+                      key={mode}
+                      variant={active ? "default" : "outline"}
+                      size="sm"
+                      disabled={settingsMut.isPending || active}
+                      onClick={() =>
+                        settingsMut.mutate({ data: { assignmentMode: mode } })
+                      }
+                      data-testid={`button-mode-${mode}`}
+                    >
+                      {mode === "manual" ? "Manual" : "Round Robin"}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {data && (
           <div className="rounded-lg border bg-card p-4 mb-6 flex items-center justify-between">

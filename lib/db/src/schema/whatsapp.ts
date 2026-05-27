@@ -43,6 +43,13 @@ export const chatsTable = pgTable(
     // circular reference; the chats route validates the user belongs to the
     // same owner before writing.
     assignedUserId: integer("assigned_user_id"),
+    // KPI tracking. Set the first time the chat is assigned to an agent
+    // (manually or via round-robin) and never updated afterward, so reports
+    // can compute "time-to-first-assign". firstAgentReplyAt is set on the
+    // first outbound message authored by the assigned agent — combined with
+    // firstAssignedAt this gives "first-response-time" per agent.
+    firstAssignedAt: timestamp("first_assigned_at", { withTimezone: true }),
+    firstAgentReplyAt: timestamp("first_agent_reply_at", { withTimezone: true }),
     // Runtime chatbot-flow state. `{ flowId: number, currentNodeId: string }`
     // when the chat is currently waiting on a reply inside a flow; null when
     // not in a flow (AI handles the chat normally).

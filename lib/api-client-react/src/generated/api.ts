@@ -87,6 +87,8 @@ import type {
   TakeoverInput,
   TeamAgent,
   TeamListing,
+  TeamSettingsInput,
+  TeamSettingsResponse,
   TextShortcut,
   TextShortcutInput,
   UpdateAgentInput,
@@ -4087,6 +4089,147 @@ export const useCreateAgent = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateAgentMutationOptions(options));
+    }
+
+export const getUpdateTeamSettingsUrl = () => {
+
+
+
+
+  return `/api/agents/settings`
+}
+
+/**
+ * @summary Update team-wide settings (super admin only)
+ */
+export const updateTeamSettings = async (teamSettingsInput: TeamSettingsInput, options?: RequestInit): Promise<TeamSettingsResponse> => {
+
+  return customFetch<TeamSettingsResponse>(getUpdateTeamSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      teamSettingsInput,)
+  }
+);}
+
+
+
+
+export const getUpdateTeamSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTeamSettings>>, TError,{data: BodyType<TeamSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTeamSettings>>, TError,{data: BodyType<TeamSettingsInput>}, TContext> => {
+
+const mutationKey = ['updateTeamSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTeamSettings>>, {data: BodyType<TeamSettingsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateTeamSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTeamSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateTeamSettings>>>
+    export type UpdateTeamSettingsMutationBody = BodyType<TeamSettingsInput>
+    export type UpdateTeamSettingsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update team-wide settings (super admin only)
+ */
+export const useUpdateTeamSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTeamSettings>>, TError,{data: BodyType<TeamSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTeamSettings>>,
+        TError,
+        {data: BodyType<TeamSettingsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateTeamSettingsMutationOptions(options));
+    }
+
+export const getHeartbeatUrl = () => {
+
+
+
+
+  return `/api/agents/heartbeat`
+}
+
+/**
+ * @summary Mark the current user as online (for round-robin)
+ */
+export const heartbeat = async ( options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getHeartbeatUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getHeartbeatMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof heartbeat>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof heartbeat>>, TError,void, TContext> => {
+
+const mutationKey = ['heartbeat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof heartbeat>>, void> = () => {
+
+
+          return  heartbeat(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type HeartbeatMutationResult = NonNullable<Awaited<ReturnType<typeof heartbeat>>>
+
+    export type HeartbeatMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Mark the current user as online (for round-robin)
+ */
+export const useHeartbeat = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof heartbeat>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof heartbeat>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getHeartbeatMutationOptions(options));
     }
 
 export const getUpdateAgentUrl = (id: number,) => {

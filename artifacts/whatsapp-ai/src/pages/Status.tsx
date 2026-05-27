@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const STATUS_COLORS = [
   "#128c7e",
@@ -36,6 +37,22 @@ function formatRelative(iso: string): string {
   } catch {
     return "";
   }
+}
+
+function StatusDeleteButton({ id, onDelete }: { id: number; onDelete: (id: number) => void }) {
+  // Agen tidak boleh menghapus status — backend juga menolak (requireNotAgent).
+  const { can } = usePermissions();
+  if (!can.deleteStatus) return null;
+  return (
+    <button
+      data-testid={`button-delete-status-${id}`}
+      onClick={() => onDelete(id)}
+      className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-white/10 text-white"
+      aria-label="Hapus status"
+    >
+      <Trash2 className="w-4 h-4" />
+    </button>
+  );
 }
 
 function StatusComposer({ onClose }: { onClose: () => void }) {
@@ -198,16 +215,7 @@ function StatusViewer({
           <p className="text-sm font-semibold text-white truncate">{author.authorName}</p>
           <p className="text-[11px] text-white/70">{formatRelative(current.postedAt)}</p>
         </div>
-        {author.isMine && (
-          <button
-            data-testid={`button-delete-status-${current.id}`}
-            onClick={() => onDelete(current.id)}
-            className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-white/10 text-white"
-            aria-label="Hapus status"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        )}
+        {author.isMine && <StatusDeleteButton id={current.id} onDelete={onDelete} />}
         <button
           data-testid="button-close-viewer"
           onClick={onClose}

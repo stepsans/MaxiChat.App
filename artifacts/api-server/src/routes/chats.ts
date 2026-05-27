@@ -657,9 +657,15 @@ router.post("/:id/reply", async (req, res) => {
     // Owner-atomic: include ownerPhone in WHERE so a /disconnect that
     // happens between loadOwnedChat and this update can't write into a
     // chat that no longer belongs to the current session.
+    // Also stamp firstAgentReplyAt on the first human reply after assignment
+    // so KPI reports can compute first-response-time per agent.
     await db
       .update(chatsTable)
-      .set({ lastMessage: bodyParsed.data.content, lastMessageAt: new Date() })
+      .set({
+        lastMessage: bodyParsed.data.content,
+        lastMessageAt: new Date(),
+        firstAgentReplyAt: sql`COALESCE(${chatsTable.firstAgentReplyAt}, NOW())`,
+      })
       .where(
         sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.ownerPhone} = ${chat.ownerPhone}`
       );
@@ -743,9 +749,18 @@ router.patch("/:id/assign", async (req, res) => {
       }
     }
 
+    // Stamp firstAssignedAt the first time a chat is assigned (manual or
+    // round-robin). COALESCE keeps the original timestamp on re-assignment
+    // so KPI reports still measure "time-to-first-touch".
     const [updated] = await db
       .update(chatsTable)
-      .set({ assignedUserId: targetUserId })
+      .set({
+        assignedUserId: targetUserId,
+        firstAssignedAt:
+          targetUserId == null
+            ? undefined
+            : sql`COALESCE(${chatsTable.firstAssignedAt}, NOW())`,
+      })
       .where(
         sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
       )

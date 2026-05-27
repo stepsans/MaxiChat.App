@@ -1,3 +1,4 @@
+import { usePermissions } from "@/hooks/use-permissions";
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -181,6 +182,7 @@ function SortableTh({
 export default function Products() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { can } = usePermissions();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -565,6 +567,7 @@ export default function Products() {
             onChange={handleImport}
             data-testid="input-import-products"
           />
+          {can.mutateProducts && (<>
           <Button
             variant="outline"
             size="sm"
@@ -612,6 +615,7 @@ export default function Products() {
             <Plus className="w-3.5 h-3.5 mr-1.5" />
             Tambah Produk
           </Button>
+          </>)}
         </div>
       </div>
 

@@ -13,8 +13,15 @@ import {
 } from "@workspace/api-zod";
 import { parseCsv } from "../lib/sheet-sync";
 import ExcelJS from "exceljs";
+import { requireSupervisorOrAbove } from "../lib/team-permissions";
 
 const router = Router();
+// Agen tidak boleh add/edit/delete/import — semua mutasi knowledge butuh
+// supervisor atau super_admin. Listing & view tetap terbuka.
+router.post("/", requireSupervisorOrAbove);
+router.put("/:id", requireSupervisorOrAbove);
+router.delete("/:id", requireSupervisorOrAbove);
+router.post("/import", requireSupervisorOrAbove);
 
 const upload = multer({
   storage: multer.memoryStorage(),

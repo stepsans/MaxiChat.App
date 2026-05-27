@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, whatsappStatusesTable, chatsTable } from "@workspace/db";
 import { sql, eq, gt, desc } from "drizzle-orm";
 import { getCurrentOwnerPhone, postTextStatus, refreshChatProfilePic } from "./whatsapp";
+import { requireNotAgent } from "../lib/team-permissions";
 
 const router = Router();
 
@@ -173,14 +174,14 @@ router.post("/", async (req, res): Promise<void> => {
   }
 });
 
-router.delete("/:id", async (req, res): Promise<void> => {
+router.delete("/:id", requireNotAgent, async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;
     }
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params["id"]), 10);
     if (!Number.isFinite(id)) {
       res.status(400).json({ error: "Invalid id" });
       return;

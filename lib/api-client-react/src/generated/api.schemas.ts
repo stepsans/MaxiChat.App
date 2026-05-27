@@ -539,12 +539,45 @@ export const TeamListingTeamRole = {
   agent: 'agent',
 } as const;
 
+export type TeamListingAssignmentMode = typeof TeamListingAssignmentMode[keyof typeof TeamListingAssignmentMode];
+
+
+export const TeamListingAssignmentMode = {
+  manual: 'manual',
+  round_robin: 'round_robin',
+} as const;
+
 export interface TeamListing {
   plan: TeamListingPlan;
   maxAgents: number;
   usedAgents: number;
   teamRole: TeamListingTeamRole;
+  assignmentMode: TeamListingAssignmentMode;
   agents: TeamAgent[];
+}
+
+export type TeamSettingsInputAssignmentMode = typeof TeamSettingsInputAssignmentMode[keyof typeof TeamSettingsInputAssignmentMode];
+
+
+export const TeamSettingsInputAssignmentMode = {
+  manual: 'manual',
+  round_robin: 'round_robin',
+} as const;
+
+export interface TeamSettingsInput {
+  assignmentMode: TeamSettingsInputAssignmentMode;
+}
+
+export type TeamSettingsResponseAssignmentMode = typeof TeamSettingsResponseAssignmentMode[keyof typeof TeamSettingsResponseAssignmentMode];
+
+
+export const TeamSettingsResponseAssignmentMode = {
+  manual: 'manual',
+  round_robin: 'round_robin',
+} as const;
+
+export interface TeamSettingsResponse {
+  assignmentMode: TeamSettingsResponseAssignmentMode;
 }
 
 export type CreateAgentInputTeamRole = typeof CreateAgentInputTeamRole[keyof typeof CreateAgentInputTeamRole];

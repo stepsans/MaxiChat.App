@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/hooks/use-theme";
-import { useGetMe } from "@workspace/api-client-react";
+import { useGetMe, useHeartbeat } from "@workspace/api-client-react";
 import NotFound from "@/pages/not-found";
 import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
@@ -79,8 +79,10 @@ function AuthGate() {
   }
 
   return (
-    <Layout user={data!.user ?? undefined}>
-      <Switch>
+    <>
+      <PresenceHeartbeat />
+      <Layout user={data!.user ?? undefined}>
+        <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/chats" component={Chats} />
         <Route path="/chats/:id" component={Chats} />
@@ -93,10 +95,36 @@ function AuthGate() {
         <Route path="/agents" component={Agents} />
         <Route path="/settings" component={Settings} />
         <Route path="/analytics" component={Analytics} />
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
+          <Route component={NotFound} />
+        </Switch>
+      </Layout>
+    </>
   );
+}
+
+// Ping the server every 30s while the tab is alive so round-robin can tell
+// who's online. Pauses while the tab is hidden — an agent on a backgrounded
+// tab shouldn't catch new chats they won't see for a while.
+function PresenceHeartbeat() {
+  const mut = useHeartbeat();
+  useEffect(() => {
+    const ping = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      mut.mutate();
+    };
+    ping();
+    const id = window.setInterval(ping, 30_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") ping();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 function App() {

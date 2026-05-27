@@ -1265,6 +1265,35 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /agents/settings:
+    put:
+      operationId: updateTeamSettings
+      tags: [agents]
+      summary: Update team-wide settings (super admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TeamSettingsInput" }
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamSettingsResponse" }
+
+  /agents/heartbeat:
+    post:
+      operationId: heartbeat
+      tags: [agents]
+      summary: Mark the current user as online (for round-robin)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+
   /agents/{id}:
     patch:
       operationId: updateAgent
@@ -2204,7 +2233,7 @@ components:
 
     TeamListing:
       type: object
-      required: [plan, maxAgents, usedAgents, teamRole, agents]
+      required: [plan, maxAgents, usedAgents, teamRole, assignmentMode, agents]
       properties:
         plan:
           type: string
@@ -2214,9 +2243,28 @@ components:
         teamRole:
           type: string
           enum: [super_admin, supervisor, agent]
+        assignmentMode:
+          type: string
+          enum: [manual, round_robin]
         agents:
           type: array
           items: { $ref: "#/components/schemas/TeamAgent" }
+
+    TeamSettingsInput:
+      type: object
+      required: [assignmentMode]
+      properties:
+        assignmentMode:
+          type: string
+          enum: [manual, round_robin]
+
+    TeamSettingsResponse:
+      type: object
+      required: [assignmentMode]
+      properties:
+        assignmentMode:
+          type: string
+          enum: [manual, round_robin]
 
     CreateAgentInput:
       type: object

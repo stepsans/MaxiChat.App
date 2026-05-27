@@ -603,7 +603,52 @@ export async function getOrCreateChat(
       set: { phoneNumber: sql`${chatsTable.phoneNumber}` },
     })
     .returning();
+
+  // Round-robin auto-assign on a freshly created, still-unassigned chat.
+  // Fired async so an inbound-message hot path isn't blocked on it; any
+  // failure is non-fatal (chat just stays unassigned and a supervisor can
+  // assign manually).
+  if (row && row.assignedUserId == null) {
+    void autoAssignNewChat(ownerPhone, row.id).catch(() => {});
+  }
   return row;
+}
+
+async function autoAssignNewChat(ownerPhone: string, chatId: number): Promise<void> {
+  const { userWhatsappTable, usersTable } = await import("@workspace/db");
+  const { pickNextRoundRobinAgent, getAssignmentMode } = await import(
+    "../lib/round-robin"
+  );
+  // Resolve the owner user id from the binding so we can read their
+  // assignmentMode. If no binding exists yet (race during pairing), skip.
+  const [binding] = await db
+    .select({ userId: userWhatsappTable.userId })
+    .from(userWhatsappTable)
+    .where(eq(userWhatsappTable.ownerPhone, ownerPhone))
+    .limit(1);
+  if (!binding) return;
+  // Resolve the super_admin owner (walk parent if the binding happens to be
+  // on an invited account, which shouldn't currently happen but is cheap).
+  const [me] = await db
+    .select({
+      id: usersTable.id,
+      parentUserId: usersTable.parentUserId,
+      teamRole: usersTable.teamRole,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, binding.userId))
+    .limit(1);
+  const ownerId =
+    me?.teamRole === "super_admin" || me?.parentUserId == null
+      ? me?.id ?? binding.userId
+      : me.parentUserId;
+  if (await getAssignmentMode(ownerId) !== "round_robin") return;
+  const agentId = await pickNextRoundRobinAgent(ownerId);
+  if (agentId == null) return;
+  await db
+    .update(chatsTable)
+    .set({ assignedUserId: agentId, firstAssignedAt: sql`COALESCE(${chatsTable.firstAssignedAt}, NOW())` })
+    .where(sql`${chatsTable.id} = ${chatId} AND ${chatsTable.assignedUserId} IS NULL`);
 }
 
 async function generateAiReply(
