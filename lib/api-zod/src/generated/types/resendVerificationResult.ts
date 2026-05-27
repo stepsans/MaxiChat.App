@@ -5,13 +5,9 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
-import type { SignupResponseStatus } from './signupResponseStatus';
 
-export interface SignupResponse {
-  id: number;
-  email: string;
-  status: SignupResponseStatus;
-  message: string;
+export interface ResendVerificationResult {
+  ok: boolean;
   /** @nullable */
   devVerifyUrl?: string | null;
 }

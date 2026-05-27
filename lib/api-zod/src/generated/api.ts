@@ -57,16 +57,56 @@ export const GetMeResponse = zod.object({
 
 
 /**
- * @summary Self-register a new account (admin approval required before sign-in)
+ * @summary Self-register a new account (email verification required before sign-in)
  */
 export const signupBodyPasswordMin = 8;
 export const signupBodyPasswordMax = 200;
+
+export const signupBodyNameMax = 120;
+
+export const signupBodyCompanyNameMax = 120;
+
+export const signupBodyMobilePhoneMax = 20;
 
 
 
 export const SignupBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(signupBodyPasswordMin).max(signupBodyPasswordMax)
+  "password": zod.string().min(signupBodyPasswordMin).max(signupBodyPasswordMax),
+  "name": zod.string().min(1).max(signupBodyNameMax),
+  "companyName": zod.string().max(signupBodyCompanyNameMax).nullish(),
+  "mobilePhone": zod.string().max(signupBodyMobilePhoneMax).nullish()
+})
+
+
+/**
+ * @summary Consume a verification token and activate the account
+ */
+export const verifyEmailBodyTokenMin = 16;
+export const verifyEmailBodyTokenMax = 200;
+
+
+
+export const VerifyEmailBody = zod.object({
+  "token": zod.string().min(verifyEmailBodyTokenMin).max(verifyEmailBodyTokenMax)
+})
+
+export const VerifyEmailResponse = zod.object({
+  "verified": zod.boolean(),
+  "email": zod.string().email()
+})
+
+
+/**
+ * @summary Re-send the email verification link
+ */
+export const ResendVerificationBody = zod.object({
+  "email": zod.string().email()
+})
+
+export const ResendVerificationResponse = zod.object({
+  "ok": zod.boolean(),
+  "devVerifyUrl": zod.string().nullish()
 })
 
 

@@ -19,6 +19,8 @@ import FlowEditor from "@/pages/FlowEditor";
 import Credentials from "@/pages/Credentials";
 import Agents from "@/pages/Agents";
 import Login from "@/pages/Login";
+import SignUp from "@/pages/SignUp";
+import VerifyEmail from "@/pages/VerifyEmail";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -54,12 +56,19 @@ function AuthGate() {
   const isAuthed = !!data?.user;
   const status = (error as any)?.status;
   const isUnauthed = status === 401 || (!isLoading && !isAuthed);
-  const onLogin = location === "/login";
+  // Routes that should always be reachable without a session — sign-up,
+  // email verification, and the login form itself. Anything else bounces
+  // unauthenticated users to /login.
+  const path = location.split("?")[0];
+  const isPublicRoute =
+    path === "/login" || path === "/signup" || path === "/verify-email";
 
   useEffect(() => {
-    if (isUnauthed && !onLogin) navigate("/login");
-    if (isAuthed && onLogin) navigate("/");
-  }, [isUnauthed, isAuthed, onLogin, navigate]);
+    if (isUnauthed && !isPublicRoute) navigate("/login");
+    // Don't kick authed users off /verify-email — they may have followed
+    // a link in their inbox after already signing in elsewhere.
+    if (isAuthed && (path === "/login" || path === "/signup")) navigate("/");
+  }, [isUnauthed, isAuthed, isPublicRoute, path, navigate]);
 
   if (isLoading) {
     return (
@@ -69,10 +78,12 @@ function AuthGate() {
     );
   }
 
-  if (!isAuthed || onLogin) {
+  if (!isAuthed || isPublicRoute) {
     return (
       <Switch>
         <Route path="/login" component={Login} />
+        <Route path="/signup" component={SignUp} />
+        <Route path="/verify-email" component={VerifyEmail} />
         <Route component={Login} />
       </Switch>
     );

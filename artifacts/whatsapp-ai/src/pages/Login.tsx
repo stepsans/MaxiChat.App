@@ -1,34 +1,22 @@
 import { useState, type FormEvent } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useLogin,
-  useSignup,
   getGetMeQueryKey,
 } from "@workspace/api-client-react";
-import { SiWhatsapp } from "react-icons/si";
-import { Loader2 } from "lucide-react";
-
-type Mode = "login" | "signup";
+import { Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import AuthShell from "@/components/auth/AuthShell";
+import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 
 export default function Login() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-
-  function resetMessages() {
-    setError(null);
-    setInfo(null);
-  }
-  function switchMode(next: Mode) {
-    resetMessages();
-    setPassword("");
-    setMode(next);
-  }
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
 
   const loginMut = useLogin({
     mutation: {
@@ -37,116 +25,56 @@ export default function Login() {
         navigate("/");
       },
       onError: (err: any) => {
-        const msg =
-          err?.data?.error ||
-          err?.data?.message ||
-          (err?.status === 401
-            ? "Email atau password salah"
-            : err?.status === 403
-              ? "Akun belum disetujui admin"
-              : "Login gagal");
-        setError(msg);
-      },
-    },
-  });
-
-  const signupMut = useSignup({
-    mutation: {
-      onSuccess: (data: any) => {
-        setInfo(
-          data?.message ||
-            "Akun berhasil dibuat. Menunggu persetujuan admin sebelum dapat login."
+        const data = err?.data ?? {};
+        if (data.reason === "email_not_verified") {
+          setUnverifiedEmail(data.email ?? email);
+          setError(data.error || "Email belum diverifikasi.");
+          return;
+        }
+        setUnverifiedEmail(null);
+        setError(
+          data.error ||
+            data.message ||
+            (err?.status === 401
+              ? "Email atau password salah"
+              : err?.status === 403
+                ? "Akun belum aktif"
+                : "Login gagal")
         );
-        setPassword("");
-        setMode("login");
-      },
-      onError: (err: any) => {
-        const msg =
-          err?.data?.error ||
-          err?.data?.message ||
-          (err?.status === 409
-            ? "Email sudah terdaftar"
-            : "Pendaftaran gagal");
-        setError(msg);
       },
     },
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    resetMessages();
-    const payload = {
-      email: email.trim().toLowerCase(),
-      password,
-    };
-    if (mode === "login") {
-      loginMut.mutate({ data: payload });
-    } else {
-      signupMut.mutate({ data: payload });
-    }
+    setError(null);
+    setUnverifiedEmail(null);
+    loginMut.mutate({
+      data: { email: email.trim().toLowerCase(), password },
+    });
   }
 
-  const isPending = loginMut.isPending || signupMut.isPending;
-  const isSignup = mode === "signup";
-
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-background px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm bg-card border border-border rounded-lg p-6 space-y-5 shadow-sm"
-        data-testid={isSignup ? "signup-form" : "login-form"}
-      >
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="w-11 h-11 rounded-lg bg-primary flex items-center justify-center">
-            <SiWhatsapp className="w-5 h-5 text-white" />
-          </div>
-          <h1 className="text-lg font-semibold tracking-tight">MaxiChat</h1>
-          <p className="text-xs text-muted-foreground">
-            {isSignup
-              ? "Buat akun baru — perlu persetujuan admin"
-              : "Masuk untuk membuka dashboard"}
-          </p>
+    <AuthShell
+      eyebrow="Welcome back"
+      title="Sign in to MaxiChat"
+      subtitle="Maximizing Your Chat — kelola semua percakapan WhatsApp dari satu dashboard."
+    >
+      <form onSubmit={onSubmit} data-testid="login-form" className="space-y-4">
+        <SocialAuthButtons mode="login" />
+
+        <div className="flex items-center gap-3 py-1">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-[11px] uppercase tracking-wider text-slate-400">
+            atau gunakan email
+          </span>
+          <div className="h-px flex-1 bg-slate-200" />
         </div>
 
-        <div
-          role="tablist"
-          className="grid grid-cols-2 gap-1 p-1 bg-muted/50 rounded-md"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={!isSignup}
-            data-testid="tab-login"
-            onClick={() => switchMode("login")}
-            className={`h-7 text-xs font-medium rounded ${
-              !isSignup
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Masuk
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={isSignup}
-            data-testid="tab-signup"
-            onClick={() => switchMode("signup")}
-            className={`h-7 text-xs font-medium rounded ${
-              isSignup
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Daftar
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          <label className="block">
-            <span className="text-xs font-medium text-foreground/80">
-              Email
-            </span>
+        <label className="block">
+          <span className="text-xs font-semibold text-slate-700">Email</span>
+          <div className="relative mt-1.5">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="email"
               required
@@ -154,60 +82,89 @@ export default function Login() {
               autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              data-testid={isSignup ? "signup-email" : "login-email"}
-              className="mt-1 w-full h-9 px-3 rounded-md border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              data-testid="login-email"
+              placeholder="you@company.com"
+              className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition"
             />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-foreground/80">
-              Password
-              {isSignup && (
-                <span className="text-muted-foreground font-normal">
-                  {" "}
-                  (min. 8 karakter)
-                </span>
-              )}
-            </span>
+          </div>
+        </label>
+
+        <label className="block">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">Password</span>
+            <a
+              href="#"
+              onClick={(e) => e.preventDefault()}
+              className="text-[11px] font-medium text-blue-600 hover:underline"
+            >
+              Lupa password?
+            </a>
+          </div>
+          <div className="relative mt-1.5">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               required
-              minLength={isSignup ? 8 : 1}
-              autoComplete={isSignup ? "new-password" : "current-password"}
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              data-testid={isSignup ? "signup-password" : "login-password"}
-              className="mt-1 w-full h-9 px-3 rounded-md border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              data-testid="login-password"
+              placeholder="••••••••"
+              className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition"
             />
-          </label>
-        </div>
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              tabIndex={-1}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </label>
 
         {error && (
           <div
             data-testid="login-error"
-            className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2"
+            className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
           >
             {error}
-          </div>
-        )}
-        {info && (
-          <div
-            data-testid="login-info"
-            className="text-xs text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2"
-          >
-            {info}
+            {unverifiedEmail && (
+              <>
+                {" "}
+                <Link
+                  href={`/verify-email?email=${encodeURIComponent(unverifiedEmail)}`}
+                  className="font-semibold underline"
+                >
+                  Kirim ulang link verifikasi
+                </Link>
+              </>
+            )}
           </div>
         )}
 
         <button
           type="submit"
-          disabled={isPending}
-          data-testid={isSignup ? "signup-submit" : "login-submit"}
-          className="w-full h-9 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+          disabled={loginMut.isPending}
+          data-testid="login-submit"
+          className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-indigo-700 active:scale-[.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
         >
-          {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-          {isSignup ? "Daftar" : "Masuk"}
+          {loginMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+          Sign in
         </button>
+
+        <p className="text-center text-xs text-slate-500">
+          Belum punya akun?{" "}
+          <Link
+            href="/signup"
+            className="font-semibold text-blue-600 hover:underline"
+            data-testid="link-signup"
+          >
+            Buat akun gratis
+          </Link>
+        </p>
       </form>
-    </div>
+    </AuthShell>
   );
 }

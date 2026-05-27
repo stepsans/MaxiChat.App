@@ -700,6 +700,21 @@ export interface SignupInput {
      * @maxLength 200
      */
   password: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  companyName?: string | null;
+  /**
+     * @maxLength 20
+     * @nullable
+     */
+  mobilePhone?: string | null;
 }
 
 export type SignupResponseStatus = typeof SignupResponseStatus[keyof typeof SignupResponseStatus];
@@ -714,6 +729,31 @@ export interface SignupResponse {
   email: string;
   status: SignupResponseStatus;
   message: string;
+  /** @nullable */
+  devVerifyUrl?: string | null;
+}
+
+export interface VerifyEmailInput {
+  /**
+     * @minLength 16
+     * @maxLength 200
+     */
+  token: string;
+}
+
+export interface EmailVerificationResult {
+  verified: boolean;
+  email: string;
+}
+
+export interface ResendVerificationInput {
+  email: string;
+}
+
+export interface ResendVerificationResult {
+  ok: boolean;
+  /** @nullable */
+  devVerifyUrl?: string | null;
 }
 
 export type AdminUserRole = typeof AdminUserRole[keyof typeof AdminUserRole];

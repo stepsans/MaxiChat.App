@@ -13,4 +13,19 @@ export interface SignupInput {
      * @maxLength 200
      */
   password: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  companyName?: string | null;
+  /**
+     * @maxLength 20
+     * @nullable
+     */
+  mobilePhone?: string | null;
 }

@@ -1,11 +1,24 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { eq, and, isNull, gt, desc } from "drizzle-orm";
+import { randomBytes, createHash } from "node:crypto";
+import {
+  db,
+  usersTable,
+  emailVerificationTokensTable,
+} from "@workspace/db";
+import { sendVerificationEmail, emailSenderConfigured } from "../lib/email";
+import {
+  loginLimiter,
+  signupLimiter,
+  verifyEmailLimiter,
+  resendVerificationLimiter,
+} from "../lib/rate-limit";
 
 const router = Router();
 
-// Normalize + minimally validate an email for storage / lookup.
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
 function normalizeEmail(raw: unknown): string {
   return String(raw ?? "").trim().toLowerCase();
 }
@@ -13,7 +26,76 @@ function isLikelyEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 200;
 }
 
-router.post("/login", async (req, res): Promise<void> => {
+// Mirror the password rule advertised in the UI (≥8 chars, an uppercase,
+// a digit, a symbol). Re-checking here guarantees no client bypass.
+function isStrongPassword(p: string): boolean {
+  if (p.length < 8 || p.length > 200) return false;
+  if (!/[A-Z]/.test(p)) return false;
+  if (!/[0-9]/.test(p)) return false;
+  if (!/[^A-Za-z0-9]/.test(p)) return false;
+  return true;
+}
+
+function sha256Hex(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+function buildVerifyUrl(req: import("express").Request, token: string): string {
+  // Canonical origin must come from configuration, never from the
+  // inbound Host header (which is attacker-influenced in many proxy
+  // setups → host-header poisoning that would steer victims to an
+  // attacker domain and capture tokens). In production we therefore
+  // require PUBLIC_URL to be set explicitly. In development we accept
+  // the request host as a convenience so the flow "just works" locally.
+  const configured = process.env.PUBLIC_URL?.replace(/\/$/, "");
+  if (configured) {
+    return `${configured}/verify-email?token=${encodeURIComponent(token)}`;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "PUBLIC_URL is required in production to build verification links"
+    );
+  }
+  const base = `${req.protocol}://${req.get("host")}`;
+  return `${base}/verify-email?token=${encodeURIComponent(token)}`;
+}
+
+async function issueVerificationTokenAndSend(
+  req: import("express").Request,
+  user: { id: number; email: string; name: string | null }
+): Promise<string | undefined> {
+  // Invalidate any older un-used tokens for this user first so the new
+  // link is the only one that works. We mark them used rather than
+  // deleting — keeps an audit trail of resends.
+  await db
+    .update(emailVerificationTokensTable)
+    .set({ usedAt: new Date() })
+    .where(
+      and(
+        eq(emailVerificationTokensTable.userId, user.id),
+        isNull(emailVerificationTokensTable.usedAt)
+      )
+    );
+
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = sha256Hex(token);
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+  await db.insert(emailVerificationTokensTable).values({
+    userId: user.id,
+    tokenHash,
+    expiresAt,
+  });
+
+  const verifyUrl = buildVerifyUrl(req, token);
+  const result = await sendVerificationEmail({
+    to: user.email,
+    name: user.name,
+    verifyUrl,
+  });
+  return result.devVerifyUrl;
+}
+
+router.post("/login", loginLimiter, async (req, res): Promise<void> => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password ?? "");
@@ -35,9 +117,18 @@ router.post("/login", async (req, res): Promise<void> => {
       res.status(401).json({ error: "Email atau password salah" });
       return;
     }
-    // Block non-active accounts (pending approval or disabled). We use 403
-    // with a distinct message so the UI can surface the actual reason
-    // instead of the generic "wrong password" string.
+    // Verification gate. Seed/invited accounts (created before the
+    // verification feature, or by an admin invite) have their email
+    // implicitly trusted: we treat status="active" + null verifiedAt as
+    // already-verified to avoid breaking existing rows.
+    if (user.status === "pending" && !user.emailVerifiedAt) {
+      res.status(403).json({
+        error: "Email belum diverifikasi. Cek inbox Anda atau minta link baru.",
+        reason: "email_not_verified",
+        email: user.email,
+      });
+      return;
+    }
     if (user.status === "pending") {
       res.status(403).json({
         error:
@@ -49,7 +140,6 @@ router.post("/login", async (req, res): Promise<void> => {
       res.status(403).json({ error: "Akun Anda dinonaktifkan." });
       return;
     }
-    // Regenerate the session id on login to prevent session fixation.
     await new Promise<void>((resolve, reject) =>
       req.session.regenerate((err) => (err ? reject(err) : resolve()))
     );
@@ -97,9 +187,6 @@ router.get("/me", async (req, res): Promise<void> => {
     res.json({ user: null });
     return;
   }
-  // Re-read role/status from the DB so a logged-in user who gets disabled
-  // or demoted reflects it on the next /me poll (the AuthGate polls every
-  // 60s). If the row vanished, the session is stale — clear it.
   try {
     const [row] = await db
       .select({
@@ -122,8 +209,6 @@ router.get("/me", async (req, res): Promise<void> => {
       });
       return;
     }
-    // Keep session.teamRole in sync with the DB so a role change (e.g.
-    // supervisor → agent) takes effect on the next /me poll.
     const tr =
       row.teamRole === "supervisor" || row.teamRole === "agent"
         ? row.teamRole
@@ -147,56 +232,211 @@ router.get("/me", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/signup", async (req, res): Promise<void> => {
+router.post("/signup", signupLimiter, async (req, res): Promise<void> => {
   try {
     const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password ?? "");
+    const name = String(req.body?.name ?? "").trim();
+    const companyName =
+      typeof req.body?.companyName === "string"
+        ? req.body.companyName.trim() || null
+        : null;
+    const mobilePhone =
+      typeof req.body?.mobilePhone === "string"
+        ? req.body.mobilePhone.trim() || null
+        : null;
+
     if (!isLikelyEmail(email)) {
       res.status(400).json({ error: "Email tidak valid" });
       return;
     }
-    if (password.length < 8 || password.length > 200) {
-      res.status(400).json({ error: "Password minimal 8 karakter" });
+    if (!name || name.length > 120) {
+      res.status(400).json({ error: "Nama wajib diisi (maks 120 karakter)" });
       return;
     }
+    // Enforce the same length caps the OpenAPI contract advertises so
+    // server behavior never diverges from the published spec.
+    if (companyName !== null && companyName.length > 120) {
+      res.status(400).json({ error: "Nama perusahaan maks 120 karakter" });
+      return;
+    }
+    if (mobilePhone !== null && mobilePhone.length > 20) {
+      res.status(400).json({ error: "Nomor HP maks 20 karakter" });
+      return;
+    }
+    if (!isStrongPassword(password)) {
+      res.status(400).json({
+        error:
+          "Password harus minimal 8 karakter dan mengandung huruf besar, angka, dan simbol",
+      });
+      return;
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
-    // Use an atomic insert with ON CONFLICT DO NOTHING so concurrent
-    // signups for the same email collapse to a single 409 instead of one
-    // succeeding and the other crashing with a unique-violation 500.
     const inserted = await db
       .insert(usersTable)
       .values({
         email,
         passwordHash,
         role: "user",
+        // Status stays "pending" until the user clicks the verification
+        // link. Approval-by-admin is no longer required — verifying the
+        // email flips the account straight to "active".
         status: "pending",
+        name,
+        companyName,
+        mobilePhone,
       })
       .onConflictDoNothing({ target: usersTable.email })
       .returning({
         id: usersTable.id,
         email: usersTable.email,
-        status: usersTable.status,
+        name: usersTable.name,
       });
     if (inserted.length === 0) {
       res.status(409).json({ error: "Email sudah terdaftar" });
       return;
     }
     const row = inserted[0];
+    const devVerifyUrl = await issueVerificationTokenAndSend(req, row);
     req.log.info(
-      { userId: row.id, email: row.email },
-      "New signup pending approval"
+      { userId: row.id, email: row.email, mailed: emailSenderConfigured() },
+      "New signup created; verification email issued"
     );
     res.status(201).json({
       id: row.id,
       email: row.email,
       status: "pending",
       message:
-        "Akun berhasil dibuat. Menunggu persetujuan admin sebelum dapat login.",
+        "Akun berhasil dibuat. Cek email Anda untuk link verifikasi (berlaku 24 jam).",
+      devVerifyUrl: devVerifyUrl ?? null,
     });
   } catch (err) {
     req.log.error({ err }, "Signup failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+router.post(
+  "/verify-email",
+  verifyEmailLimiter,
+  async (req, res): Promise<void> => {
+    try {
+      const token = String(req.body?.token ?? "").trim();
+      if (token.length < 16 || token.length > 200) {
+        res.status(400).json({ error: "Token tidak valid" });
+        return;
+      }
+      const tokenHash = sha256Hex(token);
+      const [row] = await db
+        .select()
+        .from(emailVerificationTokensTable)
+        .where(eq(emailVerificationTokensTable.tokenHash, tokenHash))
+        .limit(1);
+      if (!row) {
+        res.status(400).json({ error: "Token tidak valid atau sudah dipakai" });
+        return;
+      }
+      if (row.usedAt) {
+        res.status(400).json({ error: "Token sudah dipakai" });
+        return;
+      }
+      if (row.expiresAt.getTime() < Date.now()) {
+        res.status(400).json({ error: "Token sudah kedaluwarsa. Minta link baru." });
+        return;
+      }
+      // Activation must only flip pending + unverified accounts. An
+      // account that was disabled (status="disabled") or re-revoked by
+      // an admin AFTER signup must NOT be silently re-enabled by a
+      // still-valid signup token — that would be a privilege bypass.
+      // The WHERE clause encodes the only legal source state.
+      const activated = await db
+        .update(usersTable)
+        .set({ status: "active", emailVerifiedAt: new Date() })
+        .where(
+          and(
+            eq(usersTable.id, row.userId),
+            eq(usersTable.status, "pending"),
+            isNull(usersTable.emailVerifiedAt)
+          )
+        )
+        .returning({ email: usersTable.email });
+      // Always consume the token, even if the account is no longer in a
+      // verifiable state — keeps the link single-use and makes replay
+      // detection cleaner.
+      await db
+        .update(emailVerificationTokensTable)
+        .set({ usedAt: new Date() })
+        .where(eq(emailVerificationTokensTable.id, row.id));
+      if (activated.length === 0) {
+        const [user] = await db
+          .select({
+            email: usersTable.email,
+            status: usersTable.status,
+            emailVerifiedAt: usersTable.emailVerifiedAt,
+          })
+          .from(usersTable)
+          .where(eq(usersTable.id, row.userId))
+          .limit(1);
+        // Already verified → treat as success so a repeated click from
+        // the email client still lands on the happy page. Any other
+        // state (disabled, deleted) → explicit refusal.
+        if (user?.emailVerifiedAt) {
+          res.json({ verified: true, email: user.email });
+          return;
+        }
+        res.status(400).json({
+          error: "Akun tidak dalam status yang dapat diverifikasi.",
+        });
+        return;
+      }
+      res.json({ verified: true, email: activated[0].email });
+    } catch (err) {
+      req.log.error({ err }, "Verify email failed");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+router.post(
+  "/resend-verification",
+  resendVerificationLimiter,
+  async (req, res): Promise<void> => {
+    try {
+      const email = normalizeEmail(req.body?.email);
+      if (!isLikelyEmail(email)) {
+        // Always 200 to avoid leaking which emails exist in our DB.
+        res.json({ ok: true, devVerifyUrl: null });
+        return;
+      }
+      const [user] = await db
+        .select({
+          id: usersTable.id,
+          email: usersTable.email,
+          name: usersTable.name,
+          emailVerifiedAt: usersTable.emailVerifiedAt,
+          status: usersTable.status,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.email, email))
+        .limit(1);
+      // Same enumeration guard for already-verified / unknown emails:
+      // pretend everything's fine and return 200 with no devVerifyUrl.
+      if (!user || user.emailVerifiedAt || user.status !== "pending") {
+        res.json({ ok: true, devVerifyUrl: null });
+        return;
+      }
+      const devVerifyUrl = await issueVerificationTokenAndSend(req, user);
+      res.json({ ok: true, devVerifyUrl: devVerifyUrl ?? null });
+    } catch (err) {
+      req.log.error({ err }, "Resend verification failed");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Unused imports keep the linter happy if we later need them.
+void desc;
+void gt;
 
 export default router;

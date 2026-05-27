@@ -86,7 +86,7 @@ paths:
     post:
       operationId: signup
       tags: [auth]
-      summary: Self-register a new account (admin approval required before sign-in)
+      summary: Self-register a new account (email verification required before sign-in)
       requestBody:
         required: true
         content:
@@ -95,7 +95,7 @@ paths:
               $ref: "#/components/schemas/SignupInput"
       responses:
         "201":
-          description: Account created and pending approval
+          description: Account created; verification email sent
           content:
             application/json:
               schema:
@@ -108,6 +108,62 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      tags: [auth]
+      summary: Consume a verification token and activate the account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailInput"
+      responses:
+        "200":
+          description: Email verified; account active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailVerificationResult"
+        "400":
+          description: Token invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/resend-verification:
+    post:
+      operationId: resendVerification
+      tags: [auth]
+      summary: Re-send the email verification link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendVerificationInput"
+      responses:
+        "200":
+          description: Sent (or silently no-op if email is unknown / already verified)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendVerificationResult"
+        "429":
+          description: Rate limit exceeded
           content:
             application/json:
               schema:
@@ -2400,7 +2456,7 @@ components:
 
     SignupInput:
       type: object
-      required: [email, password]
+      required: [email, password, name]
       properties:
         email:
           type: string
@@ -2409,6 +2465,16 @@ components:
           type: string
           minLength: 8
           maxLength: 200
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        companyName:
+          type: ["string", "null"]
+          maxLength: 120
+        mobilePhone:
+          type: ["string", "null"]
+          maxLength: 20
 
     SignupResponse:
       type: object
@@ -2424,6 +2490,47 @@ components:
           enum: [pending]
         message:
           type: string
+        # Populated only when the server is running without a configured
+        # email provider (dev/local mode). Lets the UI surface a "click
+        # to verify" link so testing is possible without a real inbox.
+        devVerifyUrl:
+          type: ["string", "null"]
+
+    VerifyEmailInput:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 200
+
+    EmailVerificationResult:
+      type: object
+      required: [verified, email]
+      properties:
+        verified:
+          type: boolean
+        email:
+          type: string
+          format: email
+
+    ResendVerificationInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResendVerificationResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        devVerifyUrl:
+          type: ["string", "null"]
 
     AdminUser:
       type: object

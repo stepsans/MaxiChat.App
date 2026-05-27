@@ -52,10 +52,35 @@ export const usersTable = pgTable("users", {
   // agent. The next pick is the smallest id > cursor (wrapping). Only the
   // super_admin row uses it.
   roundRobinCursor: integer("round_robin_cursor").notNull().default(0),
+  // Optional company name captured at self-signup. Used in the email
+  // verification message and the eventual onboarding flow.
+  companyName: text("company_name"),
+  // Set when the user clicks the verification link in their email. Until
+  // this is non-null, /auth/login rejects the account with a "verify your
+  // email" message even if the password matches.
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
+});
+
+// One row per outstanding email-verification link. We store a SHA-256
+// hash of the token so a DB leak doesn't expose live links. Rows are
+// short-lived (24h) — the most recent un-used row per user is the one
+// we treat as canonical; older ones are invalidated when a new link is
+// requested via /auth/resend-verification.
+export const emailVerificationTokensTable = pgTable("email_verification_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 // Per-user binding to a WhatsApp account. The connected WhatsApp number is

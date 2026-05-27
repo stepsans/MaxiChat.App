@@ -1,1 +1,4 @@
-- [Outgoing message signatures](outgoing-message-signatures.md) — every WA send is tagged with `_<sender>_`; rules for which paths sign, which don't, and why AI history must be stripped.
+- [Email verification flow](email-verification.md) — dev-fallback `devVerifyUrl` MUST be gated behind `NODE_ENV !== "production"`, and verify-email MUST only flip `pending+unverified` rows or it becomes an account-reactivation bypass.
+- [Verify URLs and host headers](verify-url-origin.md) — never derive verification/reset link origin from `req.get("host")` in production; require an explicit `PUBLIC_URL` env to avoid host-header poisoning.
+- [Orval response-schema name collisions](orval-response-naming.md) — naming a component `XResponse` and using it as the response of operation `x` produces both a zod `XResponse` const and an interface `XResponse` → re-export collision; use a distinct component name like `XResult`.
+- [Drizzle push needs TTY](drizzle-push-tty.md) — `drizzle-kit push` prompts interactively when the DB has tables the schema doesn't define; apply targeted additions via raw SQL through `executeSql` instead of risking unrelated drops.
