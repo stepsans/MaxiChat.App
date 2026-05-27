@@ -31,6 +31,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash2, Pencil, ShieldCheck, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PermissionMatrixEditor } from "@/components/PermissionMatrixEditor";
 
 type FormState = {
   email: string;
@@ -306,6 +308,16 @@ export default function Agents() {
           )}
         </div>
 
+        <Tabs defaultValue="team" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="team" data-testid="tab-team">Anggota Tim</TabsTrigger>
+            <TabsTrigger value="perm" data-testid="tab-permission">Permission</TabsTrigger>
+          </TabsList>
+          <TabsContent value="perm" className="mt-0">
+            <PermissionMatrixEditor />
+          </TabsContent>
+          <TabsContent value="team" className="mt-0">
+
         {data && isSuperAdmin && (
           <div className="rounded-lg border bg-card p-4 mb-4">
             <div className="flex items-start justify-between gap-4">
@@ -467,6 +479,8 @@ export default function Agents() {
             Hanya Super Admin yang dapat menambah, mengubah, atau menghapus anggota tim.
           </p>
         )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Create agent dialog */}

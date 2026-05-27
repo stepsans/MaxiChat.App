@@ -10,6 +10,14 @@ import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
+import { requirePermission } from "../lib/role-permissions";
+
+// Matrix gates declared once at the top so they layer cleanly with the
+// existing requireSupervisorOrAbove guards on each handler below.
+const flowView = requirePermission("flows", "view");
+const flowCreate = requirePermission("flows", "create");
+const flowEdit = requirePermission("flows", "edit");
+const flowDelete = requirePermission("flows", "delete");
 
 // Graph schema mirrors lib/db/schema/chatbot.ts but uses zod v3 (the API
 // server's installed zod version) so types align with the rest of routes/*.
@@ -86,7 +94,7 @@ function serializeFull(f: typeof chatbotFlowsTable.$inferSelect) {
 }
 
 // --- Image upload for Message/Question nodes ---
-router.post("/upload-image", requireSupervisorOrAbove, flowImageUpload.single("file"), async (req, res) => {
+router.post("/upload-image", requireSupervisorOrAbove, flowCreate, flowImageUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Missing file" });
     const url = `/api/media/${path.basename(req.file.path)}`;
@@ -97,7 +105,7 @@ router.post("/upload-image", requireSupervisorOrAbove, flowImageUpload.single("f
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", flowView, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.json([]);
@@ -109,7 +117,7 @@ router.get("/", async (req, res) => {
   return res.json(rows.map(serializeSummary));
 });
 
-router.post("/", requireSupervisorOrAbove, async (req, res) => {
+router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.status(400).json({ error: "no_owner_phone" });
@@ -129,7 +137,7 @@ router.post("/", requireSupervisorOrAbove, async (req, res) => {
   return res.status(201).json(serializeFull(row!));
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", flowView, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.status(404).json({ error: "not_found" });
@@ -144,7 +152,7 @@ router.get("/:id", async (req, res) => {
   return res.json(serializeFull(row));
 });
 
-router.patch("/:id", requireSupervisorOrAbove, async (req, res) => {
+router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.status(404).json({ error: "not_found" });
@@ -198,7 +206,7 @@ router.patch("/:id", requireSupervisorOrAbove, async (req, res) => {
   return res.json(serializeFull(row));
 });
 
-router.delete("/:id", requireSupervisorOrAbove, async (req, res) => {
+router.delete("/:id", requireSupervisorOrAbove, flowDelete, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.status(404).json({ error: "not_found" });
@@ -212,7 +220,7 @@ router.delete("/:id", requireSupervisorOrAbove, async (req, res) => {
   return res.status(204).end();
 });
 
-router.post("/:id/activate", requireSupervisorOrAbove, async (req, res) => {
+router.post("/:id/activate", requireSupervisorOrAbove, flowEdit, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.status(404).json({ error: "not_found" });
@@ -245,7 +253,7 @@ router.post("/:id/activate", requireSupervisorOrAbove, async (req, res) => {
 // Clear flow cooldown / in-progress state for all chats of the current owner.
 // Useful for testing: lets the Default trigger fire on the next message
 // without waiting the configured cooldown window.
-router.post("/reset-cooldown", requireSupervisorOrAbove, async (req, res) => {
+router.post("/reset-cooldown", requireSupervisorOrAbove, flowEdit, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.json({ cleared: 0 });
@@ -256,7 +264,7 @@ router.post("/reset-cooldown", requireSupervisorOrAbove, async (req, res) => {
   return res.json({ cleared: result.rowCount ?? 0 });
 });
 
-router.post("/active/deactivate", requireSupervisorOrAbove, async (req, res) => {
+router.post("/active/deactivate", requireSupervisorOrAbove, flowEdit, async (req, res) => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
   if (!ownerPhone) return res.status(204).end();

@@ -14,14 +14,18 @@ import {
 import { parseCsv } from "../lib/sheet-sync";
 import ExcelJS from "exceljs";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
 // Agen tidak boleh add/edit/delete/import — semua mutasi knowledge butuh
 // supervisor atau super_admin. Listing & view tetap terbuka.
-router.post("/", requireSupervisorOrAbove);
-router.put("/:id", requireSupervisorOrAbove);
-router.delete("/:id", requireSupervisorOrAbove);
-router.post("/import", requireSupervisorOrAbove);
+router.get("/", requirePermission("knowledge", "view"));
+router.get("/export.csv", requirePermission("knowledge", "view"));
+router.get("/export.xlsx", requirePermission("knowledge", "view"));
+router.post("/", requireSupervisorOrAbove, requirePermission("knowledge", "create"));
+router.put("/:id", requireSupervisorOrAbove, requirePermission("knowledge", "edit"));
+router.delete("/:id", requireSupervisorOrAbove, requirePermission("knowledge", "delete"));
+router.post("/import", requireSupervisorOrAbove, requirePermission("knowledge", "create"));
 
 const upload = multer({
   storage: multer.memoryStorage(),

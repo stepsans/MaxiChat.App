@@ -41,6 +41,7 @@ import type {
   DeleteKnowledgeType400,
   DeleteKnowledgeType404,
   DeleteKnowledgeType409,
+  EffectivePermissions,
   ErrorResponse,
   Flow,
   FlowCreateInput,
@@ -65,6 +66,7 @@ import type {
   ManualReplyInput,
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
+  PermissionMatrix,
   PostStatusInput,
   Product,
   ProductInput,
@@ -5981,6 +5983,231 @@ export const useDeactivateActiveFlow = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeactivateActiveFlowMutationOptions(options));
     }
+
+export const getGetPermissionMatrixUrl = () => {
+
+
+
+
+  return `/api/permissions`
+}
+
+/**
+ * @summary Get the per-role permission matrix for the current team
+ */
+export const getPermissionMatrix = async ( options?: RequestInit): Promise<PermissionMatrix> => {
+
+  return customFetch<PermissionMatrix>(getGetPermissionMatrixUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPermissionMatrixQueryKey = () => {
+    return [
+    `/api/permissions`
+    ] as const;
+    }
+
+
+export const getGetPermissionMatrixQueryOptions = <TData = Awaited<ReturnType<typeof getPermissionMatrix>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPermissionMatrix>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPermissionMatrixQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPermissionMatrix>>> = ({ signal }) => getPermissionMatrix({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPermissionMatrix>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPermissionMatrixQueryResult = NonNullable<Awaited<ReturnType<typeof getPermissionMatrix>>>
+export type GetPermissionMatrixQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the per-role permission matrix for the current team
+ */
+
+export function useGetPermissionMatrix<TData = Awaited<ReturnType<typeof getPermissionMatrix>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPermissionMatrix>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPermissionMatrixQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdatePermissionMatrixUrl = () => {
+
+
+
+
+  return `/api/permissions`
+}
+
+/**
+ * @summary Update the per-role permission matrix (super admin only)
+ */
+export const updatePermissionMatrix = async (permissionMatrix: PermissionMatrix, options?: RequestInit): Promise<PermissionMatrix> => {
+
+  return customFetch<PermissionMatrix>(getUpdatePermissionMatrixUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      permissionMatrix,)
+  }
+);}
+
+
+
+
+export const getUpdatePermissionMatrixMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePermissionMatrix>>, TError,{data: BodyType<PermissionMatrix>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePermissionMatrix>>, TError,{data: BodyType<PermissionMatrix>}, TContext> => {
+
+const mutationKey = ['updatePermissionMatrix'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePermissionMatrix>>, {data: BodyType<PermissionMatrix>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updatePermissionMatrix(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePermissionMatrixMutationResult = NonNullable<Awaited<ReturnType<typeof updatePermissionMatrix>>>
+    export type UpdatePermissionMatrixMutationBody = BodyType<PermissionMatrix>
+    export type UpdatePermissionMatrixMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update the per-role permission matrix (super admin only)
+ */
+export const useUpdatePermissionMatrix = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePermissionMatrix>>, TError,{data: BodyType<PermissionMatrix>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePermissionMatrix>>,
+        TError,
+        {data: BodyType<PermissionMatrix>},
+        TContext
+      > => {
+      return useMutation(getUpdatePermissionMatrixMutationOptions(options));
+    }
+
+export const getGetMyPermissionsUrl = () => {
+
+
+
+
+  return `/api/permissions/me`
+}
+
+/**
+ * @summary Effective permissions for the signed-in user
+ */
+export const getMyPermissions = async ( options?: RequestInit): Promise<EffectivePermissions> => {
+
+  return customFetch<EffectivePermissions>(getGetMyPermissionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyPermissionsQueryKey = () => {
+    return [
+    `/api/permissions/me`
+    ] as const;
+    }
+
+
+export const getGetMyPermissionsQueryOptions = <TData = Awaited<ReturnType<typeof getMyPermissions>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyPermissionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyPermissions>>> = ({ signal }) => getMyPermissions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyPermissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyPermissionsQueryResult = NonNullable<Awaited<ReturnType<typeof getMyPermissions>>>
+export type GetMyPermissionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Effective permissions for the signed-in user
+ */
+
+export function useGetMyPermissions<TData = Awaited<ReturnType<typeof getMyPermissions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyPermissionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getResetFlowCooldownUrl = () => {
 

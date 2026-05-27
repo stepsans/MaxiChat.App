@@ -10,8 +10,20 @@ import {
   type Credential,
 } from "@workspace/db";
 import { encryptString, decryptString } from "../lib/crypto";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
+
+// Matrix gates layered onto the credentials CRUD. OAuth callback is a
+// public browser GET (no session) so it stays unguarded; the other paths
+// all require an authenticated user already (mounted under requireAuth).
+router.get("/", requirePermission("credentials", "view"));
+router.post("/", requirePermission("credentials", "create"));
+router.patch("/:id", requirePermission("credentials", "edit"));
+router.delete("/:id", requirePermission("credentials", "delete"));
+router.post("/:id/oauth/start", requirePermission("credentials", "edit"));
+router.get("/:id/spreadsheets", requirePermission("credentials", "view"));
+router.get("/:id/spreadsheets/:spreadsheetId/tabs", requirePermission("credentials", "view"));
 
 // Re-declare the session shape we touch so TS knows about our OAuth state
 // bag. We can't widen the type globally without colliding with auth.ts.

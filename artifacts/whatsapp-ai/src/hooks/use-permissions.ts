@@ -1,35 +1,103 @@
-import { useGetMe } from "@workspace/api-client-react";
+import {
+  useGetMyPermissions,
+  getGetMyPermissionsQueryKey,
+  type RoleMatrix,
+  type PermissionCell,
+} from "@workspace/api-client-react";
 
 export type TeamRole = "super_admin" | "supervisor" | "agent";
 
-// Single source of truth for "what can the current user touch?". The same
-// rules are enforced on the backend (artifacts/api-server/src/lib/
-// team-permissions.ts); these flags only drive the UI (hide buttons that
-// would 403 anyway).
+// The 8 menus that participate in the matrix. Must stay in lock-step with
+// PERMISSION_MENUS in artifacts/api-server/src/lib/role-permissions.ts and
+// the matrix editor on the Agents page.
+export const PERMISSION_MENUS = [
+  "knowledge",
+  "products",
+  "flows",
+  "analytics",
+  "credentials",
+  "chats",
+  "statuses",
+  "settings",
+] as const;
+export type PermissionMenu = (typeof PERMISSION_MENUS)[number];
+
+const ALL_TRUE: PermissionCell = {
+  canView: true,
+  canCreate: true,
+  canEdit: true,
+  canDelete: true,
+};
+const ALL_FALSE: PermissionCell = {
+  canView: false,
+  canCreate: false,
+  canEdit: false,
+  canDelete: false,
+};
+
+function cell(menus: RoleMatrix | undefined, key: PermissionMenu): PermissionCell {
+  const c = menus?.[key];
+  if (!c) return ALL_FALSE;
+  return {
+    canView: !!c.canView,
+    canCreate: !!c.canCreate,
+    canEdit: !!c.canEdit,
+    canDelete: !!c.canDelete,
+  };
+}
+
+// Single source of truth for "what can the current user touch?". Backend
+// enforces the same rules in artifacts/api-server/src/lib/role-permissions.ts;
+// these flags drive the UI (hide buttons that would 403 anyway) and the
+// sidebar nav filter (hide menus the user cannot view).
 //
-// Defaults match the product spec:
-//   * Status      — anyone can add; supervisor+ can delete.
-//   * Knowledge / Products / Chatbot Flow — supervisor+ can add/edit/delete;
-//     agents are view-only.
-//   * Team settings (assignment mode) — super_admin only.
+// While the matrix is still loading we deny everything to avoid a flash of
+// forbidden controls — super_admin gets ALL_TRUE immediately so the owner
+// never sees a blank/disabled UI on first paint.
 export function usePermissions() {
-  const { data } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
-  const teamRole = (data?.user?.teamRole ?? "super_admin") as TeamRole;
-  const isAgent = teamRole === "agent";
-  const isSupervisorOrAbove = teamRole === "super_admin" || teamRole === "supervisor";
+  const { data, isLoading } = useGetMyPermissions({
+    query: { queryKey: getGetMyPermissionsQueryKey(), staleTime: 30_000 },
+  });
+  const teamRole: TeamRole = (data?.teamRole as TeamRole | undefined) ?? "agent";
   const isSuperAdmin = teamRole === "super_admin";
+  const isSupervisorOrAbove =
+    teamRole === "super_admin" || teamRole === "supervisor";
+  const isAgent = teamRole === "agent";
+
+  // Build a per-menu cell. Super admin gets all-true regardless of payload.
+  const get = (key: PermissionMenu): PermissionCell =>
+    isSuperAdmin ? ALL_TRUE : cell(data?.menus, key);
+
+  const menus = Object.fromEntries(
+    PERMISSION_MENUS.map((m) => [m, get(m)])
+  ) as Record<PermissionMenu, PermissionCell>;
+
+  // Back-compat aliases used by existing pages. Reading the same per-menu
+  // cells keeps Products/Knowledge/Flows/Status untouched while still
+  // honouring the new matrix.
+  const can = {
+    addStatus: menus.statuses.canCreate,
+    deleteStatus: menus.statuses.canDelete,
+    mutateKnowledge:
+      menus.knowledge.canCreate ||
+      menus.knowledge.canEdit ||
+      menus.knowledge.canDelete,
+    mutateProducts:
+      menus.products.canCreate ||
+      menus.products.canEdit ||
+      menus.products.canDelete,
+    mutateFlows:
+      menus.flows.canCreate || menus.flows.canEdit || menus.flows.canDelete,
+    manageTeamSettings: isSuperAdmin,
+  };
+
   return {
     teamRole,
     isAgent,
     isSupervisorOrAbove,
     isSuperAdmin,
-    can: {
-      addStatus: true,
-      deleteStatus: isSupervisorOrAbove,
-      mutateKnowledge: isSupervisorOrAbove,
-      mutateProducts: isSupervisorOrAbove,
-      mutateFlows: isSupervisorOrAbove,
-      manageTeamSettings: isSuperAdmin,
-    },
+    isLoading,
+    menus,
+    can,
   };
 }

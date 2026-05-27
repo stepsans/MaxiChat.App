@@ -3,8 +3,13 @@ import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable } from "@workspace/db";
 import { eq, sql, inArray } from "drizzle-orm";
 import { getCurrentOwnerPhone } from "./whatsapp";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
+
+// Every analytics endpoint is read-only aggregation, so all of them are
+// gated by analytics.canView.
+router.use(requirePermission("analytics", "view"));
 
 router.get("/summary", async (req, res) => {
   try {

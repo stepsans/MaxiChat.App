@@ -4,8 +4,13 @@ import { settingsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { UpdateSettingsBody } from "@workspace/api-zod";
 import { getCurrentOwnerPhone } from "./whatsapp";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
+
+// Settings read is open to anyone signed in (the page shows current AI
+// behavior even to agents); writes go through the matrix.
+router.put("/", requirePermission("settings", "edit"));
 
 const DEFAULT_SYSTEM_PROMPT = `Kamu adalah customer service profesional yang ramah, cepat, dan membantu closing.
 

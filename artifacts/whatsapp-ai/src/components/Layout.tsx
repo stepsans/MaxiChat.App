@@ -36,30 +36,34 @@ import {
   type AuthUser,
 } from "@workspace/api-client-react";
 
+import { usePermissions, type PermissionMenu } from "@/hooks/use-permissions";
+
 type TeamRole = "super_admin" | "supervisor" | "agent";
 
-// Nav permissions per team role:
-//   super_admin: everything (sole "owner" of the WhatsApp account & billing).
-//   supervisor:  same as super_admin minus Agents/Credentials/Settings/Analytics
-//                — they can see and assign all chats, but team / billing /
-//                integrations stay with the owner.
-//   agent:       only Chats (filtered to assigned conversations on the server).
+// Nav menu definitions. The "menu" key maps to the per-role permission
+// matrix (see hooks/use-permissions.ts) — a link is shown when the caller
+// has canView=true for that menu. Super admin always sees everything (the
+// matrix gates set them all true). Items with menu=null are always-visible
+// (Dashboard + Agen are role-only).
 const navItems: Array<{
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
-  roles: TeamRole[];
+  // Either gated by the permission matrix (`menu`) or by a static role
+  // list (`roles`). Items with neither are visible to everyone.
+  menu?: PermissionMenu;
+  roles?: TeamRole[];
 }> = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["super_admin", "supervisor"] },
-  { href: "/chats", label: "Chats", icon: MessageSquare, roles: ["super_admin", "supervisor", "agent"] },
-  { href: "/status", label: "Status", icon: CircleDashed, roles: ["super_admin", "supervisor"] },
-  { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, roles: ["super_admin", "supervisor"] },
-  { href: "/products", label: "Products", icon: Package, roles: ["super_admin", "supervisor"] },
-  { href: "/flows", label: "Chatbot Flow", icon: GitBranch, roles: ["super_admin", "supervisor"] },
-  { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["super_admin"] },
+  { href: "/chats", label: "Chats", icon: MessageSquare, menu: "chats" },
+  { href: "/status", label: "Status", icon: CircleDashed, menu: "statuses" },
+  { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },
+  { href: "/products", label: "Products", icon: Package, menu: "products" },
+  { href: "/flows", label: "Chatbot Flow", icon: GitBranch, menu: "flows" },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, menu: "analytics" },
   { href: "/agents", label: "Agen & Tim", icon: Users, roles: ["super_admin", "supervisor", "agent"] },
-  { href: "/credentials", label: "Credentials", icon: KeyRound, roles: ["super_admin"] },
-  { href: "/settings", label: "Settings", icon: Settings, roles: ["super_admin"] },
+  { href: "/credentials", label: "Credentials", icon: KeyRound, menu: "credentials" },
+  { href: "/settings", label: "Settings", icon: Settings, menu: "settings" },
 ];
 
 function useUnreadCount() {
@@ -160,6 +164,7 @@ export default function Layout({
   const [location] = useLocation();
   const totalUnread = useUnreadCount();
   const queryClient = useQueryClient();
+  const { menus: permMenus } = usePermissions();
   const logoutMut = useLogout({
     mutation: {
       onSettled: async () => {
@@ -243,7 +248,16 @@ export default function Layout({
           {navItems
             .filter((it) => {
               const tr = (user?.teamRole ?? "super_admin") as TeamRole;
-              return it.roles.includes(tr);
+              // Static-role items (Dashboard, Agen) are gated by `roles`.
+              if (it.roles) return it.roles.includes(tr);
+              // Matrix-gated items: super_admin always sees them; everyone
+              // else needs canView=true. While the matrix is loading we
+              // hide the link to avoid a flash of a forbidden page.
+              if (it.menu) {
+                if (tr === "super_admin") return true;
+                return permMenus[it.menu]?.canView ?? false;
+              }
+              return true;
             })
             .map(({ href, label, icon: Icon }) => {
             const isActive =

@@ -5,6 +5,37 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+export interface PermissionCell {
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+/**
+ * Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.
+ */
+export interface RoleMatrix {[key: string]: PermissionCell}
+
+export interface PermissionMatrix {
+  supervisor: RoleMatrix;
+  agent: RoleMatrix;
+}
+
+export type EffectivePermissionsTeamRole = typeof EffectivePermissionsTeamRole[keyof typeof EffectivePermissionsTeamRole];
+
+
+export const EffectivePermissionsTeamRole = {
+  super_admin: 'super_admin',
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export interface EffectivePermissions {
+  teamRole: EffectivePermissionsTeamRole;
+  menus: RoleMatrix;
+}
+
 export interface HealthStatus {
   status: string;
 }

@@ -12,15 +12,19 @@ import { z } from "zod";
 import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
 import { ensureKnowledgeTypesSeed } from "./knowledge-types";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
 // Agen view-only untuk produk; semua mutasi/import/upload butuh supervisor+.
-router.post("/", requireSupervisorOrAbove);
-router.put("/:id", requireSupervisorOrAbove);
-router.delete("/:id", requireSupervisorOrAbove);
-router.post("/upload-image", requireSupervisorOrAbove);
-router.post("/import", requireSupervisorOrAbove);
-router.post("/sync-to-knowledge", requireSupervisorOrAbove);
+router.get("/", requirePermission("products", "view"));
+router.get("/export.csv", requirePermission("products", "view"));
+router.get("/export.xlsx", requirePermission("products", "view"));
+router.post("/", requireSupervisorOrAbove, requirePermission("products", "create"));
+router.put("/:id", requireSupervisorOrAbove, requirePermission("products", "edit"));
+router.delete("/:id", requireSupervisorOrAbove, requirePermission("products", "delete"));
+router.post("/upload-image", requireSupervisorOrAbove, requirePermission("products", "create"));
+router.post("/import", requireSupervisorOrAbove, requirePermission("products", "create"));
+router.post("/sync-to-knowledge", requireSupervisorOrAbove, requirePermission("products", "edit"));
 
 const imageUpload = multer({
   storage: multer.diskStorage({

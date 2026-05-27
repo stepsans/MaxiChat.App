@@ -3,8 +3,15 @@ import { db, whatsappStatusesTable, chatsTable } from "@workspace/db";
 import { sql, eq, gt, desc } from "drizzle-orm";
 import { getCurrentOwnerPhone, postTextStatus, refreshChatProfilePic } from "./whatsapp";
 import { requireNotAgent } from "../lib/team-permissions";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
+
+// Matrix gates layered on top of the legacy requireNotAgent gate that the
+// DELETE handler already declares — both must pass.
+router.get("/", requirePermission("statuses", "view"));
+router.post("/", requirePermission("statuses", "create"));
+router.delete("/:id", requirePermission("statuses", "delete"));
 
 // Group statuses by author and order most recent first. Filter out anything
 // already past its 24h TTL — WhatsApp removes statuses then anyway.

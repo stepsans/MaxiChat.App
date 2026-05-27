@@ -17,6 +17,7 @@ import productsSyncRouter from "./products-sync";
 import knowledgeSyncRouter from "./knowledge-sync";
 import shortcutsSyncRouter from "./shortcuts-sync";
 import agentsRouter from "./agents";
+import permissionsRouter from "./permissions";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -45,6 +46,7 @@ router.use("/products", productsSyncRouter);
 router.use("/products", productsRouter);
 router.use("/credentials", credentialsRouter);
 router.use("/agents", agentsRouter);
+router.use("/permissions", permissionsRouter);
 router.use("/statuses", statusesRouter);
 // shortcuts-sync mounted BEFORE shortcutsRouter so /sync-* paths win over /:id.
 router.use("/shortcuts", shortcutsSyncRouter);

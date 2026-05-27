@@ -28,6 +28,8 @@ tags:
     description: Super admin user management
   - name: flows
     description: Chatbot flow builder
+  - name: permissions
+    description: Per-team-role menu permission matrix
 paths:
   /auth/login:
     post:
@@ -1700,6 +1702,45 @@ paths:
       responses:
         "204": { description: Deactivated }
 
+  /permissions:
+    get:
+      operationId: getPermissionMatrix
+      tags: [permissions]
+      summary: Get the per-role permission matrix for the current team
+      responses:
+        "200":
+          description: Matrix
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PermissionMatrix" }
+    put:
+      operationId: updatePermissionMatrix
+      tags: [permissions]
+      summary: Update the per-role permission matrix (super admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PermissionMatrix" }
+      responses:
+        "200":
+          description: Updated matrix
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PermissionMatrix" }
+
+  /permissions/me:
+    get:
+      operationId: getMyPermissions
+      tags: [permissions]
+      summary: Effective permissions for the signed-in user
+      responses:
+        "200":
+          description: Effective permissions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EffectivePermissions" }
+
   /flows/reset-cooldown:
     post:
       operationId: resetFlowCooldown
@@ -1718,6 +1759,37 @@ paths:
 
 components:
   schemas:
+    PermissionCell:
+      type: object
+      required: [canView, canCreate, canEdit, canDelete]
+      properties:
+        canView: { type: boolean }
+        canCreate: { type: boolean }
+        canEdit: { type: boolean }
+        canDelete: { type: boolean }
+
+    RoleMatrix:
+      type: object
+      description: Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.
+      additionalProperties:
+        $ref: "#/components/schemas/PermissionCell"
+
+    PermissionMatrix:
+      type: object
+      required: [supervisor, agent]
+      properties:
+        supervisor: { $ref: "#/components/schemas/RoleMatrix" }
+        agent: { $ref: "#/components/schemas/RoleMatrix" }
+
+    EffectivePermissions:
+      type: object
+      required: [teamRole, menus]
+      properties:
+        teamRole:
+          type: string
+          enum: [super_admin, supervisor, agent]
+        menus: { $ref: "#/components/schemas/RoleMatrix" }
+
     HealthStatus:
       type: object
       properties:

@@ -1577,6 +1577,73 @@ export const ActivateFlowResponse = zod.object({
 
 
 /**
+ * @summary Get the per-role permission matrix for the current team
+ */
+export const GetPermissionMatrixResponse = zod.object({
+  "supervisor": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.'),
+  "agent": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})
+
+
+/**
+ * @summary Update the per-role permission matrix (super admin only)
+ */
+export const UpdatePermissionMatrixBody = zod.object({
+  "supervisor": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.'),
+  "agent": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})
+
+export const UpdatePermissionMatrixResponse = zod.object({
+  "supervisor": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.'),
+  "agent": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})
+
+
+/**
+ * @summary Effective permissions for the signed-in user
+ */
+export const GetMyPermissionsResponse = zod.object({
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "menus": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})
+
+
+/**
  * @summary Clear flow cooldown for all chats so the Default trigger fires again immediately (for testing)
  */
 export const ResetFlowCooldownResponse = zod.object({
