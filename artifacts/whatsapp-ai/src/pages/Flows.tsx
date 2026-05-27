@@ -289,7 +289,7 @@ function FlowGuideDialog({
               </div>
 
               <div className="rounded-md border border-border p-3">
-                <div className="font-medium text-sky-600 dark:text-sky-400">
+                <div className="font-medium text-orange-600 dark:text-orange-400">
                   💬 Pesan (Message)
                 </div>
                 <p className="mt-1">
@@ -299,7 +299,7 @@ function FlowGuideDialog({
               </div>
 
               <div className="rounded-md border border-border p-3">
-                <div className="font-medium text-violet-600 dark:text-violet-400">
+                <div className="font-medium text-amber-600 dark:text-amber-400">
                   ❓ Pertanyaan (Question)
                 </div>
                 <p className="mt-1">

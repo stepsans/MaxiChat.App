@@ -202,7 +202,7 @@ export default function Dashboard() {
                 title="Total Chats"
                 value={summary?.totalChats ?? 0}
                 icon={MessageSquare}
-                color="bg-blue-500/10 text-blue-400"
+                color="bg-orange-500/10 text-orange-400"
                 sub={`${summary?.todayChats ?? 0} today`}
               />
               <StatCard
@@ -233,7 +233,7 @@ export default function Dashboard() {
                 title="Closing Leads"
                 value={summary?.closingLeads ?? 0}
                 icon={TrendingUp}
-                color="bg-violet-500/10 text-violet-400"
+                color="bg-amber-500/10 text-amber-400"
               />
               <StatCard
                 title="Cold Leads"

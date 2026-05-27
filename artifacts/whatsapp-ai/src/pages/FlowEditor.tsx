@@ -127,12 +127,12 @@ function MessageNode({ data, selected }: NodeProps<RFNode>) {
   return (
     <NodeShell
       selected={!!selected}
-      borderClass="border-blue-500/60"
-      icon={<MessageSquare className="w-3.5 h-3.5 text-blue-500" />}
+      borderClass="border-orange-500/60"
+      icon={<MessageSquare className="w-3.5 h-3.5 text-orange-500" />}
       title="Pesan"
     >
       {data.imageUrl && (
-        <div className="mb-1 flex items-center gap-1 text-[10px] text-blue-500">
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-orange-500">
           <ImagePlus className="w-3 h-3" /> Gambar terlampir
         </div>
       )}
@@ -152,12 +152,12 @@ function QuestionNode({ data, selected }: NodeProps<RFNode>) {
   return (
     <NodeShell
       selected={!!selected}
-      borderClass="border-purple-500/60"
-      icon={<HelpCircle className="w-3.5 h-3.5 text-purple-500" />}
+      borderClass="border-amber-500/60"
+      icon={<HelpCircle className="w-3.5 h-3.5 text-amber-500" />}
       title="Pertanyaan"
     >
       {data.imageUrl && (
-        <div className="mb-1 flex items-center gap-1 text-[10px] text-purple-500">
+        <div className="mb-1 flex items-center gap-1 text-[10px] text-amber-500">
           <ImagePlus className="w-3 h-3" /> Gambar terlampir
         </div>
       )}
@@ -543,7 +543,7 @@ function EditorInner({ flowId }: { flowId: number }) {
             onClick={() => addNode("message")}
             data-testid="button-add-message"
           >
-            <MessageSquare className="w-4 h-4 mr-2 text-blue-500" /> Pesan
+            <MessageSquare className="w-4 h-4 mr-2 text-orange-500" /> Pesan
           </Button>
           <Button
             variant="outline"
@@ -552,7 +552,7 @@ function EditorInner({ flowId }: { flowId: number }) {
             onClick={() => addNode("question")}
             data-testid="button-add-question"
           >
-            <HelpCircle className="w-4 h-4 mr-2 text-purple-500" /> Pertanyaan
+            <HelpCircle className="w-4 h-4 mr-2 text-amber-500" /> Pertanyaan
           </Button>
           <Button
             variant="outline"
