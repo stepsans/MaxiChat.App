@@ -1,0 +1,1 @@
+- [WhatsApp team ownership](whatsapp-team-ownership.md) — invited members (supervisor/agent) inherit super_admin's WA socket/session; per-user helpers must resolve owner userId first.

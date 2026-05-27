@@ -23,6 +23,7 @@ import {
   TakeoverChatParams,
   OpenChatByPhoneBody,
 } from "@workspace/api-zod";
+import { resolveOwnerUserId } from "../lib/seed";
 import {
   getCurrentOwnerPhone,
   MEDIA_DIR,
@@ -788,7 +789,7 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Missing file" });
     }
 
-    if (!getActiveSocket(req.session.userId!)) {
+    if (!(await getActiveSocket(req.session.userId!))) {
       // Clean up the file we just saved
       await fs.unlink(req.file.path).catch(() => {});
       return res.status(503).json({ error: "WhatsApp belum terhubung" });
@@ -884,7 +885,7 @@ router.post("/:id/contact", async (req, res) => {
       return res.status(400).json({ error: "Name and phone are required" });
     }
 
-    if (!getActiveSocket(req.session.userId!)) {
+    if (!(await getActiveSocket(req.session.userId!))) {
       return res.status(503).json({ error: "WhatsApp belum terhubung" });
     }
 
@@ -949,7 +950,7 @@ router.post("/:id/product", async (req, res) => {
       return res.status(400).json({ error: "Invalid productId" });
     }
 
-    if (!getActiveSocket(req.session.userId!)) {
+    if (!(await getActiveSocket(req.session.userId!))) {
       return res.status(503).json({ error: "WhatsApp belum terhubung" });
     }
 
@@ -1035,7 +1036,7 @@ router.post("/:id/product", async (req, res) => {
 
     let waMessageId: string | null = null;
     if (imageBuffer && imageMimeType) {
-      const sock = getActiveSocket(req.session.userId!);
+      const sock = await getActiveSocket(req.session.userId!);
       if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
       try {
         const sent = await sock.sendMessage(target.jid, {
@@ -1053,7 +1054,7 @@ router.post("/:id/product", async (req, res) => {
         return res.status(500).json({ error: "Failed to send product image" });
       }
     } else {
-      const sock = getActiveSocket(req.session.userId!);
+      const sock = await getActiveSocket(req.session.userId!);
       if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
       try {
         const sent = await sock.sendMessage(target.jid, { text: caption });
@@ -1094,7 +1095,7 @@ router.post("/:id/product", async (req, res) => {
     //   4+) each videoUrl (text, WA renders link preview)
     // Each as its own message. 800ms throttle between sends keeps ordering
     // deterministic and gives WhatsApp time to resolve link previews.
-    const sock = getActiveSocket(req.session.userId!);
+    const sock = await getActiveSocket(req.session.userId!);
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     let lastSentDescription: string | null = null;
 

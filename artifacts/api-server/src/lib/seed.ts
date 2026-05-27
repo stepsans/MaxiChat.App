@@ -207,7 +207,7 @@ export async function ensureWhatsappSessionUniqueUser(): Promise<void> {
 export async function getOwnerPhoneForUser(
   userId: number
 ): Promise<string | null> {
-  const [row] = await db.execute<{ owner_phone: string | null }>(sql`
+  const result = await db.execute<{ owner_phone: string | null }>(sql`
     SELECT COALESCE(uw_self.owner_phone, uw_parent.owner_phone) AS owner_phone
     FROM users u
     LEFT JOIN user_whatsapp uw_self ON uw_self.user_id = u.id
@@ -215,7 +215,31 @@ export async function getOwnerPhoneForUser(
     WHERE u.id = ${userId}
     LIMIT 1
   `);
+  const row = (result as any).rows?.[0] ?? (result as any)[0];
   return row?.owner_phone ?? null;
+}
+
+// For an invited team member (supervisor / agent) the WhatsApp socket,
+// auth dir and whatsapp_session row all live under the *super_admin* parent
+// account — they don't pair their own number. This helper returns that
+// "operational" userId: parent_user_id for invited members, else the id
+// itself. Cached process-wide because parent_user_id is immutable per row
+// under current app behavior (only set at invite-accept, never reassigned).
+// IF a re-parent / team-transfer feature is ever added, invalidate this
+// cache (or drop caching) — otherwise stale entries would route a moved
+// user's WhatsApp traffic to the wrong owner until the process restarts.
+const ownerUserIdCache = new Map<number, number>();
+export async function resolveOwnerUserId(userId: number): Promise<number> {
+  const cached = ownerUserIdCache.get(userId);
+  if (cached !== undefined) return cached;
+  const result = await db.execute<{ owner_user_id: number }>(sql`
+    SELECT COALESCE(u.parent_user_id, u.id)::int AS owner_user_id
+    FROM users u WHERE u.id = ${userId} LIMIT 1
+  `);
+  const row = (result as any).rows?.[0] ?? (result as any)[0];
+  const ownerId = Number(row?.owner_user_id ?? userId);
+  ownerUserIdCache.set(userId, ownerId);
+  return ownerId;
 }
 
 // Helper used by whatsapp.ts when a user finishes pairing — persist the

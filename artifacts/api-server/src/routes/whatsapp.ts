@@ -24,7 +24,16 @@ import { logger } from "../lib/logger";
 import {
   getOwnerPhoneForUser,
   setOwnerPhoneForUser,
+  resolveOwnerUserId,
 } from "../lib/seed";
+
+// Whether the signed-in user owns the WhatsApp pairing (super_admin) or
+// merely inherits it (supervisor / agent). Invited members must not be able
+// to pair or disconnect the team's number.
+async function isWhatsappOwner(userId: number): Promise<boolean> {
+  const owner = await resolveOwnerUserId(userId);
+  return owner === userId;
+}
 
 const AUTH_ROOT = path.join(process.cwd(), ".whatsapp-auth");
 export const MEDIA_DIR = path.join(process.cwd(), "media");
@@ -95,8 +104,13 @@ async function saveBufferToMedia(
   return { url: `/api/media/${filename}`, filename: preferredFilename ?? filename };
 }
 
-export function getActiveSocket(userId: number): WASocket | null {
-  return getCtx(userId).sock;
+// Returns the live Baileys socket for this user's team. Supervisor / agent
+// inherit the super_admin parent's socket (only the owner pairs a number);
+// this resolves the call to the owner's ctx so invited members can send
+// messages without re-pairing.
+export async function getActiveSocket(userId: number): Promise<WASocket | null> {
+  const ownerUserId = await resolveOwnerUserId(userId);
+  return getCtx(ownerUserId).sock;
 }
 
 // Baileys' sock.user.id looks like "628111…:7@s.whatsapp.net" — strip every
@@ -116,9 +130,10 @@ function normalizeOwnerPhone(input: string | null | undefined): string | null {
 export async function getCurrentOwnerPhone(
   userId: number
 ): Promise<string | null> {
-  const ctx = getCtx(userId);
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const ctx = getCtx(ownerUserId);
   if (ctx.ownerPhone) return ctx.ownerPhone;
-  const phone = await getOwnerPhoneForUser(userId);
+  const phone = await getOwnerPhoneForUser(ownerUserId);
   if (phone) ctx.ownerPhone = phone;
   return phone;
 }
@@ -145,7 +160,8 @@ export async function refreshChatProfilePic(
   },
   opts: { force?: boolean } = {}
 ): Promise<string | null> {
-  const ctx = getCtx(userId);
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const ctx = getCtx(ownerUserId);
   if (!ctx.sock) return null;
   if (profilePicInFlight.has(chat.id)) return null;
   if (!opts.force && chat.profilePicCheckedAt) {
@@ -208,7 +224,8 @@ export async function sendMediaToJid(
   caption?: string,
   filename?: string
 ): Promise<string | null> {
-  const sock = getCtx(userId).sock;
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const sock = getCtx(ownerUserId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   const buffer = await fs.readFile(filepath);
   let sent;
@@ -369,7 +386,8 @@ export async function postTextStatus(
   text: string,
   backgroundColor: string
 ): Promise<typeof whatsappStatusesTable.$inferSelect> {
-  const sock = getCtx(userId).sock;
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const sock = getCtx(ownerUserId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   const dmChats = await db
     .select({ phoneNumber: chatsTable.phoneNumber })
@@ -446,7 +464,8 @@ export async function postTextStatus(
 export async function fetchOwnBio(
   userId: number
 ): Promise<{ bio: string | null; setAt: string | null }> {
-  const sock = getCtx(userId).sock;
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const sock = getCtx(ownerUserId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   const ownerJid = sock.user?.id;
   if (!ownerJid) throw new Error("WhatsApp user not available");
@@ -480,7 +499,8 @@ export async function updateOwnBio(
   userId: number,
   text: string
 ): Promise<{ bio: string; setAt: string }> {
-  const sock = getCtx(userId).sock;
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const sock = getCtx(ownerUserId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   await (sock as any).updateProfileStatus(text);
   return { bio: text, setAt: new Date().toISOString() };
@@ -492,7 +512,8 @@ export async function sendContactToJid(
   contactName: string,
   contactPhone: string
 ): Promise<string | null> {
-  const sock = getCtx(userId).sock;
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const sock = getCtx(ownerUserId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   const cleanPhone = contactPhone.replace(/[^\d+]/g, "");
   const waNumber = cleanPhone.startsWith("+") ? cleanPhone.slice(1) : cleanPhone;
@@ -2083,7 +2104,10 @@ const router = Router();
 router.get("/status", async (req, res) => {
   try {
     const userId = requireUserId(req);
-    const session = await getOrCreateSession(userId);
+    // Invited team members (supervisor / agent) share the super_admin's
+    // pairing — read the session off the owner row, not their own.
+    const ownerUserId = await resolveOwnerUserId(userId);
+    const session = await getOrCreateSession(ownerUserId);
     res.json({
       status: session.status,
       qrCode: session.qrCode ?? null,
@@ -2099,6 +2123,13 @@ router.get("/status", async (req, res) => {
 router.post("/connect", async (req, res) => {
   try {
     const userId = requireUserId(req);
+    // Only the super_admin can pair / re-pair a WhatsApp number for the
+    // team. Supervisor / agent inherit the owner's session.
+    if (!(await isWhatsappOwner(userId))) {
+      return res.status(403).json({
+        error: "Hanya pemilik akun yang dapat menghubungkan WhatsApp.",
+      });
+    }
     const session = await getOrCreateSession(userId);
     if (session.status === "connected") {
       return res.json({
@@ -2122,12 +2153,13 @@ router.post("/connect", async (req, res) => {
 router.get("/profile/bio", async (req, res): Promise<void> => {
   try {
     const userId = requireUserId(req);
-    const ownerPhone = await getCurrentOwnerPhone(userId);
+    const ownerUserId = await resolveOwnerUserId(userId);
+    const ownerPhone = await getCurrentOwnerPhone(ownerUserId);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
       return;
     }
-    const result = await fetchOwnBio(userId);
+    const result = await fetchOwnBio(ownerUserId);
     res.json(result);
   } catch (err) {
     req.log.error({ err }, "Failed to fetch own bio");
@@ -2138,6 +2170,12 @@ router.get("/profile/bio", async (req, res): Promise<void> => {
 router.put("/profile/bio", async (req, res): Promise<void> => {
   try {
     const userId = requireUserId(req);
+    if (!(await isWhatsappOwner(userId))) {
+      res.status(403).json({
+        error: "Hanya pemilik akun yang dapat mengubah bio WhatsApp.",
+      });
+      return;
+    }
     const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.status(409).json({ error: "WhatsApp not connected" });
@@ -2159,6 +2197,11 @@ router.put("/profile/bio", async (req, res): Promise<void> => {
 router.post("/disconnect", async (req, res) => {
   try {
     const userId = requireUserId(req);
+    if (!(await isWhatsappOwner(userId))) {
+      return res.status(403).json({
+        error: "Hanya pemilik akun yang dapat memutuskan WhatsApp.",
+      });
+    }
     const ctx = getCtx(userId);
     // Bump THIS user's epoch FIRST so any in-flight handler callbacks abort
     // before they try to persist into chats we're about to clear.
