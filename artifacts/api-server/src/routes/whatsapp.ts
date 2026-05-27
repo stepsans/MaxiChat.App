@@ -19,6 +19,7 @@ import {
   type FlowNode,
 } from "@workspace/db";
 import { and, eq, sql, inArray } from "drizzle-orm";
+import { withTag, stripTrailingTag, CHATBOT_TAG, AI_TAG } from "../lib/sender-tag.js";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { logger } from "../lib/logger";
 import {
@@ -702,7 +703,9 @@ async function generateAiReply(
 
     const history = recentMessages.map((m) => ({
       role: m.direction === "outbound" ? ("assistant" as const) : ("user" as const),
-      content: m.content,
+      // Strip the appended sender signature so the model doesn't learn to
+      // sign its own replies (which would then get double-tagged by withTag).
+      content: m.direction === "outbound" ? stripTrailingTag(m.content) : m.content,
     }));
 
     const systemPrompt = `${settings.systemPrompt}
@@ -1154,20 +1157,25 @@ async function sendFlowMessage(
     }
   }
 
+  // Tag every chatbot-flow send so the recipient can tell the reply was
+  // produced by the automated flow (vs a human agent or the AI).
+  const taggedText = text ? withTag(text, CHATBOT_TAG) : "";
   let sent;
   if (imageBuffer) {
     sent = await ctx.sock.sendMessage(jid, {
       image: imageBuffer,
-      caption: text || undefined,
+      // Sign the caption even when the flow node had no text — the
+      // image-only case still benefits from the "Chatbot" attribution.
+      caption: taggedText || withTag("", CHATBOT_TAG),
     });
-  } else if (text) {
-    sent = await ctx.sock.sendMessage(jid, { text });
+  } else if (taggedText) {
+    sent = await ctx.sock.sendMessage(jid, { text: taggedText });
   } else {
     // Image-only node whose image failed to load — bail out instead of
     // sending an empty text message (which Baileys would reject anyway).
     return false;
   }
-  const stored = text || (imageBuffer ? "[gambar]" : "");
+  const stored = taggedText || (imageBuffer ? "[gambar]" : "");
   await db
     .insert(chatMessagesTable)
     .values({
@@ -1669,7 +1677,10 @@ async function maybeTriggerAutoReply(
       if (ctx.ownerPhone !== ownerPhone) return;
 
       const aiReply = await generateAiReply(ownerPhone, chat.id, messageText);
-      const replyText = aiReply ?? settings.fallbackMessage;
+      // Sign AI-generated replies with the "powered by AI" tag. The
+      // configured fallbackMessage is a canned operator-authored string,
+      // so we leave it unsigned to avoid misattributing it to the AI.
+      const replyText = aiReply ? withTag(aiReply, AI_TAG) : settings.fallbackMessage;
 
       if (epoch !== ctx.epoch) return;
       if (ctx.ownerPhone !== ownerPhone) return;

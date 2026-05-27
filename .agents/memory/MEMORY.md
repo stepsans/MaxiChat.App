@@ -1,2 +1,1 @@
-- [WhatsApp team ownership](whatsapp-team-ownership.md) — invited members must inherit the inviter's WhatsApp via resolveOwnerUserId; never query whatsapp_sessions by the invitee's own userId.
-- [Per-role permission matrix](role-permission-matrix.md) — UI matrix is only meaningful if every mutating route declares `requirePermission(menu, action)`; legacy role gates alone allow auth bypass.
+- [Outgoing message signatures](outgoing-message-signatures.md) — every WA send is tagged with `_<sender>_`; rules for which paths sign, which don't, and why AI history must be stripped.

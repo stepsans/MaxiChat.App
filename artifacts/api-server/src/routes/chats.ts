@@ -12,6 +12,7 @@ import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
 import { eq, desc, and, sql } from "drizzle-orm";
+import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import {
   ListChatsQueryParams,
   UpdateChatBody,
@@ -645,12 +646,17 @@ router.post("/:id/reply", async (req, res) => {
     const chat = await loadOwnedChat(req.session.userId!, idParsed.data.id);
     if (!chat) return res.status(404).json({ error: "Chat not found" });
 
+    // Append the human agent's signature so the recipient can tell who on
+    // the team replied. See lib/sender-tag.ts for the format.
+    const agentTag = await resolveAgentTag(req.session.userId!);
+    const taggedContent = withTag(bodyParsed.data.content, agentTag);
+
     const [message] = await db
       .insert(chatMessagesTable)
       .values({
         chatId: idParsed.data.id,
         direction: "outbound",
-        content: bodyParsed.data.content,
+        content: taggedContent,
         isAiGenerated: false,
       })
       .returning();
@@ -663,7 +669,7 @@ router.post("/:id/reply", async (req, res) => {
     await db
       .update(chatsTable)
       .set({
-        lastMessage: bodyParsed.data.content,
+        lastMessage: taggedContent,
         lastMessageAt: new Date(),
         firstAgentReplyAt: sql`COALESCE(${chatsTable.firstAgentReplyAt}, NOW())`,
       })
@@ -801,7 +807,11 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       return res.status(404).json({ error: "Chat not found" });
     }
 
-    const caption = (req.body?.caption as string | undefined)?.trim() || undefined;
+    const rawCaption = (req.body?.caption as string | undefined)?.trim() || undefined;
+    const agentTag = await resolveAgentTag(req.session.userId!);
+    // Always sign — even media without a caption gets the agent's tag so
+    // the recipient can tell who on the team sent the file.
+    const caption = withTag(rawCaption ?? "", agentTag);
     const mimeType = req.file.mimetype || "application/octet-stream";
     const mediaType = classifyMediaType(mimeType);
     const originalName = req.file.originalname;
@@ -984,7 +994,9 @@ router.post("/:id/product", async (req, res) => {
       `Kode: ${product.code}`,
       `Harga: ${priceFmt}`,
     ];
-    const caption = captionLines.join("\n");
+    const rawCaption = captionLines.join("\n");
+    const productAgentTag = await resolveAgentTag(req.session.userId!);
+    const caption = withTag(rawCaption, productAgentTag);
 
     let mediaType: "image" | null = null;
     let mediaUrl: string | null = null;
