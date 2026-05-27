@@ -179,7 +179,7 @@ export default function SignUp() {
               onChange={(e) => setPassword(e.target.value)}
               data-testid="signup-password"
               placeholder="Min. 8 karakter"
-              className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition"
+              className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition"
             />
             <button
               type="button"
@@ -233,15 +233,15 @@ export default function SignUp() {
             checked={agreed}
             onChange={(e) => setAgreed(e.target.checked)}
             data-testid="signup-agree"
-            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
           />
           <span>
             Saya setuju dengan{" "}
-            <a href="#" className="font-semibold text-blue-600 hover:underline">
+            <a href="#" className="font-semibold text-orange-600 hover:underline">
               Syarat & Ketentuan
             </a>{" "}
             dan{" "}
-            <a href="#" className="font-semibold text-blue-600 hover:underline">
+            <a href="#" className="font-semibold text-orange-600 hover:underline">
               Kebijakan Privasi
             </a>{" "}
             MaxiChat.
@@ -261,7 +261,7 @@ export default function SignUp() {
           type="submit"
           disabled={signupMut.isPending}
           data-testid="signup-submit"
-          className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-indigo-700 active:scale-[.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
+          className="w-full h-11 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-semibold shadow-lg shadow-orange-500/20 hover:from-orange-600 hover:to-amber-600 active:scale-[.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
         >
           {signupMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
           Buat akun
@@ -271,7 +271,7 @@ export default function SignUp() {
           Sudah punya akun?{" "}
           <Link
             href="/login"
-            className="font-semibold text-blue-600 hover:underline"
+            className="font-semibold text-orange-600 hover:underline"
             data-testid="link-login"
           >
             Sign in
@@ -308,7 +308,7 @@ function Field(props: {
           autoComplete={props.autoComplete}
           data-testid={props.testId}
           placeholder={props.placeholder}
-          className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition"
+          className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition"
         />
       </div>
     </label>

@@ -91,7 +91,7 @@ export default function VerifyEmail() {
     return (
       <AuthShell title="Memverifikasi email…" subtitle="Mohon tunggu sebentar.">
         <div className="flex flex-col items-center gap-3 py-8 text-slate-600">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
           <p className="text-sm">Menghubungi server…</p>
         </div>
       </AuthShell>
@@ -108,7 +108,7 @@ export default function VerifyEmail() {
           <Link
             href="/login"
             data-testid="link-go-login"
-            className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-indigo-700 active:scale-[.99] transition flex items-center justify-center"
+            className="w-full h-11 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-semibold shadow-lg shadow-orange-500/20 hover:from-orange-600 hover:to-amber-600 active:scale-[.99] transition flex items-center justify-center"
           >
             Lanjut ke Sign in
           </Link>
@@ -133,7 +133,7 @@ export default function VerifyEmail() {
               onClick={handleResend}
               disabled={resendMut.isPending || cooldown > 0}
               data-testid="btn-resend"
-              className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-indigo-700 active:scale-[.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
+              className="w-full h-11 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-semibold shadow-lg shadow-orange-500/20 hover:from-orange-600 hover:to-amber-600 active:scale-[.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
             >
               {resendMut.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -145,7 +145,7 @@ export default function VerifyEmail() {
           )}
           <Link
             href="/login"
-            className="text-xs font-semibold text-blue-600 hover:underline"
+            className="text-xs font-semibold text-orange-600 hover:underline"
           >
             Kembali ke Sign in
           </Link>
@@ -167,7 +167,7 @@ export default function VerifyEmail() {
     >
       <div className="space-y-4">
         <div className="flex flex-col items-center gap-3 py-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
             <MailCheck className="w-8 h-8 text-white" />
           </div>
         </div>
@@ -222,7 +222,7 @@ export default function VerifyEmail() {
 
         <p className="text-center text-xs text-slate-500">
           Sudah verifikasi?{" "}
-          <Link href="/login" className="font-semibold text-blue-600 hover:underline">
+          <Link href="/login" className="font-semibold text-orange-600 hover:underline">
             Sign in sekarang
           </Link>
         </p>

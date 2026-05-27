@@ -37,7 +37,7 @@ export default function AuthShell({
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 p-6 sm:p-8">
             <div className="mb-6">
               {eyebrow && (
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 mb-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-orange-600 mb-1.5">
                   {eyebrow}
                 </div>
               )}
@@ -63,7 +63,7 @@ export default function AuthShell({
 
 function Logo() {
   return (
-    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
       <SiWhatsapp className="w-4.5 h-4.5 text-white" />
     </div>
   );
@@ -71,10 +71,10 @@ function Logo() {
 
 function BrandPanel() {
   return (
-    <div className="relative hidden md:flex flex-col justify-between overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white p-10">
+    <div className="relative hidden md:flex flex-col justify-between overflow-hidden bg-gradient-to-br from-orange-500 via-orange-600 to-amber-600 text-white p-10">
       {/* decorative blobs */}
-      <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-purple-400/30 blur-3xl" />
-      <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-blue-400/30 blur-3xl" />
+      <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-amber-300/40 blur-3xl" />
+      <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-orange-300/40 blur-3xl" />
 
       <div className="relative z-10 flex items-center gap-2.5">
         <Logo />
@@ -87,19 +87,19 @@ function BrandPanel() {
           <br />
           Your Chat.
         </h2>
-        <p className="mt-4 text-sm text-blue-100 max-w-sm leading-relaxed">
+        <p className="mt-4 text-sm text-orange-50 max-w-sm leading-relaxed">
           Otomasi balasan WhatsApp, kelola tim agent, dan analisa percakapan —
           semua dalam satu dashboard pintar bertenaga AI.
         </p>
 
         {/* Stylized dashboard preview */}
         <div className="mt-8 relative">
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 shadow-2xl shadow-purple-900/40">
+          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-4 shadow-2xl shadow-orange-900/40">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2 h-2 rounded-full bg-red-400" />
               <div className="w-2 h-2 rounded-full bg-yellow-400" />
               <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              <div className="ml-2 text-[10px] text-blue-100/80">
+              <div className="ml-2 text-[10px] text-orange-50/90">
                 dashboard.maxichat.com
               </div>
             </div>
@@ -115,13 +115,13 @@ function BrandPanel() {
             </div>
           </div>
           <div className="absolute -bottom-3 -right-3 bg-white text-slate-900 rounded-xl px-3 py-2 shadow-xl flex items-center gap-1.5 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+            <Sparkles className="w-3.5 h-3.5 text-orange-600" />
             AI active
           </div>
         </div>
       </div>
 
-      <div className="relative z-10 text-[11px] text-blue-100/70">
+      <div className="relative z-10 text-[11px] text-orange-50/80">
         Dipercaya oleh tim customer-service di seluruh Indonesia.
       </div>
     </div>
@@ -139,7 +139,7 @@ function Stat({
 }) {
   return (
     <div className="bg-white/10 rounded-lg p-2">
-      <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-blue-100/80">
+      <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-orange-50/90">
         {icon}
         {label}
       </div>
@@ -165,18 +165,18 @@ function ChatRow({
         muted ? "opacity-60" : ""
       }`}
     >
-      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center text-[10px] font-bold">
+      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 flex items-center justify-center text-[10px] font-bold">
         {name[0]}
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-[11px] font-semibold leading-tight">{name}</div>
-        <div className="text-[10px] text-blue-100/80 truncate">{preview}</div>
+        <div className="text-[10px] text-orange-50/90 truncate">{preview}</div>
       </div>
       {badge && (
         <span
           className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
             badge === "AI"
-              ? "bg-purple-400/30 text-purple-100"
+              ? "bg-white/25 text-white"
               : "bg-emerald-400/30 text-emerald-100"
           }`}
         >

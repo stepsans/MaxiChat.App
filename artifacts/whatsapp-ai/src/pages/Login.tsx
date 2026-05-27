@@ -84,7 +84,7 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               data-testid="login-email"
               placeholder="you@company.com"
-              className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition"
+              className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition"
             />
           </div>
         </label>
@@ -95,7 +95,7 @@ export default function Login() {
             <a
               href="#"
               onClick={(e) => e.preventDefault()}
-              className="text-[11px] font-medium text-blue-600 hover:underline"
+              className="text-[11px] font-medium text-orange-600 hover:underline"
             >
               Lupa password?
             </a>
@@ -110,7 +110,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               data-testid="login-password"
               placeholder="••••••••"
-              className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition"
+              className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition"
             />
             <button
               type="button"
@@ -148,7 +148,7 @@ export default function Login() {
           type="submit"
           disabled={loginMut.isPending}
           data-testid="login-submit"
-          className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-indigo-700 active:scale-[.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
+          className="w-full h-11 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-semibold shadow-lg shadow-orange-500/20 hover:from-orange-600 hover:to-amber-600 active:scale-[.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
         >
           {loginMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
           Sign in
@@ -158,7 +158,7 @@ export default function Login() {
           Belum punya akun?{" "}
           <Link
             href="/signup"
-            className="font-semibold text-blue-600 hover:underline"
+            className="font-semibold text-orange-600 hover:underline"
             data-testid="link-signup"
           >
             Buat akun gratis
