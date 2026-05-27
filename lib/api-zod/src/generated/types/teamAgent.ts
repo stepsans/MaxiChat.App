@@ -13,6 +13,10 @@ export interface TeamAgent {
   email: string;
   /** @nullable */
   name: string | null;
+  /** @nullable */
+  mobilePhone: string | null;
+  /** @nullable */
+  profilePhotoUrl: string | null;
   teamRole: TeamAgentTeamRole;
   status: TeamAgentStatus;
   createdAt: Date;

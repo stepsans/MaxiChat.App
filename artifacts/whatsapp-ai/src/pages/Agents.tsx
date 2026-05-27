@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListAgents,
@@ -36,6 +36,8 @@ type FormState = {
   email: string;
   name: string;
   password: string;
+  mobilePhone: string;
+  profilePhotoUrl: string;
   teamRole: "supervisor" | "agent";
 };
 
@@ -43,8 +45,49 @@ const emptyForm: FormState = {
   email: "",
   name: "",
   password: "",
+  mobilePhone: "",
+  profilePhotoUrl: "",
   teamRole: "agent",
 };
+
+function isValidPhone(v: string) {
+  const t = v.trim();
+  return t.length >= 6 && t.length <= 20 && /^[+()\-\s\d]+$/.test(t);
+}
+
+async function uploadAvatar(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/agents/upload-photo", {
+    method: "POST",
+    body: fd,
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error ?? "Upload gagal");
+  }
+  const data = (await res.json()) as { url: string };
+  return data.url;
+}
+
+function Avatar({ url, name }: { url?: string | null; name?: string | null }) {
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name ?? "Foto"}
+        className="w-8 h-8 rounded-full object-cover border border-border"
+      />
+    );
+  }
+  const initial = (name ?? "?").trim().charAt(0).toUpperCase() || "?";
+  return (
+    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
+      {initial}
+    </div>
+  );
+}
 
 const PLAN_LABEL: Record<string, string> = {
   basic: "Basic",
@@ -63,6 +106,33 @@ export default function Agents() {
   const [createForm, setCreateForm] = useState<FormState>(emptyForm);
   const [editTarget, setEditTarget] = useState<TeamAgent | null>(null);
   const [editForm, setEditForm] = useState<FormState>(emptyForm);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const createFileRef = useRef<HTMLInputElement>(null);
+  const editFileRef = useRef<HTMLInputElement>(null);
+
+  async function handlePhotoPick(
+    file: File | undefined,
+    target: "create" | "edit"
+  ) {
+    if (!file) return;
+    setPhotoUploading(true);
+    try {
+      const url = await uploadAvatar(file);
+      if (target === "create") {
+        setCreateForm((f) => ({ ...f, profilePhotoUrl: url }));
+      } else {
+        setEditForm((f) => ({ ...f, profilePhotoUrl: url }));
+      }
+    } catch (err: any) {
+      toast({
+        title: "Gagal upload foto",
+        description: err?.message ?? "Coba lagi.",
+        variant: "destructive",
+      });
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: getListAgentsQueryKey() });
@@ -143,12 +213,18 @@ export default function Agents() {
       email: agent.email,
       name: agent.name ?? "",
       password: "",
+      mobilePhone: agent.mobilePhone ?? "",
+      profilePhotoUrl: agent.profilePhotoUrl ?? "",
       teamRole: agent.teamRole,
     });
   }
 
   function submitCreate() {
-    if (!createForm.email.trim() || !createForm.name.trim() || createForm.password.length < 8) {
+    if (
+      !createForm.email.trim() ||
+      !createForm.name.trim() ||
+      createForm.password.length < 8
+    ) {
       toast({
         title: "Lengkapi data",
         description: "Email, nama, dan password (min 8 karakter) wajib diisi.",
@@ -156,16 +232,48 @@ export default function Agents() {
       });
       return;
     }
-    createMut.mutate({ data: createForm });
+    if (!isValidPhone(createForm.mobilePhone)) {
+      toast({
+        title: "Nomor HP wajib diisi",
+        description: "Masukkan nomor HP yang valid (6–20 digit).",
+        variant: "destructive",
+      });
+      return;
+    }
+    createMut.mutate({
+      data: {
+        email: createForm.email,
+        name: createForm.name,
+        password: createForm.password,
+        teamRole: createForm.teamRole,
+        mobilePhone: createForm.mobilePhone.trim(),
+        ...(createForm.profilePhotoUrl
+          ? { profilePhotoUrl: createForm.profilePhotoUrl }
+          : {}),
+      },
+    });
   }
 
   function submitEdit() {
     if (!editTarget) return;
+    if (!isValidPhone(editForm.mobilePhone)) {
+      toast({
+        title: "Nomor HP wajib diisi",
+        description: "Masukkan nomor HP yang valid (6–20 digit).",
+        variant: "destructive",
+      });
+      return;
+    }
     const patch: any = {
       name: editForm.name.trim() || undefined,
       teamRole: editForm.teamRole,
+      mobilePhone: editForm.mobilePhone.trim(),
     };
     if (editForm.password.length >= 8) patch.password = editForm.password;
+    // Allow clearing the photo by sending "".
+    if (editForm.profilePhotoUrl !== (editTarget.profilePhotoUrl ?? "")) {
+      patch.profilePhotoUrl = editForm.profilePhotoUrl;
+    }
     updateMut.mutate({ id: editTarget.id, data: patch });
   }
 
@@ -267,6 +375,7 @@ export default function Agents() {
                 <tr>
                   <th className="text-left px-4 py-2.5 font-medium">Nama</th>
                   <th className="text-left px-4 py-2.5 font-medium">Email</th>
+                  <th className="text-left px-4 py-2.5 font-medium">No. HP</th>
                   <th className="text-left px-4 py-2.5 font-medium">Peran</th>
                   <th className="text-left px-4 py-2.5 font-medium">Status</th>
                   <th className="text-left px-4 py-2.5 font-medium">Ditambahkan</th>
@@ -280,8 +389,16 @@ export default function Agents() {
                     data-testid={`agent-row-${agent.id}`}
                     className="border-t border-border"
                   >
-                    <td className="px-4 py-3 font-medium">{agent.name ?? "—"}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <div className="flex items-center gap-2">
+                        <Avatar url={agent.profilePhotoUrl} name={agent.name} />
+                        <span>{agent.name ?? "—"}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{agent.email}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {agent.mobilePhone ?? "—"}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-xs">
                         {agent.teamRole === "supervisor" ? (
@@ -359,6 +476,46 @@ export default function Agents() {
             <DialogTitle>Undang Anggota Tim</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Avatar url={createForm.profilePhotoUrl} name={createForm.name} />
+              <div>
+                <input
+                  ref={createFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) =>
+                    handlePhotoPick(e.target.files?.[0], "create")
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={photoUploading}
+                  onClick={() => createFileRef.current?.click()}
+                  data-testid="button-upload-create-photo"
+                >
+                  {photoUploading ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : null}
+                  {createForm.profilePhotoUrl ? "Ganti Foto" : "Upload Foto"}
+                </Button>
+                {createForm.profilePhotoUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-1"
+                    onClick={() =>
+                      setCreateForm((f) => ({ ...f, profilePhotoUrl: "" }))
+                    }
+                  >
+                    Hapus
+                  </Button>
+                )}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="agent-name">Nama</Label>
               <Input
@@ -369,6 +526,21 @@ export default function Agents() {
                   setCreateForm((f) => ({ ...f, name: e.target.value }))
                 }
                 placeholder="Nama lengkap"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="agent-phone">
+                Nomor HP <span className="text-red-400">*</span>
+              </Label>
+              <Input
+                id="agent-phone"
+                data-testid="input-agent-phone"
+                inputMode="tel"
+                value={createForm.mobilePhone}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, mobilePhone: e.target.value }))
+                }
+                placeholder="+62 812 3456 7890"
               />
             </div>
             <div className="space-y-1.5">
@@ -445,9 +617,63 @@ export default function Agents() {
             <DialogTitle>Ubah Anggota Tim</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Avatar url={editForm.profilePhotoUrl} name={editForm.name} />
+              <div>
+                <input
+                  ref={editFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) =>
+                    handlePhotoPick(e.target.files?.[0], "edit")
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={photoUploading}
+                  onClick={() => editFileRef.current?.click()}
+                  data-testid="button-upload-edit-photo"
+                >
+                  {photoUploading ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : null}
+                  {editForm.profilePhotoUrl ? "Ganti Foto" : "Upload Foto"}
+                </Button>
+                {editForm.profilePhotoUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-1"
+                    onClick={() =>
+                      setEditForm((f) => ({ ...f, profilePhotoUrl: "" }))
+                    }
+                  >
+                    Hapus
+                  </Button>
+                )}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
               <Input value={editForm.email} disabled />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-phone">
+                Nomor HP <span className="text-red-400">*</span>
+              </Label>
+              <Input
+                id="edit-phone"
+                inputMode="tel"
+                value={editForm.mobilePhone}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, mobilePhone: e.target.value }))
+                }
+                placeholder="+62 812 3456 7890"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-name">Nama</Label>

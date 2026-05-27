@@ -92,6 +92,7 @@ import type {
   TextShortcut,
   TextShortcutInput,
   UpdateAgentInput,
+  UploadPhotoResponse,
   UpsertKnowledgeSyncConfig200,
   UpsertProductSyncConfig200,
   UpsertShortcutSyncConfig200,
@@ -4160,6 +4161,78 @@ export const useUpdateTeamSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateTeamSettingsMutationOptions(options));
+    }
+
+export const getUploadAgentPhotoUrl = () => {
+
+
+
+
+  return `/api/agents/upload-photo`
+}
+
+/**
+ * Uploads an image via `multipart/form-data` with a single form field `file`.
+
+ * @summary Upload a profile photo and get back a public media URL
+ */
+export const uploadAgentPhoto = async ( options?: RequestInit): Promise<UploadPhotoResponse> => {
+
+  return customFetch<UploadPhotoResponse>(getUploadAgentPhotoUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getUploadAgentPhotoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAgentPhoto>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadAgentPhoto>>, TError,void, TContext> => {
+
+const mutationKey = ['uploadAgentPhoto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadAgentPhoto>>, void> = () => {
+
+
+          return  uploadAgentPhoto(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadAgentPhotoMutationResult = NonNullable<Awaited<ReturnType<typeof uploadAgentPhoto>>>
+
+    export type UploadAgentPhotoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Upload a profile photo and get back a public media URL
+ */
+export const useUploadAgentPhoto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAgentPhoto>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadAgentPhoto>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getUploadAgentPhotoMutationOptions(options));
     }
 
 export const getHeartbeatUrl = () => {

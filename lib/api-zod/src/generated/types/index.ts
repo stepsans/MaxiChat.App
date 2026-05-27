@@ -131,6 +131,7 @@ export * from './textShortcutInput';
 export * from './updateAgentInput';
 export * from './updateAgentInputStatus';
 export * from './updateAgentInputTeamRole';
+export * from './uploadPhotoResponse';
 export * from './upsertKnowledgeSyncConfig200';
 export * from './upsertProductSyncConfig200';
 export * from './upsertShortcutSyncConfig200';

@@ -1000,6 +1000,8 @@ export const ListAgentsResponse = zod.object({
   "id": zod.number(),
   "email": zod.string().email(),
   "name": zod.string().nullable(),
+  "mobilePhone": zod.string().nullable(),
+  "profilePhotoUrl": zod.string().nullable(),
   "teamRole": zod.enum(['supervisor', 'agent']),
   "status": zod.enum(['active', 'disabled']),
   "createdAt": zod.coerce.date()
@@ -1015,12 +1017,19 @@ export const createAgentBodyPasswordMax = 200;
 
 export const createAgentBodyNameMax = 80;
 
+export const createAgentBodyMobilePhoneMin = 6;
+export const createAgentBodyMobilePhoneMax = 20;
+
+export const createAgentBodyProfilePhotoUrlMax = 500;
+
 
 
 export const CreateAgentBody = zod.object({
   "email": zod.string().email(),
   "password": zod.string().min(createAgentBodyPasswordMin).max(createAgentBodyPasswordMax),
   "name": zod.string().min(1).max(createAgentBodyNameMax),
+  "mobilePhone": zod.string().min(createAgentBodyMobilePhoneMin).max(createAgentBodyMobilePhoneMax),
+  "profilePhotoUrl": zod.string().max(createAgentBodyProfilePhotoUrlMax).optional(),
   "teamRole": zod.enum(['supervisor', 'agent'])
 })
 
@@ -1034,6 +1043,16 @@ export const UpdateTeamSettingsBody = zod.object({
 
 export const UpdateTeamSettingsResponse = zod.object({
   "assignmentMode": zod.enum(['manual', 'round_robin'])
+})
+
+
+/**
+ * Uploads an image via `multipart/form-data` with a single form field `file`.
+
+ * @summary Upload a profile photo and get back a public media URL
+ */
+export const UploadAgentPhotoResponse = zod.object({
+  "url": zod.string()
 })
 
 
@@ -1054,6 +1073,11 @@ export const UpdateAgentParams = zod.object({
 
 export const updateAgentBodyNameMax = 80;
 
+export const updateAgentBodyMobilePhoneMin = 6;
+export const updateAgentBodyMobilePhoneMax = 20;
+
+export const updateAgentBodyProfilePhotoUrlMax = 500;
+
 export const updateAgentBodyPasswordMin = 8;
 export const updateAgentBodyPasswordMax = 200;
 
@@ -1061,6 +1085,8 @@ export const updateAgentBodyPasswordMax = 200;
 
 export const UpdateAgentBody = zod.object({
   "name": zod.string().min(1).max(updateAgentBodyNameMax).optional(),
+  "mobilePhone": zod.string().min(updateAgentBodyMobilePhoneMin).max(updateAgentBodyMobilePhoneMax).optional(),
+  "profilePhotoUrl": zod.string().max(updateAgentBodyProfilePhotoUrlMax).optional(),
   "teamRole": zod.enum(['supervisor', 'agent']).optional(),
   "status": zod.enum(['active', 'disabled']).optional(),
   "password": zod.string().min(updateAgentBodyPasswordMin).max(updateAgentBodyPasswordMax).optional()
@@ -1070,6 +1096,8 @@ export const UpdateAgentResponse = zod.object({
   "id": zod.number(),
   "email": zod.string().email(),
   "name": zod.string().nullable(),
+  "mobilePhone": zod.string().nullable(),
+  "profilePhotoUrl": zod.string().nullable(),
   "teamRole": zod.enum(['supervisor', 'agent']),
   "status": zod.enum(['active', 'disabled']),
   "createdAt": zod.coerce.date()

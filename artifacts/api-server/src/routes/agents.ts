@@ -1,10 +1,14 @@
 import { Router } from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs/promises";
 import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { touchHeartbeat } from "../lib/round-robin";
+import { MEDIA_DIR } from "./whatsapp";
 
 const router = Router();
 
@@ -30,17 +34,39 @@ function isLikelyEmail(s: string): boolean {
 const TeamRoleSchema = z.enum(["supervisor", "agent"]);
 const StatusSchema = z.enum(["active", "disabled"]);
 
+// Mobile phone: required for new invites. Accepts +, digits, spaces, dashes,
+// parens — frontend can format; we only check it's a plausible length.
+const MobilePhoneSchema = z
+  .string()
+  .trim()
+  .min(6, "Nomor HP terlalu pendek")
+  .max(20, "Nomor HP terlalu panjang")
+  .regex(/^[+()\-\s\d]+$/, "Nomor HP hanya boleh angka, +, -, spasi, atau ()");
+
+const ProfilePhotoUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((v) => v === "" || v.startsWith("/api/media/") || /^https?:\/\//.test(v), {
+    message: "URL foto tidak valid",
+  });
+
 const CreateBody = z.object({
   email: z.string(),
   password: z.string().min(8).max(200),
   name: z.string().trim().min(1).max(80),
   teamRole: TeamRoleSchema,
+  mobilePhone: MobilePhoneSchema,
+  profilePhotoUrl: ProfilePhotoUrlSchema.optional(),
 });
 
 const UpdateBody = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   teamRole: TeamRoleSchema.optional(),
   status: StatusSchema.optional(),
+  mobilePhone: MobilePhoneSchema.optional(),
+  // Pass "" to clear, otherwise must be a media URL.
+  profilePhotoUrl: ProfilePhotoUrlSchema.optional(),
   // Reset password — sent only when admin explicitly types a new one.
   password: z.string().min(8).max(200).optional(),
 });
@@ -104,6 +130,8 @@ function serialize(row: typeof usersTable.$inferSelect) {
     name: row.name,
     teamRole: row.teamRole,
     status: row.status,
+    mobilePhone: row.mobilePhone,
+    profilePhotoUrl: row.profilePhotoUrl,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -180,6 +208,22 @@ router.post("/", async (req, res): Promise<void> => {
       return;
     }
 
+    // Pre-check email uniqueness so the user sees a clear message even when
+    // the conflict is with an account on another team (the UNIQUE index would
+    // also catch it via onConflictDoNothing, but a friendly upfront message
+    // matches what was specified in the brief).
+    const [existing] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, email))
+      .limit(1);
+    if (existing) {
+      res
+        .status(409)
+        .json({ error: "Email sudah terdaftar di sistem. Pakai email lain." });
+      return;
+    }
+
     const passwordHash = await bcrypt.hash(parsed.data.password, 12);
     const inserted = await db
       .insert(usersTable)
@@ -189,6 +233,8 @@ router.post("/", async (req, res): Promise<void> => {
         role: "user",
         status: "active",
         name: parsed.data.name,
+        mobilePhone: parsed.data.mobilePhone,
+        profilePhotoUrl: parsed.data.profilePhotoUrl || null,
         parentUserId: owner.ownerId,
         teamRole: parsed.data.teamRole,
         // Inherit parent's plan column so a future "what plan am I on?" query
@@ -200,7 +246,9 @@ router.post("/", async (req, res): Promise<void> => {
       .onConflictDoNothing({ target: usersTable.email })
       .returning();
     if (inserted.length === 0) {
-      res.status(409).json({ error: "Email sudah terdaftar" });
+      res
+        .status(409)
+        .json({ error: "Email sudah terdaftar di sistem. Pakai email lain." });
       return;
     }
     res.status(201).json(serialize(inserted[0]));
@@ -243,6 +291,10 @@ router.patch("/:id", async (req, res): Promise<void> => {
     if (parsed.data.name !== undefined) patch.name = parsed.data.name;
     if (parsed.data.teamRole !== undefined) patch.teamRole = parsed.data.teamRole;
     if (parsed.data.status !== undefined) patch.status = parsed.data.status;
+    if (parsed.data.mobilePhone !== undefined) patch.mobilePhone = parsed.data.mobilePhone;
+    if (parsed.data.profilePhotoUrl !== undefined) {
+      patch.profilePhotoUrl = parsed.data.profilePhotoUrl || null;
+    }
     if (parsed.data.password !== undefined) {
       patch.passwordHash = await bcrypt.hash(parsed.data.password, 12);
     }
@@ -335,6 +387,42 @@ router.post("/heartbeat", async (req, res): Promise<void> => {
     req.log.error({ err }, "Heartbeat failed");
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+// POST /agents/upload-photo — store an avatar image and return its public
+// URL. Caller must be signed in; image is served via /api/media/<name>.
+const photoUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, cb) => {
+      try {
+        await fs.mkdir(MEDIA_DIR, { recursive: true });
+        cb(null, MEDIA_DIR);
+      } catch (err) {
+        cb(err as Error, MEDIA_DIR);
+      }
+    },
+    filename: (_req, file, cb) => {
+      const ext = (path.extname(file.originalname) || ".png").toLowerCase();
+      const safe = `avatar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+      cb(null, safe);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      cb(new Error("File harus berupa gambar"));
+      return;
+    }
+    cb(null, true);
+  },
+});
+router.post("/upload-photo", photoUpload.single("file"), (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: "File tidak ditemukan" });
+    return;
+  }
+  const url = `/api/media/${path.basename(req.file.path)}`;
+  res.json({ url });
 });
 
 // Helper used by chats.ts to validate "user X may be assigned chats under

@@ -14,6 +14,13 @@ export interface UpdateAgentInput {
      * @maxLength 80
      */
   name?: string;
+  /**
+     * @minLength 6
+     * @maxLength 20
+     */
+  mobilePhone?: string;
+  /** @maxLength 500 */
+  profilePhotoUrl?: string;
   teamRole?: UpdateAgentInputTeamRole;
   status?: UpdateAgentInputStatus;
   /**

@@ -1282,6 +1282,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/TeamSettingsResponse" }
 
+  /agents/upload-photo:
+    post:
+      operationId: uploadAgentPhoto
+      tags: [agents]
+      summary: Upload a profile photo and get back a public media URL
+      description: |
+        Uploads an image via `multipart/form-data` with a single form field `file`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data: {}
+      responses:
+        "200":
+          description: Uploaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadPhotoResponse" }
+
   /agents/heartbeat:
     post:
       operationId: heartbeat
@@ -2216,11 +2234,13 @@ components:
 
     TeamAgent:
       type: object
-      required: [id, email, name, teamRole, status, createdAt]
+      required: [id, email, name, teamRole, status, mobilePhone, profilePhotoUrl, createdAt]
       properties:
         id: { type: integer }
         email: { type: string, format: email }
         name: { type: ["string", "null"] }
+        mobilePhone: { type: ["string", "null"] }
+        profilePhotoUrl: { type: ["string", "null"] }
         teamRole:
           type: string
           enum: [supervisor, agent]
@@ -2268,11 +2288,13 @@ components:
 
     CreateAgentInput:
       type: object
-      required: [email, password, name, teamRole]
+      required: [email, password, name, teamRole, mobilePhone]
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 8, maxLength: 200 }
         name: { type: string, minLength: 1, maxLength: 80 }
+        mobilePhone: { type: string, minLength: 6, maxLength: 20 }
+        profilePhotoUrl: { type: string, maxLength: 500 }
         teamRole:
           type: string
           enum: [supervisor, agent]
@@ -2281,6 +2303,8 @@ components:
       type: object
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
+        mobilePhone: { type: string, minLength: 6, maxLength: 20 }
+        profilePhotoUrl: { type: string, maxLength: 500 }
         teamRole:
           type: string
           enum: [supervisor, agent]
@@ -2288,6 +2312,12 @@ components:
           type: string
           enum: [active, disabled]
         password: { type: string, minLength: 8, maxLength: 200 }
+
+    UploadPhotoResponse:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
 
     AssignChatInput:
       type: object

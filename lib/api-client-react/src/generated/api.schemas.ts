@@ -516,6 +516,10 @@ export interface TeamAgent {
   email: string;
   /** @nullable */
   name: string | null;
+  /** @nullable */
+  mobilePhone: string | null;
+  /** @nullable */
+  profilePhotoUrl: string | null;
   teamRole: TeamAgentTeamRole;
   status: TeamAgentStatus;
   createdAt: string;
@@ -600,6 +604,13 @@ export interface CreateAgentInput {
      * @maxLength 80
      */
   name: string;
+  /**
+     * @minLength 6
+     * @maxLength 20
+     */
+  mobilePhone: string;
+  /** @maxLength 500 */
+  profilePhotoUrl?: string;
   teamRole: CreateAgentInputTeamRole;
 }
 
@@ -625,6 +636,13 @@ export interface UpdateAgentInput {
      * @maxLength 80
      */
   name?: string;
+  /**
+     * @minLength 6
+     * @maxLength 20
+     */
+  mobilePhone?: string;
+  /** @maxLength 500 */
+  profilePhotoUrl?: string;
   teamRole?: UpdateAgentInputTeamRole;
   status?: UpdateAgentInputStatus;
   /**
@@ -632,6 +650,10 @@ export interface UpdateAgentInput {
      * @maxLength 200
      */
   password?: string;
+}
+
+export interface UploadPhotoResponse {
+  url: string;
 }
 
 export interface AssignChatInput {

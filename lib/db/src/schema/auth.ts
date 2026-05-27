@@ -23,6 +23,11 @@ export const usersTable = pgTable("users", {
   status: text("status").notNull().default("pending"),
   // Display name shown in the UI (nullable for backward-compat with pre-name accounts).
   name: text("name"),
+  // Mobile phone (E.164 or local format). Required for new invites; nullable
+  // on seed/pre-feature rows for backward-compat.
+  mobilePhone: text("mobile_phone"),
+  // URL (under /api/media/…) for the user's avatar. Null = no photo set.
+  profilePhotoUrl: text("profile_photo_url"),
   // Team hierarchy: when an "owner" user invites CS staff, the invitee's
   // parentUserId points at the owner. NULL = top-level account (super_admin).
   parentUserId: integer("parent_user_id"),
