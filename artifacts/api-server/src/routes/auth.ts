@@ -249,6 +249,72 @@ router.get("/me", async (req, res): Promise<void> => {
   }
 });
 
+// PATCH /auth/me — let the current user update their own profile fields.
+// All fields are optional; only provided keys are written. `companyName` is
+// only honored when the caller is a super_admin (team members inherit their
+// owner's company name and shouldn't be able to set their own).
+router.patch("/me", async (req, res): Promise<void> => {
+  const userId = req.session?.userId;
+  if (typeof userId !== "number") {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const patch: Partial<{
+    name: string;
+    companyName: string | null;
+    mobilePhone: string | null;
+  }> = {};
+  if (body.name !== undefined) {
+    const name = String(body.name ?? "").trim();
+    if (name.length < 1 || name.length > 80) {
+      res.status(400).json({ error: "Nama harus 1–80 karakter" });
+      return;
+    }
+    patch.name = name;
+  }
+  if (body.mobilePhone !== undefined) {
+    const raw = String(body.mobilePhone ?? "").trim();
+    if (raw === "") {
+      patch.mobilePhone = null;
+    } else {
+      if (raw.length < 6 || raw.length > 20 || !/^[+()\-\s\d]+$/.test(raw)) {
+        res.status(400).json({ error: "Nomor HP tidak valid" });
+        return;
+      }
+      patch.mobilePhone = raw;
+    }
+  }
+  if (body.companyName !== undefined) {
+    const [row] = await db
+      .select({ parentUserId: usersTable.parentUserId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    if (!row || row.parentUserId !== null) {
+      res.status(403).json({ error: "Hanya super admin yang bisa mengubah nama perusahaan" });
+      return;
+    }
+    const cn = String(body.companyName ?? "").trim();
+    if (cn.length > 120) {
+      res.status(400).json({ error: "Nama perusahaan terlalu panjang" });
+      return;
+    }
+    patch.companyName = cn === "" ? null : cn;
+  }
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: "Tidak ada perubahan" });
+    return;
+  }
+  try {
+    await db.update(usersTable).set(patch).where(eq(usersTable.id, userId));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "PATCH /auth/me failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // PATCH /auth/me/photo — let the current user (any role, including super_admin)
 // update their own avatar. Body: { profilePhotoUrl: string }. Empty string
 // clears the photo. The URL must be one we serve ourselves (/api/media/...)

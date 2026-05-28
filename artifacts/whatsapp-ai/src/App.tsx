@@ -18,6 +18,7 @@ import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
 import Credentials from "@/pages/Credentials";
 import Agents from "@/pages/Agents";
+import Profile from "@/pages/Profile";
 import Login from "@/pages/Login";
 import SignUp from "@/pages/SignUp";
 import VerifyEmail from "@/pages/VerifyEmail";
@@ -105,6 +106,7 @@ function AuthGate() {
         <Route path="/credentials" component={Credentials} />
         <Route path="/agents" component={Agents} />
         <Route path="/settings" component={Settings} />
+        <Route path="/profile" component={Profile} />
         <Route path="/analytics" component={Analytics} />
           <Route component={NotFound} />
         </Switch>

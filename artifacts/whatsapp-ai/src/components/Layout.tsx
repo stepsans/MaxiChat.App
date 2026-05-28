@@ -336,8 +336,9 @@ export default function Layout({
               name={user.name ?? user.email}
             />
             {!collapsed && (
-              <div
-                className="flex-1 min-w-0 text-[11px] leading-tight"
+              <Link
+                href="/profile"
+                className="flex-1 min-w-0 text-[11px] leading-tight hover:bg-sidebar-accent/40 rounded-md px-2 py-1 -mx-1 transition-colors"
                 data-testid="account-email"
               >
                 <div className="text-foreground/60 text-[10px]">
@@ -355,7 +356,7 @@ export default function Layout({
                     {user.companyName}
                   </div>
                 )}
-              </div>
+              </Link>
             )}
             <Tooltip>
               <TooltipTrigger asChild>
