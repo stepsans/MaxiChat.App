@@ -73,6 +73,7 @@ import {
   X,
   PanelRightOpen,
   PanelRightClose,
+  Copy,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -431,9 +432,37 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           <p className="text-[15px] font-medium text-foreground truncate leading-tight">
             {displayName}
           </p>
-          <p className="text-[12px] text-[hsl(var(--wa-meta))] truncate">
-            {chat.isHumanTakeover ? "Mode manual — AI dinonaktifkan" : subtitle}
-          </p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="text-[12px] text-[hsl(var(--wa-meta))] truncate">
+              {chat.isHumanTakeover ? "Mode manual — AI dinonaktifkan" : subtitle}
+            </p>
+            {!chat.isHumanTakeover && !isGroup && !chat.isLid && (
+              <button
+                type="button"
+                data-testid="button-copy-phone"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    await navigator.clipboard.writeText(subtitle);
+                    toast({
+                      title: "Nomor disalin",
+                      description: subtitle,
+                    });
+                  } catch {
+                    toast({
+                      title: "Gagal menyalin",
+                      description: "Coba salin manual.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                className="p-0.5 rounded text-[hsl(var(--wa-meta))] hover:text-foreground hover:bg-white/5 transition-colors flex-shrink-0"
+                title="Salin nomor"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Header actions */}
