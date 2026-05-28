@@ -9,6 +9,7 @@ import {
   QrCode,
   LogOut,
   Trash2,
+  Send,
 } from "lucide-react";
 import {
   useListChannels,
@@ -18,6 +19,8 @@ import {
   useUnpairChannel,
   useDeleteChannel,
   useGetChannelQr,
+  useConnectTelegramChannel,
+  useDisconnectTelegramChannel,
   getListChannelsQueryKey,
   getGetChannelQrQueryKey,
   type Channel,
@@ -34,6 +37,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +53,11 @@ const STATUS_LABEL: Record<string, string> = {
   qr_ready: "Scan QR",
   disconnected: "Tidak terhubung",
   error: "Error",
+};
+
+const KIND_LABEL: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  telegram: "Telegram",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -75,10 +90,10 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// Modal that drives the pair flow: polls GET /channels/:id/qr every 2s and
-// renders the QR data url. Closes itself once the channel reports
-// `connected`. Reused for both first-time pairing and re-pairing after
-// /unpair.
+// Modal that drives the WhatsApp pair flow: polls GET /channels/:id/qr
+// every 2s and renders the QR data url. Closes itself once the channel
+// reports `connected`. Reused for both first-time pairing and re-pairing
+// after /unpair. WhatsApp-only — Telegram uses TelegramTokenDialog.
 function PairDialog({
   channelId,
   open,
@@ -100,8 +115,6 @@ function PairDialog({
   useEffect(() => {
     if (!open || channelId == null) return;
     setOpenedAt(Date.now());
-    // Force a refetch on open so the stale cached snapshot doesn't drive
-    // the auto-close effect.
     queryClient.invalidateQueries({
       queryKey: getGetChannelQrQueryKey(channelId),
     });
@@ -113,11 +126,7 @@ function PairDialog({
       query: {
         queryKey: getGetChannelQrQueryKey(channelId ?? 0),
         enabled,
-        // Poll until the socket actually connects. Once status flips to
-        // `connected` we close the dialog so the polling stops naturally.
         refetchInterval: enabled ? 2000 : false,
-        // Stop hammering /qr once we see a persistent error — the manual
-        // "Coba lagi" button lets the user retry explicitly.
         retry: 1,
       },
     },
@@ -180,8 +189,6 @@ function PairDialog({
       open={open}
       onOpenChange={(v) => {
         if (!v && channelId != null) {
-          // Refresh list so the row reflects the latest status (e.g. user
-          // closed the dialog while still in qr_ready).
           queryClient.invalidateQueries({
             queryKey: getGetChannelQrQueryKey(channelId),
           });
@@ -199,70 +206,156 @@ function PairDialog({
             lalu pindai QR di bawah.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col items-center justify-center py-4 min-h-[280px]">
+        <div className="flex flex-col items-center gap-3 py-3">
           {errorMessage ? (
-            <div
-              className="w-64 min-h-[16rem] rounded border border-red-500/40 bg-red-500/5 flex flex-col items-center justify-center gap-2 text-red-600 dark:text-red-400 text-sm p-4 text-center"
-              data-testid="channel-qr-error"
-            >
-              <AlertTriangle className="w-6 h-6" />
-              <div>{errorMessage}</div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => refetch()}
-                disabled={isFetching}
-              >
-                {isFetching ? (
-                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                ) : null}
-                Coba lagi
-              </Button>
-            </div>
+            <div className="text-sm text-red-600 text-center">{errorMessage}</div>
           ) : qrCode ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={qrCode}
-              alt="WhatsApp pairing QR"
-              className="w-64 h-64 rounded border border-border bg-white p-2"
-              data-testid="channel-qr-image"
+              alt="QR WhatsApp"
+              className="w-64 h-64 border border-border rounded"
+              data-testid="pair-qr-image"
             />
-          ) : (
-            <div className="w-64 h-64 rounded border border-dashed border-border flex flex-col items-center justify-center gap-2 text-foreground/55 text-sm">
+          ) : status === "connecting" || isFetching ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-foreground/60">
               <Loader2 className="w-6 h-6 animate-spin" />
-              {status === "connecting"
-                ? "Menyiapkan QR…"
-                : status === "connected"
-                  ? "Terhubung!"
-                  : "Memuat…"}
+              <span className="text-sm">Menyiapkan QR…</span>
             </div>
+          ) : (
+            <div className="text-sm text-foreground/60">Status: {status}</div>
           )}
-          <div className="mt-3 text-xs text-foreground/60">
-            Status: <StatusBadge status={status} />
-            {isFetching && qrCode && (
-              <span className="ml-2 inline-flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                memeriksa…
-              </span>
-            )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            {isFetching ? (
+              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+            ) : null}
+            Muat ulang
+          </Button>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              channelId != null && cancel.mutate({ id: channelId })
+            }
+            disabled={cancel.isPending || channelId == null}
+          >
+            Batalkan
+          </Button>
+          <Button onClick={() => onOpenChange(false)}>Tutup</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Telegram pair dialog: user pastes the bot token from @BotFather; we
+// call /connect-telegram which verifies via getMe and registers the
+// webhook synchronously, so the dialog closes the moment the channel
+// flips to `connected`.
+function TelegramTokenDialog({
+  channelId,
+  open,
+  onOpenChange,
+}: {
+  channelId: number | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [token, setToken] = useState("");
+
+  useEffect(() => {
+    if (open) setToken("");
+  }, [open]);
+
+  const connect = useConnectTelegramChannel({
+    mutation: {
+      onSuccess: (channel) => {
+        queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
+        const username =
+          (channel.metadata as { telegram?: { botUsername?: string } } | null)
+            ?.telegram?.botUsername;
+        toast({
+          title: "Telegram terhubung",
+          description: username ? `@${username}` : undefined,
+        });
+        onOpenChange(false);
+      },
+      onError: (err) =>
+        toast({
+          title: "Gagal menghubungkan",
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Token ditolak",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Hubungkan Telegram</DialogTitle>
+          <DialogDescription>
+            Buat bot di Telegram via{" "}
+            <strong>@BotFather</strong> → <strong>/newbot</strong>, lalu
+            tempelkan token yang diberikan di bawah ini.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label htmlFor="tg-token">Token Bot</Label>
+            <Input
+              id="tg-token"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="123456789:AAH..."
+              autoComplete="off"
+              spellCheck={false}
+              className="font-mono"
+              data-testid="tg-token-input"
+            />
+            <p className="text-[11px] text-foreground/55 mt-1">
+              Token akan disimpan terenkripsi dan tidak ditampilkan lagi.
+            </p>
           </div>
         </div>
         <DialogFooter>
-          {channelId != null &&
-            (status === "connecting" || status === "qr_ready") && (
-              <Button
-                variant="outline"
-                disabled={cancel.isPending}
-                onClick={() => cancel.mutate({ id: channelId })}
-                data-testid="channel-pair-cancel"
-              >
-                {cancel.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                ) : null}
-                Batalkan pairing
-              </Button>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={connect.isPending}
+          >
+            Batal
+          </Button>
+          <Button
+            onClick={() =>
+              channelId != null &&
+              connect.mutate({
+                id: channelId,
+                data: { botToken: token.trim() },
+              })
+            }
+            disabled={
+              connect.isPending || channelId == null || token.trim().length < 20
+            }
+            data-testid="tg-token-submit"
+          >
+            {connect.isPending ? (
+              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+            ) : (
+              <Send className="w-3 h-3 mr-1" />
             )}
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Tutup
+            Hubungkan
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -273,9 +366,11 @@ function PairDialog({
 function ChannelRow({
   channel,
   onPair,
+  onConnectTelegram,
 }: {
   channel: Channel;
   onPair: (id: number) => void;
+  onConnectTelegram: (id: number) => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -288,31 +383,26 @@ function ChannelRow({
     setLabel(channel.label);
     setColor(channel.color);
     setIcon(channel.icon);
-  }, [channel.id, channel.label, channel.color, channel.icon]);
+  }, [channel.label, channel.color, channel.icon]);
 
   const dirty =
     label.trim() !== channel.label ||
     color !== channel.color ||
     icon.trim() !== channel.icon;
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
-
-  const errorMsg = (err: unknown, fallback: string) =>
-    (err as { data?: { error?: string } } | null)?.data?.error ??
-    (err as Error | null)?.message ??
-    fallback;
-
   const update = useUpdateChannel({
     mutation: {
       onSuccess: () => {
-        invalidate();
-        toast({ title: "Channel diperbarui", duration: 2000 });
+        queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
+        toast({ title: "Channel diperbarui" });
       },
       onError: (err) =>
         toast({
-          title: "Gagal",
-          description: errorMsg(err, "Gagal memperbarui"),
+          title: "Gagal menyimpan",
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Gagal",
           variant: "destructive",
         }),
     },
@@ -320,14 +410,14 @@ function ChannelRow({
 
   const pair = usePairChannel({
     mutation: {
-      onSuccess: () => {
-        invalidate();
-        onPair(channel.id);
-      },
+      onSuccess: () => onPair(channel.id),
       onError: (err) =>
         toast({
-          title: "Gagal mulai pairing",
-          description: errorMsg(err, "Gagal"),
+          title: "Gagal pair",
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Gagal",
           variant: "destructive",
         }),
     },
@@ -336,13 +426,34 @@ function ChannelRow({
   const unpair = useUnpairChannel({
     mutation: {
       onSuccess: () => {
-        invalidate();
-        toast({ title: "WhatsApp diputus" });
+        queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
+        toast({ title: "Diputus" });
       },
       onError: (err) =>
         toast({
           title: "Gagal memutus",
-          description: errorMsg(err, "Gagal"),
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Gagal",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  const disconnectTg = useDisconnectTelegramChannel({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
+        toast({ title: "Telegram diputus" });
+      },
+      onError: (err) =>
+        toast({
+          title: "Gagal memutus",
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Gagal",
           variant: "destructive",
         }),
     },
@@ -351,54 +462,58 @@ function ChannelRow({
   const del = useDeleteChannel({
     mutation: {
       onSuccess: () => {
-        invalidate();
+        queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
         toast({ title: "Channel dihapus" });
         setConfirmDelete(false);
       },
-      onError: (err) => {
+      onError: (err) =>
         toast({
           title: "Gagal menghapus",
-          description: errorMsg(err, "Gagal"),
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Gagal",
           variant: "destructive",
-        });
-        setConfirmDelete(false);
-      },
+        }),
     },
   });
 
-  const canPair =
-    channel.kind === "whatsapp" &&
-    (channel.status === "disconnected" ||
-      channel.status === "error" ||
-      channel.status === "qr_ready" ||
-      channel.status === "connecting");
-  const canUnpair =
-    channel.kind === "whatsapp" && channel.status === "connected";
+  const isTelegram = channel.kind === "telegram";
+  const isWhatsapp = channel.kind === "whatsapp";
+  const tgUsername =
+    (channel.metadata as { telegram?: { botUsername?: string } } | null)
+      ?.telegram?.botUsername ?? null;
+
+  // Connect button visibility:
+  // - WhatsApp: show whenever not currently connected; label changes based on
+  //   whether a number has been paired before.
+  // - Telegram: show when no bot bound yet OR explicitly disconnected.
+  const canPairWa = isWhatsapp && channel.status !== "connected";
+  const canConnectTg = isTelegram && !tgUsername;
+  const canDisconnect = channel.status === "connected";
 
   return (
-    <div
-      className="flex flex-col gap-3 p-4 border border-border rounded-lg bg-background"
-      data-testid={`channel-row-${channel.id}`}
-    >
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-3 sm:w-48 min-w-0">
-          <span
-            className="inline-block w-4 h-4 rounded-full flex-shrink-0 ring-2 ring-background shadow-sm"
-            style={{ backgroundColor: channel.color }}
-            aria-hidden="true"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="text-xs uppercase tracking-wide text-foreground/55">
-              {channel.kind}
-            </div>
-            <div className="text-sm font-semibold truncate">
-              {channel.label}
-            </div>
-            {channel.ownerPhone && (
-              <div className="text-[11px] text-foreground/55 font-mono truncate">
-                +{channel.ownerPhone}
-              </div>
-            )}
+    <div className="border border-border rounded-lg p-4 space-y-3 bg-card">
+      <div className="flex flex-wrap items-start gap-3">
+        <div
+          className="w-10 h-10 rounded flex items-center justify-center text-white font-semibold text-sm"
+          style={{ backgroundColor: color }}
+        >
+          {(KIND_LABEL[channel.kind] ?? channel.kind).slice(0, 2)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="truncate">{channel.label}</span>
+            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-foreground/10 text-foreground/70">
+              {KIND_LABEL[channel.kind] ?? channel.kind}
+            </span>
+          </div>
+          <div className="text-xs text-foreground/55 mt-0.5">
+            {isWhatsapp && channel.ownerPhone ? `+${channel.ownerPhone}` : null}
+            {isTelegram && tgUsername ? `@${tgUsername}` : null}
+            {!channel.ownerPhone && !tgUsername ? (
+              <span className="italic">Belum terhubung</span>
+            ) : null}
           </div>
         </div>
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -476,7 +591,7 @@ function ChannelRow({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-border/60">
-        {canPair && (
+        {canPairWa && (
           <Button
             size="sm"
             variant="outline"
@@ -492,7 +607,18 @@ function ChannelRow({
             {channel.ownerPhone ? "Hubungkan ulang" : "Hubungkan WhatsApp"}
           </Button>
         )}
-        {canUnpair && (
+        {canConnectTg && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onConnectTelegram(channel.id)}
+            data-testid={`channel-connect-telegram-${channel.id}`}
+          >
+            <Send className="w-3 h-3 mr-1" />
+            Hubungkan Telegram
+          </Button>
+        )}
+        {canDisconnect && isWhatsapp && (
           <Button
             size="sm"
             variant="outline"
@@ -501,6 +627,22 @@ function ChannelRow({
             data-testid={`channel-unpair-${channel.id}`}
           >
             {unpair.isPending ? (
+              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+            ) : (
+              <LogOut className="w-3 h-3 mr-1" />
+            )}
+            Putus
+          </Button>
+        )}
+        {canDisconnect && isTelegram && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={disconnectTg.isPending}
+            onClick={() => disconnectTg.mutate({ id: channel.id })}
+            data-testid={`channel-disconnect-telegram-${channel.id}`}
+          >
+            {disconnectTg.isPending ? (
               <Loader2 className="w-3 h-3 animate-spin mr-1" />
             ) : (
               <LogOut className="w-3 h-3 mr-1" />
@@ -530,7 +672,7 @@ function ChannelRow({
           <DialogHeader>
             <DialogTitle>Hapus channel "{channel.label}"?</DialogTitle>
             <DialogDescription>
-              Ini akan memutus WhatsApp dan{" "}
+              Ini akan memutus koneksi dan{" "}
               <strong>menghapus semua chat, pesan, status, pengaturan, dan flow</strong>{" "}
               yang terikat ke channel ini. Tindakan ini tidak bisa dibatalkan.
             </DialogDescription>
@@ -564,23 +706,35 @@ function ChannelRow({
 function AddChannelDialog({
   open,
   onOpenChange,
-  onCreated,
+  onCreatedWa,
+  onCreatedTg,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onCreated: (id: number) => void;
+  onCreatedWa: (id: number) => void;
+  onCreatedTg: (id: number) => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [kind, setKind] = useState<"whatsapp" | "telegram">("whatsapp");
   const [label, setLabel] = useState("");
   const [color, setColor] = useState("#25D366");
 
   useEffect(() => {
     if (open) {
+      setKind("whatsapp");
       setLabel("");
       setColor("#25D366");
     }
   }, [open]);
+
+  // Reset the color to the kind's signature color when the kind toggles —
+  // unless the user has already customised the colour from the previous
+  // default. Tracked implicitly: we always reset on switch because the
+  // dialog is short-lived and the user can re-pick.
+  useEffect(() => {
+    setColor(kind === "telegram" ? "#229ED9" : "#25D366");
+  }, [kind]);
 
   const create = useCreateChannel({
     mutation: {
@@ -588,12 +742,14 @@ function AddChannelDialog({
         queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
         toast({
           title: "Channel dibuat",
-          description: "Pindai QR untuk menghubungkan WhatsApp.",
+          description:
+            created.kind === "telegram"
+              ? "Tempelkan token bot Telegram untuk menghubungkan."
+              : "Pindai QR untuk menghubungkan WhatsApp.",
         });
         onOpenChange(false);
-        // Auto-open the pair dialog so the user goes straight from
-        // "create" → "scan QR" without a second click.
-        onCreated(created.id);
+        if (created.kind === "telegram") onCreatedTg(created.id);
+        else onCreatedWa(created.id);
       },
       onError: (err) =>
         toast({
@@ -627,18 +783,34 @@ function AddChannelDialog({
         <DialogHeader>
           <DialogTitle>Tambah channel</DialogTitle>
           <DialogDescription>
-            Saat ini hanya WhatsApp yang aktif. Channel lain (Instagram,
-            Shopee, dll.) akan menyusul.
+            Pilih platform yang akan dihubungkan. Setiap channel berdiri
+            sendiri — pengaturan AI, knowledge, dan flow di-share di seluruh
+            channel, tetapi percakapan dipisahkan per channel.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
+          <div>
+            <Label htmlFor="new-channel-kind">Platform</Label>
+            <Select
+              value={kind}
+              onValueChange={(v) => setKind(v as "whatsapp" | "telegram")}
+            >
+              <SelectTrigger id="new-channel-kind" data-testid="new-channel-kind">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                <SelectItem value="telegram">Telegram</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div>
             <Label htmlFor="new-channel-label">Label</Label>
             <Input
               id="new-channel-label"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="WhatsApp 2"
+              placeholder={kind === "telegram" ? "Telegram Bot CS" : "WhatsApp 2"}
               maxLength={60}
               data-testid="new-channel-label"
             />
@@ -675,17 +847,20 @@ function AddChannelDialog({
               create.mutate(
                 {
                   data: {
-                    kind: "whatsapp",
+                    kind,
                     label: label.trim(),
                     color,
-                    icon: "whatsapp",
+                    icon: kind,
                   },
                 },
                 {
                   onSuccess: (created) => {
-                    // Kick off pairing immediately so the QR is ready by the
-                    // time the pair dialog opens.
-                    pair.mutate({ id: created.id });
+                    // WhatsApp needs an immediate pair kick so the QR is
+                    // primed by the time PairDialog opens. Telegram doesn't
+                    // — we wait for the user to paste the token.
+                    if (created.kind === "whatsapp") {
+                      pair.mutate({ id: created.id });
+                    }
                   },
                 }
               )
@@ -712,6 +887,7 @@ export default function Channels() {
     return new URLSearchParams(window.location.search).get("add") === "1";
   });
   const [pairChannelId, setPairChannelId] = useState<number | null>(null);
+  const [tgChannelId, setTgChannelId] = useState<number | null>(null);
 
   const channels = useMemo(() => data ?? [], [data]);
 
@@ -721,8 +897,9 @@ export default function Channels() {
         <div>
           <h1 className="text-2xl font-semibold">Kelola Channel</h1>
           <p className="text-sm text-foreground/60 mt-1">
-            Setiap channel adalah satu akun yang terhubung — saat ini WhatsApp.
-            Warna dan ikon di sini muncul di switcher header dan badge percakapan.
+            Setiap channel adalah satu akun yang terhubung — WhatsApp atau
+            Telegram. Warna dan ikon di sini muncul di switcher header dan
+            badge percakapan.
           </p>
         </div>
         <Button onClick={() => setAddOpen(true)} data-testid="channel-add-button">
@@ -746,6 +923,7 @@ export default function Channels() {
               key={c.id}
               channel={c}
               onPair={(id) => setPairChannelId(id)}
+              onConnectTelegram={(id) => setTgChannelId(id)}
             />
           ))}
         </div>
@@ -754,13 +932,21 @@ export default function Channels() {
       <AddChannelDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreated={(id) => setPairChannelId(id)}
+        onCreatedWa={(id) => setPairChannelId(id)}
+        onCreatedTg={(id) => setTgChannelId(id)}
       />
       <PairDialog
         channelId={pairChannelId}
         open={pairChannelId != null}
         onOpenChange={(v) => {
           if (!v) setPairChannelId(null);
+        }}
+      />
+      <TelegramTokenDialog
+        channelId={tgChannelId}
+        open={tgChannelId != null}
+        onOpenChange={(v) => {
+          if (!v) setTgChannelId(null);
         }}
       />
     </div>

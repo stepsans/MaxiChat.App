@@ -17,6 +17,13 @@ import {
   startBaileysForChannel,
   disconnectChannelRuntime,
 } from "./whatsapp";
+import {
+  getMe as tgGetMe,
+  setWebhook as tgSetWebhook,
+  deleteWebhook as tgDeleteWebhook,
+  buildWebhookUrl,
+  generateWebhookSecret,
+} from "../lib/telegram";
 
 const router = Router();
 
@@ -35,7 +42,10 @@ const CHANNEL_KINDS = [
   "telegram",
 ] as const;
 type ChannelKind = (typeof CHANNEL_KINDS)[number];
-const CREATABLE_KINDS: ReadonlySet<ChannelKind> = new Set(["whatsapp"]);
+const CREATABLE_KINDS: ReadonlySet<ChannelKind> = new Set([
+  "whatsapp",
+  "telegram",
+]);
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
@@ -52,6 +62,24 @@ const ChannelUpdateBody = z.object({
   icon: z.string().trim().min(1).max(40).optional(),
 });
 
+// Strip secrets (currently: the Telegram bot token + webhook secret) from
+// the metadata blob before serialising to API clients. The frontend only
+// needs to know whether the bot is wired (botUsername) — never the token.
+function redactMetadata(
+  meta: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!meta) return null;
+  const out: Record<string, unknown> = { ...meta };
+  const tg = out["telegram"];
+  if (tg && typeof tg === "object") {
+    const safe = { ...(tg as Record<string, unknown>) };
+    delete safe["botToken"];
+    delete safe["webhookSecret"];
+    out["telegram"] = safe;
+  }
+  return out;
+}
+
 function serialize(c: typeof channelsTable.$inferSelect) {
   return {
     id: c.id,
@@ -62,7 +90,7 @@ function serialize(c: typeof channelsTable.$inferSelect) {
     icon: c.icon,
     status: c.status,
     ownerPhone: c.ownerPhone,
-    metadata: c.metadata ?? null,
+    metadata: redactMetadata(c.metadata as Record<string, unknown> | null),
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
@@ -120,7 +148,7 @@ router.post("/", requirePermission("channels", "create"), async (req, res): Prom
   }
   if (!CREATABLE_KINDS.has(parsed.data.kind)) {
     res.status(400).json({
-      error: `Channel kind "${parsed.data.kind}" belum tersedia. Saat ini hanya WhatsApp yang aktif.`,
+      error: `Channel kind "${parsed.data.kind}" belum tersedia.`,
     });
     return;
   }
@@ -288,6 +316,163 @@ router.get("/:id/qr", requirePermission("channels", "edit"), async (req, res): P
   }
 });
 
+// POST /channels/:id/connect-telegram — pair a Telegram bot. Body:
+// { botToken: string }. We verify the token with getMe, register a
+// webhook with a freshly-generated secret_token, and persist the token +
+// secret + bot username on channels.metadata.telegram. Token is redacted
+// on subsequent GETs (see redactMetadata).
+const TelegramConnectBody = z.object({
+  botToken: z
+    .string()
+    .trim()
+    .min(20)
+    .max(120)
+    // Telegram bot tokens look like "<digits>:<base64ish>"
+    .regex(/^\d+:[A-Za-z0-9_-]+$/),
+});
+
+router.post(
+  "/:id/connect-telegram",
+  requirePermission("channels", "edit"),
+  async (req, res): Promise<void> => {
+    const id = Number.parseInt(String(req.params.id ?? ""), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid channel id" });
+      return;
+    }
+    const parsed = TelegramConnectBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Token bot Telegram tidak valid" });
+      return;
+    }
+    try {
+      const existing = await loadOwnedChannel(req, id);
+      if (!existing) {
+        res.status(404).json({ error: "Channel not found" });
+        return;
+      }
+      if (existing.kind !== "telegram") {
+        res.status(400).json({
+          error: `Endpoint ini khusus channel telegram (kind=${existing.kind}).`,
+        });
+        return;
+      }
+
+      // 1. Verify the token by calling getMe.
+      let me: { id: number; username: string };
+      try {
+        me = await tgGetMe(parsed.data.botToken);
+      } catch (err) {
+        req.log.warn({ err, id }, "telegram getMe failed");
+        res.status(400).json({
+          error:
+            "Token bot ditolak Telegram. Pastikan token dari @BotFather benar.",
+        });
+        return;
+      }
+
+      // 2. Register webhook.
+      const secret = generateWebhookSecret();
+      let webhookUrl: string;
+      try {
+        webhookUrl = buildWebhookUrl(id);
+        await tgSetWebhook(parsed.data.botToken, webhookUrl, secret);
+      } catch (err) {
+        req.log.error({ err, id }, "telegram setWebhook failed");
+        res.status(500).json({
+          error: "Gagal mendaftarkan webhook ke Telegram. Coba lagi.",
+        });
+        return;
+      }
+
+      // 3. Persist. Token + secret are private; redactMetadata strips
+      //    them on serialize.
+      const tgMeta = {
+        botToken: parsed.data.botToken,
+        botId: me.id,
+        botUsername: me.username,
+        webhookSecret: secret,
+        webhookUrl,
+      };
+      await db
+        .update(channelsTable)
+        .set({
+          status: "connected",
+          metadata: sql`COALESCE(${channelsTable.metadata}, '{}'::jsonb) || ${sql.raw(
+            `'${JSON.stringify({ telegram: tgMeta }).replace(/'/g, "''")}'::jsonb`
+          )}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(channelsTable.id, id));
+
+      const [refreshed] = await db
+        .select()
+        .from(channelsTable)
+        .where(eq(channelsTable.id, id));
+      res.json(serialize(refreshed ?? existing));
+    } catch (err) {
+      req.log.error({ err, id }, "connect telegram failed");
+      res.status(500).json({ error: "Failed to connect Telegram" });
+    }
+  }
+);
+
+// POST /channels/:id/disconnect-telegram — deregister the webhook with
+// Telegram and clear the stored bot token. Channel row + chats survive.
+router.post(
+  "/:id/disconnect-telegram",
+  requirePermission("channels", "edit"),
+  async (req, res): Promise<void> => {
+    const id = Number.parseInt(String(req.params.id ?? ""), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid channel id" });
+      return;
+    }
+    try {
+      const existing = await loadOwnedChannel(req, id);
+      if (!existing) {
+        res.status(404).json({ error: "Channel not found" });
+        return;
+      }
+      if (existing.kind !== "telegram") {
+        res.status(400).json({
+          error: `Endpoint ini khusus channel telegram (kind=${existing.kind}).`,
+        });
+        return;
+      }
+      const meta =
+        (existing.metadata as Record<string, unknown> | null)?.["telegram"] as
+          | { botToken?: string }
+          | undefined;
+      if (meta?.botToken) {
+        try {
+          await tgDeleteWebhook(meta.botToken);
+        } catch (err) {
+          // Non-fatal: even if Telegram refuses, we still drop our local
+          // binding so the channel can be re-paired with a new token.
+          req.log.warn({ err, id }, "telegram deleteWebhook failed (non-fatal)");
+        }
+      }
+      await db
+        .update(channelsTable)
+        .set({
+          status: "disconnected",
+          metadata: sql`COALESCE(${channelsTable.metadata}, '{}'::jsonb) - 'telegram'`,
+          updatedAt: new Date(),
+        })
+        .where(eq(channelsTable.id, id));
+      const [refreshed] = await db
+        .select()
+        .from(channelsTable)
+        .where(eq(channelsTable.id, id));
+      res.json(serialize(refreshed ?? existing));
+    } catch (err) {
+      req.log.error({ err, id }, "disconnect telegram failed");
+      res.status(500).json({ error: "Failed to disconnect Telegram" });
+    }
+  }
+);
+
 // POST /channels/:id/unpair — log the Baileys socket out and wipe the
 // per-channel auth dir without deleting the channel row or any of its
 // chats. The next /pair starts from a fresh QR.
@@ -367,6 +552,16 @@ router.delete("/:id", requirePermission("channels", "delete"), async (req, res):
       await disconnectChannelRuntime(existing.userId, id).catch((err) =>
         req.log.warn({ err, channelId: id }, "disconnect during delete failed (non-fatal)")
       );
+    } else if (existing.kind === "telegram") {
+      const meta =
+        (existing.metadata as Record<string, unknown> | null)?.["telegram"] as
+          | { botToken?: string }
+          | undefined;
+      if (meta?.botToken) {
+        await tgDeleteWebhook(meta.botToken).catch((err) =>
+          req.log.warn({ err, channelId: id }, "tg deleteWebhook during delete failed (non-fatal)")
+        );
+      }
     }
     // Per-channel rows are scoped purely by channel_id (T009 dropped the
     // legacy ownerPhone columns from these 4 tables). chat_messages

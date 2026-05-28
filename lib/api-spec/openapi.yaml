@@ -819,6 +819,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChannelPairQr"
 
+  /channels/{id}/connect-telegram:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: connectTelegramChannel
+      tags: [channels]
+      summary: Pair a Telegram bot token with this channel (kind=telegram only). Verifies with Telegram getMe and registers a webhook.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramConnect"
+      responses:
+        "200":
+          description: Channel with status=connected and redacted telegram metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+
+  /channels/{id}/disconnect-telegram:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: disconnectTelegramChannel
+      tags: [channels]
+      summary: Remove the bot token + deregister the Telegram webhook. Channel row + chats survive.
+      responses:
+        "200":
+          description: Channel with status=disconnected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+
   /channels/{id}/unpair:
     parameters:
       - name: id
@@ -3284,6 +3328,16 @@ components:
           type: string
           minLength: 1
           maxLength: 40
+
+    TelegramConnect:
+      type: object
+      required: [botToken]
+      properties:
+        botToken:
+          type: string
+          description: "Bot token issued by @BotFather (e.g. '123456:ABC-DEF...')"
+          minLength: 20
+          maxLength: 120
 
     ChannelPairQr:
       type: object

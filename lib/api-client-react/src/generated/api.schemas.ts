@@ -1387,6 +1387,15 @@ export interface ChannelUpdate {
   icon?: string;
 }
 
+export interface TelegramConnect {
+  /**
+     * Bot token issued by @BotFather (e.g. '123456:ABC-DEF...')
+     * @minLength 20
+     * @maxLength 120
+     */
+  botToken: string;
+}
+
 /**
  * Channel pair status; 'qr_ready' means qrCode is populated.
  */

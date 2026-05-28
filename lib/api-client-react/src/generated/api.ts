@@ -99,6 +99,7 @@ import type {
   TeamListing,
   TeamSettingsInput,
   TeamSettingsResponse,
+  TelegramConnect,
   TextShortcut,
   TextShortcutInput,
   UpdateAgentInput,
@@ -2762,6 +2763,148 @@ export function useGetChannelQr<TData = Awaited<ReturnType<typeof getChannelQr>>
 
 
 
+
+export const getConnectTelegramChannelUrl = (id: number,) => {
+
+
+
+
+  return `/api/channels/${id}/connect-telegram`
+}
+
+/**
+ * @summary Pair a Telegram bot token with this channel (kind=telegram only). Verifies with Telegram getMe and registers a webhook.
+ */
+export const connectTelegramChannel = async (id: number,
+    telegramConnect: TelegramConnect, options?: RequestInit): Promise<Channel> => {
+
+  return customFetch<Channel>(getConnectTelegramChannelUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      telegramConnect,)
+  }
+);}
+
+
+
+
+export const getConnectTelegramChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectTelegramChannel>>, TError,{id: number;data: BodyType<TelegramConnect>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectTelegramChannel>>, TError,{id: number;data: BodyType<TelegramConnect>}, TContext> => {
+
+const mutationKey = ['connectTelegramChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectTelegramChannel>>, {id: number;data: BodyType<TelegramConnect>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  connectTelegramChannel(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectTelegramChannelMutationResult = NonNullable<Awaited<ReturnType<typeof connectTelegramChannel>>>
+    export type ConnectTelegramChannelMutationBody = BodyType<TelegramConnect>
+    export type ConnectTelegramChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Pair a Telegram bot token with this channel (kind=telegram only). Verifies with Telegram getMe and registers a webhook.
+ */
+export const useConnectTelegramChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectTelegramChannel>>, TError,{id: number;data: BodyType<TelegramConnect>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof connectTelegramChannel>>,
+        TError,
+        {id: number;data: BodyType<TelegramConnect>},
+        TContext
+      > => {
+      return useMutation(getConnectTelegramChannelMutationOptions(options));
+    }
+
+export const getDisconnectTelegramChannelUrl = (id: number,) => {
+
+
+
+
+  return `/api/channels/${id}/disconnect-telegram`
+}
+
+/**
+ * @summary Remove the bot token + deregister the Telegram webhook. Channel row + chats survive.
+ */
+export const disconnectTelegramChannel = async (id: number, options?: RequestInit): Promise<Channel> => {
+
+  return customFetch<Channel>(getDisconnectTelegramChannelUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDisconnectTelegramChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectTelegramChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectTelegramChannel>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['disconnectTelegramChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectTelegramChannel>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  disconnectTelegramChannel(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectTelegramChannelMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectTelegramChannel>>>
+
+    export type DisconnectTelegramChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove the bot token + deregister the Telegram webhook. Channel row + chats survive.
+ */
+export const useDisconnectTelegramChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectTelegramChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectTelegramChannel>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDisconnectTelegramChannelMutationOptions(options));
+    }
 
 export const getUnpairChannelUrl = (id: number,) => {
 

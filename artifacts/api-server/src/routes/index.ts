@@ -19,6 +19,7 @@ import shortcutsSyncRouter from "./shortcuts-sync";
 import agentsRouter from "./agents";
 import permissionsRouter from "./permissions";
 import channelsRouter from "./channels";
+import telegramWebhookRouter from "./webhooks-telegram";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -26,6 +27,9 @@ const router: IRouter = Router();
 // Public routes (no auth required).
 router.use(healthRouter);
 router.use("/auth", authRouter);
+// Telegram webhook receiver — authenticated by the per-channel secret in
+// the X-Telegram-Bot-Api-Secret-Token header rather than by session.
+router.use("/webhooks/telegram", telegramWebhookRouter);
 
 // Everything below requires a signed-in session.
 router.use(requireAuth);

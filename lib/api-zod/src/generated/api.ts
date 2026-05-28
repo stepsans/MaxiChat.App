@@ -703,6 +703,59 @@ export const GetChannelQrResponse = zod.object({
 
 
 /**
+ * @summary Pair a Telegram bot token with this channel (kind=telegram only). Verifies with Telegram getMe and registers a webhook.
+ */
+export const ConnectTelegramChannelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const connectTelegramChannelBodyBotTokenMin = 20;
+export const connectTelegramChannelBodyBotTokenMax = 120;
+
+
+
+export const ConnectTelegramChannelBody = zod.object({
+  "botToken": zod.string().min(connectTelegramChannelBodyBotTokenMin).max(connectTelegramChannelBodyBotTokenMax).describe('Bot token issued by @BotFather (e.g. \'123456:ABC-DEF...\')')
+})
+
+export const ConnectTelegramChannelResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number().describe('Owning super_admin user id'),
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().describe('Human label shown in the switcher'),
+  "color": zod.string().describe('Hex color (e.g. #25D366)'),
+  "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
+  "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Remove the bot token + deregister the Telegram webhook. Channel row + chats survive.
+ */
+export const DisconnectTelegramChannelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DisconnectTelegramChannelResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number().describe('Owning super_admin user id'),
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().describe('Human label shown in the switcher'),
+  "color": zod.string().describe('Hex color (e.g. #25D366)'),
+  "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
+  "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Log out the channel's WhatsApp socket and wipe its auth dir without deleting the channel row.
  */
 export const UnpairChannelParams = zod.object({

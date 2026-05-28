@@ -144,6 +144,7 @@ export * from './teamSettingsInput';
 export * from './teamSettingsInputAssignmentMode';
 export * from './teamSettingsResponse';
 export * from './teamSettingsResponseAssignmentMode';
+export * from './telegramConnect';
 export * from './tenantChannelOption';
 export * from './textShortcut';
 export * from './textShortcutInput';

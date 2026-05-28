@@ -763,7 +763,7 @@ async function autoAssignNewChat(ownerUserId: number, chatId: number): Promise<v
     .where(sql`${chatsTable.id} = ${chatId} AND ${chatsTable.assignedUserId} IS NULL`);
 }
 
-async function generateAiReply(
+export async function generateAiReply(
   channelId: number,
   userId: number,
   chatId: number,

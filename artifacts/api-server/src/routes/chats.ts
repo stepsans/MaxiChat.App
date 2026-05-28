@@ -11,7 +11,8 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import type { Request, Response } from "express";
 import { db } from "@workspace/db";
-import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
+import { chatsTable, chatMessagesTable, productsTable, channelsTable } from "@workspace/db";
+import { sendMessage as tgSendMessage } from "../lib/telegram";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import {
@@ -725,6 +726,45 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
     const agentTag = await resolveAgentTag(req.session.userId!);
     const taggedContent = withTag(bodyParsed.data.content, agentTag);
 
+    // For Telegram we must actively push the message — there is no
+    // inbound echo loop (unlike Baileys messages.upsert which echoes
+    // outbound sends back through our handler). For WhatsApp the
+    // outbound send is handled elsewhere (e.g. sendMediaToJid for media,
+    // or the socket echo for text via the existing flow).
+    const [channel] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, chat.channelId))
+      .limit(1);
+    let tgDedupeKey: string | null = null;
+    if (channel?.kind === "telegram") {
+      const meta =
+        (channel.metadata as Record<string, unknown> | null)?.["telegram"] as
+          | { botToken?: string }
+          | undefined;
+      // chat.phoneNumber for telegram is `tg:<chat_id>` (see
+      // parseTelegramMessage). We keep the chat_id around so the
+      // outbound dedupe key can include it — message_id is per-chat in
+      // Telegram and wa_message_id is globally unique in our schema.
+      const tgChatId = chat.phoneNumber.startsWith("tg:")
+        ? Number.parseInt(chat.phoneNumber.slice(3), 10)
+        : NaN;
+      if (!meta?.botToken || !Number.isFinite(tgChatId)) {
+        res.status(400).json({
+          error: "Channel Telegram belum terhubung. Hubungkan bot dulu.",
+        });
+        return;
+      }
+      try {
+        const sent = await tgSendMessage(meta.botToken, tgChatId, taggedContent);
+        tgDedupeKey = `tg:${tgChatId}:${sent.messageId}`;
+      } catch (err) {
+        req.log.error({ err, chatId: idParsed.data.id }, "telegram reply failed");
+        res.status(502).json({ error: "Gagal kirim ke Telegram" });
+        return;
+      }
+    }
+
     const [message] = await db
       .insert(chatMessagesTable)
       .values({
@@ -732,6 +772,7 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         direction: "outbound",
         content: taggedContent,
         isAiGenerated: false,
+        waMessageId: tgDedupeKey,
       })
       .returning();
 
