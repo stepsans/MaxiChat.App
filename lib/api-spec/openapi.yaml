@@ -773,6 +773,70 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Channel"
+    delete:
+      operationId: deleteChannel
+      tags: [channels]
+      summary: Hard-delete a channel and all its per-channel rows (chats, messages, statuses, settings, flows).
+      responses:
+        "204":
+          description: Channel deleted
+
+  /channels/{id}/pair:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: pairChannel
+      tags: [channels]
+      summary: Start (or resume) pairing for a WhatsApp channel; QR appears on GET /channels/{id}/qr.
+      responses:
+        "200":
+          description: Channel with status flipped to connecting (or already connected).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+
+  /channels/{id}/qr:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getChannelQr
+      tags: [channels]
+      summary: Poll the channel's pairing status and current QR data url.
+      responses:
+        "200":
+          description: Current pairing status snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelPairQr"
+
+  /channels/{id}/unpair:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      operationId: unpairChannel
+      tags: [channels]
+      summary: Log out the channel's WhatsApp socket and wipe its auth dir without deleting the channel row.
+      responses:
+        "200":
+          description: Channel with status set to disconnected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
 
   /shortcuts/sync-config:
     get:
@@ -2964,7 +3028,7 @@ components:
         icon: { type: string, description: "Icon key the frontend maps to a lucide / brand icon" }
         status:
           type: string
-          enum: [disconnected, connecting, connected, error]
+          enum: [disconnected, connecting, qr_ready, connected, error]
         ownerPhone:
           type: string
           nullable: true
@@ -3006,4 +3070,21 @@ components:
           type: string
           minLength: 1
           maxLength: 40
+
+    ChannelPairQr:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: "Channel pair status; 'qr_ready' means qrCode is populated."
+          enum: [disconnected, connecting, qr_ready, connected, error]
+        qrCode:
+          type: string
+          nullable: true
+          description: "Data url for the WhatsApp pairing QR. Null unless status === 'qr_ready'."
+        ownerPhone:
+          type: string
+          nullable: true
+          description: "Last-paired phone number (digits). Present once the socket has connected at least once."
 

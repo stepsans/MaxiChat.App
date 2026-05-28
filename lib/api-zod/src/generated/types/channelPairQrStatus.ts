@@ -6,10 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ChannelStatus = typeof ChannelStatus[keyof typeof ChannelStatus];
+/**
+ * Channel pair status; 'qr_ready' means qrCode is populated.
+ */
+export type ChannelPairQrStatus = typeof ChannelPairQrStatus[keyof typeof ChannelPairQrStatus];
 
 
-export const ChannelStatus = {
+export const ChannelPairQrStatus = {
   disconnected: 'disconnected',
   connecting: 'connecting',
   qr_ready: 'qr_ready',

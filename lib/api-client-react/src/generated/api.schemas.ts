@@ -1221,6 +1221,7 @@ export type ChannelStatus = typeof ChannelStatus[keyof typeof ChannelStatus];
 export const ChannelStatus = {
   disconnected: 'disconnected',
   connecting: 'connecting',
+  qr_ready: 'qr_ready',
   connected: 'connected',
   error: 'error',
 } as const;
@@ -1274,6 +1275,29 @@ export interface ChannelUpdate {
      * @maxLength 40
      */
   icon?: string;
+}
+
+/**
+ * Channel pair status; 'qr_ready' means qrCode is populated.
+ */
+export type ChannelPairQrStatus = typeof ChannelPairQrStatus[keyof typeof ChannelPairQrStatus];
+
+
+export const ChannelPairQrStatus = {
+  disconnected: 'disconnected',
+  connecting: 'connecting',
+  qr_ready: 'qr_ready',
+  connected: 'connected',
+  error: 'error',
+} as const;
+
+export interface ChannelPairQr {
+  /** Channel pair status; 'qr_ready' means qrCode is populated. */
+  status: ChannelPairQrStatus;
+  /** Data url for the WhatsApp pairing QR. Null unless status === 'qr_ready'. */
+  qrCode?: string | null;
+  /** Last-paired phone number (digits). Present once the socket has connected at least once. */
+  ownerPhone?: string | null;
 }
 
 export type ListChatsParams = {

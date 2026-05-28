@@ -1,10 +1,21 @@
 import { Router } from "express";
 import { z } from "zod";
-import { and, eq, ne, sql } from "drizzle-orm";
-import { db, channelsTable } from "@workspace/db";
+import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
+import {
+  db,
+  channelsTable,
+  chatsTable,
+  whatsappStatusesTable,
+  settingsTable,
+  chatbotFlowsTable,
+} from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "../lib/auth";
 import { loadOwnedChannel, listOwnedChannels } from "../lib/channel-context";
 import { requireSuperAdmin } from "../lib/team-permissions";
+import {
+  startBaileysForChannel,
+  disconnectChannelRuntime,
+} from "./whatsapp";
 
 const router = Router();
 
@@ -188,10 +199,206 @@ router.patch("/:id", requireSuperAdmin, async (req, res): Promise<void> => {
   }
 });
 
-// NOTE: DELETE intentionally not exposed in this pass. Per architect
-// finding #3, deleting a channel must also: logout the Baileys socket,
-// wipe the per-channel auth dir, and cascade clean up chats/messages.
-// That work lands together with the runtime re-key from userCtxs →
-// channelCtxs. Until then, channels are effectively immortal.
+// POST /channels/:id/pair — bring up the per-channel Baileys socket so a
+// new WhatsApp number can be scanned. Status flips to "connecting"
+// immediately; the QR data url appears on GET /channels/:id/qr a moment
+// later (it's pushed asynchronously by the Baileys connection.update
+// handler into channels.metadata.qrCode).
+router.post("/:id/pair", requireSuperAdmin, async (req, res): Promise<void> => {
+  const id = Number.parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid channel id" });
+    return;
+  }
+  try {
+    const existing = await loadOwnedChannel(req, id);
+    if (!existing) {
+      res.status(404).json({ error: "Channel not found" });
+      return;
+    }
+    if (existing.kind !== "whatsapp") {
+      res.status(400).json({
+        error: `Pairing belum tersedia untuk channel ${existing.kind}.`,
+      });
+      return;
+    }
+    if (existing.status === "connected") {
+      res.json(serialize(existing));
+      return;
+    }
+    // Clear any stale qrCode from a previous pair attempt so /qr can't
+    // briefly serve last session's QR while the new Baileys socket spins up.
+    await db
+      .update(channelsTable)
+      .set({
+        status: "connecting",
+        metadata: sql`COALESCE(${channelsTable.metadata}, '{}'::jsonb) - 'qrCode'`,
+        updatedAt: new Date(),
+      })
+      .where(eq(channelsTable.id, id));
+    // Fire-and-forget: Baileys QR generation is async and pushes status
+    // into the channels row via syncChannelStatus.
+    startBaileysForChannel(existing.userId, id).catch((err) =>
+      req.log.error({ err, channelId: id }, "Baileys start failed")
+    );
+    const [refreshed] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, id));
+    res.json(serialize(refreshed ?? existing));
+  } catch (err) {
+    req.log.error({ err, id }, "pair channel failed");
+    res.status(500).json({ error: "Failed to start pairing" });
+  }
+});
+
+// GET /channels/:id/qr — poll endpoint for the pairing UI. Returns the
+// current status plus the QR data url (when status === "qr_ready"). The
+// QR lives in channels.metadata.qrCode and is cleared on connect/close.
+router.get("/:id/qr", requireSuperAdmin, async (req, res): Promise<void> => {
+  const id = Number.parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid channel id" });
+    return;
+  }
+  try {
+    const row = await loadOwnedChannel(req, id);
+    if (!row) {
+      res.status(404).json({ error: "Channel not found" });
+      return;
+    }
+    const meta = (row.metadata as Record<string, unknown> | null) ?? {};
+    const qrCode = typeof meta.qrCode === "string" ? meta.qrCode : null;
+    res.json({
+      status: row.status,
+      qrCode,
+      ownerPhone: row.ownerPhone,
+    });
+  } catch (err) {
+    req.log.error({ err, id }, "get channel qr failed");
+    res.status(500).json({ error: "Failed to load channel QR" });
+  }
+});
+
+// POST /channels/:id/unpair — log the Baileys socket out and wipe the
+// per-channel auth dir without deleting the channel row or any of its
+// chats. The next /pair starts from a fresh QR.
+router.post("/:id/unpair", requireSuperAdmin, async (req, res): Promise<void> => {
+  const id = Number.parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid channel id" });
+    return;
+  }
+  try {
+    const existing = await loadOwnedChannel(req, id);
+    if (!existing) {
+      res.status(404).json({ error: "Channel not found" });
+      return;
+    }
+    if (existing.kind !== "whatsapp") {
+      res.status(400).json({
+        error: `Unpair belum tersedia untuk channel ${existing.kind}.`,
+      });
+      return;
+    }
+    await disconnectChannelRuntime(existing.userId, id);
+    const [refreshed] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, id));
+    res.json(serialize(refreshed ?? existing));
+  } catch (err) {
+    req.log.error({ err, id }, "unpair channel failed");
+    res.status(500).json({ error: "Failed to unpair channel" });
+  }
+});
+
+// DELETE /channels/:id — hard-delete a channel and every per-channel row
+// (chats + messages cascading, statuses, settings, flows) belonging to
+// it. We block deletion of the user's LAST channel because every
+// back-compat surface (getPrimaryCtxForUser, primary-channel helpers)
+// assumes the owner has at least one; Phase E removes that assumption.
+router.delete("/:id", requireSuperAdmin, async (req, res): Promise<void> => {
+  const id = Number.parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid channel id" });
+    return;
+  }
+  try {
+    const existing = await loadOwnedChannel(req, id);
+    if (!existing) {
+      res.status(404).json({ error: "Channel not found" });
+      return;
+    }
+    // Block-last guard: every back-compat helper (getPrimaryCtxForUser,
+    // ensurePrimaryWhatsappChannelForUser, the legacy /whatsapp/* routes)
+    // assumes the owner has at least one WhatsApp channel. We therefore
+    // gate ONLY on remaining WhatsApp siblings — having non-WA channels
+    // (Instagram, Shopee, etc.) doesn't satisfy the invariant.
+    if (existing.kind === "whatsapp") {
+      const waSiblings = await db
+        .select({ id: channelsTable.id })
+        .from(channelsTable)
+        .where(
+          and(
+            eq(channelsTable.userId, existing.userId),
+            eq(channelsTable.kind, "whatsapp"),
+            ne(channelsTable.id, id)
+          )
+        );
+      if (waSiblings.length === 0) {
+        res.status(400).json({
+          error: "Tidak bisa menghapus channel WhatsApp terakhir. Tambahkan channel WhatsApp lain terlebih dahulu.",
+        });
+        return;
+      }
+    }
+    // Tear down the live socket + wipe authDir first so no in-flight
+    // handler races the row deletion.
+    if (existing.kind === "whatsapp") {
+      await disconnectChannelRuntime(existing.userId, id).catch((err) =>
+        req.log.warn({ err, channelId: id }, "disconnect during delete failed (non-fatal)")
+      );
+    }
+    // Per-channel rows where channel_id is a plain nullable integer
+    // (no FK cascade yet). Delete explicitly. chat_messages cascades
+    // off chats via its FK so we don't need a separate sweep.
+    //
+    // We match BOTH `channelId = id` AND legacy rows where
+    // `channelId IS NULL AND ownerPhone = channel.ownerPhone` — pre-Phase-A
+    // inserts predate the channelId column being populated, and would
+    // otherwise be orphaned by a channel delete. `channels.ownerPhone`
+    // is globally unique, so this can never match another channel's rows.
+    const ownerPhone = existing.ownerPhone;
+    await db.delete(chatsTable).where(
+      ownerPhone
+        ? or(eq(chatsTable.channelId, id), and(isNull(chatsTable.channelId), eq(chatsTable.ownerPhone, ownerPhone)))
+        : eq(chatsTable.channelId, id)
+    );
+    await db.delete(whatsappStatusesTable).where(
+      ownerPhone
+        ? or(eq(whatsappStatusesTable.channelId, id), and(isNull(whatsappStatusesTable.channelId), eq(whatsappStatusesTable.ownerPhone, ownerPhone)))
+        : eq(whatsappStatusesTable.channelId, id)
+    );
+    await db.delete(settingsTable).where(
+      ownerPhone
+        ? or(eq(settingsTable.channelId, id), and(isNull(settingsTable.channelId), eq(settingsTable.ownerPhone, ownerPhone)))
+        : eq(settingsTable.channelId, id)
+    );
+    await db.delete(chatbotFlowsTable).where(
+      ownerPhone
+        ? or(eq(chatbotFlowsTable.channelId, id), and(isNull(chatbotFlowsTable.channelId), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
+        : eq(chatbotFlowsTable.channelId, id)
+    );
+    // channel_products / channel_knowledge / channel_text_shortcuts join
+    // tables cascade off channels via their own FKs, so the row delete
+    // below also cleans those up.
+    await db.delete(channelsTable).where(eq(channelsTable.id, id));
+    res.status(204).end();
+  } catch (err) {
+    req.log.error({ err, id }, "delete channel failed");
+    res.status(500).json({ error: "Failed to delete channel" });
+  }
+});
 
 export default router;

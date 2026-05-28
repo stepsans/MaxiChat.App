@@ -19,7 +19,7 @@ import {
   type FlowGraph,
   type FlowNode,
 } from "@workspace/db";
-import { and, eq, sql, inArray } from "drizzle-orm";
+import { and, asc, eq, sql, inArray } from "drizzle-orm";
 import { withTag, stripTrailingTag, CHATBOT_TAG, AI_TAG } from "../lib/sender-tag.js";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { logger } from "../lib/logger";
@@ -41,52 +41,82 @@ async function isWhatsappOwner(userId: number): Promise<boolean> {
 const AUTH_ROOT = path.join(process.cwd(), ".whatsapp-auth");
 export const MEDIA_DIR = path.join(process.cwd(), "media");
 
-// Per-user auth state dir. Pairing creds live here; wiping the dir forces a
-// fresh QR pairing. Kept under one root so we can scope IO per user without
-// re-architecting Baileys' file-based auth helpers.
-function authDirForUser(userId: number): string {
-  return path.join(AUTH_ROOT, String(userId));
+// Per-channel auth state dir. Each WhatsApp channel gets its OWN auth
+// subdirectory so one user with N paired numbers holds N independent
+// Baileys sessions on disk. Layout: `<AUTH_ROOT>/<userId>/<channelId>/`.
+// The legacy single-channel layout (`<AUTH_ROOT>/<userId>/`) is migrated
+// on first boot — see `migrateLegacyAuthDirs()` in `initWhatsapp`.
+function authDirForChannel(userId: number, channelId: number): string {
+  return path.join(AUTH_ROOT, String(userId), String(channelId));
 }
 
 type WASocket = Awaited<ReturnType<typeof makeWASocketType>>;
 
-// Everything that used to be module-level singleton state (`sock`,
-// `isConnecting`, `sessionEpoch`, `currentOwnerPhone`) is now per-user so
-// every signed-in account can hold its OWN live WhatsApp connection in
-// parallel without the accounts crossing wires.
-interface UserCtx {
+// Per-channel runtime context. One ChannelCtx per channels.id — a user
+// with N paired WhatsApp numbers holds N independent ctxs, each with its
+// own Baileys socket, epoch, and connection state. Keyed by channelId in
+// `channelCtxs`; `userId` is stored on the ctx so event handlers can
+// resolve owner-level resources (settings, products) without an extra DB
+// hop. Migrated from the previous user-keyed layout in T009 Phase B.
+interface ChannelCtx {
+  userId: number;
   sock: WASocket | null;
   isConnecting: boolean;
   // Bumped on disconnect/reset. Event handlers capture the epoch at attach
-  // time and refuse to persist if the per-user epoch has moved on — this
+  // time and refuse to persist if the per-channel epoch has moved on — this
   // prevents stale in-flight messages.upsert / messaging-history.set
   // callbacks from a torn-down socket reinserting chats after /disconnect.
   epoch: number;
-  // Digits-only phone of THIS user's currently linked WA account.
+  // Digits-only phone of THIS channel's currently linked WA account.
   ownerPhone: string | null;
-  // Multi-channel runtime: the channels.id this ctx represents. Currently
-  // 1:1 with userId (each user has one primary WA channel) but stored
-  // explicitly so pairing/disconnect can mirror status to the channels
-  // table — and so T005 can re-key the map by channelId without touching
-  // every call site. Populated lazily on first startBaileys() for the user.
-  channelId: number | null;
 }
 
-const userCtxs = new Map<number, UserCtx>();
+const channelCtxs = new Map<number, ChannelCtx>();
 
-function getCtx(userId: number): UserCtx {
-  let c = userCtxs.get(userId);
+function getCtxByChannel(channelId: number, userId: number): ChannelCtx {
+  let c = channelCtxs.get(channelId);
   if (!c) {
     c = {
+      userId,
       sock: null,
       isConnecting: false,
       epoch: 0,
       ownerPhone: null,
-      channelId: null,
     };
-    userCtxs.set(userId, c);
+    channelCtxs.set(channelId, c);
   }
   return c;
+}
+
+// Lowest-id WhatsApp channel for an OWNER user (super_admin). Used by the
+// back-compat exports that still take `userId` — they resolve to the
+// owner's "primary" channel (the first one created). Returns null if the
+// user has no WhatsApp channels yet.
+async function resolvePrimaryChannelId(ownerUserId: number): Promise<number | null> {
+  const rows = await db
+    .select({ id: channelsTable.id })
+    .from(channelsTable)
+    .where(
+      and(
+        eq(channelsTable.userId, ownerUserId),
+        eq(channelsTable.kind, "whatsapp")
+      )
+    )
+    .orderBy(asc(channelsTable.id))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
+// Resolve the primary channel ctx for ANY signed-in user (owner or
+// supervisor/agent inheriting the owner's pairing). Returns null when no
+// channel exists yet OR no ctx has been spun up. Does NOT auto-create the
+// ctx — that only happens inside startBaileys, since a ctx without a live
+// socket is meaningless for the read-side back-compat callers.
+async function getPrimaryCtxForUser(userId: number): Promise<ChannelCtx | null> {
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const cid = await resolvePrimaryChannelId(ownerUserId);
+  if (cid == null) return null;
+  return channelCtxs.get(cid) ?? null;
 }
 
 // Mirror this ctx's pairing state onto the channels table so the new
@@ -95,12 +125,37 @@ function getCtx(userId: number): UserCtx {
 // secondary write.
 async function syncChannelStatus(
   channelId: number,
-  patch: { status: string; ownerPhone?: string | null }
+  patch: {
+    status: string;
+    ownerPhone?: string | null;
+    // Optional pairing-QR data url. Persisted into channels.metadata.qrCode
+    // so the per-channel pair flow (POST /api/channels/:id/pair → GET
+    // /api/channels/:id/qr) can surface it even for non-primary channels.
+    // Pass `null` to clear, `undefined` to leave untouched.
+    qrCode?: string | null;
+  }
 ): Promise<void> {
   try {
+    const { qrCode, ...statusPatch } = patch;
+    if (qrCode === undefined) {
+      await db
+        .update(channelsTable)
+        .set({ ...statusPatch, updatedAt: new Date() })
+        .where(eq(channelsTable.id, channelId));
+      return;
+    }
+    // Merge qrCode into existing metadata so we don't clobber other
+    // kind-specific fields a future integration may have stashed there.
+    const existing = await db
+      .select({ metadata: channelsTable.metadata })
+      .from(channelsTable)
+      .where(eq(channelsTable.id, channelId))
+      .limit(1);
+    const prev = (existing[0]?.metadata as Record<string, unknown> | null) ?? {};
+    const nextMeta = { ...prev, qrCode };
     await db
       .update(channelsTable)
-      .set({ ...patch, updatedAt: new Date() })
+      .set({ ...statusPatch, metadata: nextMeta, updatedAt: new Date() })
       .where(eq(channelsTable.id, channelId));
   } catch (err) {
     logger.warn(
@@ -108,6 +163,57 @@ async function syncChannelStatus(
       "channels-status sync failed (non-fatal)"
     );
   }
+}
+
+// Public helper: start (or resume) the Baileys runtime for a specific
+// channel. Used by the per-channel POST /api/channels/:id/pair endpoint
+// to bring up a non-primary WhatsApp channel. Idempotent — bails out if
+// the channel's socket is already open or a connect is in flight.
+export async function startBaileysForChannel(
+  userId: number,
+  channelId: number
+): Promise<void> {
+  await startBaileys(userId, channelId);
+}
+
+// Public helper: tear down the Baileys runtime for a specific channel
+// without deleting the channel row or its data. Used by both the legacy
+// /whatsapp/disconnect (resolves primary channel) and the per-channel
+// POST /api/channels/:id/unpair endpoint. Safe to call when no socket
+// is active — wipes the per-channel auth dir either way so the next
+// pair attempt always starts from a fresh QR.
+export async function disconnectChannelRuntime(
+  userId: number,
+  channelId: number
+): Promise<void> {
+  const ctx = getCtxByChannel(channelId, userId);
+  ctx.epoch++;
+  if (ctx.sock) {
+    try {
+      ctx.sock.ev.removeAllListeners("messages.upsert");
+      ctx.sock.ev.removeAllListeners("messaging-history.set");
+      ctx.sock.ev.removeAllListeners("connection.update");
+      ctx.sock.ev.removeAllListeners("contacts.upsert");
+      ctx.sock.ev.removeAllListeners("contacts.update");
+      ctx.sock.ev.removeAllListeners("chats.upsert");
+      ctx.sock.ev.removeAllListeners("chats.update");
+    } catch {}
+    await ctx.sock.logout().catch(() => {});
+    ctx.sock = null;
+  }
+  ctx.isConnecting = false;
+  ctx.ownerPhone = null;
+  await fs
+    .rm(authDirForChannel(userId, channelId), { recursive: true, force: true })
+    .catch(() => {});
+  await syncChannelStatus(channelId, {
+    status: "disconnected",
+    qrCode: null,
+  });
+  // Evict from the in-memory map so long-running churn (repeated
+  // pair/unpair, channel delete + recreate) doesn't grow channelCtxs
+  // unboundedly. A subsequent startBaileys recreates the ctx on demand.
+  channelCtxs.delete(channelId);
 }
 
 // Convenience for route handlers — session middleware guarantees userId is set.
@@ -145,8 +251,8 @@ async function saveBufferToMedia(
 // this resolves the call to the owner's ctx so invited members can send
 // messages without re-pairing.
 export async function getActiveSocket(userId: number): Promise<WASocket | null> {
-  const ownerUserId = await resolveOwnerUserId(userId);
-  return getCtx(ownerUserId).sock;
+  const ctx = await getPrimaryCtxForUser(userId);
+  return ctx?.sock ?? null;
 }
 
 // Baileys' sock.user.id looks like "628111…:7@s.whatsapp.net" — strip every
@@ -167,10 +273,10 @@ export async function getCurrentOwnerPhone(
   userId: number
 ): Promise<string | null> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const ctx = getCtx(ownerUserId);
-  if (ctx.ownerPhone) return ctx.ownerPhone;
+  const ctx = await getPrimaryCtxForUser(ownerUserId);
+  if (ctx?.ownerPhone) return ctx.ownerPhone;
   const phone = await getOwnerPhoneForUser(ownerUserId);
-  if (phone) ctx.ownerPhone = phone;
+  if (phone && ctx) ctx.ownerPhone = phone;
   return phone;
 }
 
@@ -197,8 +303,8 @@ export async function refreshChatProfilePic(
   opts: { force?: boolean } = {}
 ): Promise<string | null> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const ctx = getCtx(ownerUserId);
-  if (!ctx.sock) return null;
+  const ctx = await getPrimaryCtxForUser(ownerUserId);
+  if (!ctx?.sock) return null;
   if (profilePicInFlight.has(chat.id)) return null;
   if (!opts.force && chat.profilePicCheckedAt) {
     const ttl = chat.profilePicUrl
@@ -261,7 +367,7 @@ export async function sendMediaToJid(
   filename?: string
 ): Promise<string | null> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const sock = getCtx(ownerUserId).sock;
+  const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
   if (!sock) throw new Error("WhatsApp is not connected");
   const buffer = await fs.readFile(filepath);
   let sent;
@@ -425,8 +531,7 @@ export async function postTextStatus(
   text: string,
   backgroundColor: string
 ): Promise<typeof whatsappStatusesTable.$inferSelect> {
-  const ownerUserId = await resolveOwnerUserId(userId);
-  const sock = getCtx(ownerUserId).sock;
+  const sock = getCtxByChannel(channelId, userId).sock;
   if (!sock) throw new Error("WhatsApp is not connected");
   const dmChats = await db
     .select({ phoneNumber: chatsTable.phoneNumber })
@@ -505,7 +610,7 @@ export async function fetchOwnBio(
   userId: number
 ): Promise<{ bio: string | null; setAt: string | null }> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const sock = getCtx(ownerUserId).sock;
+  const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
   if (!sock) throw new Error("WhatsApp is not connected");
   const ownerJid = sock.user?.id;
   if (!ownerJid) throw new Error("WhatsApp user not available");
@@ -540,7 +645,7 @@ export async function updateOwnBio(
   text: string
 ): Promise<{ bio: string; setAt: string }> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const sock = getCtx(ownerUserId).sock;
+  const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
   if (!sock) throw new Error("WhatsApp is not connected");
   await (sock as any).updateProfileStatus(text);
   return { bio: text, setAt: new Date().toISOString() };
@@ -553,7 +658,7 @@ export async function sendContactToJid(
   contactPhone: string
 ): Promise<string | null> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const sock = getCtx(ownerUserId).sock;
+  const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
   if (!sock) throw new Error("WhatsApp is not connected");
   const cleanPhone = contactPhone.replace(/[^\d+]/g, "");
   const waNumber = cleanPhone.startsWith("+") ? cleanPhone.slice(1) : cleanPhone;
@@ -1277,6 +1382,7 @@ function pickOption(node: FlowNode, text: string): string | null {
 
 async function sendFlowMessage(
   userId: number,
+  channelId: number,
   epoch: number,
   ownerPhone: string,
   chatId: number,
@@ -1284,7 +1390,7 @@ async function sendFlowMessage(
   text: string,
   imageUrl?: string | null
 ): Promise<boolean> {
-  const ctx = getCtx(userId);
+  const ctx = getCtxByChannel(channelId, userId);
   if (epoch !== ctx.epoch) return false;
   if (ctx.ownerPhone !== ownerPhone) return false;
   if (!ctx.sock) return false;
@@ -1467,6 +1573,7 @@ async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
 // state), an `end` (clears state), or a dead-end (clears state).
 async function runFlowFrom(
   userId: number,
+  channelId: number,
   epoch: number,
   ownerPhone: string,
   chatId: number,
@@ -1490,6 +1597,7 @@ async function runFlowFrom(
       if (node.data.text || node.data.imageUrl) {
         const ok = await sendFlowMessage(
           userId,
+          channelId,
           epoch,
           ownerPhone,
           chatId,
@@ -1508,6 +1616,7 @@ async function runFlowFrom(
       const text = renderQuestion(node);
       const ok = await sendFlowMessage(
         userId,
+        channelId,
         epoch,
         ownerPhone,
         chatId,
@@ -1549,6 +1658,7 @@ async function runFlowFrom(
             `Harga: Rp ${p.price.toLocaleString("id-ID")}`;
           const ok = await sendFlowMessage(
             userId,
+            channelId,
             epoch,
             ownerPhone,
             chatId,
@@ -1581,7 +1691,7 @@ async function runFlowFrom(
       // customer's subsequent messages naturally. Keyword triggers still
       // override this if the customer types one.
       if (node.data.text) {
-        const ok = await sendFlowMessage(userId, epoch, ownerPhone, chatId, jid, node.data.text);
+        const ok = await sendFlowMessage(userId, channelId, epoch, ownerPhone, chatId, jid, node.data.text);
         if (!ok) return;
       }
       await db
@@ -1606,6 +1716,7 @@ async function runFlowFrom(
 // Returns true if the flow handled the inbound message (AI should be skipped).
 async function tryRunFlow(
   userId: number,
+  channelId: number,
   ownerPhone: string,
   epoch: number,
   chat: typeof chatsTable.$inferSelect,
@@ -1681,6 +1792,7 @@ async function tryRunFlow(
         if (retryMsg) {
           const okMsg = await sendFlowMessage(
             userId,
+            channelId,
             epoch,
             ownerPhone,
             chat.id,
@@ -1693,6 +1805,7 @@ async function tryRunFlow(
         const questionText = renderQuestion(node);
         const ok = await sendFlowMessage(
           userId,
+          channelId,
           epoch,
           ownerPhone,
           chat.id,
@@ -1719,6 +1832,7 @@ async function tryRunFlow(
     }
     await runFlowFrom(
       userId,
+      channelId,
       epoch,
       ownerPhone,
       chat.id,
@@ -1769,6 +1883,7 @@ async function tryRunFlow(
   // new mute on exit, but this keeps semantics tidy.)
   await runFlowFrom(
     userId,
+    channelId,
     epoch,
     ownerPhone,
     chat.id,
@@ -1783,6 +1898,7 @@ async function tryRunFlow(
 
 async function maybeTriggerAutoReply(
   userId: number,
+  channelId: number,
   ownerPhone: string,
   epoch: number,
   chat: typeof chatsTable.$inferSelect,
@@ -1795,7 +1911,7 @@ async function maybeTriggerAutoReply(
   // Try chatbot flow before AI. If a flow handled the message (matched a
   // trigger or advanced from a question), skip the AI auto-reply entirely.
   try {
-    const handled = await tryRunFlow(userId, ownerPhone, epoch, chat, jid, messageText);
+    const handled = await tryRunFlow(userId, channelId, ownerPhone, epoch, chat, jid, messageText);
     if (handled) return;
   } catch (err) {
     logger.error({ err }, "Flow engine failed; falling back to AI");
@@ -1815,8 +1931,8 @@ async function maybeTriggerAutoReply(
 
   setTimeout(async () => {
     try {
-      const ctx = getCtx(userId);
-      // Cross-session safety per THIS user: bail if disconnect (epoch bump)
+      const ctx = getCtxByChannel(channelId, userId);
+      // Cross-session safety per THIS channel: bail if disconnect (epoch bump)
       // or owner reassignment happened during the delay.
       if (epoch !== ctx.epoch) return;
       if (ctx.ownerPhone !== ownerPhone) return;
@@ -1861,26 +1977,11 @@ async function maybeTriggerAutoReply(
   }, delay);
 }
 
-async function startBaileys(userId: number) {
-  const ctx = getCtx(userId);
+async function startBaileys(userId: number, channelId: number) {
+  const ctx = getCtxByChannel(channelId, userId);
   if (ctx.isConnecting || (ctx.sock && (ctx.sock as any).ws?.readyState === 1)) return;
   ctx.isConnecting = true;
   const myEpoch = ++ctx.epoch;
-  // Bind this ctx to the user's primary WA channel id before we wire any
-  // event handlers — handlers that fire post-pairing need a stable
-  // channelId to mirror status onto. Idempotent: returns the existing
-  // channels.id if one was already created by the T001 migration or a
-  // previous startBaileys call.
-  if (ctx.channelId == null) {
-    try {
-      ctx.channelId = await ensurePrimaryWhatsappChannelForUser(userId);
-    } catch (err) {
-      logger.error(
-        { err, userId },
-        "Failed to ensure primary WA channel; channels-table mirror will be skipped"
-      );
-    }
-  }
   const session = await getOrCreateSession(userId);
   const sessionId = session.id;
 
@@ -1895,7 +1996,7 @@ async function startBaileys(userId: number) {
     const { Boom } = await import("@hapi/boom");
     const { default: NodeCache } = await import("node-cache");
 
-    const authDir = authDirForUser(userId);
+    const authDir = authDirForChannel(userId, channelId);
     await fs.mkdir(authDir, { recursive: true }).catch(() => {});
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const msgRetryCounterCache = new NodeCache();
@@ -1918,6 +2019,13 @@ async function startBaileys(userId: number) {
       if (qr) {
         const dataUrl = await qrcode.toDataURL(qr, { width: 256, margin: 1 });
         await setStatus(sessionId, "qr_ready", { qrCode: dataUrl });
+        // Per-channel mirror so the new GET /api/channels/:id/qr endpoint
+        // works for non-primary channels (the legacy session row is
+        // per-user, not per-channel).
+        void syncChannelStatus(channelId, {
+          status: "qr_ready",
+          qrCode: dataUrl,
+        });
       }
 
       if (connection === "open") {
@@ -1981,12 +2089,11 @@ async function startBaileys(userId: number) {
         // Multi-channel mirror: keep channels.status / channels.owner_phone
         // in lockstep with the live ctx. The frontend switcher reads
         // these to render per-channel connectivity dots.
-        if (ctx.channelId != null) {
-          void syncChannelStatus(ctx.channelId, {
-            status: "connected",
-            ownerPhone: normalised,
-          });
-        }
+        void syncChannelStatus(channelId, {
+          status: "connected",
+          ownerPhone: normalised,
+          qrCode: null,
+        });
         ctx.isConnecting = false;
       }
 
@@ -2004,14 +2111,12 @@ async function startBaileys(userId: number) {
         // pre-migration behavior of user_whatsapp. Hard unpair is the
         // /disconnect endpoint, which also leaves owner_phone (see the
         // note there).
-        if (ctx.channelId != null) {
-          void syncChannelStatus(ctx.channelId, { status: "disconnected" });
-        }
+        void syncChannelStatus(channelId, { status: "disconnected", qrCode: null });
         ctx.sock = null;
         ctx.isConnecting = false;
         ctx.ownerPhone = null;
         if (shouldReconnect) {
-          setTimeout(() => startBaileys(userId).catch(() => {}), 3000);
+          setTimeout(() => startBaileys(userId, channelId).catch(() => {}), 3000);
         }
       }
     });
@@ -2090,7 +2195,7 @@ async function startBaileys(userId: number) {
           // socket). Persistence above is safe even after a reconnect.
           if (myEpoch !== ctx.epoch) continue;
 
-          await maybeTriggerAutoReply(userId, ownerPhone, myEpoch, chat, parsed.jid, parsed.messageContent);
+          await maybeTriggerAutoReply(userId, channelId, ownerPhone, myEpoch, chat, parsed.jid, parsed.messageContent);
         } catch (err) {
           logger.error({ err }, "Failed to process incoming message");
         }
@@ -2297,21 +2402,81 @@ export async function initWhatsapp() {
       logger.warn({ err }, "is_lid backfill failed (non-fatal)");
     }
 
-    // Auto-reconnect each user that was previously connected. We do NOT
-    // start a session for users who have never paired — they have to hit
-    // /connect from the UI first (which produces a QR).
-    const rows = await db
-      .select()
-      .from(whatsappSessionTable)
+    // One-shot legacy authDir migration: pre-Phase-B layout stored creds
+    // at `<AUTH_ROOT>/<userId>/` (single channel per user). New layout
+    // nests under the channel id: `<AUTH_ROOT>/<userId>/<channelId>/`.
+    // For each existing user dir that contains creds.json directly, move
+    // every loose file into the user's primary channel subdir. Idempotent —
+    // a re-run after migration sees no loose files and skips.
+    try {
+      const entries = await fs.readdir(AUTH_ROOT).catch(() => [] as string[]);
+      for (const entry of entries) {
+        const userIdNum = Number(entry);
+        if (!Number.isInteger(userIdNum) || userIdNum <= 0) continue;
+        const userDir = path.join(AUTH_ROOT, entry);
+        const stat = await fs.stat(userDir).catch(() => null);
+        if (!stat?.isDirectory()) continue;
+        const credsPath = path.join(userDir, "creds.json");
+        const hasLooseCreds = await fs
+          .stat(credsPath)
+          .then((s) => s.isFile())
+          .catch(() => false);
+        if (!hasLooseCreds) continue;
+        const primaryChannelId = await ensurePrimaryWhatsappChannelForUser(userIdNum);
+        const targetDir = path.join(userDir, String(primaryChannelId));
+        await fs.mkdir(targetDir, { recursive: true });
+        const looseFiles = await fs.readdir(userDir).catch(() => [] as string[]);
+        for (const f of looseFiles) {
+          // Skip subdirectories (channel folders, including the one we just
+          // created); only loose files are legacy artifacts.
+          const src = path.join(userDir, f);
+          const fst = await fs.stat(src).catch(() => null);
+          if (!fst?.isFile()) continue;
+          await fs.rename(src, path.join(targetDir, f)).catch(() => {});
+        }
+        logger.info(
+          { userId: userIdNum, primaryChannelId },
+          "migrated legacy auth dir to channel layout"
+        );
+      }
+    } catch (err) {
+      logger.warn({ err }, "legacy authDir migration failed (non-fatal)");
+    }
+
+    // Auto-reconnect each previously-connected CHANNEL. We iterate the
+    // channels table (post-Phase-B source of truth) instead of the legacy
+    // whatsapp_session table, so a user with N paired numbers gets N
+    // sockets restored. Channels that have never paired (status =
+    // 'disconnected' with no ownerPhone) are skipped — they require a
+    // fresh QR via /api/channels/:id/pair (Phase C).
+    // Filter on STATUS not ownerPhone: a channel that the user explicitly
+    // unpaired (/unpair or DELETE) clears its auth dir but intentionally
+    // leaves ownerPhone in place as the binding marker (so re-pairing
+    // the same number reuses the channel row). Reconnecting those here
+    // would resurrect a session the user just torn down — only resume
+    // channels whose status was live or mid-pair when we last shut down.
+    const channelRows = await db
+      .select({
+        id: channelsTable.id,
+        userId: channelsTable.userId,
+        status: channelsTable.status,
+        ownerPhone: channelsTable.ownerPhone,
+      })
+      .from(channelsTable)
       .where(
-        sql`${whatsappSessionTable.userId} IS NOT NULL
-            AND ${whatsappSessionTable.status} IN ('connected', 'connecting', 'qr_ready')`
+        and(
+          eq(channelsTable.kind, "whatsapp"),
+          sql`${channelsTable.status} IN ('connected', 'connecting', 'qr_ready')`
+        )
       );
-    for (const row of rows) {
-      if (row.userId == null) continue;
-      await setStatus(row.id, "connecting");
-      startBaileys(row.userId).catch((err) =>
-        logger.error({ err, userId: row.userId }, "Auto-reconnect failed")
+    for (const row of channelRows) {
+      // Best-effort: if no creds on disk we'll just produce a QR (harmless).
+      void syncChannelStatus(row.id, { status: "connecting" });
+      startBaileys(row.userId, row.id).catch((err) =>
+        logger.error(
+          { err, userId: row.userId, channelId: row.id },
+          "Auto-reconnect failed"
+        )
       );
     }
   } catch {
@@ -2361,7 +2526,11 @@ router.post("/connect", async (req, res): Promise<void> => {
       return;
     }
     await setStatus(session.id, "connecting");
-    startBaileys(userId).catch((err) =>
+    // Primary-channel pairing (back-compat for the legacy single-channel
+    // /connect endpoint). Per-channel pairing for non-primary channels
+    // lives at POST /api/channels/:id/pair in Phase C.
+    const channelId = await ensurePrimaryWhatsappChannelForUser(userId);
+    startBaileys(userId, channelId).catch((err) =>
       req.log.error({ err }, "Baileys start failed")
     );
     res.json({ status: "connecting", qrCode: null, phoneNumber: null, connectedAt: null });
@@ -2424,9 +2593,13 @@ router.post("/disconnect", async (req, res): Promise<void> => {
       });
       return;
     }
-    const ctx = getCtx(userId);
-    // Bump THIS user's epoch FIRST so any in-flight handler callbacks abort
-    // before they try to persist into chats we're about to clear.
+    // Resolve THIS user's primary channel — that's the channel the legacy
+    // /disconnect endpoint targets. Per-channel disconnect for non-primary
+    // channels lives at POST /api/channels/:id/unpair in Phase C.
+    const channelId = await ensurePrimaryWhatsappChannelForUser(userId);
+    const ctx = getCtxByChannel(channelId, userId);
+    // Bump THIS channel's epoch FIRST so any in-flight handler callbacks
+    // abort before they try to persist into chats we're about to clear.
     ctx.epoch++;
     if (ctx.sock) {
       try {
@@ -2442,13 +2615,13 @@ router.post("/disconnect", async (req, res): Promise<void> => {
       ctx.sock = null;
     }
     ctx.isConnecting = false;
-    // Wipe THIS user's local auth credentials so the next /connect starts
-    // a fresh pairing flow (QR). Other users' auth dirs are untouched.
-    await fs.rm(authDirForUser(userId), { recursive: true, force: true }).catch((err) => {
+    // Wipe THIS channel's local auth credentials so the next /connect starts
+    // a fresh pairing flow (QR). Other channels' auth dirs are untouched.
+    await fs.rm(authDirForChannel(userId, channelId), { recursive: true, force: true }).catch((err) => {
       req.log.warn({ err }, "Failed to wipe WhatsApp auth dir");
     });
-    // Per-user isolation: do NOT delete chats. Each chat row is scoped by
-    // owner_phone, so once we clear this user's connected phone below the
+    // Per-channel isolation: do NOT delete chats. Each chat row is scoped by
+    // channel_id, so once we clear this channel's connected phone below the
     // dashboard returns an empty list. When the SAME number scans QR again,
     // its history reappears; a DIFFERENT number sees its own clean slate.
     ctx.ownerPhone = null;
@@ -2464,9 +2637,7 @@ router.post("/disconnect", async (req, res): Promise<void> => {
     // a re-pair of the SAME number reuses the same channel without
     // re-creating it; pairing a DIFFERENT number on this channel will
     // update ownerPhone via syncChannelStatus in connection.open.
-    if (ctx.channelId != null) {
-      void syncChannelStatus(ctx.channelId, { status: "disconnected" });
-    }
+    void syncChannelStatus(channelId, { status: "disconnected", qrCode: null });
     res.json({ status: updated.status, qrCode: null, phoneNumber: null, connectedAt: null });
   } catch (err) {
     req.log.error({ err }, "Failed to disconnect WhatsApp");

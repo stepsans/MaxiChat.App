@@ -28,6 +28,7 @@ import type {
   AuthUser,
   Channel,
   ChannelCreate,
+  ChannelPairQr,
   ChannelUpdate,
   Chat,
   ChatMessage,
@@ -2538,6 +2539,293 @@ export const useUpdateChannel = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateChannelMutationOptions(options));
+    }
+
+export const getDeleteChannelUrl = (id: number,) => {
+
+
+
+
+  return `/api/channels/${id}`
+}
+
+/**
+ * @summary Hard-delete a channel and all its per-channel rows (chats, messages, statuses, settings, flows).
+ */
+export const deleteChannel = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteChannelUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChannel>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChannel>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteChannel(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteChannelMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChannel>>>
+
+    export type DeleteChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Hard-delete a channel and all its per-channel rows (chats, messages, statuses, settings, flows).
+ */
+export const useDeleteChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteChannel>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteChannelMutationOptions(options));
+    }
+
+export const getPairChannelUrl = (id: number,) => {
+
+
+
+
+  return `/api/channels/${id}/pair`
+}
+
+/**
+ * @summary Start (or resume) pairing for a WhatsApp channel; QR appears on GET /channels/{id}/qr.
+ */
+export const pairChannel = async (id: number, options?: RequestInit): Promise<Channel> => {
+
+  return customFetch<Channel>(getPairChannelUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getPairChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pairChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof pairChannel>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['pairChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof pairChannel>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  pairChannel(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PairChannelMutationResult = NonNullable<Awaited<ReturnType<typeof pairChannel>>>
+
+    export type PairChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Start (or resume) pairing for a WhatsApp channel; QR appears on GET /channels/{id}/qr.
+ */
+export const usePairChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pairChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof pairChannel>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getPairChannelMutationOptions(options));
+    }
+
+export const getGetChannelQrUrl = (id: number,) => {
+
+
+
+
+  return `/api/channels/${id}/qr`
+}
+
+/**
+ * @summary Poll the channel's pairing status and current QR data url.
+ */
+export const getChannelQr = async (id: number, options?: RequestInit): Promise<ChannelPairQr> => {
+
+  return customFetch<ChannelPairQr>(getGetChannelQrUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelQrQueryKey = (id: number,) => {
+    return [
+    `/api/channels/${id}/qr`
+    ] as const;
+    }
+
+
+export const getGetChannelQrQueryOptions = <TData = Awaited<ReturnType<typeof getChannelQr>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelQr>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelQrQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelQr>>> = ({ signal }) => getChannelQr(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelQr>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelQrQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelQr>>>
+export type GetChannelQrQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Poll the channel's pairing status and current QR data url.
+ */
+
+export function useGetChannelQr<TData = Awaited<ReturnType<typeof getChannelQr>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelQr>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelQrQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUnpairChannelUrl = (id: number,) => {
+
+
+
+
+  return `/api/channels/${id}/unpair`
+}
+
+/**
+ * @summary Log out the channel's WhatsApp socket and wipe its auth dir without deleting the channel row.
+ */
+export const unpairChannel = async (id: number, options?: RequestInit): Promise<Channel> => {
+
+  return customFetch<Channel>(getUnpairChannelUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getUnpairChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unpairChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unpairChannel>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['unpairChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unpairChannel>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  unpairChannel(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnpairChannelMutationResult = NonNullable<Awaited<ReturnType<typeof unpairChannel>>>
+
+    export type UnpairChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Log out the channel's WhatsApp socket and wipe its auth dir without deleting the channel row.
+ */
+export const useUnpairChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unpairChannel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unpairChannel>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getUnpairChannelMutationOptions(options));
     }
 
 export const getGetShortcutSyncConfigUrl = () => {

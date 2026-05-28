@@ -23,6 +23,8 @@ export * from './authUserTeamRole';
 export * from './channel';
 export * from './channelCreate';
 export * from './channelKind';
+export * from './channelPairQr';
+export * from './channelPairQrStatus';
 export * from './channelStatus';
 export * from './channelUpdate';
 export * from './chat';

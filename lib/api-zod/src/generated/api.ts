@@ -566,7 +566,7 @@ export const ListChannelsResponseItem = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -607,7 +607,7 @@ export const GetChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -642,7 +642,73 @@ export const UpdateChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
+  "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Hard-delete a channel and all its per-channel rows (chats, messages, statuses, settings, flows).
+ */
+export const DeleteChannelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Start (or resume) pairing for a WhatsApp channel; QR appears on GET /channels/{id}/qr.
+ */
+export const PairChannelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PairChannelResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number().describe('Owning super_admin user id'),
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().describe('Human label shown in the switcher'),
+  "color": zod.string().describe('Hex color (e.g. #25D366)'),
+  "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
+  "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Poll the channel's pairing status and current QR data url.
+ */
+export const GetChannelQrParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetChannelQrResponse = zod.object({
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']).describe('Channel pair status; \'qr_ready\' means qrCode is populated.'),
+  "qrCode": zod.string().nullish().describe('Data url for the WhatsApp pairing QR. Null unless status === \'qr_ready\'.'),
+  "ownerPhone": zod.string().nullish().describe('Last-paired phone number (digits). Present once the socket has connected at least once.')
+})
+
+
+/**
+ * @summary Log out the channel's WhatsApp socket and wipe its auth dir without deleting the channel row.
+ */
+export const UnpairChannelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UnpairChannelResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number().describe('Owning super_admin user id'),
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().describe('Human label shown in the switcher'),
+  "color": zod.string().describe('Hex color (e.g. #25D366)'),
+  "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
