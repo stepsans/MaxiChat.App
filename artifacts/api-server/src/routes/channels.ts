@@ -74,6 +74,13 @@ function serialize(c: typeof channelsTable.$inferSelect) {
 router.get("/", async (req, res): Promise<void> => {
   try {
     const rows = await listOwnedChannels(req);
+    // NOTE: we intentionally do NOT filter by user_channel_access here.
+    // Per-user channel access is scoped to CHATS ONLY — the channel
+    // switcher is shared with flows/statuses/analytics/etc which must
+    // stay team-wide. Chat-side filtering happens inside chats.ts. A
+    // restricted user picking a forbidden channel from the switcher will
+    // see an empty chats list (deny-by-default) but can still operate
+    // the other surfaces for that channel.
     res.json(rows.map(serialize));
   } catch (err) {
     req.log.error({ err }, "list channels failed");

@@ -18,6 +18,11 @@ import {
   getRoleDefaultsForOwner,
   type UserOverrides,
 } from "../lib/role-permissions";
+import {
+  getAllowedChannelIds,
+  setAllowedChannelIds,
+  listTenantChannels,
+} from "../lib/user-channel-access";
 
 const router = Router();
 
@@ -260,6 +265,99 @@ router.put(
       });
     } catch (err) {
       req.log.error({ err }, "save user permissions failed");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ---------- Per-user channel access (chat scope only) ----------
+
+const UpdateChannelAccessSchema = z.object({
+  channelIds: z.array(z.number().int().positive()).max(500),
+});
+
+// GET /permissions/users/:userId/channels — return the full list of channels
+// in the tenant + which ones the user is allowed to see chats in.
+router.get(
+  "/users/:userId/channels",
+  requireSuperAdmin,
+  async (req, res): Promise<void> => {
+    try {
+      const targetId = Number(req.params.userId);
+      if (!Number.isInteger(targetId) || targetId <= 0) {
+        res.status(400).json({ error: "Invalid user id" });
+        return;
+      }
+      const target = await requireOwnedTeamMember(req, res, targetId);
+      if (!target) return;
+      const callerId = getSessionUserId(req)!;
+      const ownerId = await resolveOwnerUserId(callerId);
+      const channels = await listTenantChannels(ownerId);
+      const allowed = await getAllowedChannelIds(target.id);
+      res.json({
+        user: {
+          id: target.id,
+          name: target.name,
+          email: target.email,
+          teamRole: target.teamRole,
+        },
+        channels,
+        allowedChannelIds: Array.from(allowed).sort((a, b) => a - b),
+      });
+    } catch (err) {
+      req.log.error({ err }, "get user channel access failed");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// PUT /permissions/users/:userId/channels — replace the user's chat-access
+// allow-list. Empty array = no chats visible (deny-by-default).
+// Refuses to edit super_admin targets — they always see every channel.
+router.put(
+  "/users/:userId/channels",
+  requireSuperAdmin,
+  async (req, res): Promise<void> => {
+    try {
+      const targetId = Number(req.params.userId);
+      if (!Number.isInteger(targetId) || targetId <= 0) {
+        res.status(400).json({ error: "Invalid user id" });
+        return;
+      }
+      const target = await requireOwnedTeamMember(req, res, targetId);
+      if (!target) return;
+      if (target.teamRole !== "supervisor" && target.teamRole !== "agent") {
+        res.status(400).json({
+          error:
+            "Super Admin selalu memiliki akses ke semua channel dan tidak dapat diatur",
+        });
+        return;
+      }
+      const parsed = UpdateChannelAccessSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid payload" });
+        return;
+      }
+      const callerId = getSessionUserId(req)!;
+      const ownerId = await resolveOwnerUserId(callerId);
+      const stored = await setAllowedChannelIds(
+        target.id,
+        ownerId,
+        parsed.data.channelIds
+      );
+      const channels = await listTenantChannels(ownerId);
+      res.json({
+        user: {
+          id: target.id,
+          name: target.name,
+          email: target.email,
+          teamRole: target.teamRole,
+        },
+        channels,
+        allowedChannelIds: stored.slice().sort((a, b) => a - b),
+      });
+    } catch (err) {
+      req.log.error({ err }, "save user channel access failed");
       res.status(500).json({ error: "Internal server error" });
     }
   }

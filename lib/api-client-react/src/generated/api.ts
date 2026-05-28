@@ -102,11 +102,13 @@ import type {
   TextShortcut,
   TextShortcutInput,
   UpdateAgentInput,
+  UpdateUserChannelAccessRequest,
   UpdateUserPermissionRequest,
   UploadPhotoResponse,
   UpsertKnowledgeSyncConfig200,
   UpsertProductSyncConfig200,
   UpsertShortcutSyncConfig200,
+  UserChannelAccessDetail,
   UserPermissionDetail,
   VerifyEmailInput,
   WhatsappBio,
@@ -7170,6 +7172,155 @@ export const useUpdateUserPermissions = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateUserPermissionsMutationOptions(options));
+    }
+
+export const getGetUserChannelAccessUrl = (userId: number,) => {
+
+
+
+
+  return `/api/permissions/users/${userId}/channels`
+}
+
+/**
+ * @summary Get a team member's chat-channel allow-list
+ */
+export const getUserChannelAccess = async (userId: number, options?: RequestInit): Promise<UserChannelAccessDetail> => {
+
+  return customFetch<UserChannelAccessDetail>(getGetUserChannelAccessUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserChannelAccessQueryKey = (userId: number,) => {
+    return [
+    `/api/permissions/users/${userId}/channels`
+    ] as const;
+    }
+
+
+export const getGetUserChannelAccessQueryOptions = <TData = Awaited<ReturnType<typeof getUserChannelAccess>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserChannelAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserChannelAccessQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserChannelAccess>>> = ({ signal }) => getUserChannelAccess(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserChannelAccess>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserChannelAccessQueryResult = NonNullable<Awaited<ReturnType<typeof getUserChannelAccess>>>
+export type GetUserChannelAccessQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a team member's chat-channel allow-list
+ */
+
+export function useGetUserChannelAccess<TData = Awaited<ReturnType<typeof getUserChannelAccess>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserChannelAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserChannelAccessQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateUserChannelAccessUrl = (userId: number,) => {
+
+
+
+
+  return `/api/permissions/users/${userId}/channels`
+}
+
+/**
+ * @summary Replace a team member's chat-channel allow-list
+ */
+export const updateUserChannelAccess = async (userId: number,
+    updateUserChannelAccessRequest: UpdateUserChannelAccessRequest, options?: RequestInit): Promise<UserChannelAccessDetail> => {
+
+  return customFetch<UserChannelAccessDetail>(getUpdateUserChannelAccessUrl(userId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateUserChannelAccessRequest,)
+  }
+);}
+
+
+
+
+export const getUpdateUserChannelAccessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateUserChannelAccess>>, TError,{userId: number;data: BodyType<UpdateUserChannelAccessRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateUserChannelAccess>>, TError,{userId: number;data: BodyType<UpdateUserChannelAccessRequest>}, TContext> => {
+
+const mutationKey = ['updateUserChannelAccess'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateUserChannelAccess>>, {userId: number;data: BodyType<UpdateUserChannelAccessRequest>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  updateUserChannelAccess(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateUserChannelAccessMutationResult = NonNullable<Awaited<ReturnType<typeof updateUserChannelAccess>>>
+    export type UpdateUserChannelAccessMutationBody = BodyType<UpdateUserChannelAccessRequest>
+    export type UpdateUserChannelAccessMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Replace a team member's chat-channel allow-list
+ */
+export const useUpdateUserChannelAccess = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateUserChannelAccess>>, TError,{userId: number;data: BodyType<UpdateUserChannelAccessRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateUserChannelAccess>>,
+        TError,
+        {userId: number;data: BodyType<UpdateUserChannelAccessRequest>},
+        TContext
+      > => {
+      return useMutation(getUpdateUserChannelAccessMutationOptions(options));
     }
 
 export const getResetFlowCooldownUrl = () => {

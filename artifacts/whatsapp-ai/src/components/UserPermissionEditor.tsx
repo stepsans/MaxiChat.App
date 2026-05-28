@@ -9,6 +9,9 @@ import {
   getListTeamMemberPermissionsQueryKey,
   getGetUserPermissionsQueryKey,
   getGetMyPermissionsQueryKey,
+  useGetUserChannelAccess,
+  useUpdateUserChannelAccess,
+  getGetUserChannelAccessQueryKey,
   type PermissionCell,
   type RoleMatrix,
 } from "@workspace/api-client-react";
@@ -489,6 +492,161 @@ export function UserPermissionEditor() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {selectedId != null && <ChannelAccessCard userId={selectedId} />}
+    </div>
+  );
+}
+
+// Per-user channel access — gates chat visibility ONLY (flows, statuses,
+// analytics, knowledge, products remain team-wide). Empty selection means
+// the user sees no chats and an empty channel switcher.
+function ChannelAccessCard({ userId }: { userId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data, isLoading } = useGetUserChannelAccess(userId, {
+    query: {
+      queryKey: getGetUserChannelAccessQueryKey(userId),
+      enabled: userId > 0,
+    },
+  });
+
+  const [selected, setSelected] = useState<Set<number> | null>(null);
+  useEffect(() => {
+    if (data) setSelected(new Set(data.allowedChannelIds));
+  }, [data]);
+
+  const updateMut = useUpdateUserChannelAccess({
+    mutation: {
+      onSuccess: async () => {
+        toast({ title: "Akses channel tersimpan" });
+        await qc.invalidateQueries({
+          queryKey: getGetUserChannelAccessQueryKey(userId),
+        });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal menyimpan akses channel",
+          description: err instanceof Error ? err.message : "Coba lagi.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const dirty = useMemo(() => {
+    if (!data || !selected) return false;
+    const a = new Set(data.allowedChannelIds);
+    if (a.size !== selected.size) return true;
+    for (const id of selected) if (!a.has(id)) return true;
+    return false;
+  }, [data, selected]);
+
+  const toggle = (id: number, on: boolean) => {
+    setSelected((s) => {
+      const next = new Set(s ?? []);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = (on: boolean) => {
+    if (!data) return;
+    setSelected(on ? new Set(data.channels.map((c) => c.id)) : new Set());
+  };
+
+  const handleSave = () => {
+    if (!selected) return;
+    updateMut.mutate({
+      userId,
+      data: { channelIds: Array.from(selected).sort((a, b) => a - b) },
+    });
+  };
+
+  if (isLoading || !data || !selected) {
+    return (
+      <div className="rounded-lg border bg-card p-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Memuat akses channel…
+      </div>
+    );
+  }
+
+  const allOn = selected.size === data.channels.length && data.channels.length > 0;
+  const noneOn = selected.size === 0;
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="px-4 py-3 border-b bg-muted/40 flex flex-wrap items-center gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <h3 className="text-sm font-semibold">Akses Channel (Chats)</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Hanya channel yang dicentang yang akan terlihat di daftar chat &
+            channel switcher untuk user ini. Tidak memengaruhi flow / status /
+            analytics.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => handleSelectAll(!allOn)}
+          disabled={data.channels.length === 0}
+          data-testid="button-toggle-all-channels"
+        >
+          {allOn ? "Hapus semua" : "Pilih semua"}
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={!dirty || updateMut.isPending}
+          data-testid="button-save-channel-access"
+        >
+          {updateMut.isPending ? (
+            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <Save className="w-3.5 h-3.5 mr-1.5" />
+          )}
+          Simpan
+        </Button>
+      </div>
+
+      {data.channels.length === 0 ? (
+        <div className="px-4 py-6 text-sm text-muted-foreground text-center">
+          Belum ada channel di tim ini.
+        </div>
+      ) : (
+        <div className="divide-y">
+          {data.channels.map((c) => {
+            const on = selected.has(c.id);
+            return (
+              <label
+                key={c.id}
+                className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-muted/30"
+              >
+                <Checkbox
+                  checked={on}
+                  onCheckedChange={(v) => toggle(c.id, v === true)}
+                  data-testid={`channel-access-${c.id}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{c.label}</div>
+                  <div className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                    {c.kind} · {c.status}
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {noneOn && (
+        <div className="px-4 py-2 border-t bg-amber-50/50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-300">
+          User ini tidak akan melihat chat apa pun sampai minimal satu channel
+          dipilih.
         </div>
       )}
     </div>

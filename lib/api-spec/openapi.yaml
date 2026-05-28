@@ -1985,6 +1985,43 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UserPermissionDetail" }
 
+  /permissions/users/{userId}/channels:
+    get:
+      operationId: getUserChannelAccess
+      tags: [permissions]
+      summary: Get a team member's chat-channel allow-list
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Channel access detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserChannelAccessDetail" }
+    put:
+      operationId: updateUserChannelAccess
+      tags: [permissions]
+      summary: Replace a team member's chat-channel allow-list
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateUserChannelAccessRequest" }
+      responses:
+        "200":
+          description: Updated channel access
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserChannelAccessDetail" }
+
   /flows/reset-cooldown:
     post:
       operationId: resetFlowCooldown
@@ -2080,6 +2117,47 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/PermissionCell"
+
+    TenantChannelOption:
+      type: object
+      required: [id, label, kind, status]
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        kind: { type: string }
+        status: { type: string }
+
+    UserChannelAccessDetail:
+      type: object
+      required: [user, channels, allowedChannelIds]
+      properties:
+        user:
+          type: object
+          required: [id, email, teamRole]
+          properties:
+            id: { type: integer }
+            name: { type: string, nullable: true }
+            email: { type: string }
+            teamRole:
+              type: string
+              enum: [super_admin, supervisor, agent]
+        channels:
+          type: array
+          description: All channels in the user's tenant (the universe of options).
+          items: { $ref: "#/components/schemas/TenantChannelOption" }
+        allowedChannelIds:
+          type: array
+          description: Subset of channels.id values this user can see chats in.
+          items: { type: integer }
+
+    UpdateUserChannelAccessRequest:
+      type: object
+      required: [channelIds]
+      properties:
+        channelIds:
+          type: array
+          description: Channel ids to grant chat access to. Empty array = no chat access.
+          items: { type: integer }
 
     HealthStatus:
       type: object

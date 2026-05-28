@@ -93,6 +93,42 @@ export interface UpdateUserPermissionRequest {
   overrides: UpdateUserPermissionRequestOverrides;
 }
 
+export interface TenantChannelOption {
+  id: number;
+  label: string;
+  kind: string;
+  status: string;
+}
+
+export type UserChannelAccessDetailUserTeamRole = typeof UserChannelAccessDetailUserTeamRole[keyof typeof UserChannelAccessDetailUserTeamRole];
+
+
+export const UserChannelAccessDetailUserTeamRole = {
+  super_admin: 'super_admin',
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export type UserChannelAccessDetailUser = {
+  id: number;
+  name?: string | null;
+  email: string;
+  teamRole: UserChannelAccessDetailUserTeamRole;
+};
+
+export interface UserChannelAccessDetail {
+  user: UserChannelAccessDetailUser;
+  /** All channels in the user's tenant (the universe of options). */
+  channels: TenantChannelOption[];
+  /** Subset of channels.id values this user can see chats in. */
+  allowedChannelIds: number[];
+}
+
+export interface UpdateUserChannelAccessRequest {
+  /** Channel ids to grant chat access to. Empty array = no chat access. */
+  channelIds: number[];
+}
+
 export interface HealthStatus {
   status: string;
 }

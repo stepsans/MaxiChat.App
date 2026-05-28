@@ -343,11 +343,19 @@ async function authorizedChatWhere(req: Request, res: Response, chatId: number) 
   if (scope.channelIds.length === 0) return { scope, where: null };
   const userId = req.session.userId!;
   const teamRole = await getEffectiveTeamRole(userId);
+  // Per-user channel allow-list (chat-only scope). Intersect with the
+  // tenant scope so a leaked chat id from a forbidden channel reads as
+  // "not found" rather than 403 — symmetrical with the existing tenant
+  // isolation behaviour above.
+  const { getAllowedChannelIds } = await import("../lib/user-channel-access");
+  const allowed = await getAllowedChannelIds(userId);
+  const allowedIds = scope.channelIds.filter((id) => allowed.has(id));
+  if (allowedIds.length === 0) return { scope, where: null };
   // Cast to any[] so Drizzle generates `channel_id = ANY($1)` (single param
   // expansion) regardless of how many ids are in scope.
   const base = and(
     eq(chatsTable.id, chatId),
-    inArray(chatsTable.channelId, scope.channelIds)
+    inArray(chatsTable.channelId, allowedIds)
   )!;
   const where =
     teamRole === "agent"
@@ -405,11 +413,22 @@ router.get("/", async (req, res): Promise<void> => {
       res.json([]);
       return;
     }
+    // Per-user channel allow-list — intersect with tenant scope. Empty
+    // intersection means this user can't see chats in any of the channels
+    // currently in view, so return an empty list (matches the existing
+    // "no channels paired yet" behaviour above).
+    const { getAllowedChannelIds } = await import("../lib/user-channel-access");
+    const allowed = await getAllowedChannelIds(userId);
+    const allowedScopeIds = scope.channelIds.filter((id) => allowed.has(id));
+    if (allowedScopeIds.length === 0) {
+      res.json([]);
+      return;
+    }
 
     // Role-aware filter: agents only see chats explicitly assigned to them;
     // supervisors and the super_admin see everything under the channel scope.
     const teamRole = req.session.teamRole ?? "super_admin";
-    const channelFilter = inArray(chatsTable.channelId, scope.channelIds);
+    const channelFilter = inArray(chatsTable.channelId, allowedScopeIds);
     const baseWhere =
       teamRole === "agent"
         ? and(channelFilter, eq(chatsTable.assignedUserId, userId))!
@@ -501,6 +520,21 @@ router.post("/open-by-phone", async (req, res): Promise<void> => {
     // single connected channel.
     const channel = await requireConnectedChannel(req, res);
     if (!channel) return;
+
+    // Per-user channel allow-list. Without this, a restricted supervisor/
+    // agent could pass X-Channel-Id for a channel they don't have chat
+    // access to and create a brand-new chat there — bypassing the read-
+    // side filter on list/detail. Mirror the same 404-style refusal so we
+    // don't leak which channels exist.
+    const uid = req.session.userId!;
+    const { getAllowedChannelIds: _getAllowed } = await import(
+      "../lib/user-channel-access"
+    );
+    const allowed = await _getAllowed(uid);
+    if (!allowed.has(channel.id)) {
+      res.status(404).json({ error: "channel_not_accessible" });
+      return;
+    }
 
     // Deterministic "open-or-create": try INSERT … ON CONFLICT DO NOTHING. If
     // RETURNING gives us a row, we created it. Otherwise the unique

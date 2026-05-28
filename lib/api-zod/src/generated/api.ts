@@ -1965,6 +1965,58 @@ export const UpdateUserPermissionsResponse = zod.object({
 
 
 /**
+ * @summary Get a team member's chat-channel allow-list
+ */
+export const GetUserChannelAccessParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserChannelAccessResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number(),
+  "name": zod.string().nullish(),
+  "email": zod.string(),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent'])
+}),
+  "channels": zod.array(zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "kind": zod.string(),
+  "status": zod.string()
+})).describe('All channels in the user\'s tenant (the universe of options).'),
+  "allowedChannelIds": zod.array(zod.number()).describe('Subset of channels.id values this user can see chats in.')
+})
+
+
+/**
+ * @summary Replace a team member's chat-channel allow-list
+ */
+export const UpdateUserChannelAccessParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const UpdateUserChannelAccessBody = zod.object({
+  "channelIds": zod.array(zod.number()).describe('Channel ids to grant chat access to. Empty array = no chat access.')
+})
+
+export const UpdateUserChannelAccessResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number(),
+  "name": zod.string().nullish(),
+  "email": zod.string(),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent'])
+}),
+  "channels": zod.array(zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "kind": zod.string(),
+  "status": zod.string()
+})).describe('All channels in the user\'s tenant (the universe of options).'),
+  "allowedChannelIds": zod.array(zod.number()).describe('Subset of channels.id values this user can see chats in.')
+})
+
+
+/**
  * @summary Clear flow cooldown for all chats so the Default trigger fires again immediately (for testing)
  */
 export const ResetFlowCooldownResponse = zod.object({
