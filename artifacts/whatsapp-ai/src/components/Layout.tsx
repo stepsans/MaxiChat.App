@@ -38,6 +38,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { usePermissions, type PermissionMenu } from "@/hooks/use-permissions";
+import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 
 type TeamRole = "super_admin" | "supervisor" | "agent";
 
@@ -237,6 +238,16 @@ export default function Layout({
               {collapsed ? "Buka sidebar" : "Sembunyikan sidebar"}
             </TooltipContent>
           </Tooltip>
+        </div>
+
+        {/* Channel switcher — multi-channel omnichannel header. */}
+        <div
+          className={cn(
+            "border-b border-border",
+            collapsed ? "p-2 flex justify-center" : "px-3 py-2"
+          )}
+        >
+          <ChannelSwitcher collapsed={collapsed} />
         </div>
 
         {/* Nav */}

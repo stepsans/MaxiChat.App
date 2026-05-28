@@ -17,6 +17,28 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _channelIdGetter: ChannelIdGetter | null = null;
+
+export type ChannelIdGetter = () =>
+  | Promise<string | number | null>
+  | string
+  | number
+  | null;
+
+/**
+ * Register a getter that supplies the currently active channel id. When it
+ * returns a non-null value, an `X-Channel-Id` header is attached to every
+ * outgoing request (unless the caller already set one). Pass `null` to
+ * clear the getter.
+ *
+ * The MaxiChat backend uses this header to scope per-channel data (chats,
+ * settings, flows) to the active channel from the header dropdown. The
+ * special value `"all"` triggers the aggregate "All channels" view on
+ * routes that support it.
+ */
+export function setChannelIdGetter(getter: ChannelIdGetter | null): void {
+  _channelIdGetter = getter;
+}
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -355,6 +377,15 @@ export async function customFetch<T = unknown>(
     const token = await _authTokenGetter();
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+
+  // Attach the active channel id from the registered getter so per-channel
+  // routes can scope to the right channel. Caller-supplied headers win.
+  if (_channelIdGetter && !headers.has("x-channel-id")) {
+    const cid = await _channelIdGetter();
+    if (cid != null && cid !== "") {
+      headers.set("x-channel-id", String(cid));
     }
   }
 

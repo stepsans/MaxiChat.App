@@ -18,6 +18,7 @@ import knowledgeSyncRouter from "./knowledge-sync";
 import shortcutsSyncRouter from "./shortcuts-sync";
 import agentsRouter from "./agents";
 import permissionsRouter from "./permissions";
+import channelsRouter from "./channels";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -52,6 +53,7 @@ router.use("/statuses", statusesRouter);
 router.use("/shortcuts", shortcutsSyncRouter);
 router.use("/shortcuts", shortcutsRouter);
 router.use("/flows", flowsRouter);
+router.use("/channels", channelsRouter);
 
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.

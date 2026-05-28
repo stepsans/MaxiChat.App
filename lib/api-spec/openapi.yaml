@@ -706,6 +706,74 @@ paths:
               schema:
                 $ref: "#/components/schemas/Settings"
 
+  /channels:
+    get:
+      operationId: listChannels
+      tags: [channels]
+      summary: List every channel owned by the signed-in user
+      responses:
+        "200":
+          description: Array of channels (ordered by id ascending)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+    post:
+      operationId: createChannel
+      tags: [channels]
+      summary: Create a new channel (Phase 1, WhatsApp only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelCreate"
+      responses:
+        "201":
+          description: Newly created channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+
+  /channels/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getChannel
+      tags: [channels]
+      summary: Fetch a single channel by id
+      responses:
+        "200":
+          description: Channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+    patch:
+      operationId: updateChannel
+      tags: [channels]
+      summary: Rename a channel or change its color/icon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelUpdate"
+      responses:
+        "200":
+          description: Updated channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+
   /shortcuts/sync-config:
     get:
       operationId: getShortcutSyncConfig
@@ -2870,3 +2938,72 @@ components:
           maxLength: 120
         graph:
           $ref: "#/components/schemas/FlowGraph"
+
+    ChannelKind:
+      type: string
+      description: Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.
+      enum:
+        - whatsapp
+        - instagram
+        - facebook
+        - tiktok_shop
+        - shopee
+        - webchat
+        - line
+        - telegram
+
+    Channel:
+      type: object
+      required: [id, userId, kind, label, color, icon, status, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        userId: { type: integer, description: "Owning super_admin user id" }
+        kind: { $ref: "#/components/schemas/ChannelKind" }
+        label: { type: string, description: "Human label shown in the switcher" }
+        color: { type: string, description: "Hex color (e.g. #25D366)" }
+        icon: { type: string, description: "Icon key the frontend maps to a lucide / brand icon" }
+        status:
+          type: string
+          enum: [disconnected, connecting, connected, error]
+        ownerPhone:
+          type: string
+          nullable: true
+          description: "WhatsApp-only: paired phone number (digits)"
+        metadata:
+          nullable: true
+          description: "Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind."
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ChannelCreate:
+      type: object
+      required: [kind, label]
+      properties:
+        kind: { $ref: "#/components/schemas/ChannelKind" }
+        label:
+          type: string
+          minLength: 1
+          maxLength: 60
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
+        icon:
+          type: string
+          minLength: 1
+          maxLength: 40
+
+    ChannelUpdate:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 60
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
+        icon:
+          type: string
+          minLength: 1
+          maxLength: 40
+

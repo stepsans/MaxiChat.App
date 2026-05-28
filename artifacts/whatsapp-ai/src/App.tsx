@@ -7,6 +7,8 @@ import { ThemeProvider } from "@/hooks/use-theme";
 import { useGetMe, useHeartbeat } from "@workspace/api-client-react";
 import NotFound from "@/pages/not-found";
 import Layout from "@/components/Layout";
+import { ChannelProvider } from "@/contexts/ChannelContext";
+import Channels from "@/pages/Channels";
 import Dashboard from "@/pages/Dashboard";
 import Chats from "@/pages/Chats";
 import Status from "@/pages/Status";
@@ -91,7 +93,7 @@ function AuthGate() {
   }
 
   return (
-    <>
+    <ChannelProvider>
       <PresenceHeartbeat />
       <Layout user={data!.user ?? undefined}>
         <Switch>
@@ -105,13 +107,14 @@ function AuthGate() {
         <Route path="/flows/:id" component={FlowEditor} />
         <Route path="/credentials" component={Credentials} />
         <Route path="/agents" component={Agents} />
+        <Route path="/channels" component={Channels} />
         <Route path="/settings" component={Settings} />
         <Route path="/profile" component={Profile} />
         <Route path="/analytics" component={Analytics} />
           <Route component={NotFound} />
         </Switch>
       </Layout>
-    </>
+    </ChannelProvider>
   );
 }
 

@@ -1,5 +1,6 @@
 - [Express 5 handler conventions](express5-handler-conventions.md) — return types, never `return res.X()`, and the unbraced-if trap when bulk-rewriting that pattern.
 - [google-auth-library is transitive](google-auth-library-transitive.md) — never add as dep; use `InstanceType<typeof google.auth.OAuth2>` from `googleapis`.
+- [Fetch interceptor ref ordering](fetch-interceptor-ref-ordering.md) — header-injecting interceptors that read from a ref MUST update the ref before invalidateQueries, not on next render.
 - [Baileys messages.upsert pipeline](baileys-message-pipeline.md) — accept all upsert types, epoch-guard is `continue` not `return`, history sync must download media + back-fill on conflict.
 - [OAuth callback HTML XSS](oauth-html-callback-xss.md) — error/email/detail are attacker-controllable; escape `& < > " '` everywhere, not just `<`.
 - [Sync-config tenant binding](sync-config-tenant-binding.md) — per-ownerPhone configs (sheet sync etc.) must include userId + filter every read/write, or a phone reassignment leaks the prior tenant's binding.

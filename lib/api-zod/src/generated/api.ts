@@ -557,6 +557,100 @@ export const UpdateSettingsResponse = zod.object({
 
 
 /**
+ * @summary List every channel owned by the signed-in user
+ */
+export const ListChannelsResponseItem = zod.object({
+  "id": zod.number(),
+  "userId": zod.number().describe('Owning super_admin user id'),
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().describe('Human label shown in the switcher'),
+  "color": zod.string().describe('Hex color (e.g. #25D366)'),
+  "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
+  "status": zod.enum(['disconnected', 'connecting', 'connected', 'error']),
+  "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
+  "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListChannelsResponse = zod.array(ListChannelsResponseItem)
+
+
+/**
+ * @summary Create a new channel (Phase 1, WhatsApp only)
+ */
+export const createChannelBodyLabelMax = 60;
+
+export const createChannelBodyColorRegExp = new RegExp('^#[0-9A-Fa-f]{6}$');
+export const createChannelBodyIconMax = 40;
+
+
+
+export const CreateChannelBody = zod.object({
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().min(1).max(createChannelBodyLabelMax),
+  "color": zod.string().regex(createChannelBodyColorRegExp).optional(),
+  "icon": zod.string().min(1).max(createChannelBodyIconMax).optional()
+})
+
+
+/**
+ * @summary Fetch a single channel by id
+ */
+export const GetChannelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetChannelResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number().describe('Owning super_admin user id'),
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().describe('Human label shown in the switcher'),
+  "color": zod.string().describe('Hex color (e.g. #25D366)'),
+  "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
+  "status": zod.enum(['disconnected', 'connecting', 'connected', 'error']),
+  "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
+  "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Rename a channel or change its color/icon
+ */
+export const UpdateChannelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateChannelBodyLabelMax = 60;
+
+export const updateChannelBodyColorRegExp = new RegExp('^#[0-9A-Fa-f]{6}$');
+export const updateChannelBodyIconMax = 40;
+
+
+
+export const UpdateChannelBody = zod.object({
+  "label": zod.string().min(1).max(updateChannelBodyLabelMax).optional(),
+  "color": zod.string().regex(updateChannelBodyColorRegExp).optional(),
+  "icon": zod.string().min(1).max(updateChannelBodyIconMax).optional()
+})
+
+export const UpdateChannelResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number().describe('Owning super_admin user id'),
+  "kind": zod.enum(['whatsapp', 'instagram', 'facebook', 'tiktok_shop', 'shopee', 'webchat', 'line', 'telegram']).describe('Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.'),
+  "label": zod.string().describe('Human label shown in the switcher'),
+  "color": zod.string().describe('Hex color (e.g. #25D366)'),
+  "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
+  "status": zod.enum(['disconnected', 'connecting', 'connected', 'error']),
+  "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
+  "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get the Google Sheet sync config for the current WhatsApp account
  */
 

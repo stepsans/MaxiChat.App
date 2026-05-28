@@ -1198,6 +1198,84 @@ export interface FlowUpdateInput {
   graph?: FlowGraph;
 }
 
+/**
+ * Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.
+ */
+export type ChannelKind = typeof ChannelKind[keyof typeof ChannelKind];
+
+
+export const ChannelKind = {
+  whatsapp: 'whatsapp',
+  instagram: 'instagram',
+  facebook: 'facebook',
+  tiktok_shop: 'tiktok_shop',
+  shopee: 'shopee',
+  webchat: 'webchat',
+  line: 'line',
+  telegram: 'telegram',
+} as const;
+
+export type ChannelStatus = typeof ChannelStatus[keyof typeof ChannelStatus];
+
+
+export const ChannelStatus = {
+  disconnected: 'disconnected',
+  connecting: 'connecting',
+  connected: 'connected',
+  error: 'error',
+} as const;
+
+export interface Channel {
+  id: number;
+  /** Owning super_admin user id */
+  userId: number;
+  kind: ChannelKind;
+  /** Human label shown in the switcher */
+  label: string;
+  /** Hex color (e.g. #25D366) */
+  color: string;
+  /** Icon key the frontend maps to a lucide / brand icon */
+  icon: string;
+  status: ChannelStatus;
+  /** WhatsApp-only: paired phone number (digits) */
+  ownerPhone?: string | null;
+  /** Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind. */
+  metadata?: unknown | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChannelCreate {
+  kind: ChannelKind;
+  /**
+     * @minLength 1
+     * @maxLength 60
+     */
+  label: string;
+  /** @pattern ^#[0-9A-Fa-f]{6}$ */
+  color?: string;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  icon?: string;
+}
+
+export interface ChannelUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 60
+     */
+  label?: string;
+  /** @pattern ^#[0-9A-Fa-f]{6}$ */
+  color?: string;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  icon?: string;
+}
+
 export type ListChatsParams = {
 status?: ListChatsStatus;
 tag?: ListChatsTag;
