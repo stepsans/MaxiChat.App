@@ -505,13 +505,10 @@ router.post("/open-by-phone", async (req, res): Promise<void> => {
     // Deterministic "open-or-create": try INSERT … ON CONFLICT DO NOTHING. If
     // RETURNING gives us a row, we created it. Otherwise the unique
     // (channel_id, phone_number) row already existed and we re-select its id.
-    // ownerPhone is still written (NOT NULL legacy column) but the source of
-    // truth for tenant scoping is channel_id.
     const contactName = parsed.data.contactName?.trim() || digits;
     const inserted = await db
       .insert(chatsTable)
       .values({
-        ownerPhone: channel.ownerPhone!,
         channelId: channel.id,
         phoneNumber,
         contactName,

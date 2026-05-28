@@ -360,36 +360,13 @@ router.delete("/:id", requireSuperAdmin, async (req, res): Promise<void> => {
         req.log.warn({ err, channelId: id }, "disconnect during delete failed (non-fatal)")
       );
     }
-    // Per-channel rows where channel_id is a plain nullable integer
-    // (no FK cascade yet). Delete explicitly. chat_messages cascades
-    // off chats via its FK so we don't need a separate sweep.
-    //
-    // We match BOTH `channelId = id` AND legacy rows where
-    // `channelId IS NULL AND ownerPhone = channel.ownerPhone` — pre-Phase-A
-    // inserts predate the channelId column being populated, and would
-    // otherwise be orphaned by a channel delete. `channels.ownerPhone`
-    // is globally unique, so this can never match another channel's rows.
-    const ownerPhone = existing.ownerPhone;
-    await db.delete(chatsTable).where(
-      ownerPhone
-        ? or(eq(chatsTable.channelId, id), and(isNull(chatsTable.channelId), eq(chatsTable.ownerPhone, ownerPhone)))
-        : eq(chatsTable.channelId, id)
-    );
-    await db.delete(whatsappStatusesTable).where(
-      ownerPhone
-        ? or(eq(whatsappStatusesTable.channelId, id), and(isNull(whatsappStatusesTable.channelId), eq(whatsappStatusesTable.ownerPhone, ownerPhone)))
-        : eq(whatsappStatusesTable.channelId, id)
-    );
-    await db.delete(settingsTable).where(
-      ownerPhone
-        ? or(eq(settingsTable.channelId, id), and(isNull(settingsTable.channelId), eq(settingsTable.ownerPhone, ownerPhone)))
-        : eq(settingsTable.channelId, id)
-    );
-    await db.delete(chatbotFlowsTable).where(
-      ownerPhone
-        ? or(eq(chatbotFlowsTable.channelId, id), and(isNull(chatbotFlowsTable.channelId), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
-        : eq(chatbotFlowsTable.channelId, id)
-    );
+    // Per-channel rows are scoped purely by channel_id (T009 dropped the
+    // legacy ownerPhone columns from these 4 tables). chat_messages
+    // cascades off chats via FK so no separate sweep needed.
+    await db.delete(chatsTable).where(eq(chatsTable.channelId, id));
+    await db.delete(whatsappStatusesTable).where(eq(whatsappStatusesTable.channelId, id));
+    await db.delete(settingsTable).where(eq(settingsTable.channelId, id));
+    await db.delete(chatbotFlowsTable).where(eq(chatbotFlowsTable.channelId, id));
     // channel_products / channel_knowledge / channel_text_shortcuts join
     // tables cascade off channels via their own FKs, so the row delete
     // below also cleans those up.

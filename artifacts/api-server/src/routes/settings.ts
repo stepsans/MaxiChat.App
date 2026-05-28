@@ -34,9 +34,8 @@ Tugas kamu:
 const DEFAULT_FALLBACK =
   "Aku bantu cek dulu ya kak, nanti admin kami bantu jawab lebih detail 🙏";
 
-// Per-channel settings. Filter by channel_id (the source of truth post-T002);
-// owner_phone is still populated on insert as a transitional column required
-// by the legacy NOT NULL + unique-index, but reads never depend on it.
+// Per-channel settings. Filter by channel_id (the source of truth post-T009);
+// owner_phone is gone from this table.
 export async function getOrCreateSettings(channel: ChannelRow) {
   const rows = await db
     .select()
@@ -45,18 +44,9 @@ export async function getOrCreateSettings(channel: ChannelRow) {
     .limit(1);
   if (rows.length > 0) return rows[0];
 
-  // Only callable for connected channels (ownerPhone is guaranteed by the
-  // requireConnectedChannel gate in the writer route below). The reader
-  // route also passes a connected channel; an unpaired channel never
-  // reaches this function.
-  if (!channel.ownerPhone) {
-    throw new Error("getOrCreateSettings called with unpaired channel");
-  }
-
   const [created] = await db
     .insert(settingsTable)
     .values({
-      ownerPhone: channel.ownerPhone,
       channelId: channel.id,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       autoReplyEnabled: true,
@@ -65,7 +55,7 @@ export async function getOrCreateSettings(channel: ChannelRow) {
       fallbackMessage: DEFAULT_FALLBACK,
       flowCooldownMinutes: 5,
     })
-    .onConflictDoNothing({ target: settingsTable.ownerPhone })
+    .onConflictDoNothing({ target: settingsTable.channelId })
     .returning();
   if (created) return created;
 
@@ -91,7 +81,6 @@ function defaultSettingsResponse() {
   const now = new Date();
   return {
     id: 0,
-    ownerPhone: "",
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     autoReplyEnabled: true,
     replyDelayMin: 1,

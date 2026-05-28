@@ -175,7 +175,6 @@ router.post("/", async (req, res): Promise<void> => {
     const row = await postTextStatus(
       req.session.userId!,
       channel.id,
-      channel.ownerPhone!,
       text,
       backgroundColor
     );

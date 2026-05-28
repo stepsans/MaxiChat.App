@@ -86,7 +86,6 @@ router.post("/", async (req, res): Promise<void> => {
       const [row] = await db
         .insert(textShortcutsTable)
         .values({
-          ownerPhone: owner.ownerPhone,
           userId: owner.ownerUserId,
           shortcut,
           replacement,

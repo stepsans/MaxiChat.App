@@ -11,15 +11,14 @@ import {
 import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
-// Visual chatbot flow graph. Each owner_phone may have multiple flows but at
+// Visual chatbot flow graph. Each channel may have multiple flows but at
 // most one row with is_active=true. Enforced by a partial unique index plus
 // transactional swap in the activate endpoint.
 export const chatbotFlowsTable = pgTable(
   "chatbot_flows",
   {
     id: serial("id").primaryKey(),
-    ownerPhone: text("owner_phone").notNull(),
-    channelId: integer("channel_id"),
+    channelId: integer("channel_id").notNull(),
     name: text("name").notNull(),
     isActive: boolean("is_active").notNull().default(false),
     // { nodes: FlowNode[], edges: FlowEdge[] } — see flowGraphSchema below.
@@ -32,17 +31,12 @@ export const chatbotFlowsTable = pgTable(
       .notNull(),
   },
   (t) => ({
-    chatbotFlowsActiveUnique: uniqueIndex("chatbot_flows_active_unique")
-      .on(t.ownerPhone)
-      .where(sql`${t.isActive}`),
-    // Channel-grained "at most one active flow per channel" — parallel to
-    // the owner_phone one during the multi-channel transition. Old index
-    // will be dropped in the T009 tighten phase.
+    // At most one active flow per channel.
     chatbotFlowsChannelActiveUnique: uniqueIndex(
       "chatbot_flows_channel_active_unique"
     )
       .on(t.channelId)
-      .where(sql`${t.isActive} AND ${t.channelId} IS NOT NULL`),
+      .where(sql`${t.isActive}`),
   })
 );
 

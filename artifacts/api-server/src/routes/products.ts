@@ -212,7 +212,6 @@ router.post("/", async (req, res): Promise<void> => {
         .insert(productsTable)
         .values({
           ...bodyToInsert(parsed.data),
-          ownerPhone: owner.ownerPhone,
           userId: owner.ownerUserId,
         })
         .returning();
@@ -631,7 +630,7 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
 
     // ownerPhone + userId are added at insert time (block below) so the
     // parsed array omits them here.
-    const entries: Omit<typeof productsTable.$inferInsert, "ownerPhone" | "userId">[] = [];
+    const entries: Omit<typeof productsTable.$inferInsert, "userId">[] = [];
     const seen = new Set<string>();
     const skipped: { row: number; reason: string }[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -714,8 +713,7 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
         .values(
           entries.map((e) => ({
             ...e,
-            ownerPhone: owner.ownerPhone,
-            userId: owner.ownerUserId,
+              userId: owner.ownerUserId,
           })),
         );
     });
@@ -822,7 +820,6 @@ router.post("/sync-to-knowledge", async (req, res): Promise<void> => {
           ),
         );
       await tx.insert(knowledgeTable).values({
-        ownerPhone: owner.ownerPhone,
         userId: owner.ownerUserId,
         type: "product",
         title: PRODUCT_KB_TITLE,

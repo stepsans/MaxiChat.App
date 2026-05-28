@@ -4,6 +4,7 @@ import { knowledgeTypesTable, knowledgeTable } from "@workspace/db";
 import { and, eq, asc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getCurrentOwnerPhone } from "./whatsapp";
+import { requireOwnerUserId, getOwnerPrimaryPhone } from "../lib/channel-context";
 
 const router = Router();
 
@@ -117,7 +118,9 @@ router.delete("/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
+    const ownerPhone = await getOwnerPrimaryPhone(ownerUserId);
     if (!ownerPhone) {
       res
         .status(503)
@@ -139,7 +142,7 @@ router.delete("/:id", async (req, res): Promise<void> => {
         .where(
           and(
             eq(knowledgeTable.type, type.value),
-            eq(knowledgeTable.ownerPhone, ownerPhone)
+            eq(knowledgeTable.userId, ownerUserId)
           )
         );
       if (count > 0) {

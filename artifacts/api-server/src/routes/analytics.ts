@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable } from "@workspace/db";
-import { eq, sql, inArray } from "drizzle-orm";
-import { getCurrentOwnerPhone } from "./whatsapp";
+import { sql, inArray } from "drizzle-orm";
+import { resolveChannelScope } from "../lib/channel-context";
 import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
@@ -16,8 +16,9 @@ router.get("/summary", async (req, res): Promise<void> => {
     // Per-phone isolation: when disconnected, every counter is zero — the
     // dashboard for "nobody logged in" must not show another account's
     // numbers. Once a phone connects, only its own data is aggregated.
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
+    const scope = await resolveChannelScope(req, res);
+    if (!scope) return;
+    if (scope.channelIds.length === 0) {
       res.json({
         totalChats: 0,
         aiHandled: 0,
@@ -35,7 +36,7 @@ router.get("/summary", async (req, res): Promise<void> => {
     const chats = await db
       .select()
       .from(chatsTable)
-      .where(eq(chatsTable.ownerPhone, ownerPhone));
+      .where(inArray(chatsTable.channelId, scope.channelIds));
 
     const totalChats = chats.length;
     const aiHandled = chats.filter((c) => c.status === "ai_handled").length;
@@ -82,8 +83,9 @@ router.get("/summary", async (req, res): Promise<void> => {
 router.get("/common-questions", async (req, res): Promise<void> => {
   try {
     // Scope keyword counting to the current account's inbound messages only.
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
+    const scope = await resolveChannelScope(req, res);
+    if (!scope) return;
+    if (scope.channelIds.length === 0) {
       res.json([
         { question: "Pertanyaan harga", count: 0 },
         { question: "Cara order", count: 0 },
@@ -94,7 +96,7 @@ router.get("/common-questions", async (req, res): Promise<void> => {
     const ownedChats = await db
       .select({ id: chatsTable.id })
       .from(chatsTable)
-      .where(eq(chatsTable.ownerPhone, ownerPhone));
+      .where(inArray(chatsTable.channelId, scope.channelIds));
     const ownedChatIds = ownedChats.map((c) => c.id);
     const inboundMessages = ownedChatIds.length
       ? await db

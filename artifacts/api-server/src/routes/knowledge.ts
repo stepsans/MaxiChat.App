@@ -234,7 +234,6 @@ router.post("/", async (req, res): Promise<void> => {
       .insert(knowledgeTable)
       .values({
         ...insertable,
-        ownerPhone: owner.ownerPhone,
         userId: owner.ownerUserId,
       })
       .returning();
@@ -506,8 +505,7 @@ router.post("/import", upload.single("file"), async (req, res) => {
         .values(
           entries.map((e) => ({
             ...e,
-            ownerPhone: owner.ownerPhone,
-            userId: owner.ownerUserId,
+                userId: owner.ownerUserId,
           })),
         );
     });

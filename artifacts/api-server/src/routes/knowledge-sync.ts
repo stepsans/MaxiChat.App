@@ -47,15 +47,23 @@ function makeLabelFromValue(v: string): string {
 
 router.get("/sync-config", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
+    const userId = req.session.userId!;
+    const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.json({ config: null });
       return;
     }
+    // Scope by BOTH userId and ownerPhone so a phone reassigned to a
+    // different user cannot read the prior tenant's spreadsheet binding.
     const [row] = await db
       .select()
       .from(knowledgeSyncConfigTable)
-      .where(eq(knowledgeSyncConfigTable.ownerPhone, ownerPhone))
+      .where(
+        and(
+          eq(knowledgeSyncConfigTable.userId, userId),
+          eq(knowledgeSyncConfigTable.ownerPhone, ownerPhone)
+        )
+      )
       .limit(1);
     res.json({ config: row ? publicConfig(row) : null });
   } catch (err) {
@@ -84,7 +92,12 @@ router.put("/sync-config", async (req, res): Promise<void> => {
     if (req.body === null) {
       await db
         .delete(knowledgeSyncConfigTable)
-        .where(eq(knowledgeSyncConfigTable.ownerPhone, ownerPhone));
+        .where(
+          and(
+            eq(knowledgeSyncConfigTable.userId, userId),
+            eq(knowledgeSyncConfigTable.ownerPhone, ownerPhone)
+          )
+        );
       res.json({ config: null });
       return;
     }
@@ -109,6 +122,7 @@ router.put("/sync-config", async (req, res): Promise<void> => {
     }
     const values = {
       ownerPhone,
+      userId,
       credentialId: parsed.data.credentialId,
       spreadsheetId: parsed.data.spreadsheetId,
       sheetName: parsed.data.sheetName,
@@ -239,6 +253,9 @@ export async function runKnowledgeSyncForOwner(
     .where(eq(userWhatsappTable.ownerPhone, ownerPhone))
     .limit(1);
   if (!link) throw new Error("WhatsApp account tidak terhubung ke user.");
+  if (cfg.userId == null || cfg.userId !== link.userId) {
+    throw new Error("Sync config tidak konsisten dengan pemilik akun WhatsApp.");
+  }
   const cred = await loadOwnedCredentialForUser(link.userId, cfg.credentialId);
   if (!cred) throw new Error("Credential tidak ditemukan atau bukan milik user ini.");
   if (cred.status !== "connected") {
@@ -313,7 +330,7 @@ export async function runKnowledgeSyncForOwner(
       const existing = await tx
         .select({ type: knowledgeTable.type, title: knowledgeTable.title })
         .from(knowledgeTable)
-        .where(eq(knowledgeTable.ownerPhone, ownerPhone));
+        .where(eq(knowledgeTable.userId, cfg.userId));
       const existingKeys = new Set(existing.map((r) => `${r.type}\u0000${r.title}`));
       const sheetKeys = new Set(entries.map((e) => `${e.type}\u0000${e.title}`));
       for (const k of existingKeys) {
@@ -321,11 +338,11 @@ export async function runKnowledgeSyncForOwner(
       }
       await tx
         .delete(knowledgeTable)
-        .where(eq(knowledgeTable.ownerPhone, ownerPhone));
+        .where(eq(knowledgeTable.userId, cfg.userId));
       if (entries.length > 0) {
         await tx
           .insert(knowledgeTable)
-          .values(entries.map((e) => ({ ...e, ownerPhone })));
+          .values(entries.map((e) => ({ ...e, userId: cfg.userId })));
       }
       for (const e of entries) {
         const k = `${e.type}\u0000${e.title}`;

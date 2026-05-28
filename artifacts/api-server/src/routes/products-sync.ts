@@ -178,7 +178,7 @@ type SyncResult = {
 // columns are ignored, blank rows are skipped, duplicate codes within the
 // sheet take the first occurrence (rest are skipped silently).
 function rowsToEntries(rows: string[][], headerRow: number): {
-  entries: Omit<typeof productsTable.$inferInsert, "ownerPhone">[];
+  entries: Omit<typeof productsTable.$inferInsert, "userId">[];
   skipped: number;
 } {
   const headerIdx = Math.max(0, headerRow - 1);
@@ -206,7 +206,7 @@ function rowsToEntries(rows: string[][], headerRow: number): {
       return null;
     }
   };
-  const entries: Omit<typeof productsTable.$inferInsert, "ownerPhone">[] = [];
+  const entries: Omit<typeof productsTable.$inferInsert, "userId">[] = [];
   const seen = new Set<string>();
   let skipped = 0;
   for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -342,17 +342,17 @@ export async function runSyncForOwner(ownerPhone: string): Promise<SyncResult> {
       const existing = await tx
         .select({ code: productsTable.code })
         .from(productsTable)
-        .where(eq(productsTable.ownerPhone, ownerPhone));
+        .where(eq(productsTable.userId, cfg.userId));
       const existingCodes = new Set(existing.map((r) => r.code));
       const sheetCodes = new Set(entries.map((e) => e.code));
       for (const code of existingCodes) {
         if (!sheetCodes.has(code)) deleted++;
       }
-      await tx.delete(productsTable).where(eq(productsTable.ownerPhone, ownerPhone));
+      await tx.delete(productsTable).where(eq(productsTable.userId, cfg.userId));
       if (entries.length > 0) {
         await tx
           .insert(productsTable)
-          .values(entries.map((e) => ({ ...e, ownerPhone })));
+          .values(entries.map((e) => ({ ...e, userId: cfg.userId })));
       }
       for (const e of entries) {
         if (existingCodes.has(e.code)) updated++;

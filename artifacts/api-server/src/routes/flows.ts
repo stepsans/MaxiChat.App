@@ -140,7 +140,6 @@ router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res): Promise
   const [row] = await db
     .insert(chatbotFlowsTable)
     .values({
-      ownerPhone: channel.ownerPhone!,
       channelId: channel.id,
       name: parsed.data.name,
       graph: { nodes: [], edges: [] },

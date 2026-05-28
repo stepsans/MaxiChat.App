@@ -299,18 +299,19 @@ const PROFILE_PIC_TTL_FAILURE_MS = 12 * 60 * 60 * 1000; // 12h — privacy/no-pi
 const profilePicInFlight = new Set<number>();
 
 export async function refreshChatProfilePic(
-  userId: number,
+  _userId: number,
   chat: {
     id: number;
-    ownerPhone: string;
+    channelId: number;
     phoneNumber: string;
     profilePicUrl: string | null;
     profilePicCheckedAt: Date | null;
   },
   opts: { force?: boolean } = {}
 ): Promise<string | null> {
-  const ownerUserId = await resolveOwnerUserId(userId);
-  const ctx = await getPrimaryCtxForUser(ownerUserId);
+  // Look up the live ctx for this chat's channel. We don't auto-create — if
+  // no ctx exists the channel isn't paired and there's nothing to ask.
+  const ctx = channelCtxs.get(chat.channelId);
   if (!ctx?.sock) return null;
   if (profilePicInFlight.has(chat.id)) return null;
   if (!opts.force && chat.profilePicCheckedAt) {
@@ -321,10 +322,7 @@ export async function refreshChatProfilePic(
       return null;
     }
   }
-  // Re-verify that the chat still belongs to the currently-connected account
-  // for this user before talking to Baileys. Prevents a refresh task spawned
-  // under account A from running its network call once the user has paired B.
-  if (!ctx.ownerPhone || ctx.ownerPhone !== chat.ownerPhone) return null;
+  if (!ctx.ownerPhone) return null;
 
   // Reconstruct a JID from our stored phone number. Group rows already store
   // the full "<id>@g.us" JID; DMs store "+<digits>".
@@ -339,24 +337,17 @@ export async function refreshChatProfilePic(
   profilePicInFlight.add(chat.id);
   try {
     const url = (await ctx.sock.profilePictureUrl(jid, "image").catch(() => null)) ?? null;
-    // Owner-atomic write: the WHERE clause re-checks ownerPhone so a refresh
-    // task started under the old account can never overwrite a row that has
-    // since been reassigned to a different ownerPhone.
     await db
       .update(chatsTable)
       .set({ profilePicUrl: url, profilePicCheckedAt: new Date() })
-      .where(
-        sql`${chatsTable.id} = ${chat.id} AND ${chatsTable.ownerPhone} = ${chat.ownerPhone}`
-      );
+      .where(eq(chatsTable.id, chat.id));
     return url;
   } catch {
     // Mark as checked even on failure so we don't spam Baileys with retries.
     await db
       .update(chatsTable)
       .set({ profilePicCheckedAt: new Date() })
-      .where(
-        sql`${chatsTable.id} = ${chat.id} AND ${chatsTable.ownerPhone} = ${chat.ownerPhone}`
-      )
+      .where(eq(chatsTable.id, chat.id))
       .catch(() => {});
     return null;
   } finally {
@@ -406,7 +397,7 @@ const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
 // than read from the singleton sock) so we keep this helper independent of
 // any per-user state.
 async function persistWaStatus(
-  ownerPhone: string,
+  channelId: number,
   ownerJid: string,
   msg: any,
   downloadMediaMessage: any,
@@ -495,7 +486,7 @@ async function persistWaStatus(
       .select({ contactName: chatsTable.contactName, nickname: chatsTable.nickname })
       .from(chatsTable)
       .where(
-        sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.phoneNumber} = ${"+" + authorPhoneDigits}`
+        sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${"+" + authorPhoneDigits}`
       )
       .limit(1);
     authorName = rows[0]?.nickname ?? rows[0]?.contactName ?? authorPhoneDigits;
@@ -508,7 +499,7 @@ async function persistWaStatus(
   await db
     .insert(whatsappStatusesTable)
     .values({
-      ownerPhone,
+      channelId,
       authorJid: effectiveAuthorJid,
       authorPhone: authorPhoneDigits,
       authorName,
@@ -524,7 +515,7 @@ async function persistWaStatus(
       expiresAt,
     })
     .onConflictDoNothing({
-      target: [whatsappStatusesTable.ownerPhone, whatsappStatusesTable.waMessageId],
+      target: [whatsappStatusesTable.channelId, whatsappStatusesTable.waMessageId],
     });
 }
 
@@ -534,17 +525,18 @@ async function persistWaStatus(
 export async function postTextStatus(
   userId: number,
   channelId: number,
-  ownerPhone: string,
   text: string,
   backgroundColor: string
 ): Promise<typeof whatsappStatusesTable.$inferSelect> {
-  const sock = getCtxByChannel(channelId, userId).sock;
+  const ctx = getCtxByChannel(channelId, userId);
+  const sock = ctx.sock;
   if (!sock) throw new Error("WhatsApp is not connected");
+  const ownerPhone = ctx.ownerPhone;
   const dmChats = await db
     .select({ phoneNumber: chatsTable.phoneNumber })
     .from(chatsTable)
     .where(
-      sql`${chatsTable.ownerPhone} = ${ownerPhone}
+      sql`${chatsTable.channelId} = ${channelId}
           AND ${chatsTable.phoneNumber} NOT LIKE '%@g.us'`
     );
   const statusJidList = dmChats
@@ -570,14 +562,13 @@ export async function postTextStatus(
     } as any,
     { statusJidList } as any
   );
-  const ownerJid = sock.user?.id ?? `${ownerPhone}@s.whatsapp.net`;
+  const ownerJid = sock.user?.id ?? (ownerPhone ? `${ownerPhone}@s.whatsapp.net` : "");
   const ownerDigits = ownerJid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
   const postedAt = new Date();
   const waMessageId = sent?.key?.id ?? null;
   const inserted = await db
     .insert(whatsappStatusesTable)
     .values({
-      ownerPhone,
       channelId,
       authorJid: ownerJid,
       authorPhone: ownerDigits,
@@ -594,7 +585,7 @@ export async function postTextStatus(
       expiresAt: new Date(postedAt.getTime() + STATUS_TTL_MS),
     })
     .onConflictDoNothing({
-      target: [whatsappStatusesTable.ownerPhone, whatsappStatusesTable.waMessageId],
+      target: [whatsappStatusesTable.channelId, whatsappStatusesTable.waMessageId],
     })
     .returning();
   if (inserted[0]) return inserted[0];
@@ -603,7 +594,7 @@ export async function postTextStatus(
       .select()
       .from(whatsappStatusesTable)
       .where(
-        sql`${whatsappStatusesTable.ownerPhone} = ${ownerPhone}
+        sql`${whatsappStatusesTable.channelId} = ${channelId}
             AND ${whatsappStatusesTable.waMessageId} = ${waMessageId}`
       )
       .limit(1);
@@ -707,7 +698,7 @@ function extractChatListMeta(
 }
 
 async function applyChatListMeta(
-  ownerPhone: string,
+  channelId: number,
   phoneNumber: string,
   c: Record<string, unknown>
 ): Promise<void> {
@@ -717,21 +708,23 @@ async function applyChatListMeta(
     .update(chatsTable)
     .set(meta)
     .where(
-      sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
+      sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
     );
 }
 
 export async function getOrCreateChat(
-  ownerPhone: string,
+  channelId: number,
+  userId: number,
   phoneNumber: string,
   contactName: string,
   opts: { isLid?: boolean } = {}
 ) {
+  void userId;
   const isLid = !!opts.isLid;
   const [row] = await db
     .insert(chatsTable)
     .values({
-      ownerPhone,
+      channelId,
       phoneNumber,
       contactName,
       status: "ai_handled",
@@ -741,7 +734,7 @@ export async function getOrCreateChat(
       isLid,
     })
     .onConflictDoUpdate({
-      target: [chatsTable.ownerPhone, chatsTable.phoneNumber],
+      target: [chatsTable.channelId, chatsTable.phoneNumber],
       set: { phoneNumber: sql`${chatsTable.phoneNumber}` },
     })
     .returning();
@@ -751,41 +744,18 @@ export async function getOrCreateChat(
   // failure is non-fatal (chat just stays unassigned and a supervisor can
   // assign manually).
   if (row && row.assignedUserId == null) {
-    void autoAssignNewChat(ownerPhone, row.id).catch(() => {});
+    void autoAssignNewChat(userId, row.id).catch(() => {});
   }
   return row;
 }
 
-async function autoAssignNewChat(ownerPhone: string, chatId: number): Promise<void> {
-  const { userWhatsappTable, usersTable } = await import("@workspace/db");
+async function autoAssignNewChat(ownerUserId: number, chatId: number): Promise<void> {
   const { pickNextRoundRobinAgent, getAssignmentMode } = await import(
     "../lib/round-robin"
   );
-  // Resolve the owner user id from the binding so we can read their
-  // assignmentMode. If no binding exists yet (race during pairing), skip.
-  const [binding] = await db
-    .select({ userId: userWhatsappTable.userId })
-    .from(userWhatsappTable)
-    .where(eq(userWhatsappTable.ownerPhone, ownerPhone))
-    .limit(1);
-  if (!binding) return;
-  // Resolve the super_admin owner (walk parent if the binding happens to be
-  // on an invited account, which shouldn't currently happen but is cheap).
-  const [me] = await db
-    .select({
-      id: usersTable.id,
-      parentUserId: usersTable.parentUserId,
-      teamRole: usersTable.teamRole,
-    })
-    .from(usersTable)
-    .where(eq(usersTable.id, binding.userId))
-    .limit(1);
-  const ownerId =
-    me?.teamRole === "super_admin" || me?.parentUserId == null
-      ? me?.id ?? binding.userId
-      : me.parentUserId;
-  if (await getAssignmentMode(ownerId) !== "round_robin") return;
-  const agentId = await pickNextRoundRobinAgent(ownerId);
+  // channels.userId is the super_admin owner — no parent-walk needed.
+  if (await getAssignmentMode(ownerUserId) !== "round_robin") return;
+  const agentId = await pickNextRoundRobinAgent(ownerUserId);
   if (agentId == null) return;
   await db
     .update(chatsTable)
@@ -794,7 +764,8 @@ async function autoAssignNewChat(ownerPhone: string, chatId: number): Promise<vo
 }
 
 async function generateAiReply(
-  ownerPhone: string,
+  channelId: number,
+  userId: number,
   chatId: number,
   userMessage: string
 ): Promise<string | null> {
@@ -802,7 +773,7 @@ async function generateAiReply(
     const settingsRows = await db
       .select()
       .from(settingsTable)
-      .where(eq(settingsTable.ownerPhone, ownerPhone))
+      .where(eq(settingsTable.channelId, channelId))
       .limit(1);
     const settings = settingsRows[0];
     if (!settings?.autoReplyEnabled) return null;
@@ -810,7 +781,7 @@ async function generateAiReply(
     const knowledgeEntries = await db
       .select()
       .from(knowledgeTable)
-      .where(eq(knowledgeTable.ownerPhone, ownerPhone));
+      .where(eq(knowledgeTable.userId, userId));
     const knowledgeContext = knowledgeEntries
       .map((e) => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content}`)
       .join("\n\n");
@@ -1153,7 +1124,7 @@ function buildPreview(messageText: string, media?: IncomingMedia): string {
 
 async function persistWaMessage(
   userId: number,
-  ownerPhone: string,
+  channelId: number,
   parsed: ParsedWaMessage,
   opts: { incrementUnread: boolean }
 ): Promise<{ chat: typeof chatsTable.$inferSelect; inserted: boolean }> {
@@ -1167,7 +1138,7 @@ async function persistWaMessage(
         .select()
         .from(chatsTable)
         .where(
-          sql`${chatsTable.ownerPhone} = ${ownerPhone}
+          sql`${chatsTable.channelId} = ${channelId}
               AND ${chatsTable.phoneNumber} IN (${lidPhone}, ${phoneNumber})`
         )
         .orderBy(chatsTable.phoneNumber)
@@ -1208,7 +1179,7 @@ async function persistWaMessage(
     !parsed.isGroup &&
     parsed.lidRawNumber !== null &&
     parsed.lidRawNumber === parsed.rawNumber;
-  const chat = await getOrCreateChat(ownerPhone, phoneNumber, contactName, { isLid: isLidChat });
+  const chat = await getOrCreateChat(channelId, userId, phoneNumber, contactName, { isLid: isLidChat });
   const direction = parsed.fromMe ? "outbound" : "inbound";
 
   const senderColumns = {
@@ -1360,7 +1331,6 @@ async function sendFlowMessage(
   userId: number,
   channelId: number,
   epoch: number,
-  ownerPhone: string,
   chatId: number,
   jid: string,
   text: string,
@@ -1368,7 +1338,6 @@ async function sendFlowMessage(
 ): Promise<boolean> {
   const ctx = getCtxByChannel(channelId, userId);
   if (epoch !== ctx.epoch) return false;
-  if (ctx.ownerPhone !== ownerPhone) return false;
   if (!ctx.sock) return false;
   if (!text && !imageUrl) return false;
 
@@ -1416,9 +1385,7 @@ async function sendFlowMessage(
   await db
     .update(chatsTable)
     .set({ lastMessage: stored, lastMessageAt: new Date(), status: "ai_handled" })
-    .where(
-      sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
-    );
+    .where(eq(chatsTable.id, chatId));
   return true;
 }
 
@@ -1551,7 +1518,6 @@ async function runFlowFrom(
   userId: number,
   channelId: number,
   epoch: number,
-  ownerPhone: string,
   chatId: number,
   jid: string,
   flowId: number,
@@ -1575,7 +1541,6 @@ async function runFlowFrom(
           userId,
           channelId,
           epoch,
-          ownerPhone,
           chatId,
           jid,
           node.data.text ?? "",
@@ -1594,7 +1559,6 @@ async function runFlowFrom(
         userId,
         channelId,
         epoch,
-        ownerPhone,
         chatId,
         jid,
         text,
@@ -1622,7 +1586,7 @@ async function runFlowFrom(
             imageUrl: productsTable.imageUrl,
           })
           .from(productsTable)
-          .where(and(eq(productsTable.ownerPhone, ownerPhone), inArray(productsTable.id, ids)));
+          .where(and(eq(productsTable.userId, userId), inArray(productsTable.id, ids)));
         // Preserve the author's ordering from the flow node.
         const byId = new Map(rows.map((p) => [p.id, p]));
         for (const pid of ids) {
@@ -1636,7 +1600,6 @@ async function runFlowFrom(
             userId,
             channelId,
             epoch,
-            ownerPhone,
             chatId,
             jid,
             caption,
@@ -1667,7 +1630,7 @@ async function runFlowFrom(
       // customer's subsequent messages naturally. Keyword triggers still
       // override this if the customer types one.
       if (node.data.text) {
-        const ok = await sendFlowMessage(userId, channelId, epoch, ownerPhone, chatId, jid, node.data.text);
+        const ok = await sendFlowMessage(userId, channelId, epoch, chatId, jid, node.data.text);
         if (!ok) return;
       }
       await db
@@ -1693,7 +1656,6 @@ async function runFlowFrom(
 async function tryRunFlow(
   userId: number,
   channelId: number,
-  ownerPhone: string,
   epoch: number,
   chat: typeof chatsTable.$inferSelect,
   jid: string,
@@ -1728,7 +1690,7 @@ async function tryRunFlow(
   const [settingsRow] = await db
     .select({ flowCooldownMinutes: settingsTable.flowCooldownMinutes })
     .from(settingsTable)
-    .where(eq(settingsTable.ownerPhone, ownerPhone))
+    .where(eq(settingsTable.channelId, channelId))
     .limit(1);
   const cooldownMin = settingsRow?.flowCooldownMinutes ?? 5;
   const cooldownMs = cooldownMin * 60 * 1000;
@@ -1742,7 +1704,7 @@ async function tryRunFlow(
       .where(
         and(
           eq(chatbotFlowsTable.id, state.flowId),
-          eq(chatbotFlowsTable.ownerPhone, ownerPhone)
+          eq(chatbotFlowsTable.channelId, channelId)
         )
       )
       .limit(1);
@@ -1770,7 +1732,6 @@ async function tryRunFlow(
             userId,
             channelId,
             epoch,
-            ownerPhone,
             chat.id,
             jid,
             retryMsg,
@@ -1783,7 +1744,6 @@ async function tryRunFlow(
           userId,
           channelId,
           epoch,
-          ownerPhone,
           chat.id,
           jid,
           questionText,
@@ -1810,7 +1770,6 @@ async function tryRunFlow(
       userId,
       channelId,
       epoch,
-      ownerPhone,
       chat.id,
       jid,
       flowRow.id,
@@ -1826,7 +1785,7 @@ async function tryRunFlow(
     .select()
     .from(chatbotFlowsTable)
     .where(
-      and(eq(chatbotFlowsTable.ownerPhone, ownerPhone), eq(chatbotFlowsTable.isActive, true))
+      and(eq(chatbotFlowsTable.channelId, channelId), eq(chatbotFlowsTable.isActive, true))
     )
     .limit(1);
   if (!active) return false;
@@ -1861,7 +1820,6 @@ async function tryRunFlow(
     userId,
     channelId,
     epoch,
-    ownerPhone,
     chat.id,
     jid,
     active.id,
@@ -1875,7 +1833,6 @@ async function tryRunFlow(
 async function maybeTriggerAutoReply(
   userId: number,
   channelId: number,
-  ownerPhone: string,
   epoch: number,
   chat: typeof chatsTable.$inferSelect,
   jid: string,
@@ -1887,7 +1844,7 @@ async function maybeTriggerAutoReply(
   // Try chatbot flow before AI. If a flow handled the message (matched a
   // trigger or advanced from a question), skip the AI auto-reply entirely.
   try {
-    const handled = await tryRunFlow(userId, channelId, ownerPhone, epoch, chat, jid, messageText);
+    const handled = await tryRunFlow(userId, channelId, epoch, chat, jid, messageText);
     if (handled) return;
   } catch (err) {
     logger.error({ err }, "Flow engine failed; falling back to AI");
@@ -1896,7 +1853,7 @@ async function maybeTriggerAutoReply(
   const settingsRows = await db
     .select()
     .from(settingsTable)
-    .where(eq(settingsTable.ownerPhone, ownerPhone))
+    .where(eq(settingsTable.channelId, channelId))
     .limit(1);
   const settings = settingsRows[0];
   if (!settings?.autoReplyEnabled) return;
@@ -1908,19 +1865,17 @@ async function maybeTriggerAutoReply(
   setTimeout(async () => {
     try {
       const ctx = getCtxByChannel(channelId, userId);
-      // Cross-session safety per THIS channel: bail if disconnect (epoch bump)
-      // or owner reassignment happened during the delay.
+      // Cross-session safety per THIS channel: bail if disconnect (epoch
+      // bump) happened during the delay.
       if (epoch !== ctx.epoch) return;
-      if (ctx.ownerPhone !== ownerPhone) return;
 
-      const aiReply = await generateAiReply(ownerPhone, chat.id, messageText);
+      const aiReply = await generateAiReply(channelId, userId, chat.id, messageText);
       // Sign AI-generated replies with the "powered by AI" tag. The
       // configured fallbackMessage is a canned operator-authored string,
       // so we leave it unsigned to avoid misattributing it to the AI.
       const replyText = aiReply ? withTag(aiReply, AI_TAG) : settings.fallbackMessage;
 
       if (epoch !== ctx.epoch) return;
-      if (ctx.ownerPhone !== ownerPhone) return;
 
       if (ctx.sock && replyText) {
         const sent = await ctx.sock.sendMessage(jid, { text: replyText });
@@ -1943,9 +1898,7 @@ async function maybeTriggerAutoReply(
             lastMessageAt: new Date(),
             status: "ai_handled",
           })
-          .where(
-            sql`${chatsTable.id} = ${chat.id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
-          );
+          .where(eq(chatsTable.id, chat.id));
       }
     } catch (err) {
       logger.error({ err }, "Auto-reply failed");
@@ -2142,7 +2095,7 @@ async function startBaileys(userId: number, channelId: number) {
           // here used to silently lose the tail of every batch when the
           // socket flickered, because Baileys won't re-emit those events.
           if (msg.key?.remoteJid === "status@broadcast") {
-            await persistWaStatus(ownerPhone, ownerJid, msg, downloadMediaMessage, true).catch(
+            await persistWaStatus(channelId, ownerJid, msg, downloadMediaMessage, true).catch(
               (err) => logger.error({ err }, "Failed to persist live status")
             );
             continue;
@@ -2156,7 +2109,7 @@ async function startBaileys(userId: number, channelId: number) {
           );
           if (!parsed) continue;
 
-          const { chat, inserted } = await persistWaMessage(userId, ownerPhone, parsed, {
+          const { chat, inserted } = await persistWaMessage(userId, channelId, parsed, {
             incrementUnread: true,
           });
           if (!inserted) continue;
@@ -2167,7 +2120,7 @@ async function startBaileys(userId: number, channelId: number) {
           // socket). Persistence above is safe even after a reconnect.
           if (myEpoch !== ctx.epoch) continue;
 
-          await maybeTriggerAutoReply(userId, channelId, ownerPhone, myEpoch, chat, parsed.jid, parsed.messageContent);
+          await maybeTriggerAutoReply(userId, channelId, myEpoch, chat, parsed.jid, parsed.messageContent);
         } catch (err) {
           logger.error({ err }, "Failed to process incoming message");
         }
@@ -2204,17 +2157,17 @@ async function startBaileys(userId: number, channelId: number) {
           if (isGroup) {
             const groupName =
               c.name?.trim() || (await resolveGroupName(c.id)) || c.id.split("@")[0];
-            await getOrCreateChat(ownerPhone, c.id, groupName);
+            await getOrCreateChat(channelId, userId, c.id, groupName);
             key = c.id;
           } else {
             if (!c.id.endsWith("@s.whatsapp.net")) continue;
             const rawNumber = c.id.split("@")[0].split(":")[0];
             const phoneNumber = `+${rawNumber}`;
             const contactName = c.name?.trim() || rawNumber;
-            await getOrCreateChat(ownerPhone, phoneNumber, contactName);
+            await getOrCreateChat(channelId, userId, phoneNumber, contactName);
             key = phoneNumber;
           }
-          await applyChatListMeta(ownerPhone, key, c);
+          await applyChatListMeta(channelId, key, c);
         } catch (err) {
           logger.error({ err, chatId: c?.id }, "Failed to seed history chat");
         }
@@ -2228,7 +2181,7 @@ async function startBaileys(userId: number, channelId: number) {
           // older chats in MaxiChat that were still visible on the
           // phone). Captured ownerPhone keeps writes isolated correctly.
           if (msg.key?.remoteJid === "status@broadcast") {
-            await persistWaStatus(ownerPhone, ownerJid, msg, downloadMediaMessage, false).catch(
+            await persistWaStatus(channelId, ownerJid, msg, downloadMediaMessage, false).catch(
               (err) => logger.error({ err }, "Failed to persist history status")
             );
             continue;
@@ -2247,7 +2200,7 @@ async function startBaileys(userId: number, channelId: number) {
             resolveGroupName
           );
           if (!parsed) continue;
-          const { inserted } = await persistWaMessage(userId, ownerPhone, parsed, {
+          const { inserted } = await persistWaMessage(userId, channelId, parsed, {
             incrementUnread: false,
           });
           if (inserted) ingested++;
@@ -2298,7 +2251,7 @@ async function startBaileys(userId: number, channelId: number) {
             .update(chatsTable)
             .set(updateSet)
             .where(
-              sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
+              sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
             );
         } catch (err) {
           logger.error({ err, id: c?.id }, "Failed to apply contact update");
@@ -2317,14 +2270,12 @@ async function startBaileys(userId: number, channelId: number) {
     };
     const handleChatMeta = async (updates: Array<{ id?: string } & Record<string, unknown>>) => {
       if (myEpoch !== ctx.epoch) return;
-      const ownerPhone = ctx.ownerPhone;
-      if (!ownerPhone) return;
       for (const c of updates) {
         try {
           if (!c?.id) continue;
           const key = keyForChatId(c.id);
           if (!key) continue;
-          await applyChatListMeta(ownerPhone, key, c);
+          await applyChatListMeta(channelId, key, c);
         } catch (err) {
           logger.error({ err, id: c?.id }, "Failed to apply chat metadata");
         }

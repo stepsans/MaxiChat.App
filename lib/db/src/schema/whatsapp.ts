@@ -17,17 +17,10 @@ export const chatsTable = pgTable(
   "chats",
   {
     id: serial("id").primaryKey(),
-    // Phone number of the WhatsApp account that owns this chat (the account
-    // currently linked via QR pairing). Scoping every chat by ownerPhone is
-    // what makes the dashboard a true per-account view: when a different
-    // operator scans their own QR, they see only their own conversations,
-    // not the previous account's history.
-    ownerPhone: text("owner_phone").notNull(),
-    // Multi-channel pivot. NULLABLE during the v2 transition (T002 backfill is
-    // done; new inserts from un-migrated route code still write NULL until
-    // T004 lands). After the route refactor we will SET NOT NULL and the
-    // owner_phone column can be retired.
-    channelId: integer("channel_id"),
+    // Multi-channel pivot. Every chat belongs to exactly one channel; the
+    // dashboard's "All channels" view aggregates across the user's
+    // permitted channels via channel_assignments.
+    channelId: integer("channel_id").notNull(),
     phoneNumber: text("phone_number").notNull(),
     contactName: text("contact_name").notNull(),
     nickname: text("nickname"),
@@ -64,10 +57,9 @@ export const chatsTable = pgTable(
   },
   (t) => ({
     // Composite uniqueness: the same conversation jid can exist independently
-    // under each WhatsApp account. The old single-column unique on
-    // phone_number is replaced by this composite to enforce isolation.
-    chatsOwnerPhoneUnique: uniqueIndex("chats_owner_phone_number_unique").on(
-      t.ownerPhone,
+    // under each channel.
+    chatsChannelPhoneUnique: uniqueIndex("chats_channel_phone_number_unique").on(
+      t.channelId,
       t.phoneNumber
     ),
   })
@@ -135,8 +127,7 @@ export const whatsappStatusesTable = pgTable(
   "whatsapp_statuses",
   {
     id: serial("id").primaryKey(),
-    ownerPhone: text("owner_phone").notNull(),
-    channelId: integer("channel_id"),
+    channelId: integer("channel_id").notNull(),
     // For incoming: the contact JID (participant) who posted. For mine: the
     // owner's own JID. Used to group statuses by author in the UI.
     authorJid: text("author_jid").notNull(),
@@ -160,7 +151,7 @@ export const whatsappStatusesTable = pgTable(
   (t) => ({
     statusesWaMessageIdUnique: uniqueIndex(
       "whatsapp_statuses_wa_message_id_unique"
-    ).on(t.ownerPhone, t.waMessageId),
+    ).on(t.channelId, t.waMessageId),
   })
 );
 
@@ -174,21 +165,15 @@ export const textShortcutsTable = pgTable(
   "text_shortcuts",
   {
     id: serial("id").primaryKey(),
-    ownerPhone: text("owner_phone").notNull(),
-    // Shared at superadmin level after the multi-channel migration. NULLABLE
-    // during transition; T005 will SET NOT NULL and start filtering by userId.
-    userId: integer("user_id"),
+    // Shared at superadmin level: every shortcut is keyed by the owning
+    // super_admin user.
+    userId: integer("user_id").notNull(),
     shortcut: text("shortcut").notNull(),
     replacement: text("replacement").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    textShortcutsOwnerShortcutUnique: uniqueIndex(
-      "text_shortcuts_owner_shortcut_unique"
-    ).on(t.ownerPhone, sql`lower(${t.shortcut})`),
-    // Future-proof: superadmin-level uniqueness. Will outlive the
-    // owner_phone-scoped one once T009 drops legacy columns.
     textShortcutsUserLowerUnique: uniqueIndex(
       "text_shortcuts_user_lower_unique"
     ).on(t.userId, sql`lower(${t.shortcut})`),
@@ -229,8 +214,7 @@ export const knowledgeTable = pgTable(
   "knowledge_entries",
   {
     id: serial("id").primaryKey(),
-    ownerPhone: text("owner_phone").notNull(),
-    userId: integer("user_id"),
+    userId: integer("user_id").notNull(),
     type: text("type").notNull(),
     title: text("title").notNull(),
     content: text("content").notNull(),
@@ -255,8 +239,7 @@ export const settingsTable = pgTable(
   "settings",
   {
     id: serial("id").primaryKey(),
-    ownerPhone: text("owner_phone").notNull(),
-    channelId: integer("channel_id"),
+    channelId: integer("channel_id").notNull(),
     systemPrompt: text("system_prompt").notNull(),
     autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
     replyDelayMin: integer("reply_delay_min").notNull().default(1),
@@ -270,7 +253,7 @@ export const settingsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    settingsOwnerPhoneUnique: uniqueIndex("settings_owner_phone_unique").on(t.ownerPhone),
+    settingsChannelUnique: uniqueIndex("settings_channel_unique").on(t.channelId),
   })
 );
 
@@ -280,8 +263,7 @@ export const productsTable = pgTable(
   "products",
   {
     id: serial("id").primaryKey(),
-    ownerPhone: text("owner_phone").notNull(),
-    userId: integer("user_id"),
+    userId: integer("user_id").notNull(),
     code: text("code").notNull(),
     name: text("name").notNull(),
     category: text("category"),
@@ -299,12 +281,7 @@ export const productsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    // Composite uniqueness: each owner has their own SKU namespace, so two
-    // different accounts can both have e.g. code "BUKU-01" without colliding.
-    productsOwnerCodeUnique: uniqueIndex("products_owner_code_unique").on(
-      t.ownerPhone,
-      t.code
-    ),
+    // Composite uniqueness: each super_admin has their own SKU namespace.
     productsUserCodeUnique: uniqueIndex("products_user_code_unique").on(
       t.userId,
       t.code

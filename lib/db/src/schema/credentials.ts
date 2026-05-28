@@ -113,9 +113,11 @@ export const knowledgeSyncConfigTable = pgTable(
   "knowledge_sync_config",
   {
     id: serial("id").primaryKey(),
-    // NULLABLE during multi-channel transition; will SET NOT NULL once routes
-    // are scoped by userId (T005). Tenant-binding parity with productSync.
-    userId: integer("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
+    // Tenant-binding: every sync run asserts cfg.userId === userWhatsapp.userId
+    // for the linked ownerPhone before mutating per-user knowledge entries.
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     ownerPhone: text("owner_phone").notNull(),
     credentialId: integer("credential_id")
       .notNull()
@@ -151,7 +153,9 @@ export const shortcutSyncConfigTable = pgTable(
   "shortcut_sync_config",
   {
     id: serial("id").primaryKey(),
-    userId: integer("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     ownerPhone: text("owner_phone").notNull(),
     credentialId: integer("credential_id")
       .notNull()

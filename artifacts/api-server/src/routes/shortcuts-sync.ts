@@ -36,15 +36,23 @@ function publicConfig(row: ShortcutSyncConfig) {
 
 router.get("/sync-config", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
+    const userId = req.session.userId!;
+    const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.json({ config: null });
       return;
     }
+    // Scope by BOTH userId and ownerPhone so a phone reassigned to a
+    // different user cannot read the prior tenant's spreadsheet binding.
     const [row] = await db
       .select()
       .from(shortcutSyncConfigTable)
-      .where(eq(shortcutSyncConfigTable.ownerPhone, ownerPhone))
+      .where(
+        and(
+          eq(shortcutSyncConfigTable.userId, userId),
+          eq(shortcutSyncConfigTable.ownerPhone, ownerPhone)
+        )
+      )
       .limit(1);
     res.json({ config: row ? publicConfig(row) : null });
   } catch (err) {
@@ -73,7 +81,12 @@ router.put("/sync-config", async (req, res): Promise<void> => {
     if (req.body === null) {
       await db
         .delete(shortcutSyncConfigTable)
-        .where(eq(shortcutSyncConfigTable.ownerPhone, ownerPhone));
+        .where(
+          and(
+            eq(shortcutSyncConfigTable.userId, userId),
+            eq(shortcutSyncConfigTable.ownerPhone, ownerPhone)
+          )
+        );
       res.json({ config: null });
       return;
     }
@@ -98,6 +111,7 @@ router.put("/sync-config", async (req, res): Promise<void> => {
     }
     const values = {
       ownerPhone,
+      userId,
       credentialId: parsed.data.credentialId,
       spreadsheetId: parsed.data.spreadsheetId,
       sheetName: parsed.data.sheetName,
@@ -228,6 +242,9 @@ export async function runShortcutSyncForOwner(
     .where(eq(userWhatsappTable.ownerPhone, ownerPhone))
     .limit(1);
   if (!link) throw new Error("WhatsApp account tidak terhubung ke user.");
+  if (cfg.userId == null || cfg.userId !== link.userId) {
+    throw new Error("Sync config tidak konsisten dengan pemilik akun WhatsApp.");
+  }
   const cred = await loadOwnedCredentialForUser(link.userId, cfg.credentialId);
   if (!cred) throw new Error("Credential tidak ditemukan atau bukan milik user ini.");
   if (cred.status !== "connected") {
@@ -278,7 +295,7 @@ export async function runShortcutSyncForOwner(
       const existing = await tx
         .select({ shortcut: textShortcutsTable.shortcut })
         .from(textShortcutsTable)
-        .where(eq(textShortcutsTable.ownerPhone, ownerPhone));
+        .where(eq(textShortcutsTable.userId, link.userId));
       const existingKeys = new Set(existing.map((r) => r.shortcut.toLowerCase()));
       const sheetKeys = new Set(entries.map((e) => e.shortcut.toLowerCase()));
       for (const k of existingKeys) {
@@ -286,11 +303,11 @@ export async function runShortcutSyncForOwner(
       }
       await tx
         .delete(textShortcutsTable)
-        .where(eq(textShortcutsTable.ownerPhone, ownerPhone));
+        .where(eq(textShortcutsTable.userId, link.userId));
       if (entries.length > 0) {
         await tx
           .insert(textShortcutsTable)
-          .values(entries.map((e) => ({ ...e, ownerPhone })));
+          .values(entries.map((e) => ({ ...e, userId: link.userId })));
       }
       for (const e of entries) {
         if (existingKeys.has(e.shortcut.toLowerCase())) updated++;
