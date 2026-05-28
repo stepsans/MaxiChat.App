@@ -281,19 +281,32 @@ router.post("/:id/oauth/start", async (req, res): Promise<void> => {
 router.get("/oauth/callback", async (req, res): Promise<void> => {
   // Render a tiny HTML page in all cases — this URL is opened in the
   // browser after Google's consent screen, so JSON would just look broken.
+  // SECURITY: every dynamic field that flows into the page (title, errParam,
+  // accountEmail, error detail) is user/attacker-controllable via query
+  // string or upstream Google response. We escape ALL HTML metacharacters
+  // before interpolation. The two callers that need actual markup (the
+  // <b>email</b> bold) pass pre-built safe HTML via `messageHtml`.
+  const esc = (s: string): string =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const respondHtml = (
     title: string,
-    message: string,
+    messageHtml: string,
     ok: boolean,
     credId: number | null
   ): void => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+    const safeTitle = esc(title);
+    res.send(`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
 <style>body{font-family:system-ui,sans-serif;background:#0b0b0b;color:#eee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
 .card{max-width:480px;padding:32px;border:1px solid #333;border-radius:12px;text-align:center}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:${ok ? "#22c55e" : "#ef4444"};margin-right:8px}
 a{color:#60a5fa}</style></head>
-<body><div class="card"><h2><span class="dot"></span>${title}</h2><p>${message}</p>
+<body><div class="card"><h2><span class="dot"></span>${safeTitle}</h2><p>${messageHtml}</p>
 <p><a href="/credentials">Kembali ke Credentials</a></p>
 <script>try{window.opener&&window.opener.postMessage({type:"vjchat:oauth",ok:${ok ? "true" : "false"},credentialId:${credId ?? "null"}},"*");setTimeout(function(){window.close()},800)}catch(e){}</script>
 </div></body></html>`);
@@ -312,7 +325,7 @@ a{color:#60a5fa}</style></head>
     // Wipe state regardless of outcome so it can't be replayed.
     delete req.session.oauthState;
     if (errParam) {
-      respondHtml("Login dibatalkan", `Google: ${errParam}`, false, saved?.credentialId ?? null);
+      respondHtml("Login dibatalkan", `Google: ${esc(errParam)}`, false, saved?.credentialId ?? null);
       return;
     }
     if (!saved || !stateParam || saved.nonce !== stateParam) {
@@ -360,7 +373,7 @@ a{color:#60a5fa}</style></head>
       .where(eq(credentialsTable.id, row.id));
     respondHtml(
       "Akun terhubung",
-      accountEmail ? `Tersambung sebagai <b>${accountEmail}</b>.` : "Tersambung.",
+      accountEmail ? `Tersambung sebagai <b>${esc(accountEmail)}</b>.` : "Tersambung.",
       true,
       saved.credentialId
     );
@@ -374,7 +387,7 @@ a{color:#60a5fa}</style></head>
       "Unknown error";
     respondHtml(
       "Gagal menyelesaikan login Google",
-      `Google menolak: <code>${String(detail).replace(/</g, "&lt;")}</code>`,
+      `Google menolak: <code>${esc(String(detail))}</code>`,
       false,
       null
     );

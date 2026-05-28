@@ -39,15 +39,23 @@ function publicConfig(row: ProductSyncConfig) {
 
 router.get("/sync-config", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
+    const userId = req.session.userId!;
+    const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.json({ config: null });
       return;
     }
+    // Scope by BOTH userId and ownerPhone: a phone reassigned to a different
+    // user must not expose the prior tenant's spreadsheet binding.
     const [row] = await db
       .select()
       .from(productSyncConfigTable)
-      .where(eq(productSyncConfigTable.ownerPhone, ownerPhone))
+      .where(
+        and(
+          eq(productSyncConfigTable.userId, userId),
+          eq(productSyncConfigTable.ownerPhone, ownerPhone)
+        )
+      )
       .limit(1);
     res.json({ config: row ? publicConfig(row) : null });
   } catch (err) {
@@ -73,11 +81,17 @@ router.put("/sync-config", async (req, res): Promise<void> => {
       res.status(503).json({ error: "Hubungkan WhatsApp dulu." });
       return;
     }
-    // Pass `null` to clear the binding.
+    // Pass `null` to clear the binding. Owner-and-user scoped so we only
+    // ever delete the current tenant's own config row.
     if (req.body === null) {
       await db
         .delete(productSyncConfigTable)
-        .where(eq(productSyncConfigTable.ownerPhone, ownerPhone));
+        .where(
+          and(
+            eq(productSyncConfigTable.userId, userId),
+            eq(productSyncConfigTable.ownerPhone, ownerPhone)
+          )
+        );
       res.json({ config: null });
       return;
     }
@@ -103,6 +117,7 @@ router.put("/sync-config", async (req, res): Promise<void> => {
       return;
     }
     const values = {
+      userId,
       ownerPhone,
       credentialId: parsed.data.credentialId,
       spreadsheetId: parsed.data.spreadsheetId,
@@ -112,6 +127,9 @@ router.put("/sync-config", async (req, res): Promise<void> => {
       intervalMinutes: parsed.data.intervalMinutes ?? 15,
       updatedAt: new Date(),
     };
+    // Conflict target is still ownerPhone (unique) — but we also overwrite
+    // userId so a fresh /connect by a new user re-binds the row to them
+    // rather than carrying the previous tenant's userId forward.
     const upserted = await db
       .insert(productSyncConfigTable)
       .values(values)
@@ -260,8 +278,11 @@ export async function runSyncForOwner(ownerPhone: string): Promise<SyncResult> {
     .where(eq(productSyncConfigTable.ownerPhone, ownerPhone))
     .limit(1);
   if (!cfg) throw new Error("Belum ada Google Sheet yang dipilih.");
-  // Resolve userId from user_whatsapp so we only use credentials owned by
-  // the same app user this WhatsApp account belongs to.
+  // Verify the WhatsApp account is still linked to the SAME user that owns
+  // this sync config. If the phone has been reassigned (user_whatsapp moved
+  // to a different user) we refuse to run — the new user must reconfigure
+  // their own sheet binding via /sync-config first. This prevents inheriting
+  // a prior tenant's spreadsheet on an ownerPhone change.
   const { userWhatsappTable } = await import("@workspace/db");
   const [link] = await db
     .select({ userId: userWhatsappTable.userId })
@@ -269,7 +290,12 @@ export async function runSyncForOwner(ownerPhone: string): Promise<SyncResult> {
     .where(eq(userWhatsappTable.ownerPhone, ownerPhone))
     .limit(1);
   if (!link) throw new Error("WhatsApp account tidak terhubung ke user.");
-  const cred = await loadOwnedCredentialForUser(link.userId, cfg.credentialId);
+  if (link.userId !== cfg.userId) {
+    throw new Error(
+      "Sync config milik user lain. Atur ulang sheet sync untuk akun ini."
+    );
+  }
+  const cred = await loadOwnedCredentialForUser(cfg.userId, cfg.credentialId);
   if (!cred) throw new Error("Credential tidak ditemukan atau bukan milik user ini.");
   if (cred.status !== "connected") {
     throw new Error("Credential belum terhubung ke Google. Reconnect dulu.");

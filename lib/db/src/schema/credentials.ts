@@ -61,10 +61,20 @@ export type Credential = typeof credentialsTable.$inferSelect;
 // `products` table. Sheet is the source of truth: each sync truncates rows
 // that no longer appear and upserts the rest. `headerRow` is 1-indexed so a
 // value of 1 means row 1 contains the column names.
+//
+// SECURITY: `userId` pins this config to the app user who created it. We
+// query by (userId, ownerPhone) so that if a WhatsApp number is later
+// reassigned to a different team/user (user_whatsapp link change), the new
+// user does NOT inherit the prior tenant's spreadsheet binding.
+// `ownerPhone` alone is still unique-indexed because a given number can
+// only be paired by one user at a time.
 export const productSyncConfigTable = pgTable(
   "product_sync_config",
   {
     id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     ownerPhone: text("owner_phone").notNull(),
     credentialId: integer("credential_id")
       .notNull()
