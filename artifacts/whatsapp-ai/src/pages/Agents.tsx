@@ -390,8 +390,8 @@ export default function Agents() {
             </p>
           </div>
         ) : (
-          <div className="rounded-lg border bg-card overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-lg border bg-card overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="text-left px-4 py-2.5 font-medium">Nama</th>
