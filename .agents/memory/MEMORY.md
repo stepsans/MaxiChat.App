@@ -8,3 +8,5 @@
 - [Telegram channel pipeline](telegram-channel-pipeline.md) — chat key `tg:<id>` reuses phone_number column; webhook auth via secret header (mount before requireAuth); outbound needs explicit send (no echo unlike Baileys).
 - [Per-channel chat access scope](per-channel-chat-access.md) — `user_channel_access` gates chats only; never filter `/channels` or `resolveChannelScope` or you'll silently hide flows/statuses/analytics too.
 - [drizzle sql tag spreads JS arrays](drizzle-sql-array-tuple.md) — `sql\`COALESCE(col, ${jsArr})\`` produces `($1,$2,…)` not `ARRAY[…]::T[]`; fatal for array columns, use `sql.join` + explicit cast.
+- [Self-delete cascade requirements](self-delete-cascade.md) — tenant deletion needs FK cascades on every user_id/channel_id + users.parent_user_id self-FK; route-level deletes alone leave orphans.
+- [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
