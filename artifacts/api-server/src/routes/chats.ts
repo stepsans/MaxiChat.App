@@ -9,9 +9,10 @@ import { Agent, fetch as undiciFetch } from "undici";
 import ipaddr from "ipaddr.js";
 import { randomUUID } from "node:crypto";
 import mime from "mime-types";
+import type { Request, Response } from "express";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable, productsTable } from "@workspace/db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import {
   ListChatsQueryParams,
@@ -26,13 +27,16 @@ import {
 } from "@workspace/api-zod";
 import { resolveOwnerUserId } from "../lib/seed";
 import {
-  getCurrentOwnerPhone,
   MEDIA_DIR,
   sendMediaToJid,
   sendContactToJid,
   getActiveSocket,
   refreshChatProfilePic,
 } from "./whatsapp";
+import {
+  resolveChannelScope,
+  requireConnectedChannel,
+} from "../lib/channel-context";
 
 const router = Router();
 
@@ -324,27 +328,43 @@ async function getEffectiveTeamRole(
 }
 
 // Build the WHERE fragment used by every per-chat lookup. Layers two scopes:
-//   * ownerPhone (cross-tenant isolation — must always apply)
+//   * channelId IN (...user's owned channels) — cross-tenant isolation
 //   * for the "agent" role, additionally require assigned_user_id = userId,
 //     so a guessed/leaked chat id from a different conversation looks like
 //     "not found" instead of leaking the row.
-async function authorizedChatWhere(userId: number, chatId: number) {
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return null;
+//
+// By-id routes always sweep across ALL channels owned by the user (not just
+// the active one) so that the "All channels" view can open any chat detail
+// regardless of the X-Channel-Id header. The channel filter alone is enough
+// for tenant isolation — the chat's own channel_id pins it to one account.
+async function authorizedChatWhere(req: Request, res: Response, chatId: number) {
+  const scope = await resolveChannelScope(req, res);
+  if (!scope) return null; // already sent a 401
+  if (scope.channelIds.length === 0) return { scope, where: null };
+  const userId = req.session.userId!;
   const teamRole = await getEffectiveTeamRole(userId);
-  const base = sql`${chatsTable.id} = ${chatId} AND ${chatsTable.ownerPhone} = ${ownerPhone}`;
-  return teamRole === "agent"
-    ? sql`${base} AND ${chatsTable.assignedUserId} = ${userId}`
-    : base;
+  // Cast to any[] so Drizzle generates `channel_id = ANY($1)` (single param
+  // expansion) regardless of how many ids are in scope.
+  const base = sql`${chatsTable.id} = ${chatId}
+    AND ${chatsTable.channelId} = ANY(${scope.channelIds as unknown as number[]})`;
+  const where =
+    teamRole === "agent"
+      ? sql`${base} AND ${chatsTable.assignedUserId} = ${userId}`
+      : base;
+  return { scope, where };
 }
 
-async function jidForChat(userId: number, chatId: number): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
-  // Scope by current owner + (for agents) by assignment — see
+async function jidForChat(
+  req: Request,
+  res: Response,
+  chatId: number
+): Promise<{ chat: typeof chatsTable.$inferSelect; jid: string } | null> {
+  // Scope by user's channels + (for agents) by assignment — see
   // authorizedChatWhere. Returning null on any failure lets callers reply 404
   // without leaking whether the chat exists for another role.
-  const where = await authorizedChatWhere(userId, chatId);
-  if (!where) return null;
-  const [chat] = await db.select().from(chatsTable).where(where);
+  const az = await authorizedChatWhere(req, res, chatId);
+  if (!az || !az.where) return null;
+  const [chat] = await db.select().from(chatsTable).where(az.where);
   if (!chat) return null;
   // Groups: phoneNumber column already holds the full "<id>@g.us" JID.
   if (chat.phoneNumber.includes("@")) {
@@ -355,14 +375,14 @@ async function jidForChat(userId: number, chatId: number): Promise<{ chat: typeo
 }
 
 // Centralised ownership-aware loader: returns the chat row only if it
-// belongs to the currently linked WhatsApp account AND (for agents) is
-// assigned to the calling user. Null otherwise (which every caller treats
-// as 404 — indistinguishable from "doesn't exist" to avoid leaking that
-// another account's chat exists).
-async function loadOwnedChat(userId: number, chatId: number) {
-  const where = await authorizedChatWhere(userId, chatId);
-  if (!where) return null;
-  const [chat] = await db.select().from(chatsTable).where(where);
+// belongs to one of the user's owned channels AND (for agents) is assigned
+// to the calling user. Null otherwise (which every caller treats as 404 —
+// indistinguishable from "doesn't exist" to avoid leaking that another
+// account's chat exists).
+async function loadOwnedChat(req: Request, res: Response, chatId: number) {
+  const az = await authorizedChatWhere(req, res, chatId);
+  if (!az || !az.where) return null;
+  const [chat] = await db.select().from(chatsTable).where(az.where);
   return chat ?? null;
 }
 
@@ -372,23 +392,26 @@ router.get("/", async (req, res): Promise<void> => {
     const status = parsed.success ? parsed.data.status : undefined;
     const tag = parsed.success ? parsed.data.tag : undefined;
 
-    // Per-phone isolation: when nobody is logged in, the list is empty (so
-    // a freshly-opened browser before QR pairing shows no history). Once a
-    // number connects, only its own chats become visible.
+    // Per-channel isolation. When the user has no channels yet (fresh
+    // signup before any pairing) the list is empty so the UI shows no
+    // history. Supports the "All channels" aggregate view via
+    // X-Channel-Id: all (resolveChannelScope returns every owned channel).
+    const scope = await resolveChannelScope(req, res);
+    if (!scope) return;
     const userId = req.session.userId!;
-    const ownerPhone = await getCurrentOwnerPhone(userId);
-    if (!ownerPhone) {
+    if (scope.channelIds.length === 0) {
       res.json([]);
       return;
     }
 
     // Role-aware filter: agents only see chats explicitly assigned to them;
-    // supervisors and the super_admin see everything under the owner phone.
+    // supervisors and the super_admin see everything under the channel scope.
     const teamRole = req.session.teamRole ?? "super_admin";
+    const channelFilter = sql`${chatsTable.channelId} = ANY(${scope.channelIds as unknown as number[]})`;
     const baseWhere =
       teamRole === "agent"
-        ? sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.assignedUserId} = ${userId}`
-        : sql`${chatsTable.ownerPhone} = ${ownerPhone}`;
+        ? sql`${channelFilter} AND ${chatsTable.assignedUserId} = ${userId}`
+        : channelFilter;
 
     // Sort: (1) pinned chats first (most recently pinned at top),
     // (2) non-archived next, (3) by last message time desc with chats that
@@ -471,22 +494,23 @@ router.post("/open-by-phone", async (req, res): Promise<void> => {
     // are not creatable from this UI.
     const phoneNumber = "+" + digits;
 
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(409)
-        .json({ error: "WhatsApp belum terhubung. Pair akun WhatsApp terlebih dulu." });
-      return;
-    }
+    // open-by-phone always creates the chat under the *active* channel.
+    // In "All channels" mode this is ambiguous, so the route requires a
+    // single connected channel.
+    const channel = await requireConnectedChannel(req, res);
+    if (!channel) return;
 
     // Deterministic "open-or-create": try INSERT … ON CONFLICT DO NOTHING. If
     // RETURNING gives us a row, we created it. Otherwise the unique
-    // (ownerPhone, phoneNumber) row already existed and we re-select its id.
+    // (channel_id, phone_number) row already existed and we re-select its id.
+    // ownerPhone is still written (NOT NULL legacy column) but the source of
+    // truth for tenant scoping is channel_id.
     const contactName = parsed.data.contactName?.trim() || digits;
     const inserted = await db
       .insert(chatsTable)
       .values({
-        ownerPhone,
+        ownerPhone: channel.ownerPhone!,
+        channelId: channel.id,
         phoneNumber,
         contactName,
         status: "ai_handled",
@@ -496,7 +520,7 @@ router.post("/open-by-phone", async (req, res): Promise<void> => {
         isLid: false,
       })
       .onConflictDoNothing({
-        target: [chatsTable.ownerPhone, chatsTable.phoneNumber],
+        target: [chatsTable.channelId, chatsTable.phoneNumber],
       })
       .returning({ id: chatsTable.id });
 
@@ -509,7 +533,7 @@ router.post("/open-by-phone", async (req, res): Promise<void> => {
       .select({ id: chatsTable.id })
       .from(chatsTable)
       .where(
-        sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
+        sql`${chatsTable.channelId} = ${channel.id} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
       )
       .limit(1);
 
@@ -531,7 +555,7 @@ router.post("/:id/refresh-avatar", async (req, res): Promise<void> => {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
     if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    const chat = await loadOwnedChat(req.session.userId!, parsed.data.id);
+    const chat = await loadOwnedChat(req, res, parsed.data.id);
     if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const url = await refreshChatProfilePic(req.session.userId!, chat, {
@@ -550,7 +574,7 @@ router.get("/:id", async (req, res): Promise<void> => {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
     if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    const chat = await loadOwnedChat(req.session.userId!, parsed.data.id);
+    const chat = await loadOwnedChat(req, res, parsed.data.id);
     if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const messages = await db
@@ -598,14 +622,18 @@ router.patch("/:id", async (req, res): Promise<void> => {
     const bodyParsed = UpdateChatBody.safeParse(req.body);
     if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) { res.status(404).json({ error: "Chat not found" }); return; }
+    // Load-then-update so the WHERE for the UPDATE itself can pin to the
+    // chat's actual channel_id. Sweeping by the user's full channel set is
+    // expensive on a per-row UPDATE; loadOwnedChat already proves
+    // ownership.
+    const existing = await loadOwnedChat(req, res, idParsed.data.id);
+    if (!existing) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const [updated] = await db
       .update(chatsTable)
       .set(bodyParsed.data)
       .where(
-        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
+        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.channelId} = ${existing.channelId}`
       )
       .returning();
 
@@ -630,15 +658,15 @@ router.delete("/:id", async (req, res): Promise<void> => {
       return;
     }
 
-    const existing = await loadOwnedChat(req.session.userId!, id);
+    const existing = await loadOwnedChat(req, res, id);
     if (!existing) { res.status(404).json({ error: "Chat not found" }); return; }
 
-    // Re-scope the delete itself by owner, so a session swap between the
-    // load and the delete still leaves the previous owner's row intact.
+    // Re-scope the delete itself by channel, so a session swap between the
+    // load and the delete still leaves the previous channel's row intact.
     await db
       .delete(chatsTable)
       .where(
-        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${existing.ownerPhone}`
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${existing.channelId}`
       );
 
     res.json({ success: true });
@@ -656,7 +684,7 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
     const bodyParsed = SendManualReplyBody.safeParse(req.body);
     if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
-    const chat = await loadOwnedChat(req.session.userId!, idParsed.data.id);
+    const chat = await loadOwnedChat(req, res, idParsed.data.id);
     if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
     // Append the human agent's signature so the recipient can tell who on
@@ -674,9 +702,9 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
       })
       .returning();
 
-    // Owner-atomic: include ownerPhone in WHERE so a /disconnect that
+    // Channel-atomic: include channelId in WHERE so a channel /unpair that
     // happens between loadOwnedChat and this update can't write into a
-    // chat that no longer belongs to the current session.
+    // chat that no longer belongs to that channel.
     // Also stamp firstAgentReplyAt on the first human reply after assignment
     // so KPI reports can compute first-response-time per agent.
     await db
@@ -687,7 +715,7 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         firstAgentReplyAt: sql`COALESCE(${chatsTable.firstAgentReplyAt}, NOW())`,
       })
       .where(
-        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.ownerPhone} = ${chat.ownerPhone}`
+        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.channelId} = ${chat.channelId}`
       );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
@@ -707,8 +735,8 @@ router.post("/:id/takeover", async (req, res): Promise<void> => {
 
     // Same authz scope as the rest of the chat routes: agents may only
     // toggle takeover on chats assigned to them.
-    const where = await authorizedChatWhere(req.session.userId!, idParsed.data.id);
-    if (!where) { res.status(404).json({ error: "Chat not found" }); return; }
+    const az = await authorizedChatWhere(req, res, idParsed.data.id);
+    if (!az || !az.where) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const [updated] = await db
       .update(chatsTable)
@@ -716,7 +744,7 @@ router.post("/:id/takeover", async (req, res): Promise<void> => {
         isHumanTakeover: bodyParsed.data.takeover,
         status: bodyParsed.data.takeover ? "needs_human" : "ai_handled",
       })
-      .where(where)
+      .where(az.where)
       .returning();
 
     if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
@@ -749,8 +777,8 @@ router.patch("/:id/assign", async (req, res): Promise<void> => {
       return;
     }
     const userId = req.session.userId!;
-    const ownerPhone = await getCurrentOwnerPhone(userId);
-    if (!ownerPhone) { res.status(404).json({ error: "Chat not found" }); return; }
+    const existing = await loadOwnedChat(req, res, id);
+    if (!existing) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const raw = (req.body ?? {}) as { userId?: number | null };
     const targetUserId =
@@ -791,7 +819,7 @@ router.patch("/:id/assign", async (req, res): Promise<void> => {
             : sql`COALESCE(${chatsTable.firstAssignedAt}, NOW())`,
       })
       .where(
-        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${existing.channelId}`
       )
       .returning();
     if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
@@ -826,7 +854,7 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       return;
     }
 
-    const target = await jidForChat(req.session.userId!, id);
+    const target = await jidForChat(req, res, id);
     if (!target) {
       await fs.unlink(req.file.path).catch(() => {});
       res.status(404).json({ error: "Chat not found" });
@@ -899,7 +927,7 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })
       .where(
-        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${target.chat.ownerPhone}`
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${target.chat.channelId}`
       );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
@@ -929,7 +957,7 @@ router.post("/:id/contact", async (req, res): Promise<void> => {
       return;
     }
 
-    const target = await jidForChat(req.session.userId!, id);
+    const target = await jidForChat(req, res, id);
     if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
 
     let waMessageId: string | null = null;
@@ -969,7 +997,7 @@ router.post("/:id/contact", async (req, res): Promise<void> => {
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })
       .where(
-        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${target.chat.ownerPhone}`
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${target.chat.channelId}`
       );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
@@ -998,19 +1026,35 @@ router.post("/:id/product", async (req, res): Promise<void> => {
       return;
     }
 
-    const target = await jidForChat(req.session.userId!, id);
+    const target = await jidForChat(req, res, id);
     if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
 
-    // Owner-scoped product lookup: an operator can only send products from
-    // their own catalog. Even a leaked product id from another account
-    // returns 404 here.
+    // User-scoped product lookup: products are shared per-user (not
+    // per-channel) post-T003, so any product belonging to the same user as
+    // the chat's channel is sendable. We resolve the user id via the chat's
+    // channel — never via the session, so an agent on someone else's chat
+    // can't accidentally send a foreign catalog item.
+    // channel_id is still nullable in the schema during the T002 transition
+    // (NOT NULL is applied in T009 Phase E once every row is backfilled);
+    // treat a NULL here as a tenant-isolation failure and 404 rather than
+    // joining against `NULL`.
+    if (target.chat.channelId == null) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+    const { channelsTable } = await import("@workspace/db");
+    const [chatChannel] = await db
+      .select({ userId: channelsTable.userId })
+      .from(channelsTable)
+      .where(eq(channelsTable.id, target.chat.channelId));
+    if (!chatChannel) { res.status(404).json({ error: "Chat not found" }); return; }
     const [product] = await db
       .select()
       .from(productsTable)
       .where(
         and(
           eq(productsTable.id, productId),
-          eq(productsTable.ownerPhone, target.chat.ownerPhone)
+          eq(productsTable.userId, chatChannel.userId)
         )
       );
     if (!product) { res.status(404).json({ error: "Product not found" }); return; }
@@ -1240,7 +1284,7 @@ router.post("/:id/product", async (req, res): Promise<void> => {
       .update(chatsTable)
       .set({ lastMessage: preview, lastMessageAt: new Date() })
       .where(
-        sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${target.chat.ownerPhone}`
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${target.chat.channelId}`
       );
 
     res.json({ ...message, createdAt: message.createdAt.toISOString() });

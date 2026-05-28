@@ -9,10 +9,33 @@ import { db } from "@workspace/db";
 import { productsTable, knowledgeTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
+import type { Request, Response } from "express";
+import { MEDIA_DIR } from "./whatsapp";
 import { ensureKnowledgeTypesSeed } from "./knowledge-types";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
+import {
+  requireOwnerUserId,
+  getOwnerPrimaryPhone,
+} from "../lib/channel-context";
+
+// Products are a shared resource (per-user). Reads scope by user_id; writes
+// also need owner_phone (legacy NOT NULL column) — derive from primary
+// channel; 503 if the user has no paired channel yet.
+async function resolveWriteOwner(
+  req: Request,
+  res: Response,
+  errMsg: string
+): Promise<{ ownerUserId: number; ownerPhone: string } | null> {
+  const ownerUserId = await requireOwnerUserId(req, res);
+  if (ownerUserId == null) return null;
+  const ownerPhone = await getOwnerPrimaryPhone(ownerUserId);
+  if (!ownerPhone) {
+    res.status(503).json({ error: errMsg });
+    return null;
+  }
+  return { ownerUserId, ownerPhone };
+}
 
 const router = Router();
 // Agen view-only untuk produk; semua mutasi/import/upload butuh supervisor+.
@@ -138,12 +161,12 @@ function bodyToInsert(b: z.infer<typeof ProductBody>) {
 
 router.get("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) { res.json([]); return; }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     const rows = await db
       .select()
       .from(productsTable)
-      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .where(eq(productsTable.userId, ownerUserId))
       .orderBy(productsTable.createdAt);
     res.json(rows.map(serialize));
   } catch (err) {
@@ -159,17 +182,20 @@ router.post("/", async (req, res): Promise<void> => {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
       return;
     }
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum menambah produk." });
-      return;
-    }
+    const owner = await resolveWriteOwner(
+      req,
+      res,
+      "Hubungkan WhatsApp dulu sebelum menambah produk."
+    );
+    if (!owner) return;
     try {
       const [created] = await db
         .insert(productsTable)
-        .values({ ...bodyToInsert(parsed.data), ownerPhone })
+        .values({
+          ...bodyToInsert(parsed.data),
+          ownerPhone: owner.ownerPhone,
+          userId: owner.ownerUserId,
+        })
         .returning();
       res.status(201).json(serialize(created));
     } catch (e: unknown) {
@@ -197,18 +223,13 @@ router.put("/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
       return;
     }
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengubah produk." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     try {
       const [updated] = await db
         .update(productsTable)
         .set({ ...bodyToInsert(parsed.data), updatedAt: new Date() })
-        .where(and(eq(productsTable.id, id), eq(productsTable.ownerPhone, ownerPhone)))
+        .where(and(eq(productsTable.id, id), eq(productsTable.userId, ownerUserId)))
         .returning();
       if (!updated) { res.status(404).json({ error: "Product not found" }); return; }
       res.json(serialize(updated));
@@ -232,16 +253,11 @@ router.delete("/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus produk." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     const deleted = await db
       .delete(productsTable)
-      .where(and(eq(productsTable.id, id), eq(productsTable.ownerPhone, ownerPhone)))
+      .where(and(eq(productsTable.id, id), eq(productsTable.userId, ownerUserId)))
       .returning();
     if (deleted.length === 0) { res.status(404).json({ error: "Product not found" }); return; }
     res.json({ success: true });
@@ -311,17 +327,12 @@ function rowToCsvField(v: unknown): string {
 
 router.get("/export.csv", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor produk." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     const rows = await db
       .select()
       .from(productsTable)
-      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .where(eq(productsTable.userId, ownerUserId))
       .orderBy(productsTable.id);
     const lines: string[] = [EXPORT_HEADERS.join(",")];
     for (const r of rows) {
@@ -344,17 +355,12 @@ router.get("/export.csv", async (req, res): Promise<void> => {
 
 router.get("/export.xlsx", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor produk." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     const rows = await db
       .select()
       .from(productsTable)
-      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .where(eq(productsTable.userId, ownerUserId))
       .orderBy(productsTable.id);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Products");
@@ -530,13 +536,12 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
   }
   productImportInFlight = true;
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengimpor produk." });
-      return;
-    }
+    const owner = await resolveWriteOwner(
+      req,
+      res,
+      "Hubungkan WhatsApp dulu sebelum mengimpor produk."
+    );
+    if (!owner) return;
     if (!req.file) {
       res.status(400).json({ error: "Missing file" });
       return;
@@ -581,9 +586,9 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
     const cell = (r: string[], k: ProductCol): string =>
       colIndex[k] !== undefined ? (r[colIndex[k] as number] ?? "").toString().trim() : "";
 
-    // ownerPhone is added at insert time (line below) so the parsed array
-    // omits it here.
-    const entries: Omit<typeof productsTable.$inferInsert, "ownerPhone">[] = [];
+    // ownerPhone + userId are added at insert time (block below) so the
+    // parsed array omits them here.
+    const entries: Omit<typeof productsTable.$inferInsert, "ownerPhone" | "userId">[] = [];
     const seen = new Set<string>();
     const skipped: { row: number; reason: string }[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -653,13 +658,23 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
       return;
     }
 
-    // Owner-scoped wipe & replace: only this account's catalog is rebuilt;
-    // other operators' product catalogs are untouched.
+    // Per-user wipe & replace: only this user's catalog is rebuilt; other
+    // users' catalogs are untouched. Filter is on user_id (post-T003 source
+    // of truth); ownerPhone is still written on each row for the legacy
+    // NOT NULL column until that constraint is dropped.
     await db.transaction(async (tx) => {
-      await tx.delete(productsTable).where(eq(productsTable.ownerPhone, ownerPhone));
+      await tx
+        .delete(productsTable)
+        .where(eq(productsTable.userId, owner.ownerUserId));
       await tx
         .insert(productsTable)
-        .values(entries.map((e) => ({ ...e, ownerPhone })));
+        .values(
+          entries.map((e) => ({
+            ...e,
+            ownerPhone: owner.ownerPhone,
+            userId: owner.ownerUserId,
+          })),
+        );
     });
 
     res.json({ imported: entries.length, skipped: skipped.length });
@@ -722,34 +737,34 @@ function buildKnowledgeContent(
 // duplicate "Katalog Produk (auto-sync)" rows since the DB does not enforce
 // uniqueness on (owner_phone, title) — keeping the constraint out of schema
 // avoids breaking owners who legitimately have duplicate manual titles.
-const syncToKnowledgeInFlight = new Set<string>();
+const syncToKnowledgeInFlight = new Set<number>();
 
 // Snapshot the current product catalog into a single knowledge entry so the
 // AI (which is fed only from the knowledge base) can answer questions like
 // "produk apa saja di kategori X". Internal tier prices (silver/gold/etc.)
 // are intentionally excluded — they are app-only data, never for customers.
 router.post("/sync-to-knowledge", async (req, res): Promise<void> => {
-  let ownerPhone: string | null = null;
+  let ownerUserId: number | null = null;
   try {
-    ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum sync ke knowledge base." });
-      return;
-    }
-    if (syncToKnowledgeInFlight.has(ownerPhone)) {
+    const owner = await resolveWriteOwner(
+      req,
+      res,
+      "Hubungkan WhatsApp dulu sebelum sync ke knowledge base."
+    );
+    if (!owner) return;
+    ownerUserId = owner.ownerUserId;
+    if (syncToKnowledgeInFlight.has(ownerUserId)) {
       res
         .status(409)
         .json({ error: "Sync sedang berjalan, tunggu sebentar." });
       return;
     }
-    syncToKnowledgeInFlight.add(ownerPhone);
-    await ensureKnowledgeTypesSeed(ownerPhone);
+    syncToKnowledgeInFlight.add(ownerUserId);
+    await ensureKnowledgeTypesSeed(owner.ownerPhone);
     const rows = await db
       .select()
       .from(productsTable)
-      .where(eq(productsTable.ownerPhone, ownerPhone))
+      .where(eq(productsTable.userId, owner.ownerUserId))
       .orderBy(productsTable.id);
     const content = buildKnowledgeContent(rows);
     const contentChars = content.length;
@@ -759,12 +774,13 @@ router.post("/sync-to-knowledge", async (req, res): Promise<void> => {
         .delete(knowledgeTable)
         .where(
           and(
-            eq(knowledgeTable.ownerPhone, ownerPhone!),
+            eq(knowledgeTable.userId, owner.ownerUserId),
             eq(knowledgeTable.title, PRODUCT_KB_TITLE),
           ),
         );
       await tx.insert(knowledgeTable).values({
-        ownerPhone: ownerPhone!,
+        ownerPhone: owner.ownerPhone,
+        userId: owner.ownerUserId,
         type: "product",
         title: PRODUCT_KB_TITLE,
         content,
@@ -777,7 +793,7 @@ router.post("/sync-to-knowledge", async (req, res): Promise<void> => {
     req.log.error({ err }, "Failed to sync products to knowledge");
     res.status(500).json({ error: "Internal server error" });
   } finally {
-    if (ownerPhone) syncToKnowledgeInFlight.delete(ownerPhone);
+    if (ownerUserId != null) syncToKnowledgeInFlight.delete(ownerUserId);
   }
 });
 

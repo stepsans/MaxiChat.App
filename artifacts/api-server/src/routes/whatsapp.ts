@@ -415,9 +415,12 @@ async function persistWaStatus(
     });
 }
 
-// Post a text status broadcast from the connected account.
+// Post a text status broadcast from the connected account. `channelId` is
+// the active channel — recorded on the inserted row so list/aggregate
+// queries can filter by channel without touching ownerPhone.
 export async function postTextStatus(
   userId: number,
+  channelId: number,
   ownerPhone: string,
   text: string,
   backgroundColor: string
@@ -463,6 +466,7 @@ export async function postTextStatus(
     .insert(whatsappStatusesTable)
     .values({
       ownerPhone,
+      channelId,
       authorJid: ownerJid,
       authorPhone: ownerDigits,
       authorName: "Saya",

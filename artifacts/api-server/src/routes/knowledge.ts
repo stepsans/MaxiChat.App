@@ -4,7 +4,6 @@ import { db } from "@workspace/db";
 import { knowledgeTable, knowledgeTypesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { ensureKnowledgeTypesSeed } from "./knowledge-types";
-import { getCurrentOwnerPhone } from "./whatsapp";
 import {
   CreateKnowledgeBody,
   UpdateKnowledgeBody,
@@ -15,6 +14,11 @@ import { parseCsv } from "../lib/sheet-sync";
 import ExcelJS from "exceljs";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
+import type { Request, Response } from "express";
+import {
+  requireOwnerUserId,
+  getOwnerPrimaryPhone,
+} from "../lib/channel-context";
 
 const router = Router();
 // Agen tidak boleh add/edit/delete/import — semua mutasi knowledge butuh
@@ -34,6 +38,26 @@ const upload = multer({
 
 const EXPORT_COLUMNS = ["id", "type", "title", "content", "createdAt", "updatedAt"] as const;
 
+// Knowledge is a shared resource (per-user). Reads scope by user_id. Writes
+// still need owner_phone (legacy NOT NULL column) — derive from primary
+// channel; 503 if the user has no paired channel yet.
+async function resolveWriteOwner(
+  req: Request,
+  res: Response,
+  errMsg: string
+): Promise<{ ownerUserId: number; ownerPhone: string } | null> {
+  const ownerUserId = await requireOwnerUserId(req, res);
+  if (ownerUserId == null) return null;
+  const ownerPhone = await getOwnerPrimaryPhone(ownerUserId);
+  if (!ownerPhone) {
+    res.status(503).json({ error: errMsg });
+    return null;
+  }
+  return { ownerUserId, ownerPhone };
+}
+
+// knowledge_types is still keyed by owner_phone (not migrated to user_id in
+// this iteration). Pass through ownerPhone of the user's primary channel.
 async function loadValidTypes(ownerPhone: string): Promise<Set<string>> {
   await ensureKnowledgeTypesSeed(ownerPhone);
   const rows = await db
@@ -74,17 +98,12 @@ function exportFilename(ext: string): string {
 
 router.get("/export.csv", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor knowledge." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     const entries = await db
       .select()
       .from(knowledgeTable)
-      .where(eq(knowledgeTable.ownerPhone, ownerPhone))
+      .where(eq(knowledgeTable.userId, ownerUserId))
       .orderBy(knowledgeTable.id);
     const lines: string[] = [EXPORT_COLUMNS.join(",")];
     for (const e of entries) {
@@ -107,17 +126,12 @@ router.get("/export.csv", async (req, res): Promise<void> => {
 
 router.get("/export.xlsx", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor knowledge." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     const entries = await db
       .select()
       .from(knowledgeTable)
-      .where(eq(knowledgeTable.ownerPhone, ownerPhone))
+      .where(eq(knowledgeTable.userId, ownerUserId))
       .orderBy(knowledgeTable.id);
     const wb = new ExcelJS.Workbook();
     wb.creator = "MaxiChat";
@@ -160,12 +174,12 @@ router.get("/export.xlsx", async (req, res): Promise<void> => {
 
 router.get("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) { res.json([]); return; }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
     const entries = await db
       .select()
       .from(knowledgeTable)
-      .where(eq(knowledgeTable.ownerPhone, ownerPhone))
+      .where(eq(knowledgeTable.userId, ownerUserId))
       .orderBy(knowledgeTable.createdAt);
     res.json(
       entries.map((e) => ({
@@ -185,17 +199,20 @@ router.post("/", async (req, res): Promise<void> => {
     const parsed = CreateKnowledgeBody.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum menambah knowledge." });
-      return;
-    }
+    const owner = await resolveWriteOwner(
+      req,
+      res,
+      "Hubungkan WhatsApp dulu sebelum menambah knowledge."
+    );
+    if (!owner) return;
 
     const [entry] = await db
       .insert(knowledgeTable)
-      .values({ ...parsed.data, ownerPhone })
+      .values({
+        ...parsed.data,
+        ownerPhone: owner.ownerPhone,
+        userId: owner.ownerUserId,
+      })
       .returning();
 
     res.status(201).json({
@@ -217,13 +234,8 @@ router.put("/:id", async (req, res): Promise<void> => {
     const bodyParsed = UpdateKnowledgeBody.safeParse(req.body);
     if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengubah knowledge." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
 
     const [updated] = await db
       .update(knowledgeTable)
@@ -231,7 +243,7 @@ router.put("/:id", async (req, res): Promise<void> => {
       .where(
         and(
           eq(knowledgeTable.id, idParsed.data.id),
-          eq(knowledgeTable.ownerPhone, ownerPhone)
+          eq(knowledgeTable.userId, ownerUserId)
         )
       )
       .returning();
@@ -254,20 +266,15 @@ router.delete("/:id", async (req, res): Promise<void> => {
     const idParsed = DeleteKnowledgeParams.safeParse({ id: Number(req.params.id) });
     if (!idParsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus knowledge." });
-      return;
-    }
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
 
     const deleted = await db
       .delete(knowledgeTable)
       .where(
         and(
           eq(knowledgeTable.id, idParsed.data.id),
-          eq(knowledgeTable.ownerPhone, ownerPhone)
+          eq(knowledgeTable.userId, ownerUserId)
         )
       )
       .returning();
@@ -364,13 +371,12 @@ router.post("/import", upload.single("file"), async (req, res) => {
   }
   importInFlight = true;
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum mengimpor knowledge." });
-      return;
-    }
+    const owner = await resolveWriteOwner(
+      req,
+      res,
+      "Hubungkan WhatsApp dulu sebelum mengimpor knowledge."
+    );
+    if (!owner) return;
 
     const file = req.file;
     if (!file) { res.status(400).json({ error: "File tidak ditemukan di field 'file'" }); return; }
@@ -410,32 +416,41 @@ router.post("/import", upload.single("file"), async (req, res) => {
     const { entries, error } = rowsToEntries(rows);
     if (error) { res.status(400).json({ error }); return; }
 
-    const validTypes = await loadValidTypes(ownerPhone);
+    const validTypes = await loadValidTypes(owner.ownerPhone);
     const newTypes = new Set<string>();
     for (const e of entries) {
       if (!validTypes.has(e.type)) newTypes.add(e.type);
     }
 
-    // Import is owner-scoped: wipe & replace ONLY this account's entries,
-    // and seed any missing types under this owner. Other accounts'
-    // knowledge bases are untouched.
+    // Per-user wipe & replace: only this user's entries are rebuilt; other
+    // users' knowledge bases are untouched. Filter is on user_id (the
+    // post-T003 source of truth); ownerPhone is still written on each row
+    // for the legacy NOT NULL column until that constraint is dropped.
     await db.transaction(async (tx) => {
       if (newTypes.size > 0) {
         await tx
           .insert(knowledgeTypesTable)
           .values(
             Array.from(newTypes).map((v) => ({
-              ownerPhone,
+              ownerPhone: owner.ownerPhone,
               value: v,
               label: makeLabelFromValue(v),
             })),
           )
           .onConflictDoNothing();
       }
-      await tx.delete(knowledgeTable).where(eq(knowledgeTable.ownerPhone, ownerPhone));
+      await tx
+        .delete(knowledgeTable)
+        .where(eq(knowledgeTable.userId, owner.ownerUserId));
       await tx
         .insert(knowledgeTable)
-        .values(entries.map((e) => ({ ...e, ownerPhone })));
+        .values(
+          entries.map((e) => ({
+            ...e,
+            ownerPhone: owner.ownerPhone,
+            userId: owner.ownerUserId,
+          })),
+        );
     });
 
     res.json({ imported: entries.length });

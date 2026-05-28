@@ -1,9 +1,13 @@
 import { Router } from "express";
 import { db, whatsappStatusesTable, chatsTable } from "@workspace/db";
-import { sql, eq, gt, desc } from "drizzle-orm";
-import { getCurrentOwnerPhone, postTextStatus, refreshChatProfilePic } from "./whatsapp";
+import { sql, inArray, desc } from "drizzle-orm";
+import { postTextStatus, refreshChatProfilePic } from "./whatsapp";
 import { requireNotAgent } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
+import {
+  requireConnectedChannel,
+  resolveChannelScope,
+} from "../lib/channel-context";
 
 const router = Router();
 
@@ -15,25 +19,29 @@ router.delete("/:id", requirePermission("statuses", "delete"));
 
 // Group statuses by author and order most recent first. Filter out anything
 // already past its 24h TTL — WhatsApp removes statuses then anyway.
+// Supports "All channels" via X-Channel-Id: all (returns statuses across
+// every owned channel; the "Mine" grouping merges across channels using a
+// shared __mine__ bucket).
 router.get("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res.json([]);
-      return;
-    }
+    const scope = await resolveChannelScope(req, res);
+    if (!scope) return;
+    if (scope.channelIds.length === 0) { res.json([]); return; }
 
     const now = new Date();
     const rows = await db
       .select()
       .from(whatsappStatusesTable)
       .where(
-        sql`${whatsappStatusesTable.ownerPhone} = ${ownerPhone}
+        sql`${whatsappStatusesTable.channelId} = ANY(${scope.channelIds})
             AND ${whatsappStatusesTable.expiresAt} > ${now}`
       )
       .orderBy(desc(whatsappStatusesTable.postedAt));
 
-    // Fetch profile pics from chats table (joined by author phone).
+    // Fetch profile pics from chats table (joined by author phone, scoped
+    // to the same channels). We only consult the local chat rows, never a
+    // foreign channel's chats — preserving the per-channel isolation
+    // boundary even when aggregating in "all" mode.
     const authorPhones = Array.from(new Set(rows.map((r) => r.authorPhone)));
     type ChatLite = {
       phoneNumber: string;
@@ -52,7 +60,7 @@ router.get("/", async (req, res): Promise<void> => {
         })
         .from(chatsTable)
         .where(
-          sql`${chatsTable.ownerPhone} = ${ownerPhone}
+          sql`${chatsTable.channelId} = ANY(${scope.channelIds})
               AND ${chatsTable.phoneNumber} = ANY(${authorPhones.map(
                 (p: string) => "+" + p
               )})`
@@ -103,17 +111,22 @@ router.get("/", async (req, res): Promise<void> => {
     });
 
     // Lazy profile pic refresh for status authors (best-effort, no-await).
-    for (const g of out) {
-      if (g.profilePicUrl) continue;
-      const chatRows = await db
-        .select()
-        .from(chatsTable)
-        .where(
-          sql`${chatsTable.ownerPhone} = ${ownerPhone} AND ${chatsTable.phoneNumber} = ${"+" + g.authorPhone}`
-        )
-        .limit(1);
-      if (chatRows[0]) {
-        void refreshChatProfilePic(req.session.userId!, chatRows[0]).catch(() => {});
+    // Only fires when we're in single-channel mode, since the helper still
+    // resolves the socket via userId → primary channel; in "all" mode we
+    // skip it to avoid mixing socket contexts.
+    if (scope.mode === "single") {
+      for (const g of out) {
+        if (g.profilePicUrl) continue;
+        const chatRows = await db
+          .select()
+          .from(chatsTable)
+          .where(
+            sql`${chatsTable.channelId} = ${scope.channelIds[0]} AND ${chatsTable.phoneNumber} = ${"+" + g.authorPhone}`
+          )
+          .limit(1);
+        if (chatRows[0]) {
+          void refreshChatProfilePic(req.session.userId!, chatRows[0]).catch(() => {});
+        }
       }
     }
 
@@ -148,11 +161,8 @@ router.get("/", async (req, res): Promise<void> => {
 
 router.post("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res.status(409).json({ error: "WhatsApp not connected" });
-      return;
-    }
+    const channel = await requireConnectedChannel(req, res);
+    if (!channel) return;
     const text = String(req.body?.text ?? "").trim();
     const backgroundColor =
       typeof req.body?.backgroundColor === "string" && /^#[0-9a-fA-F]{6}$/.test(req.body.backgroundColor)
@@ -162,7 +172,13 @@ router.post("/", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Status text must be 1-700 characters" });
       return;
     }
-    const row = await postTextStatus(req.session.userId!, ownerPhone, text, backgroundColor);
+    const row = await postTextStatus(
+      req.session.userId!,
+      channel.id,
+      channel.ownerPhone!,
+      text,
+      backgroundColor
+    );
     res.json({
       id: row.id,
       statusType: row.statusType,
@@ -183,21 +199,21 @@ router.post("/", async (req, res): Promise<void> => {
 
 router.delete("/:id", requireNotAgent, async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res.status(409).json({ error: "WhatsApp not connected" });
-      return;
-    }
+    const scope = await resolveChannelScope(req, res);
+    if (!scope) return;
     const id = parseInt(String(req.params["id"]), 10);
     if (!Number.isFinite(id)) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    // Owner-scoped delete — never expose another account's row.
+    if (scope.channelIds.length === 0) { res.json({ success: true }); return; }
+    // Owner-scoped delete — channel-id filter ensures another account's
+    // row is never reachable, even if its id is guessed.
     await db
       .delete(whatsappStatusesTable)
       .where(
-        sql`${whatsappStatusesTable.id} = ${id} AND ${whatsappStatusesTable.ownerPhone} = ${ownerPhone}`
+        sql`${whatsappStatusesTable.id} = ${id}
+            AND ${whatsappStatusesTable.channelId} = ANY(${scope.channelIds})`
       );
     res.json({ success: true });
   } catch (err) {

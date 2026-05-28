@@ -1,4 +1,4 @@
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { and, asc, eq } from "drizzle-orm";
 import { db, channelsTable } from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "./auth";
@@ -93,4 +93,122 @@ export async function listOwnedChannels(req: Request): Promise<ChannelRow[]> {
     .from(channelsTable)
     .where(eq(channelsTable.userId, ownerUid))
     .orderBy(asc(channelsTable.id));
+}
+
+// ---- Route helpers ---------------------------------------------------------
+// These short-circuit error responses so handler code reads cleanly:
+//   const channel = await requireConnectedChannel(req, res);
+//   if (!channel) return;
+// They never *throw* — they 4xx and return null so the caller can early-exit.
+
+// For routes that operate on a single channel that MUST be connected
+// (everything that talks to Baileys: send message, post status, etc.).
+// Replies 401 / 400 / 503 as appropriate and returns null on failure.
+export async function requireConnectedChannel(
+  req: Request,
+  res: Response
+): Promise<ChannelRow | null> {
+  const sel = await resolveActiveChannel(req);
+  if (!sel) {
+    res.status(401).json({ error: "not_signed_in" });
+    return null;
+  }
+  if (sel.kind === "all") {
+    res.status(400).json({
+      error: "channel_required",
+      message: "Pilih channel spesifik dulu (bukan 'All channels').",
+    });
+    return null;
+  }
+  if (!sel.channel.ownerPhone || sel.channel.status !== "connected") {
+    res.status(503).json({
+      error: "channel_not_connected",
+      message: "Hubungkan channel WhatsApp dulu sebelum melanjutkan.",
+    });
+    return null;
+  }
+  return sel.channel;
+}
+
+// Like requireConnectedChannel but accepts un-paired channels — used by
+// channel-config endpoints (settings, flows, etc.) that should still be
+// addressable pre-pairing so the UI can prefill them.
+export async function requireOwnedChannelLoose(
+  req: Request,
+  res: Response
+): Promise<ChannelRow | null> {
+  const sel = await resolveActiveChannel(req);
+  if (!sel) {
+    res.status(401).json({ error: "not_signed_in" });
+    return null;
+  }
+  if (sel.kind === "all") {
+    res.status(400).json({ error: "channel_required" });
+    return null;
+  }
+  return sel.channel;
+}
+
+// For listing endpoints that support an "All channels" aggregate view.
+// Returns the list of channel ids in scope (1 entry for a single channel,
+// many for "all") plus the owner user id (useful when joining shared
+// resources by userId).
+export async function resolveChannelScope(
+  req: Request,
+  res: Response
+): Promise<{ channelIds: number[]; ownerUserId: number; mode: "single" | "all" } | null> {
+  const sel = await resolveActiveChannel(req);
+  if (!sel) {
+    res.status(401).json({ error: "not_signed_in" });
+    return null;
+  }
+  if (sel.kind === "channel") {
+    return {
+      channelIds: [sel.channel.id],
+      ownerUserId: sel.channel.userId,
+      mode: "single",
+    };
+  }
+  const all = await db
+    .select({ id: channelsTable.id })
+    .from(channelsTable)
+    .where(eq(channelsTable.userId, sel.ownerUserId));
+  return {
+    channelIds: all.map((r) => r.id),
+    ownerUserId: sel.ownerUserId,
+    mode: "all",
+  };
+}
+
+// For shared resources (products / knowledge / shortcuts): they live at
+// the user level and ignore the channel header for scoping. Sends 401 and
+// returns null when the request isn't signed in.
+export async function requireOwnerUserId(
+  req: Request,
+  res: Response
+): Promise<number | null> {
+  const sessionUid = getSessionUserId(req);
+  if (sessionUid == null) {
+    res.status(401).json({ error: "not_signed_in" });
+    return null;
+  }
+  return getEffectiveOwnerUserId(sessionUid);
+}
+
+// User's primary channel's ownerPhone (lowest channel id with a paired
+// ownerPhone). Transitional helper — needed only for legacy tables that
+// still have ownerPhone NOT NULL and need a value at insert time. Returns
+// null if the user has no paired channels yet.
+export async function getOwnerPrimaryPhone(
+  ownerUserId: number
+): Promise<string | null> {
+  const rows = await db
+    .select({ ownerPhone: channelsTable.ownerPhone })
+    .from(channelsTable)
+    .where(eq(channelsTable.userId, ownerUserId))
+    .orderBy(asc(channelsTable.id));
+  for (const r of rows) {
+    if (r.ownerPhone) return r.ownerPhone;
+  }
+  return null;
 }

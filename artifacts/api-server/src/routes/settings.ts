@@ -3,8 +3,12 @@ import { db } from "@workspace/db";
 import { settingsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { UpdateSettingsBody } from "@workspace/api-zod";
-import { getCurrentOwnerPhone } from "./whatsapp";
 import { requirePermission } from "../lib/role-permissions";
+import {
+  requireOwnedChannelLoose,
+  requireConnectedChannel,
+  type ChannelRow,
+} from "../lib/channel-context";
 
 const router = Router();
 
@@ -30,26 +34,30 @@ Tugas kamu:
 const DEFAULT_FALLBACK =
   "Aku bantu cek dulu ya kak, nanti admin kami bantu jawab lebih detail 🙏";
 
-// Per-owner settings: each WhatsApp account gets its own AI persona
-// (system prompt), auto-reply flag, delay range, and fallback message.
-// On the first call for a brand-new owner we lazily insert a row with the
-// shared defaults so the operator immediately has a working AI persona.
-export async function getOrCreateSettings(ownerPhone: string) {
+// Per-channel settings. Filter by channel_id (the source of truth post-T002);
+// owner_phone is still populated on insert as a transitional column required
+// by the legacy NOT NULL + unique-index, but reads never depend on it.
+export async function getOrCreateSettings(channel: ChannelRow) {
   const rows = await db
     .select()
     .from(settingsTable)
-    .where(eq(settingsTable.ownerPhone, ownerPhone))
+    .where(eq(settingsTable.channelId, channel.id))
     .limit(1);
   if (rows.length > 0) return rows[0];
 
-  // ON CONFLICT guards against the (rare) race where two requests arrive
-  // for the same brand-new owner at the same time — composite unique index
-  // on owner_phone makes the second insert a no-op and we fall back to a
-  // re-read.
+  // Only callable for connected channels (ownerPhone is guaranteed by the
+  // requireConnectedChannel gate in the writer route below). The reader
+  // route also passes a connected channel; an unpaired channel never
+  // reaches this function.
+  if (!channel.ownerPhone) {
+    throw new Error("getOrCreateSettings called with unpaired channel");
+  }
+
   const [created] = await db
     .insert(settingsTable)
     .values({
-      ownerPhone,
+      ownerPhone: channel.ownerPhone,
+      channelId: channel.id,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       autoReplyEnabled: true,
       replyDelayMin: 1,
@@ -64,7 +72,7 @@ export async function getOrCreateSettings(ownerPhone: string) {
   const [existing] = await db
     .select()
     .from(settingsTable)
-    .where(eq(settingsTable.ownerPhone, ownerPhone))
+    .where(eq(settingsTable.channelId, channel.id))
     .limit(1);
   return existing;
 }
@@ -96,12 +104,15 @@ function defaultSettingsResponse() {
 
 router.get("/", async (req, res): Promise<void> => {
   try {
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
+    // GET is reachable pre-pairing so the UI can render defaults; we just
+    // require a single channel selected (not "all").
+    const channel = await requireOwnedChannelLoose(req, res);
+    if (!channel) return;
+    if (!channel.ownerPhone) {
       res.json(defaultSettingsResponse());
       return;
     }
-    const settings = await getOrCreateSettings(ownerPhone);
+    const settings = await getOrCreateSettings(channel);
     res.json(serializeSettings(settings));
   } catch (err) {
     req.log.error({ err }, "Failed to get settings");
@@ -117,19 +128,14 @@ router.put("/", async (req, res): Promise<void> => {
       return;
     }
 
-    const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) {
-      res
-        .status(503)
-        .json({ error: "Hubungkan WhatsApp dulu sebelum menyimpan pengaturan." });
-      return;
-    }
+    const channel = await requireConnectedChannel(req, res);
+    if (!channel) return;
 
-    const current = await getOrCreateSettings(ownerPhone);
+    const current = await getOrCreateSettings(channel);
     const [updated] = await db
       .update(settingsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(and(eq(settingsTable.id, current.id), eq(settingsTable.ownerPhone, ownerPhone)))
+      .where(and(eq(settingsTable.id, current.id), eq(settingsTable.channelId, channel.id)))
       .returning();
 
     res.json(serializeSettings(updated));

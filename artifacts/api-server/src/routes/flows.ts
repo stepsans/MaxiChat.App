@@ -6,11 +6,16 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatbotFlowsTable, chatsTable } from "@workspace/db";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { MEDIA_DIR, getCurrentOwnerPhone } from "./whatsapp";
+import { MEDIA_DIR } from "./whatsapp";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
+import {
+  requireConnectedChannel,
+  requireOwnedChannelLoose,
+  resolveChannelScope,
+} from "../lib/channel-context";
 
 // Matrix gates declared once at the top so they layer cleanly with the
 // existing requireSupervisorOrAbove guards on each handler below.
@@ -78,6 +83,7 @@ function serializeSummary(f: typeof chatbotFlowsTable.$inferSelect) {
     id: f.id,
     name: f.name,
     isActive: f.isActive,
+    channelId: f.channelId,
     updatedAt: f.updatedAt.toISOString(),
   };
 }
@@ -87,6 +93,7 @@ function serializeFull(f: typeof chatbotFlowsTable.$inferSelect) {
     id: f.id,
     name: f.name,
     isActive: f.isActive,
+    channelId: f.channelId,
     graph: f.graph as { nodes: unknown[]; edges: unknown[] },
     createdAt: f.createdAt.toISOString(),
     updatedAt: f.updatedAt.toISOString(),
@@ -105,23 +112,24 @@ router.post("/upload-image", requireSupervisorOrAbove, flowCreate, flowImageUplo
   }
 });
 
+// List flows. Supports "All channels" via X-Channel-Id: all → returns flows
+// across every channel the operator owns. Single-channel mode returns only
+// that channel's flows.
 router.get("/", flowView, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.json([]); return; }
+  const scope = await resolveChannelScope(req, res);
+  if (!scope) return;
+  if (scope.channelIds.length === 0) { res.json([]); return; }
   const rows = await db
     .select()
     .from(chatbotFlowsTable)
-    .where(eq(chatbotFlowsTable.ownerPhone, ownerPhone))
+    .where(inArray(chatbotFlowsTable.channelId, scope.channelIds))
     .orderBy(desc(chatbotFlowsTable.isActive), desc(chatbotFlowsTable.updatedAt));
   res.json(rows.map(serializeSummary));
-  return;
 });
 
 router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.status(400).json({ error: "no_owner_phone" }); return; }
+  const channel = await requireConnectedChannel(req, res);
+  if (!channel) return;
   const parsed = z
     .object({ name: z.string().trim().min(1).max(120) })
     .safeParse(req.body);
@@ -132,35 +140,34 @@ router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res): Promise
   const [row] = await db
     .insert(chatbotFlowsTable)
     .values({
-      ownerPhone,
+      ownerPhone: channel.ownerPhone!,
+      channelId: channel.id,
       name: parsed.data.name,
       graph: { nodes: [], edges: [] },
     })
     .returning();
   res.status(201).json(serializeFull(row!));
-  return;
 });
 
+// All by-id endpoints scope to the active channel — picking "all" in the
+// header on a single-flow detail/edit page is nonsensical, so we reject it.
 router.get("/:id", flowView, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
+  const channel = await requireOwnedChannelLoose(req, res);
+  if (!channel) return;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
   const [row] = await db
     .select()
     .from(chatbotFlowsTable)
-    .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
+    .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.channelId, channel.id)))
     .limit(1);
   if (!row) { res.status(404).json({ error: "not_found" }); return; }
   res.json(serializeFull(row));
-  return;
 });
 
 router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
+  const channel = await requireOwnedChannelLoose(req, res);
+  if (!channel) return;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
 
@@ -209,86 +216,77 @@ router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res): Promi
   const [row] = await db
     .update(chatbotFlowsTable)
     .set(patch)
-    .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
+    .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.channelId, channel.id)))
     .returning();
   if (!row) { res.status(404).json({ error: "not_found" }); return; }
   res.json(serializeFull(row));
-  return;
 });
 
 router.delete("/:id", requireSupervisorOrAbove, flowDelete, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
+  const channel = await requireOwnedChannelLoose(req, res);
+  if (!channel) return;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
   const result = await db
     .delete(chatbotFlowsTable)
-    .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
+    .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.channelId, channel.id)))
     .returning({ id: chatbotFlowsTable.id });
   if (result.length === 0) { res.status(404).json({ error: "not_found" }); return; }
   res.status(204).end();
-  return;
 });
 
 router.post("/:id/activate", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
+  const channel = await requireConnectedChannel(req, res);
+  if (!channel) return;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
 
-  // Swap atomically: deactivate any current active flow for this owner, then
-  // activate the requested one. The partial unique index on (owner_phone)
-  // WHERE is_active otherwise rejects two active rows.
+  // Swap atomically: deactivate any current active flow for this channel,
+  // then activate the requested one. The partial unique index on
+  // (channel_id) WHERE is_active rejects two active rows per channel.
   const updated = await db.transaction(async (tx) => {
     await tx
       .update(chatbotFlowsTable)
       .set({ isActive: false, updatedAt: new Date() })
       .where(
-        and(eq(chatbotFlowsTable.ownerPhone, ownerPhone), eq(chatbotFlowsTable.isActive, true))
+        and(eq(chatbotFlowsTable.channelId, channel.id), eq(chatbotFlowsTable.isActive, true))
       );
     const [row] = await tx
       .update(chatbotFlowsTable)
       .set({ isActive: true, updatedAt: new Date() })
       .where(
-        and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.ownerPhone, ownerPhone))
+        and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.channelId, channel.id))
       )
       .returning();
     return row;
   });
   if (!updated) { res.status(404).json({ error: "not_found" }); return; }
   res.json(serializeFull(updated));
-  return;
 });
 
-// Clear flow cooldown / in-progress state for all chats of the current owner.
-// Useful for testing: lets the Default trigger fire on the next message
-// without waiting the configured cooldown window.
+// Clear flow cooldown / in-progress state for all chats of the active
+// channel. Useful for testing: lets the Default trigger fire on the next
+// message without waiting the configured cooldown window.
 router.post("/reset-cooldown", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.json({ cleared: 0 }); return; }
+  const channel = await requireConnectedChannel(req, res);
+  if (!channel) return;
   const result = await db
     .update(chatsTable)
     .set({ flowState: null })
-    .where(eq(chatsTable.ownerPhone, ownerPhone));
+    .where(eq(chatsTable.channelId, channel.id));
   res.json({ cleared: result.rowCount ?? 0 });
-  return;
 });
 
 router.post("/active/deactivate", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) { res.status(204).end(); return; }
+  const channel = await requireOwnedChannelLoose(req, res);
+  if (!channel) return;
   await db
     .update(chatbotFlowsTable)
     .set({ isActive: false, updatedAt: new Date() })
     .where(
-      and(eq(chatbotFlowsTable.ownerPhone, ownerPhone), eq(chatbotFlowsTable.isActive, true))
+      and(eq(chatbotFlowsTable.channelId, channel.id), eq(chatbotFlowsTable.isActive, true))
     );
   res.status(204).end();
-  return;
 });
 
 export default router;
