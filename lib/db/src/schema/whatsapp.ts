@@ -90,6 +90,21 @@ export const chatMessagesTable = pgTable(
     mediaMimeType: text("media_mime_type"),
     mediaFilename: text("media_filename"),
     waMessageId: text("wa_message_id"),
+    // Sender identity for inbound group messages so the UI can show
+    // "who said what". Null for 1:1 chats (the chat header already
+    // identifies the speaker) and for outbound messages.
+    //   senderJid          — full JID like "62…@s.whatsapp.net" or "…@lid"
+    //   senderPhoneDigits  — digits portion (LID or real phone), used as
+    //                        the lookup key when resolving @mentions
+    //   senderName         — pushName captured at receive time
+    senderJid: text("sender_jid"),
+    senderPhoneDigits: text("sender_phone_digits"),
+    senderName: text("sender_name"),
+    // Digits of every JID referenced in this message's mentions
+    // (contextInfo.mentionedJid stripped to digits). Lets the UI swap
+    // raw "@628…" / "@<lid>" tokens in the body for the mentioned
+    // contact's nickname.
+    mentionedPhoneDigits: text("mentioned_phone_digits").array(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

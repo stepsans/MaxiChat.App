@@ -1938,6 +1938,17 @@ components:
           type: boolean
         createdAt:
           type: string
+        senderName:
+          type: ["string", "null"]
+          description: pushName of the participant who sent this message; only populated for inbound group messages.
+        senderPhoneDigits:
+          type: ["string", "null"]
+          description: Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.
+        mentionedPhoneDigits:
+          type: array
+          items:
+            type: string
+          description: Digits of every JID mentioned in this message body, in the order they appear. Empty/omitted when no mentions.
 
     ChatWithMessages:
       type: object

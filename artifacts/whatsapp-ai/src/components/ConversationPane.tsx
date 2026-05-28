@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -377,6 +377,72 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     chat.nickname?.trim() ||
     chat.contactName ||
     chat.phoneNumber;
+
+  // Build a participants directory for this group chat by scanning every
+  // message's sender info. Keyed by senderPhoneDigits (which may be a real
+  // phone or a LID) — that same digit string is what appears inside an
+  // "@628…" mention token, so the same map serves both
+  //   (a) the per-bubble "sender name + avatar" header, and
+  //   (b) resolving @mention tokens in the message body.
+  const participantsByPhone = new Map<string, string>();
+  for (const m of chat.messages as any[]) {
+    const digits = typeof m.senderPhoneDigits === "string" ? m.senderPhoneDigits : null;
+    const name = typeof m.senderName === "string" ? m.senderName.trim() : "";
+    if (digits && name && !participantsByPhone.has(digits)) {
+      participantsByPhone.set(digits, name);
+    }
+  }
+
+  // Pick a stable per-sender colour so the same participant always wears
+  // the same hue across their bubbles — same UX as WhatsApp's group view.
+  const SENDER_COLOURS = [
+    "#06cf9c", "#f87171", "#60a5fa", "#fbbf24", "#c084fc",
+    "#fb7185", "#34d399", "#f472b6", "#22d3ee", "#a3e635",
+  ];
+  const colourForSender = (key: string): string => {
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    return SENDER_COLOURS[h % SENDER_COLOURS.length];
+  };
+
+  // Resolve a raw mention digits string to the best display label we have:
+  // first the group-local participant we just collected, then the owner's
+  // own chats list (so mentioning a known contact from another 1:1 still
+  // renders nicely), else fall back to the digits as-is.
+  const resolveMentionLabel = (digits: string): string => {
+    const fromParticipants = participantsByPhone.get(digits);
+    if (fromParticipants) return fromParticipants;
+    return digits;
+  };
+
+  // Render a message body, swapping every "@<digits>" token for the
+  // resolved nickname (highlighted as a chip-like span). Splits the text
+  // on the mention regex so React can interleave plain strings with
+  // styled <span> elements without dangerouslySetInnerHTML.
+  const renderBodyWithMentions = (text: string): ReactNode => {
+    const parts: ReactNode[] = [];
+    const re = /@(\d{5,})/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    let i = 0;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parts.push(text.slice(last, m.index));
+      const digits = m[1];
+      const label = resolveMentionLabel(digits);
+      parts.push(
+        <span
+          key={`mention-${i++}-${m.index}`}
+          className="font-medium text-[hsl(var(--wa-tick-read))]"
+          data-testid={`mention-${digits}`}
+        >
+          @{label}
+        </span>,
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return parts.length ? parts : text;
+  };
   const subtitle = isGroup
     ? "Grup"
     : chat.isLid
@@ -709,9 +775,44 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                 {group.messages.map((msg: any, idx: number) => {
                   const isOutbound = msg.direction === "outbound";
                   const prev = idx > 0 ? group.messages[idx - 1] : null;
+                  // Treat two consecutive rows as "same sender" only when
+                  // direction matches AND we can positively confirm the
+                  // sender is identical. For 1:1 chats both rows have no
+                  // sender info, so falling back to direction-only keeps
+                  // the existing bubble-continuation behaviour. For groups
+                  // we require either the same participant digits or the
+                  // same pushName — never collapse two unknown-sender
+                  // group bubbles into one stack.
+                  const prevDigits = (prev?.senderPhoneDigits ?? null) as string | null;
+                  const curDigits = (msg.senderPhoneDigits ?? null) as string | null;
+                  const prevName = (prev?.senderName ?? null) as string | null;
+                  const curName = (msg.senderName ?? null) as string | null;
+                  const bothNoSender =
+                    !prevDigits && !curDigits && !prevName && !curName;
+                  const sameSenderAsPrev =
+                    !!prev &&
+                    prev.direction === msg.direction &&
+                    (bothNoSender ||
+                      (!!curDigits && curDigits === prevDigits) ||
+                      (!!curName && curName === prevName));
                   const isCont = prev && prev.direction === msg.direction;
                   const mediaType: string | null = msg.mediaType ?? null;
                   const mediaUrl: string | null = msg.mediaUrl ?? null;
+                  // For inbound group messages, show a small sender chip
+                  // (avatar + coloured name) above the FIRST bubble of each
+                  // consecutive run by the same sender — same as WhatsApp's
+                  // group view. Skipped for 1:1 chats (the chat header
+                  // already identifies the speaker) and for outbound rows.
+                  const showSenderHeader =
+                    isGroup &&
+                    !isOutbound &&
+                    !sameSenderAsPrev &&
+                    !!(msg.senderName || msg.senderPhoneDigits);
+                  const senderKey: string =
+                    msg.senderPhoneDigits || msg.senderName || "";
+                  const senderLabel: string =
+                    (typeof msg.senderName === "string" && msg.senderName.trim()) ||
+                    (msg.senderPhoneDigits ? `+${msg.senderPhoneDigits}` : "Anggota grup");
                   return (
                     <div
                       key={msg.id}
@@ -719,16 +820,34 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                       className={cn(
                         "flex mb-0.5",
                         isOutbound ? "justify-end pl-12" : "justify-start pr-12",
-                        isCont ? "mt-0.5" : "mt-2"
+                        isCont && sameSenderAsPrev ? "mt-0.5" : "mt-2"
                       )}
                     >
                       <div
                         className={cn(
                           "max-w-[65%] min-w-[80px] px-2 py-1 text-[14.2px] leading-[19px]",
                           isOutbound ? "wa-bubble-out" : "wa-bubble-in",
-                          isCont && "wa-bubble-cont"
+                          isCont && sameSenderAsPrev && "wa-bubble-cont"
                         )}
                       >
+                        {showSenderHeader && (
+                          <div
+                            className="flex items-center gap-1.5 mb-0.5"
+                            data-testid={`sender-${senderKey}`}
+                          >
+                            <ChatAvatar
+                              name={senderLabel}
+                              profilePicUrl={null}
+                              size={20}
+                            />
+                            <span
+                              className="text-[12.5px] font-medium truncate"
+                              style={{ color: colourForSender(senderKey) }}
+                            >
+                              {senderLabel}
+                            </span>
+                          </div>
+                        )}
                         {mediaType === "image" && mediaUrl && (
                           <button
                             type="button"
@@ -777,7 +896,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                               </p>
                               {msg.content && (
                                 <p className="text-[10px] opacity-70 truncate">
-                                  {msg.content}
+                                  {renderBodyWithMentions(msg.content)}
                                 </p>
                               )}
                             </div>
@@ -785,7 +904,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                         )}
                         {msg.content && mediaType !== "contact" && (
                           <p className="whitespace-pre-wrap break-words pr-14">
-                            {msg.content}
+                            {renderBodyWithMentions(msg.content)}
                           </p>
                         )}
                         <div className="flex items-center justify-end gap-1 -mt-3 -mb-0.5 float-right pl-2">

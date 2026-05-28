@@ -754,6 +754,14 @@ interface ParsedWaMessage {
   timestamp: Date;
   messageContent: string;
   media?: IncomingMedia;
+  // Sender identity inside a group (msg.key.participant). For 1:1 chats
+  // and for outbound messages these stay null.
+  senderJid: string | null;
+  senderPhoneDigits: string | null;
+  senderName: string | null;
+  // Digits of contextInfo.mentionedJid (mentions in the message body),
+  // in source order. Empty when the message has no mentions.
+  mentionedPhoneDigits: string[];
 }
 
 function toEpochMs(ts: unknown): number {
@@ -951,6 +959,47 @@ async function parseWaMessage(
   const fromMe = !!msg.key?.fromMe;
   const timestamp = new Date(toEpochMs(msg.messageTimestamp));
 
+  // Capture the participant who actually authored this message inside a
+  // group. msg.key.participant is the canonical Baileys field; some
+  // versions also expose participantPn / participantAlt for the
+  // alternative LID/phone form. We only persist sender info for group
+  // inbound messages — for 1:1 the chat header already names the
+  // speaker, and outbound messages are always the operator.
+  let senderJid: string | null = null;
+  let senderPhoneDigits: string | null = null;
+  let senderName: string | null = null;
+  if (isGroup && !fromMe) {
+    const participantJid: string | undefined =
+      msg.key?.participant ||
+      msg.key?.participantPn ||
+      msg.key?.participantAlt ||
+      msg.participant;
+    if (participantJid) {
+      senderJid = participantJid;
+      senderPhoneDigits = participantJid.split("@")[0].split(":")[0] || null;
+    }
+    senderName = msg.pushName?.toString().trim() || null;
+  }
+
+  // Pull mention targets so the UI can swap raw "@628…" tokens in the
+  // body for the contact's nickname. contextInfo lives on the
+  // extendedTextMessage / mediaMessage wrappers depending on which
+  // payload Baileys delivered.
+  const mentionedJidRaw: unknown =
+    inner.extendedTextMessage?.contextInfo?.mentionedJid ||
+    inner.imageMessage?.contextInfo?.mentionedJid ||
+    inner.videoMessage?.contextInfo?.mentionedJid ||
+    inner.documentMessage?.contextInfo?.mentionedJid ||
+    inner.conversation?.contextInfo?.mentionedJid ||
+    [];
+  const mentionedPhoneDigits: string[] = Array.isArray(mentionedJidRaw)
+    ? (mentionedJidRaw as unknown[])
+        .map((j) =>
+          typeof j === "string" ? j.split("@")[0].split(":")[0] : null,
+        )
+        .filter((d): d is string => !!d)
+    : [];
+
   return {
     jid,
     isGroup,
@@ -962,6 +1011,10 @@ async function parseWaMessage(
     timestamp,
     messageContent,
     media,
+    senderJid,
+    senderPhoneDigits,
+    senderName,
+    mentionedPhoneDigits,
   };
 }
 
@@ -1038,6 +1091,15 @@ async function persistWaMessage(
   const chat = await getOrCreateChat(ownerPhone, phoneNumber, contactName, { isLid: isLidChat });
   const direction = parsed.fromMe ? "outbound" : "inbound";
 
+  const senderColumns = {
+    senderJid: parsed.senderJid,
+    senderPhoneDigits: parsed.senderPhoneDigits,
+    senderName: parsed.senderName,
+    mentionedPhoneDigits: parsed.mentionedPhoneDigits.length
+      ? parsed.mentionedPhoneDigits
+      : null,
+  };
+
   let inserted = true;
   if (parsed.waMessageId) {
     const result = await db
@@ -1053,6 +1115,7 @@ async function persistWaMessage(
         mediaFilename: parsed.media?.mediaFilename ?? null,
         waMessageId: parsed.waMessageId,
         createdAt: parsed.timestamp,
+        ...senderColumns,
       })
       .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
       .returning({ id: chatMessagesTable.id });
@@ -1069,6 +1132,7 @@ async function persistWaMessage(
       mediaFilename: parsed.media?.mediaFilename ?? null,
       waMessageId: null,
       createdAt: parsed.timestamp,
+      ...senderColumns,
     });
   }
 

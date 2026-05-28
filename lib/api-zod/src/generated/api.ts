@@ -296,7 +296,10 @@ export const GetChatResponse = zod.object({
   "direction": zod.enum(['inbound', 'outbound']),
   "content": zod.string(),
   "isAiGenerated": zod.boolean(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
 }))
 })
 
@@ -362,7 +365,10 @@ export const SendProductToChatResponse = zod.object({
   "direction": zod.enum(['inbound', 'outbound']),
   "content": zod.string(),
   "isAiGenerated": zod.boolean(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
 })
 
 
@@ -383,7 +389,10 @@ export const SendManualReplyResponse = zod.object({
   "direction": zod.enum(['inbound', 'outbound']),
   "content": zod.string(),
   "isAiGenerated": zod.boolean(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
 })
 
 

@@ -14,4 +14,16 @@ export interface ChatMessage {
   content: string;
   isAiGenerated: boolean;
   createdAt: string;
+  /**
+     * pushName of the participant who sent this message; only populated for inbound group messages.
+     * @nullable
+     */
+  senderName?: string | null;
+  /**
+     * Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.
+     * @nullable
+     */
+  senderPhoneDigits?: string | null;
+  /** Digits of every JID mentioned in this message body, in the order they appear. Empty/omitted when no mentions. */
+  mentionedPhoneDigits?: string[];
 }

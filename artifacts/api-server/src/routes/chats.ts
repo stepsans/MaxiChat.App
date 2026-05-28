@@ -578,6 +578,10 @@ router.get("/:id", async (req, res): Promise<void> => {
       messages: messages.map((m) => ({
         ...m,
         createdAt: m.createdAt.toISOString(),
+        // Normalize the nullable text[] column to an empty array so the
+        // OpenAPI contract (mentionedPhoneDigits: string[]) holds for
+        // every row — clients never see a stray null here.
+        mentionedPhoneDigits: m.mentionedPhoneDigits ?? [],
       })),
     });
   } catch (err) {
