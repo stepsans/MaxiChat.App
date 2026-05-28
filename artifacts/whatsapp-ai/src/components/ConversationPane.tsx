@@ -434,9 +434,9 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           </p>
           <div className="flex items-center gap-1.5 min-w-0">
             <p className="text-[12px] text-[hsl(var(--wa-meta))] truncate">
-              {chat.isHumanTakeover ? "Mode manual — AI dinonaktifkan" : subtitle}
+              {subtitle}
             </p>
-            {!chat.isHumanTakeover && !isGroup && !chat.isLid && (
+            {!isGroup && !chat.isLid && (
               <button
                 type="button"
                 data-testid="button-copy-phone"
@@ -461,6 +461,15 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               >
                 <Copy className="w-3 h-3" />
               </button>
+            )}
+            {chat.isHumanTakeover && (
+              <span
+                data-testid="badge-manual-mode"
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[hsl(var(--wa-accent))]/15 text-[hsl(var(--wa-accent))] flex-shrink-0"
+                title="Mode manual aktif — AI dinonaktifkan untuk chat ini"
+              >
+                Manual
+              </span>
             )}
           </div>
         </div>
