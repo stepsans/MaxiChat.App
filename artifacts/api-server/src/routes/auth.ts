@@ -249,6 +249,43 @@ router.get("/me", async (req, res): Promise<void> => {
   }
 });
 
+// PATCH /auth/me/photo — let the current user (any role, including super_admin)
+// update their own avatar. Body: { profilePhotoUrl: string }. Empty string
+// clears the photo. The URL must be one we serve ourselves (/api/media/...)
+// or an absolute http(s) URL, matching the validation used for invited team
+// members.
+router.patch("/me/photo", async (req, res): Promise<void> => {
+  const userId = req.session?.userId;
+  if (typeof userId !== "number") {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const raw = req.body?.profilePhotoUrl;
+  if (typeof raw !== "string") {
+    res.status(400).json({ error: "profilePhotoUrl harus string" });
+    return;
+  }
+  const url = raw.trim();
+  if (url.length > 500) {
+    res.status(400).json({ error: "URL foto terlalu panjang" });
+    return;
+  }
+  if (url !== "" && !url.startsWith("/api/media/") && !/^https?:\/\//.test(url)) {
+    res.status(400).json({ error: "URL foto tidak valid" });
+    return;
+  }
+  try {
+    await db
+      .update(usersTable)
+      .set({ profilePhotoUrl: url || null })
+      .where(eq(usersTable.id, userId));
+    res.json({ profilePhotoUrl: url || null });
+  } catch (err) {
+    req.log.error({ err }, "PATCH /auth/me/photo failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/signup", signupLimiter, async (req, res): Promise<void> => {
   try {
     const email = normalizeEmail(req.body?.email);

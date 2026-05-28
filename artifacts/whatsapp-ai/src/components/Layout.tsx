@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   CircleDashed,
   LogOut,
+  Camera,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { useQueryClient } from "@tanstack/react-query";
@@ -386,9 +387,11 @@ export default function Layout({
   );
 }
 
-// Round account avatar shown in the sidebar footer. Falls back to a
-// gradient circle with the user's initial when no photo is set so the
-// row always renders something recognizable.
+// Round account avatar shown in the sidebar footer. Clicking it opens a
+// file picker so the signed-in user — including super_admin, who has no
+// row in the "Agen & Tim" page — can change their own photo. Two-step
+// flow: upload bytes to /api/agents/upload-photo, then PATCH the new URL
+// to /api/auth/me/photo and invalidate the cached /auth/me query.
 function AccountAvatar({
   url,
   name,
@@ -396,24 +399,96 @@ function AccountAvatar({
   url?: string | null;
   name?: string | null;
 }) {
+  const qc = useQueryClient();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const initial = (name?.trim()[0] ?? "?").toUpperCase();
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt={name ?? "Akun"}
-        className="w-9 h-9 rounded-full object-cover ring-2 ring-sidebar-border flex-shrink-0"
-        data-testid="account-avatar"
-      />
-    );
+
+  async function handleFile(file: File) {
+    setError(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetch("/api/agents/upload-photo", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!up.ok) throw new Error("Upload gagal");
+      const { url: newUrl } = (await up.json()) as { url: string };
+      const patch = await fetch("/api/auth/me/photo", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ profilePhotoUrl: newUrl }),
+      });
+      if (!patch.ok) throw new Error("Simpan foto gagal");
+      await qc.invalidateQueries({ queryKey: getGetMeQueryKey() });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengganti foto");
+    } finally {
+      setUploading(false);
+    }
   }
+
   return (
-    <div
-      className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 ring-2 ring-sidebar-border"
-      data-testid="account-avatar-fallback"
-      aria-label={name ?? "Akun"}
-    >
-      {initial}
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          aria-label="Ganti foto profil"
+          data-testid="button-change-photo"
+          className="relative group w-9 h-9 rounded-full flex-shrink-0 ring-2 ring-sidebar-border overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:opacity-70"
+        >
+          {url ? (
+            <img
+              src={url}
+              alt={name ?? "Akun"}
+              className="w-full h-full object-cover"
+              data-testid="account-avatar"
+            />
+          ) : (
+            <div
+              className="w-full h-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white text-sm font-bold"
+              data-testid="account-avatar-fallback"
+              aria-hidden
+            >
+              {initial}
+            </div>
+          )}
+          <div
+            className={cn(
+              "absolute inset-0 flex items-center justify-center bg-black/45 text-white transition-opacity",
+              uploading ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+          >
+            {uploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Camera className="w-3.5 h-3.5" />
+            )}
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleFile(f);
+              e.target.value = "";
+            }}
+            data-testid="input-account-photo"
+          />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">
+        {error ?? (uploading ? "Mengunggah…" : "Ganti foto profil")}
+      </TooltipContent>
+    </Tooltip>
   );
 }
