@@ -13,7 +13,7 @@ export interface PermissionCell {
 }
 
 /**
- * Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.
+ * Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.
  */
 export interface RoleMatrix {[key: string]: PermissionCell}
 
@@ -34,6 +34,63 @@ export const EffectivePermissionsTeamRole = {
 export interface EffectivePermissions {
   teamRole: EffectivePermissionsTeamRole;
   menus: RoleMatrix;
+}
+
+export type TeamMemberPermissionSummaryTeamRole = typeof TeamMemberPermissionSummaryTeamRole[keyof typeof TeamMemberPermissionSummaryTeamRole];
+
+
+export const TeamMemberPermissionSummaryTeamRole = {
+  super_admin: 'super_admin',
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export interface TeamMemberPermissionSummary {
+  id: number;
+  name?: string | null;
+  email: string;
+  teamRole: TeamMemberPermissionSummaryTeamRole;
+  /** True when the user has at least one per-user override row that diverges from the role default. */
+  hasOverrides: boolean;
+}
+
+export type UserPermissionDetailUserTeamRole = typeof UserPermissionDetailUserTeamRole[keyof typeof UserPermissionDetailUserTeamRole];
+
+
+export const UserPermissionDetailUserTeamRole = {
+  super_admin: 'super_admin',
+  supervisor: 'supervisor',
+  agent: 'agent',
+} as const;
+
+export type UserPermissionDetailUser = {
+  id: number;
+  name?: string | null;
+  email: string;
+  teamRole: UserPermissionDetailUserTeamRole;
+};
+
+/**
+ * Stored per-user overrides (subset of menus). Empty when the user inherits the role default verbatim.
+ */
+export type UserPermissionDetailOverrides = {[key: string]: PermissionCell};
+
+export interface UserPermissionDetail {
+  user: UserPermissionDetailUser;
+  roleDefault: RoleMatrix;
+  /** Stored per-user overrides (subset of menus). Empty when the user inherits the role default verbatim. */
+  overrides: UserPermissionDetailOverrides;
+  effective: RoleMatrix;
+}
+
+/**
+ * Map of menu key → cell to override. Pass null to clear all overrides and inherit the role default.
+ */
+export type UpdateUserPermissionRequestOverrides = {[key: string]: PermissionCell} | null;
+
+export interface UpdateUserPermissionRequest {
+  /** Map of menu key → cell to override. Pass null to clear all overrides and inherit the role default. */
+  overrides: UpdateUserPermissionRequestOverrides;
 }
 
 export interface HealthStatus {
@@ -1441,6 +1498,10 @@ export type RunProductSync200 = {
   updated: number;
   deleted: number;
   syncedAt?: string;
+};
+
+export type ListTeamMemberPermissions200 = {
+  members: TeamMemberPermissionSummary[];
 };
 
 export type ResetFlowCooldown200 = {

@@ -12,6 +12,7 @@ import {
 import { getSessionUserId, getEffectiveOwnerUserId } from "../lib/auth";
 import { loadOwnedChannel, listOwnedChannels } from "../lib/channel-context";
 import { requireSuperAdmin } from "../lib/team-permissions";
+import { requirePermission } from "../lib/role-permissions";
 import {
   startBaileysForChannel,
   disconnectChannelRuntime,
@@ -104,7 +105,7 @@ router.get("/:id", async (req, res): Promise<void> => {
 // row starts as `disconnected` and pairing happens via a separate flow
 // (see T008 wizard / Baileys runtime). super_admin-only — supervisors and
 // agents can switch between channels but can't add new ones.
-router.post("/", requireSuperAdmin, async (req, res): Promise<void> => {
+router.post("/", requirePermission("channels", "create"), async (req, res): Promise<void> => {
   const parsed = ChannelCreateBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -151,7 +152,7 @@ router.post("/", requireSuperAdmin, async (req, res): Promise<void> => {
 // PATCH /channels/:id — rename / change color / change icon. Does NOT touch
 // status, ownerPhone, kind, or metadata — those are managed by the Baileys
 // runtime (status, ownerPhone) or are immutable post-create (kind).
-router.patch("/:id", requireSuperAdmin, async (req, res): Promise<void> => {
+router.patch("/:id", requirePermission("channels", "edit"), async (req, res): Promise<void> => {
   const id = Number.parseInt(String(req.params.id ?? ""), 10);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "Invalid channel id" });
@@ -204,7 +205,7 @@ router.patch("/:id", requireSuperAdmin, async (req, res): Promise<void> => {
 // immediately; the QR data url appears on GET /channels/:id/qr a moment
 // later (it's pushed asynchronously by the Baileys connection.update
 // handler into channels.metadata.qrCode).
-router.post("/:id/pair", requireSuperAdmin, async (req, res): Promise<void> => {
+router.post("/:id/pair", requirePermission("channels", "edit"), async (req, res): Promise<void> => {
   const id = Number.parseInt(String(req.params.id ?? ""), 10);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "Invalid channel id" });
@@ -255,7 +256,7 @@ router.post("/:id/pair", requireSuperAdmin, async (req, res): Promise<void> => {
 // GET /channels/:id/qr — poll endpoint for the pairing UI. Returns the
 // current status plus the QR data url (when status === "qr_ready"). The
 // QR lives in channels.metadata.qrCode and is cleared on connect/close.
-router.get("/:id/qr", requireSuperAdmin, async (req, res): Promise<void> => {
+router.get("/:id/qr", requirePermission("channels", "edit"), async (req, res): Promise<void> => {
   const id = Number.parseInt(String(req.params.id ?? ""), 10);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "Invalid channel id" });
@@ -283,7 +284,7 @@ router.get("/:id/qr", requireSuperAdmin, async (req, res): Promise<void> => {
 // POST /channels/:id/unpair — log the Baileys socket out and wipe the
 // per-channel auth dir without deleting the channel row or any of its
 // chats. The next /pair starts from a fresh QR.
-router.post("/:id/unpair", requireSuperAdmin, async (req, res): Promise<void> => {
+router.post("/:id/unpair", requirePermission("channels", "edit"), async (req, res): Promise<void> => {
   const id = Number.parseInt(String(req.params.id ?? ""), 10);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "Invalid channel id" });
@@ -318,7 +319,7 @@ router.post("/:id/unpair", requireSuperAdmin, async (req, res): Promise<void> =>
 // it. We block deletion of the user's LAST channel because every
 // back-compat surface (getPrimaryCtxForUser, primary-channel helpers)
 // assumes the owner has at least one; Phase E removes that assumption.
-router.delete("/:id", requireSuperAdmin, async (req, res): Promise<void> => {
+router.delete("/:id", requirePermission("channels", "delete"), async (req, res): Promise<void> => {
   const id = Number.parseInt(String(req.params.id ?? ""), 10);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "Invalid channel id" });

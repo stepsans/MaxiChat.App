@@ -67,6 +67,7 @@ import type {
   KnowledgeTypeInput,
   KnowledgeUpdate,
   ListChatsParams,
+  ListTeamMemberPermissions200,
   LoginInput,
   ManualReplyInput,
   OpenChatByPhoneInput,
@@ -101,10 +102,12 @@ import type {
   TextShortcut,
   TextShortcutInput,
   UpdateAgentInput,
+  UpdateUserPermissionRequest,
   UploadPhotoResponse,
   UpsertKnowledgeSyncConfig200,
   UpsertProductSyncConfig200,
   UpsertShortcutSyncConfig200,
+  UserPermissionDetail,
   VerifyEmailInput,
   WhatsappBio,
   WhatsappBioInput,
@@ -6942,6 +6945,232 @@ export function useGetMyPermissions<TData = Awaited<ReturnType<typeof getMyPermi
 
 
 
+
+export const getListTeamMemberPermissionsUrl = () => {
+
+
+
+
+  return `/api/permissions/users`
+}
+
+/**
+ * @summary List team members with a flag for who has custom permission overrides
+ */
+export const listTeamMemberPermissions = async ( options?: RequestInit): Promise<ListTeamMemberPermissions200> => {
+
+  return customFetch<ListTeamMemberPermissions200>(getListTeamMemberPermissionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTeamMemberPermissionsQueryKey = () => {
+    return [
+    `/api/permissions/users`
+    ] as const;
+    }
+
+
+export const getListTeamMemberPermissionsQueryOptions = <TData = Awaited<ReturnType<typeof listTeamMemberPermissions>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTeamMemberPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTeamMemberPermissionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTeamMemberPermissions>>> = ({ signal }) => listTeamMemberPermissions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTeamMemberPermissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTeamMemberPermissionsQueryResult = NonNullable<Awaited<ReturnType<typeof listTeamMemberPermissions>>>
+export type ListTeamMemberPermissionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List team members with a flag for who has custom permission overrides
+ */
+
+export function useListTeamMemberPermissions<TData = Awaited<ReturnType<typeof listTeamMemberPermissions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTeamMemberPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTeamMemberPermissionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetUserPermissionsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/permissions/users/${userId}`
+}
+
+/**
+ * @summary Get role default + overrides + effective cells for a team member
+ */
+export const getUserPermissions = async (userId: number, options?: RequestInit): Promise<UserPermissionDetail> => {
+
+  return customFetch<UserPermissionDetail>(getGetUserPermissionsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserPermissionsQueryKey = (userId: number,) => {
+    return [
+    `/api/permissions/users/${userId}`
+    ] as const;
+    }
+
+
+export const getGetUserPermissionsQueryOptions = <TData = Awaited<ReturnType<typeof getUserPermissions>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserPermissionsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserPermissions>>> = ({ signal }) => getUserPermissions(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(userId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserPermissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUserPermissionsQueryResult = NonNullable<Awaited<ReturnType<typeof getUserPermissions>>>
+export type GetUserPermissionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get role default + overrides + effective cells for a team member
+ */
+
+export function useGetUserPermissions<TData = Awaited<ReturnType<typeof getUserPermissions>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUserPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUserPermissionsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateUserPermissionsUrl = (userId: number,) => {
+
+
+
+
+  return `/api/permissions/users/${userId}`
+}
+
+/**
+ * @summary Replace a team member's permission overrides (null = reset to role default)
+ */
+export const updateUserPermissions = async (userId: number,
+    updateUserPermissionRequest: UpdateUserPermissionRequest, options?: RequestInit): Promise<UserPermissionDetail> => {
+
+  return customFetch<UserPermissionDetail>(getUpdateUserPermissionsUrl(userId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateUserPermissionRequest,)
+  }
+);}
+
+
+
+
+export const getUpdateUserPermissionsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateUserPermissions>>, TError,{userId: number;data: BodyType<UpdateUserPermissionRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateUserPermissions>>, TError,{userId: number;data: BodyType<UpdateUserPermissionRequest>}, TContext> => {
+
+const mutationKey = ['updateUserPermissions'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateUserPermissions>>, {userId: number;data: BodyType<UpdateUserPermissionRequest>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  updateUserPermissions(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateUserPermissionsMutationResult = NonNullable<Awaited<ReturnType<typeof updateUserPermissions>>>
+    export type UpdateUserPermissionsMutationBody = BodyType<UpdateUserPermissionRequest>
+    export type UpdateUserPermissionsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Replace a team member's permission overrides (null = reset to role default)
+ */
+export const useUpdateUserPermissions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateUserPermissions>>, TError,{userId: number;data: BodyType<UpdateUserPermissionRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateUserPermissions>>,
+        TError,
+        {userId: number;data: BodyType<UpdateUserPermissionRequest>},
+        TContext
+      > => {
+      return useMutation(getUpdateUserPermissionsMutationOptions(options));
+    }
 
 export const getResetFlowCooldownUrl = () => {
 

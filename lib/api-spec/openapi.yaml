@@ -1929,6 +1929,62 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/EffectivePermissions" }
 
+  /permissions/users:
+    get:
+      operationId: listTeamMemberPermissions
+      tags: [permissions]
+      summary: List team members with a flag for who has custom permission overrides
+      responses:
+        "200":
+          description: Team members
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TeamMemberPermissionSummary"
+
+  /permissions/users/{userId}:
+    get:
+      operationId: getUserPermissions
+      tags: [permissions]
+      summary: Get role default + overrides + effective cells for a team member
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPermissionDetail" }
+    put:
+      operationId: updateUserPermissions
+      tags: [permissions]
+      summary: Replace a team member's permission overrides (null = reset to role default)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateUserPermissionRequest" }
+      responses:
+        "200":
+          description: Updated detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPermissionDetail" }
+
   /flows/reset-cooldown:
     post:
       operationId: resetFlowCooldown
@@ -1958,7 +2014,7 @@ components:
 
     RoleMatrix:
       type: object
-      description: Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.
+      description: Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.
       additionalProperties:
         $ref: "#/components/schemas/PermissionCell"
 
@@ -1977,6 +2033,53 @@ components:
           type: string
           enum: [super_admin, supervisor, agent]
         menus: { $ref: "#/components/schemas/RoleMatrix" }
+
+    TeamMemberPermissionSummary:
+      type: object
+      required: [id, email, teamRole, hasOverrides]
+      properties:
+        id: { type: integer }
+        name: { type: string, nullable: true }
+        email: { type: string }
+        teamRole:
+          type: string
+          enum: [super_admin, supervisor, agent]
+        hasOverrides:
+          type: boolean
+          description: True when the user has at least one per-user override row that diverges from the role default.
+
+    UserPermissionDetail:
+      type: object
+      required: [user, roleDefault, overrides, effective]
+      properties:
+        user:
+          type: object
+          required: [id, email, teamRole]
+          properties:
+            id: { type: integer }
+            name: { type: string, nullable: true }
+            email: { type: string }
+            teamRole:
+              type: string
+              enum: [super_admin, supervisor, agent]
+        roleDefault: { $ref: "#/components/schemas/RoleMatrix" }
+        overrides:
+          type: object
+          description: Stored per-user overrides (subset of menus). Empty when the user inherits the role default verbatim.
+          additionalProperties:
+            $ref: "#/components/schemas/PermissionCell"
+        effective: { $ref: "#/components/schemas/RoleMatrix" }
+
+    UpdateUserPermissionRequest:
+      type: object
+      required: [overrides]
+      properties:
+        overrides:
+          nullable: true
+          description: Map of menu key → cell to override. Pass null to clear all overrides and inherit the role default.
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/PermissionCell"
 
     HealthStatus:
       type: object

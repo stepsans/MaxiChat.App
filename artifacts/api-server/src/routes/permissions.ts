@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { z } from "zod/v4";
+import { and, eq } from "drizzle-orm";
+import { db, usersTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import { requireSuperAdmin } from "../lib/team-permissions";
@@ -9,6 +11,12 @@ import {
   saveMatrix,
   PERMISSION_MENUS,
   type PermissionMenu,
+  getUserOverrides,
+  saveUserOverrides,
+  listTeamMembersForOwner,
+  userIdsWithOverrides,
+  getRoleDefaultsForOwner,
+  type UserOverrides,
 } from "../lib/role-permissions";
 
 const router = Router();
@@ -75,6 +83,187 @@ router.put("/", requireSuperAdmin, async (req, res): Promise<void> => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// ---------- Per-user permission overrides ----------
+
+const UserOverridesSchema = z.record(MenuKeySchema, PermCellSchema);
+const UpdateUserPermissionSchema = z.object({
+  // null = reset to role default (delete all overrides for this user)
+  overrides: UserOverridesSchema.nullable(),
+});
+
+// Guard: only allow super_admin of the same tenant to manage a target user's
+// permissions. Returns the target user's row when allowed, or sends a 403/404
+// response (returns null to abort the handler).
+async function requireOwnedTeamMember(
+  req: import("express").Request,
+  res: import("express").Response,
+  targetUserId: number
+): Promise<
+  | {
+      id: number;
+      name: string | null;
+      email: string;
+      teamRole: string;
+      parentUserId: number | null;
+    }
+  | null
+> {
+  const callerId = getSessionUserId(req);
+  if (callerId == null) {
+    res.status(401).json({ error: "Not signed in" });
+    return null;
+  }
+  const ownerId = await resolveOwnerUserId(callerId);
+  const [target] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      teamRole: usersTable.teamRole,
+      parentUserId: usersTable.parentUserId,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
+    .limit(1);
+  if (!target) {
+    res.status(404).json({ error: "User tidak ditemukan" });
+    return null;
+  }
+  // Target must be either the caller's owner self or a direct invitee.
+  const inSameTeam =
+    target.id === ownerId || target.parentUserId === ownerId;
+  if (!inSameTeam) {
+    res.status(403).json({ error: "User di luar tim Anda" });
+    return null;
+  }
+  return target;
+}
+
+// GET /permissions/users — list team members with name/email/role + a flag
+// indicating whether they have custom overrides. Super admin only.
+router.get("/users", requireSuperAdmin, async (req, res): Promise<void> => {
+  try {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const members = await listTeamMembersForOwner(ownerId);
+    const customised = await userIdsWithOverrides(members.map((m) => m.id));
+    res.json({
+      members: members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        teamRole: m.teamRole,
+        hasOverrides: customised.has(m.id),
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "list team-member permissions failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /permissions/users/:userId — return roleDefault + overrides + effective
+// for the target user. Super admin only. Super_admin targets get
+// roleDefault=all-true and overrides={} (their cells aren't editable).
+router.get(
+  "/users/:userId",
+  requireSuperAdmin,
+  async (req, res): Promise<void> => {
+    try {
+      const targetId = Number(req.params.userId);
+      if (!Number.isInteger(targetId) || targetId <= 0) {
+        res.status(400).json({ error: "Invalid user id" });
+        return;
+      }
+      const target = await requireOwnedTeamMember(req, res, targetId);
+      if (!target) return;
+      const callerId = getSessionUserId(req)!;
+      const ownerId = await resolveOwnerUserId(callerId);
+      const teamRole =
+        target.teamRole === "supervisor" || target.teamRole === "agent"
+          ? (target.teamRole as "supervisor" | "agent")
+          : ("super_admin" as const);
+      const roleDefault = await getRoleDefaultsForOwner(ownerId, teamRole);
+      const overrides = await getUserOverrides(target.id);
+      const effective = await getEffectivePermissions(target.id);
+      res.json({
+        user: {
+          id: target.id,
+          name: target.name,
+          email: target.email,
+          teamRole,
+        },
+        roleDefault,
+        overrides,
+        effective: effective.menus,
+      });
+    } catch (err) {
+      req.log.error({ err }, "get user permissions failed");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// PUT /permissions/users/:userId — replace overrides for the target user.
+// Body `{overrides: null}` clears all overrides (reset to role default).
+// Super admin only. Refuses to edit super_admin targets (their cells are
+// hard-coded all-true and editing would be a confusing no-op).
+router.put(
+  "/users/:userId",
+  requireSuperAdmin,
+  async (req, res): Promise<void> => {
+    try {
+      const targetId = Number(req.params.userId);
+      if (!Number.isInteger(targetId) || targetId <= 0) {
+        res.status(400).json({ error: "Invalid user id" });
+        return;
+      }
+      const target = await requireOwnedTeamMember(req, res, targetId);
+      if (!target) return;
+      if (
+        target.teamRole !== "supervisor" &&
+        target.teamRole !== "agent"
+      ) {
+        res.status(400).json({
+          error: "Super Admin selalu memiliki akses penuh dan tidak dapat diatur",
+        });
+        return;
+      }
+      const parsed = UpdateUserPermissionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid payload" });
+        return;
+      }
+      const overrides: UserOverrides = parsed.data.overrides ?? {};
+      await saveUserOverrides(target.id, overrides);
+      const callerId = getSessionUserId(req)!;
+      const ownerId = await resolveOwnerUserId(callerId);
+      const teamRole = target.teamRole as "supervisor" | "agent";
+      const roleDefault = await getRoleDefaultsForOwner(ownerId, teamRole);
+      const stored = await getUserOverrides(target.id);
+      const effective = await getEffectivePermissions(target.id);
+      res.json({
+        user: {
+          id: target.id,
+          name: target.name,
+          email: target.email,
+          teamRole,
+        },
+        roleDefault,
+        overrides: stored,
+        effective: effective.menus,
+      });
+    } catch (err) {
+      req.log.error({ err }, "save user permissions failed");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 // GET /permissions/me — effective perms for the signed-in user. Used by the
 // frontend to hide/disable buttons; matches the backend `requirePermission`

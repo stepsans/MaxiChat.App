@@ -22,6 +22,7 @@ const MENUS: { key: string; label: string }[] = [
   { key: "flows", label: "Chatbot Flow" },
   { key: "analytics", label: "Analytics" },
   { key: "credentials", label: "Credential" },
+  { key: "channels", label: "Channels" },
   { key: "statuses", label: "Statuses" },
   { key: "settings", label: "Settings" },
   { key: "chats", label: "Chats" },

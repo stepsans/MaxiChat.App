@@ -1813,13 +1813,13 @@ export const GetPermissionMatrixResponse = zod.object({
   "canCreate": zod.boolean(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean()
-})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.'),
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.'),
   "agent": zod.record(zod.string(), zod.object({
   "canView": zod.boolean(),
   "canCreate": zod.boolean(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean()
-})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.')
 })
 
 
@@ -1832,13 +1832,13 @@ export const UpdatePermissionMatrixBody = zod.object({
   "canCreate": zod.boolean(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean()
-})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.'),
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.'),
   "agent": zod.record(zod.string(), zod.object({
   "canView": zod.boolean(),
   "canCreate": zod.boolean(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean()
-})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.')
 })
 
 export const UpdatePermissionMatrixResponse = zod.object({
@@ -1847,13 +1847,13 @@ export const UpdatePermissionMatrixResponse = zod.object({
   "canCreate": zod.boolean(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean()
-})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.'),
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.'),
   "agent": zod.record(zod.string(), zod.object({
   "canView": zod.boolean(),
   "canCreate": zod.boolean(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean()
-})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.')
 })
 
 
@@ -1867,7 +1867,100 @@ export const GetMyPermissionsResponse = zod.object({
   "canCreate": zod.boolean(),
   "canEdit": zod.boolean(),
   "canDelete": zod.boolean()
-})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings.')
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.')
+})
+
+
+/**
+ * @summary List team members with a flag for who has custom permission overrides
+ */
+export const ListTeamMemberPermissionsResponse = zod.object({
+  "members": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string().nullish(),
+  "email": zod.string(),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "hasOverrides": zod.boolean().describe('True when the user has at least one per-user override row that diverges from the role default.')
+}))
+})
+
+
+/**
+ * @summary Get role default + overrides + effective cells for a team member
+ */
+export const GetUserPermissionsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetUserPermissionsResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number(),
+  "name": zod.string().nullish(),
+  "email": zod.string(),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent'])
+}),
+  "roleDefault": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.'),
+  "overrides": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Stored per-user overrides (subset of menus). Empty when the user inherits the role default verbatim.'),
+  "effective": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.')
+})
+
+
+/**
+ * @summary Replace a team member's permission overrides (null = reset to role default)
+ */
+export const UpdateUserPermissionsParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const UpdateUserPermissionsBody = zod.object({
+  "overrides": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).nullable().describe('Map of menu key → cell to override. Pass null to clear all overrides and inherit the role default.')
+})
+
+export const UpdateUserPermissionsResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number(),
+  "name": zod.string().nullish(),
+  "email": zod.string(),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent'])
+}),
+  "roleDefault": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.'),
+  "overrides": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Stored per-user overrides (subset of menus). Empty when the user inherits the role default verbatim.'),
+  "effective": zod.record(zod.string(), zod.object({
+  "canView": zod.boolean(),
+  "canCreate": zod.boolean(),
+  "canEdit": zod.boolean(),
+  "canDelete": zod.boolean()
+})).describe('Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.')
 })
 
 

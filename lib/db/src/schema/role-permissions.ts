@@ -52,3 +52,44 @@ export const rolePermissionsTable = pgTable(
 );
 
 export type RolePermissionRow = typeof rolePermissionsTable.$inferSelect;
+
+// Per-USER permission overrides layered on top of role defaults. One row per
+// (user, menu) — its mere presence means the user has an explicit override
+// for that menu; absent rows fall through to the role matrix above.
+//
+// Resolution order in getEffectivePermissions(userId):
+//   1. super_admin → always all-true (rows here are ignored for safety).
+//   2. role matrix (role_permissions) provides the per-menu baseline.
+//   3. any matching row in user_permissions REPLACES that menu's cell
+//      wholesale (not field-merged) — this matches the editor UX where
+//      the user toggles a whole row at a time.
+//
+// ON DELETE CASCADE on userId so leaving the team takes the overrides too.
+export const userPermissionsTable = pgTable(
+  "user_permissions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    menu: text("menu").notNull(), // see PermissionMenu union
+    canView: boolean("can_view").notNull().default(false),
+    canCreate: boolean("can_create").notNull().default(false),
+    canEdit: boolean("can_edit").notNull().default(false),
+    canDelete: boolean("can_delete").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uniqByUserMenu: uniqueIndex("user_permissions_user_menu_key").on(
+      t.userId,
+      t.menu
+    ),
+  })
+);
+
+export type UserPermissionRow = typeof userPermissionsTable.$inferSelect;

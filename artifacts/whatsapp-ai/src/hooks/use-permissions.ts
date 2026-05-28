@@ -7,7 +7,7 @@ import {
 
 export type TeamRole = "super_admin" | "supervisor" | "agent";
 
-// The 8 menus that participate in the matrix. Must stay in lock-step with
+// The 9 menus that participate in the matrix. Must stay in lock-step with
 // PERMISSION_MENUS in artifacts/api-server/src/lib/role-permissions.ts and
 // the matrix editor on the Agents page.
 export const PERMISSION_MENUS = [
@@ -19,6 +19,7 @@ export const PERMISSION_MENUS = [
   "chats",
   "statuses",
   "settings",
+  "channels",
 ] as const;
 export type PermissionMenu = (typeof PERMISSION_MENUS)[number];
 

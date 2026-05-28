@@ -1,11 +1,16 @@
 import type { Request, Response, NextFunction } from "express";
-import { and, eq } from "drizzle-orm";
-import { db, rolePermissionsTable } from "@workspace/db";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  db,
+  rolePermissionsTable,
+  userPermissionsTable,
+  usersTable,
+} from "@workspace/db";
 import { getSessionUserId } from "./auth";
 import { resolveOwnerUserId } from "./seed";
 import { getCurrentTeamRole, type TeamRole } from "./team-permissions";
 
-// The 8 UI sections that participate in the permission matrix. Keep this
+// The UI sections that participate in the permission matrix. Keep this
 // list in lock-step with the frontend matrix editor (Agents page) and the
 // Layout sidebar filter — adding a menu here means it must also be added
 // to the frontend constants.
@@ -18,6 +23,7 @@ export const PERMISSION_MENUS = [
   "chats",
   "statuses",
   "settings",
+  "channels",
 ] as const;
 export type PermissionMenu = (typeof PERMISSION_MENUS)[number];
 
@@ -53,6 +59,8 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     chats: allow(true, true, true, true),
     statuses: allow(true, true, true, true),
     settings: allow(true, false, true, false),
+    // Default: supervisor can see channels but only the owner pairs/deletes.
+    channels: allow(true, false, false, false),
   } as const;
   const agt = {
     knowledge: allow(true, false, false, false),
@@ -63,6 +71,7 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     chats: allow(true, true, true, false),
     statuses: allow(true, true, false, false),
     settings: allow(false, false, false, false),
+    channels: allow(false, false, false, false),
   } as const;
   return {
     super_admin: Object.fromEntries(
@@ -174,7 +183,168 @@ export async function getEffectivePermissions(
   }
   const ownerId = await resolveOwnerUserId(userId);
   const matrix = await getMatrixForOwner(ownerId);
-  return { teamRole, menus: matrix[teamRole] };
+  const base = { ...matrix[teamRole] } as Record<PermissionMenu, RolePerm>;
+  // Layer per-user overrides on top: a row in user_permissions REPLACES the
+  // role default for that menu wholesale (matches the editor UX of toggling
+  // a whole row at a time).
+  const overrides = await getUserOverrides(userId);
+  for (const menu of Object.keys(overrides) as PermissionMenu[]) {
+    base[menu] = overrides[menu]!;
+  }
+  return { teamRole, menus: base };
+}
+
+// ---------- Per-user overrides ----------
+
+export type UserOverrides = Partial<Record<PermissionMenu, RolePerm>>;
+
+// Returns the user's stored overrides keyed by menu. Empty object = no
+// overrides (user inherits role defaults verbatim).
+export async function getUserOverrides(userId: number): Promise<UserOverrides> {
+  const rows = await db
+    .select()
+    .from(userPermissionsTable)
+    .where(eq(userPermissionsTable.userId, userId));
+  const out: UserOverrides = {};
+  for (const r of rows) {
+    if (!(PERMISSION_MENUS as readonly string[]).includes(r.menu)) continue;
+    out[r.menu as PermissionMenu] = {
+      canView: r.canView,
+      canCreate: r.canCreate,
+      canEdit: r.canEdit,
+      canDelete: r.canDelete,
+    };
+  }
+  return out;
+}
+
+// Replace ALL of userId's overrides with the given cells. Wrapped in a
+// transaction so a partial write can't leave a half-applied matrix. Pass
+// an empty object to clear all overrides (= "reset to role default").
+//
+// Concurrency: two simultaneous PUTs for the same user would otherwise
+// race on the unique(userId, menu) constraint (one tx deletes, the other
+// re-inserts, then the first re-inserts and dupes). We take a row-level
+// lock on the parent users row at the top of the tx so the second writer
+// waits for the first to commit — serialising the delete+insert pair
+// without needing an upsert+prune dance.
+export async function saveUserOverrides(
+  userId: number,
+  overrides: UserOverrides
+): Promise<void> {
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT 1 FROM ${usersTable} WHERE ${usersTable.id} = ${userId} FOR UPDATE`
+    );
+    await tx
+      .delete(userPermissionsTable)
+      .where(eq(userPermissionsTable.userId, userId));
+    const entries = Object.entries(overrides) as Array<
+      [PermissionMenu, RolePerm]
+    >;
+    if (entries.length === 0) return;
+    await tx.insert(userPermissionsTable).values(
+      entries.map(([menu, p]) => ({
+        userId,
+        menu,
+        canView: p.canView,
+        canCreate: p.canCreate,
+        canEdit: p.canEdit,
+        canDelete: p.canDelete,
+        createdAt: now,
+        updatedAt: now,
+      }))
+    );
+  });
+}
+
+// Returns the set of userIds that have at least one override row. Used by
+// the team-members list to show a "Customised" badge without N+1 queries.
+export async function userIdsWithOverrides(
+  userIds: number[]
+): Promise<Set<number>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await db
+    .selectDistinct({ userId: userPermissionsTable.userId })
+    .from(userPermissionsTable)
+    .where(inArray(userPermissionsTable.userId, userIds));
+  return new Set(rows.map((r) => r.userId));
+}
+
+// List team members (super_admin owner + invited supervisors/agents) under
+// the same tenant as `ownerUserId`. Used to populate the user picker in
+// the per-user permission editor.
+export async function listTeamMembersForOwner(
+  ownerUserId: number
+): Promise<
+  Array<{
+    id: number;
+    name: string | null;
+    email: string;
+    teamRole: TeamRole;
+  }>
+> {
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      teamRole: usersTable.teamRole,
+      parentUserId: usersTable.parentUserId,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.parentUserId, ownerUserId));
+  const [owner] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      teamRole: usersTable.teamRole,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, ownerUserId))
+    .limit(1);
+  const normaliseRole = (tr: string | null | undefined): TeamRole =>
+    tr === "supervisor" || tr === "agent" ? tr : "super_admin";
+  const members = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    teamRole: normaliseRole(r.teamRole),
+  }));
+  if (owner) {
+    members.unshift({
+      id: owner.id,
+      name: owner.name,
+      email: owner.email,
+      teamRole: normaliseRole(owner.teamRole),
+    });
+  }
+  return members;
+}
+
+// Get the role-default cells for a given role (no user overrides applied).
+// Convenience for the per-user editor to render "Reset to role default"
+// previews.
+export async function getRoleDefaultsForOwner(
+  ownerUserId: number,
+  role: TeamRole
+): Promise<Record<PermissionMenu, RolePerm>> {
+  if (role === "super_admin") {
+    const all: RolePerm = {
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: true,
+    };
+    return Object.fromEntries(PERMISSION_MENUS.map((m) => [m, all])) as Record<
+      PermissionMenu,
+      RolePerm
+    >;
+  }
+  const matrix = await getMatrixForOwner(ownerUserId);
+  return matrix[role];
 }
 
 // Express middleware: gate a route on (menu, action). Super admin always

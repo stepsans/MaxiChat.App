@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PermissionMatrixEditor } from "@/components/PermissionMatrixEditor";
+import { UserPermissionEditor } from "@/components/UserPermissionEditor";
 
 type FormState = {
   email: string;
@@ -315,10 +316,14 @@ export default function Agents() {
         <Tabs defaultValue="team" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="team" data-testid="tab-team">Anggota Tim</TabsTrigger>
-            <TabsTrigger value="perm" data-testid="tab-permission">Permission</TabsTrigger>
+            <TabsTrigger value="perm" data-testid="tab-permission">Permission per Role</TabsTrigger>
+            <TabsTrigger value="user-perm" data-testid="tab-user-permission">Permission per User</TabsTrigger>
           </TabsList>
           <TabsContent value="perm" className="mt-0">
             <PermissionMatrixEditor />
+          </TabsContent>
+          <TabsContent value="user-perm" className="mt-0">
+            <UserPermissionEditor />
           </TabsContent>
           <TabsContent value="team" className="mt-0">
 

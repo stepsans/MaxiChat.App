@@ -8,6 +8,6 @@
 import type { PermissionCell } from './permissionCell';
 
 /**
- * Map of menu key → permission cell. Keys are knowledge, products, flows, analytics, credentials, chats, statuses, settings, channels.
+ * Map of menu key → cell to override. Pass null to clear all overrides and inherit the role default.
  */
-export interface RoleMatrix {[key: string]: PermissionCell}
+export type UpdateUserPermissionRequestOverrides = {[key: string]: PermissionCell} | null;
