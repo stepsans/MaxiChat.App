@@ -27,7 +27,9 @@ export const LoginResponse = zod.object({
   "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
   "name": zod.string().nullish(),
   "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal(null)]).nullish(),
-  "parentUserId": zod.number().nullish()
+  "parentUserId": zod.number().nullish(),
+  "profilePhotoUrl": zod.string().nullish(),
+  "companyName": zod.string().nullish()
 })
 
 
@@ -51,7 +53,9 @@ export const GetMeResponse = zod.object({
   "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
   "name": zod.string().nullish(),
   "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal(null)]).nullish(),
-  "parentUserId": zod.number().nullish()
+  "parentUserId": zod.number().nullish(),
+  "profilePhotoUrl": zod.string().nullish(),
+  "companyName": zod.string().nullish()
 }),zod.null()])
 })
 

@@ -339,29 +339,38 @@ export default function Layout({
           <ThemeSwitcher collapsed={collapsed} />
         </div>
 
-        {/* Account: email + logout */}
+        {/* Account: avatar + role/name/company + logout */}
         {user && (
           <div
             className={cn(
               "border-t border-border flex items-center",
-              collapsed ? "px-2 py-3 justify-center" : "px-3 py-2 gap-2"
+              collapsed ? "px-2 py-3 justify-center" : "px-3 py-2.5 gap-2.5"
             )}
           >
+            <AccountAvatar
+              url={user.profilePhotoUrl}
+              name={user.name ?? user.email}
+            />
             {!collapsed && (
               <div
                 className="flex-1 min-w-0 text-[11px] leading-tight"
                 data-testid="account-email"
               >
-                <div className="text-foreground/60">
+                <div className="text-foreground/60 text-[10px]">
                   {user.teamRole === "super_admin"
                     ? "Super Admin"
                     : user.teamRole === "supervisor"
                       ? "Supervisor"
                       : "Agen"}
                 </div>
-                <div className="font-medium truncate text-foreground/90">
+                <div className="font-semibold truncate text-foreground/95">
                   {user.name ?? user.email}
                 </div>
+                {user.companyName && (
+                  <div className="text-foreground/55 text-[10px] truncate">
+                    {user.companyName}
+                  </div>
+                )}
               </div>
             )}
             <Tooltip>
@@ -390,6 +399,38 @@ export default function Layout({
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {children}
       </main>
+    </div>
+  );
+}
+
+// Round account avatar shown in the sidebar footer. Falls back to a
+// gradient circle with the user's initial when no photo is set so the
+// row always renders something recognizable.
+function AccountAvatar({
+  url,
+  name,
+}: {
+  url?: string | null;
+  name?: string | null;
+}) {
+  const initial = (name?.trim()[0] ?? "?").toUpperCase();
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name ?? "Akun"}
+        className="w-9 h-9 rounded-full object-cover ring-2 ring-sidebar-border flex-shrink-0"
+        data-testid="account-avatar"
+      />
+    );
+  }
+  return (
+    <div
+      className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 ring-2 ring-sidebar-border"
+      data-testid="account-avatar-fallback"
+      aria-label={name ?? "Akun"}
+    >
+      {initial}
     </div>
   );
 }

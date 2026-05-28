@@ -524,6 +524,10 @@ export interface AuthUser {
   plan?: AuthUserPlan;
   /** @nullable */
   parentUserId?: number | null;
+  /** @nullable */
+  profilePhotoUrl?: string | null;
+  /** @nullable */
+  companyName?: string | null;
 }
 
 export type TeamAgentTeamRole = typeof TeamAgentTeamRole[keyof typeof TeamAgentTeamRole];

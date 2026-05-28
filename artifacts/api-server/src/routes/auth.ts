@@ -198,6 +198,8 @@ router.get("/me", async (req, res): Promise<void> => {
         name: usersTable.name,
         plan: usersTable.plan,
         parentUserId: usersTable.parentUserId,
+        profilePhotoUrl: usersTable.profilePhotoUrl,
+        companyName: usersTable.companyName,
       })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
@@ -214,6 +216,19 @@ router.get("/me", async (req, res): Promise<void> => {
         ? row.teamRole
         : "super_admin";
     if (req.session.teamRole !== tr) req.session.teamRole = tr;
+    // Resolve the company label: an agent/supervisor inherits their
+    // owner's company name (they don't have their own), super_admin uses
+    // their own row. We do a second lookup only when needed so the
+    // common case (super_admin) stays a single query.
+    let companyName: string | null = row.companyName ?? null;
+    if (!companyName && row.parentUserId) {
+      const [owner] = await db
+        .select({ companyName: usersTable.companyName })
+        .from(usersTable)
+        .where(eq(usersTable.id, row.parentUserId))
+        .limit(1);
+      companyName = owner?.companyName ?? null;
+    }
     res.json({
       user: {
         id: row.id,
@@ -224,6 +239,8 @@ router.get("/me", async (req, res): Promise<void> => {
         name: row.name,
         plan: row.plan,
         parentUserId: row.parentUserId,
+        profilePhotoUrl: row.profilePhotoUrl ?? null,
+        companyName,
       },
     });
   } catch (err) {

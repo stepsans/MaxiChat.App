@@ -22,4 +22,8 @@ export interface AuthUser {
   plan?: AuthUserPlan;
   /** @nullable */
   parentUserId?: number | null;
+  /** @nullable */
+  profilePhotoUrl?: string | null;
+  /** @nullable */
+  companyName?: string | null;
 }
