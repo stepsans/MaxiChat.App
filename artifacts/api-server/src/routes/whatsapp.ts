@@ -7,7 +7,6 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import { db } from "@workspace/db";
 import {
-  whatsappSessionTable,
   chatsTable,
   chatMessagesTable,
   knowledgeTable,
@@ -133,26 +132,34 @@ async function syncChannelStatus(
     // /api/channels/:id/qr) can surface it even for non-primary channels.
     // Pass `null` to clear, `undefined` to leave untouched.
     qrCode?: string | null;
+    // ISO timestamp of when the socket reached connection.open. Persisted
+    // into channels.metadata.connectedAt so the legacy /whatsapp/status
+    // shape can surface it. Pass `null` to clear, `undefined` to leave
+    // untouched.
+    connectedAt?: string | null;
   }
 ): Promise<void> {
   try {
-    const { qrCode, ...statusPatch } = patch;
-    if (qrCode === undefined) {
+    const { qrCode, connectedAt, ...statusPatch } = patch;
+    const touchesMetadata = qrCode !== undefined || connectedAt !== undefined;
+    if (!touchesMetadata) {
       await db
         .update(channelsTable)
         .set({ ...statusPatch, updatedAt: new Date() })
         .where(eq(channelsTable.id, channelId));
       return;
     }
-    // Merge qrCode into existing metadata so we don't clobber other
-    // kind-specific fields a future integration may have stashed there.
+    // Merge into existing metadata so we don't clobber other kind-specific
+    // fields a future integration may have stashed there.
     const existing = await db
       .select({ metadata: channelsTable.metadata })
       .from(channelsTable)
       .where(eq(channelsTable.id, channelId))
       .limit(1);
     const prev = (existing[0]?.metadata as Record<string, unknown> | null) ?? {};
-    const nextMeta = { ...prev, qrCode };
+    const nextMeta: Record<string, unknown> = { ...prev };
+    if (qrCode !== undefined) nextMeta.qrCode = qrCode;
+    if (connectedAt !== undefined) nextMeta.connectedAt = connectedAt;
     await db
       .update(channelsTable)
       .set({ ...statusPatch, metadata: nextMeta, updatedAt: new Date() })
@@ -675,37 +682,6 @@ export async function sendContactToJid(
     },
   });
   return sent?.key?.id ?? null;
-}
-
-// Fetch (or lazily create) this user's whatsapp_session row. One row per
-// user is enforced by the unique index installed in seed.ts
-// (`whatsapp_session_user_id_key`). We use an atomic upsert so concurrent
-// callers (e.g. /connect + /status polling on first login) can't race into
-// duplicate rows. `onConflictDoUpdate` with a no-op SET is required because
-// `onConflictDoNothing` returns no row when there's a conflict.
-async function getOrCreateSession(userId: number) {
-  const [row] = await db
-    .insert(whatsappSessionTable)
-    .values({ userId, status: "disconnected" })
-    .onConflictDoUpdate({
-      target: whatsappSessionTable.userId,
-      set: { userId },
-    })
-    .returning();
-  return row;
-}
-
-async function setStatus(
-  id: number,
-  status: string,
-  opts: { qrCode?: string | null; phoneNumber?: string | null; connectedAt?: Date | null } = {}
-) {
-  const [updated] = await db
-    .update(whatsappSessionTable)
-    .set({ status, updatedAt: new Date(), ...opts })
-    .where(eq(whatsappSessionTable.id, id))
-    .returning();
-  return updated;
 }
 
 // Extracts pin/archive metadata from a Baileys chat object.
@@ -1982,8 +1958,6 @@ async function startBaileys(userId: number, channelId: number) {
   if (ctx.isConnecting || (ctx.sock && (ctx.sock as any).ws?.readyState === 1)) return;
   ctx.isConnecting = true;
   const myEpoch = ++ctx.epoch;
-  const session = await getOrCreateSession(userId);
-  const sessionId = session.id;
 
   try {
     const {
@@ -2018,10 +1992,7 @@ async function startBaileys(userId: number, channelId: number) {
 
       if (qr) {
         const dataUrl = await qrcode.toDataURL(qr, { width: 256, margin: 1 });
-        await setStatus(sessionId, "qr_ready", { qrCode: dataUrl });
-        // Per-channel mirror so the new GET /api/channels/:id/qr endpoint
-        // works for non-primary channels (the legacy session row is
-        // per-user, not per-channel).
+        // Per-channel pairing state lives on the channels row.
         void syncChannelStatus(channelId, {
           status: "qr_ready",
           qrCode: dataUrl,
@@ -2048,9 +2019,12 @@ async function startBaileys(userId: number, channelId: number) {
                 "WhatsApp number already paired to another account; rejecting connection"
               );
               ctx.ownerPhone = null;
-              await setStatus(sessionId, "disconnected", {
+              // Await so the channel row reflects 'disconnected' before
+              // we tear down the socket — UI polling must not see a stale
+              // qr_ready/connecting state after rejection.
+              await syncChannelStatus(channelId, {
+                status: "disconnected",
                 qrCode: null,
-                phoneNumber: null,
                 connectedAt: null,
               });
               try {
@@ -2065,9 +2039,9 @@ async function startBaileys(userId: number, channelId: number) {
               "Failed to persist user_whatsapp mapping; refusing to expose ownerPhone"
             );
             ctx.ownerPhone = null;
-            await setStatus(sessionId, "disconnected", {
+            await syncChannelStatus(channelId, {
+              status: "disconnected",
               qrCode: null,
-              phoneNumber: null,
               connectedAt: null,
             });
             try {
@@ -2081,18 +2055,15 @@ async function startBaileys(userId: number, channelId: number) {
         } else {
           ctx.ownerPhone = null;
         }
-        await setStatus(sessionId, "connected", {
-          qrCode: null,
-          phoneNumber,
-          connectedAt: new Date(),
-        });
-        // Multi-channel mirror: keep channels.status / channels.owner_phone
-        // in lockstep with the live ctx. The frontend switcher reads
-        // these to render per-channel connectivity dots.
+        // Keep channels.status / channels.owner_phone in lockstep with the
+        // live ctx. The frontend switcher reads these to render per-channel
+        // connectivity dots. connectedAt is persisted so the legacy
+        // /whatsapp/status response shape stays accurate after E1.
         void syncChannelStatus(channelId, {
           status: "connected",
           ownerPhone: normalised,
           qrCode: null,
+          connectedAt: new Date().toISOString(),
         });
         ctx.isConnecting = false;
       }
@@ -2100,18 +2071,19 @@ async function startBaileys(userId: number, channelId: number) {
       if (connection === "close") {
         const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        await setStatus(sessionId, "disconnected", {
-          qrCode: null,
-          phoneNumber: null,
-          connectedAt: null,
-        });
+        // Clear connectedAt so the legacy /whatsapp/status no longer
+        // reports a stale connection time after a drop.
         // Channel mirror: socket dropped. We deliberately do NOT clear
         // channels.owner_phone here — the binding (this channel "owns"
         // this number) survives transient network drops, matching the
         // pre-migration behavior of user_whatsapp. Hard unpair is the
         // /disconnect endpoint, which also leaves owner_phone (see the
         // note there).
-        void syncChannelStatus(channelId, { status: "disconnected", qrCode: null });
+        void syncChannelStatus(channelId, {
+          status: "disconnected",
+          qrCode: null,
+          connectedAt: null,
+        });
         ctx.sock = null;
         ctx.isConnecting = false;
         ctx.ownerPhone = null;
@@ -2363,7 +2335,13 @@ async function startBaileys(userId: number, channelId: number) {
   } catch (err) {
     ctx.isConnecting = false;
     ctx.sock = null;
-    await setStatus(sessionId, "disconnected");
+    // Await so callers observing /whatsapp/status right after a thrown
+    // startBaileys don't see stale connecting/qr_ready state.
+    await syncChannelStatus(channelId, {
+      status: "disconnected",
+      qrCode: null,
+      connectedAt: null,
+    });
     throw err;
   }
 }
@@ -2485,19 +2463,51 @@ export async function initWhatsapp() {
 
 const router = Router();
 
+// Read the primary WhatsApp channel and project it onto the legacy
+// WhatsappStatus shape. The whatsapp_session table is gone — channels is
+// now the single source of truth for per-channel pairing state.
+async function readPrimaryChannelStatus(userId: number): Promise<{
+  status: string;
+  qrCode: string | null;
+  phoneNumber: string | null;
+  connectedAt: string | null;
+}> {
+  const channelId = await ensurePrimaryWhatsappChannelForUser(userId);
+  const [row] = await db
+    .select({
+      status: channelsTable.status,
+      ownerPhone: channelsTable.ownerPhone,
+      metadata: channelsTable.metadata,
+      updatedAt: channelsTable.updatedAt,
+    })
+    .from(channelsTable)
+    .where(eq(channelsTable.id, channelId))
+    .limit(1);
+  const meta = (row?.metadata as Record<string, unknown> | null) ?? {};
+  const qrCode = typeof meta.qrCode === "string" ? (meta.qrCode as string) : null;
+  const status = row?.status ?? "disconnected";
+  const isConnected = status === "connected";
+  // Preserve legacy contract: phoneNumber + connectedAt only when actually
+  // connected. (Pre-E1 `whatsapp_session` cleared both on disconnect.)
+  // connectedAt is stored on channels.metadata.connectedAt by the
+  // connection.open handler so it survives non-status `updatedAt` bumps.
+  const connectedAtRaw =
+    typeof meta.connectedAt === "string" ? (meta.connectedAt as string) : null;
+  return {
+    status,
+    qrCode,
+    phoneNumber: isConnected ? row?.ownerPhone ?? null : null,
+    connectedAt: isConnected ? connectedAtRaw : null,
+  };
+}
+
 router.get("/status", async (req, res): Promise<void> => {
   try {
     const userId = requireUserId(req);
     // Invited team members (supervisor / agent) share the super_admin's
-    // pairing — read the session off the owner row, not their own.
+    // pairing — read state off the owner row, not their own.
     const ownerUserId = await resolveOwnerUserId(userId);
-    const session = await getOrCreateSession(ownerUserId);
-    res.json({
-      status: session.status,
-      qrCode: session.qrCode ?? null,
-      phoneNumber: session.phoneNumber ?? null,
-      connectedAt: session.connectedAt?.toISOString() ?? null,
-    });
+    res.json(await readPrimaryChannelStatus(ownerUserId));
   } catch (err) {
     req.log.error({ err }, "Failed to get WhatsApp status");
     res.status(500).json({ error: "Internal server error" });
@@ -2515,21 +2525,16 @@ router.post("/connect", async (req, res): Promise<void> => {
       });
       return;
     }
-    const session = await getOrCreateSession(userId);
-    if (session.status === "connected") {
-      res.json({
-        status: session.status,
-        qrCode: null,
-        phoneNumber: session.phoneNumber ?? null,
-        connectedAt: session.connectedAt?.toISOString() ?? null,
-      });
+    const current = await readPrimaryChannelStatus(userId);
+    if (current.status === "connected") {
+      res.json(current);
       return;
     }
-    await setStatus(session.id, "connecting");
     // Primary-channel pairing (back-compat for the legacy single-channel
     // /connect endpoint). Per-channel pairing for non-primary channels
     // lives at POST /api/channels/:id/pair in Phase C.
     const channelId = await ensurePrimaryWhatsappChannelForUser(userId);
+    void syncChannelStatus(channelId, { status: "connecting" });
     startBaileys(userId, channelId).catch((err) =>
       req.log.error({ err }, "Baileys start failed")
     );
@@ -2625,20 +2630,18 @@ router.post("/disconnect", async (req, res): Promise<void> => {
     // dashboard returns an empty list. When the SAME number scans QR again,
     // its history reappears; a DIFFERENT number sees its own clean slate.
     ctx.ownerPhone = null;
-    const session = await getOrCreateSession(userId);
-    const updated = await setStatus(session.id, "disconnected", {
+    // Surface the disconnect on the channels table. Matches the
+    // pre-migration behavior of leaving the owner_phone binding in place
+    // (see the note on the connection.close handler) — a re-pair of the
+    // SAME number reuses the same channel without re-creating it; pairing
+    // a DIFFERENT number on this channel will update ownerPhone via
+    // syncChannelStatus in connection.open.
+    await syncChannelStatus(channelId, {
+      status: "disconnected",
       qrCode: null,
-      phoneNumber: null,
       connectedAt: null,
     });
-    // Channel mirror: surface the disconnect on the channels table too.
-    // Matches the pre-migration behavior of leaving the owner_phone
-    // binding in place (see the note on the connection.close handler) —
-    // a re-pair of the SAME number reuses the same channel without
-    // re-creating it; pairing a DIFFERENT number on this channel will
-    // update ownerPhone via syncChannelStatus in connection.open.
-    void syncChannelStatus(channelId, { status: "disconnected", qrCode: null });
-    res.json({ status: updated.status, qrCode: null, phoneNumber: null, connectedAt: null });
+    res.json({ status: "disconnected", qrCode: null, phoneNumber: null, connectedAt: null });
   } catch (err) {
     req.log.error({ err }, "Failed to disconnect WhatsApp");
     res.status(500).json({ error: "Internal server error" });

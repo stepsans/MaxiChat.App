@@ -6,7 +6,6 @@ import {
   db,
   usersTable,
   userWhatsappTable,
-  whatsappSessionTable,
   channelsTable,
 } from "@workspace/db";
 import { logger } from "./logger";
@@ -81,7 +80,6 @@ export async function runSeed(): Promise<void> {
   // Must run before any request hits the session middleware, since the
   // express-session store assumes the table exists.
   await ensureSessionTable();
-  await ensureWhatsappSessionUniqueUser();
 
   const userIdsByEmail = new Map<string, number>();
   for (const seed of SEED_USERS) {
@@ -134,12 +132,6 @@ export async function runSeed(): Promise<void> {
       .insert(userWhatsappTable)
       .values({ userId, ownerPhone: stephen.ownerPhone! })
       .onConflictDoNothing({ target: userWhatsappTable.userId });
-
-    // Backfill any pre-auth whatsapp_session row that has no userId set yet.
-    await db
-      .update(whatsappSessionTable)
-      .set({ userId })
-      .where(sql`${whatsappSessionTable.userId} IS NULL`);
 
     migrateLegacyAuthDir(userId);
   }
@@ -194,34 +186,6 @@ export async function ensureSessionTable(): Promise<void> {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire"
       ON "user_sessions" ("expire");
-  `);
-}
-
-// Enforce "one whatsapp_session row per user" at the DB layer so concurrent
-// `getOrCreateSession()` calls can't race into duplicate rows. We dedupe
-// any pre-existing duplicates first (keep the lowest id per user) so index
-// creation can't fail.
-//
-// We use a NON-partial unique index because `ON CONFLICT (user_id)` will
-// only match an index whose predicate is provably true for the inserted
-// row, and Drizzle's onConflictDoUpdate API doesn't expose a way to attach
-// the WHERE clause. Postgres treats NULLs as distinct in a regular unique
-// index, so the legacy null-userId case (if any survives) still inserts.
-export async function ensureWhatsappSessionUniqueUser(): Promise<void> {
-  await db.execute(sql`
-    DELETE FROM "whatsapp_session" a
-    USING "whatsapp_session" b
-    WHERE a.user_id IS NOT NULL
-      AND a.user_id = b.user_id
-      AND a.id > b.id;
-  `);
-  // Drop the older partial index if a prior boot installed it.
-  await db.execute(sql`
-    DROP INDEX IF EXISTS "whatsapp_session_user_id_unique";
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "whatsapp_session_user_id_key"
-      ON "whatsapp_session" ("user_id");
   `);
 }
 

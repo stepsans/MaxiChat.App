@@ -345,8 +345,10 @@ async function authorizedChatWhere(req: Request, res: Response, chatId: number) 
   const teamRole = await getEffectiveTeamRole(userId);
   // Cast to any[] so Drizzle generates `channel_id = ANY($1)` (single param
   // expansion) regardless of how many ids are in scope.
-  const base = sql`${chatsTable.id} = ${chatId}
-    AND ${chatsTable.channelId} = ANY(${scope.channelIds as unknown as number[]})`;
+  const base = and(
+    eq(chatsTable.id, chatId),
+    inArray(chatsTable.channelId, scope.channelIds)
+  )!;
   const where =
     teamRole === "agent"
       ? sql`${base} AND ${chatsTable.assignedUserId} = ${userId}`
@@ -407,10 +409,10 @@ router.get("/", async (req, res): Promise<void> => {
     // Role-aware filter: agents only see chats explicitly assigned to them;
     // supervisors and the super_admin see everything under the channel scope.
     const teamRole = req.session.teamRole ?? "super_admin";
-    const channelFilter = sql`${chatsTable.channelId} = ANY(${scope.channelIds as unknown as number[]})`;
+    const channelFilter = inArray(chatsTable.channelId, scope.channelIds);
     const baseWhere =
       teamRole === "agent"
-        ? sql`${channelFilter} AND ${chatsTable.assignedUserId} = ${userId}`
+        ? and(channelFilter, eq(chatsTable.assignedUserId, userId))!
         : channelFilter;
 
     // Sort: (1) pinned chats first (most recently pinned at top),
