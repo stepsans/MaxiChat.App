@@ -19,6 +19,7 @@ const PLAN_LIMITS = {
   basic: 2,
   pro: 5,
   business: 15,
+  enterprise: 100,
 } as const satisfies Record<string, number>;
 
 type Plan = keyof typeof PLAN_LIMITS;

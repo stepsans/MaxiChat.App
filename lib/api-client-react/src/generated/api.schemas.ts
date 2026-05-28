@@ -628,6 +628,7 @@ export const AuthUserPlan = {
   basic: 'basic',
   pro: 'pro',
   business: 'business',
+  enterprise: 'enterprise',
 } as const;
 
 export interface AuthUser {
@@ -686,6 +687,7 @@ export const TeamListingPlan = {
   basic: 'basic',
   pro: 'pro',
   business: 'business',
+  enterprise: 'enterprise',
 } as const;
 
 export type TeamListingTeamRole = typeof TeamListingTeamRole[keyof typeof TeamListingTeamRole];

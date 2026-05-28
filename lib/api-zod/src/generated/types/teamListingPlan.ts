@@ -13,4 +13,5 @@ export const TeamListingPlan = {
   basic: 'basic',
   pro: 'pro',
   business: 'business',
+  enterprise: 'enterprise',
 } as const;

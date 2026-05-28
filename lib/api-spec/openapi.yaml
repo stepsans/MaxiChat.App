@@ -2747,7 +2747,7 @@ components:
           type: ["string", "null"]
         plan:
           type: ["string", "null"]
-          enum: [basic, pro, business, null]
+          enum: [basic, pro, business, enterprise, null]
         parentUserId:
           type: ["integer", "null"]
         profilePhotoUrl:
@@ -2780,7 +2780,7 @@ components:
       properties:
         plan:
           type: string
-          enum: [basic, pro, business]
+          enum: [basic, pro, business, enterprise]
         maxAgents: { type: integer }
         usedAgents: { type: integer }
         teamRole:

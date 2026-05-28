@@ -26,7 +26,7 @@ export const LoginResponse = zod.object({
   "status": zod.enum(['pending', 'active', 'disabled']),
   "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
   "name": zod.string().nullish(),
-  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal(null)]).nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
   "parentUserId": zod.number().nullish(),
   "profilePhotoUrl": zod.string().nullish(),
   "companyName": zod.string().nullish()
@@ -52,7 +52,7 @@ export const GetMeResponse = zod.object({
   "status": zod.enum(['pending', 'active', 'disabled']),
   "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
   "name": zod.string().nullish(),
-  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal(null)]).nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
   "parentUserId": zod.number().nullish(),
   "profilePhotoUrl": zod.string().nullish(),
   "companyName": zod.string().nullish()
@@ -1267,7 +1267,7 @@ export const ListCredentialSpreadsheetTabsResponse = zod.array(ListCredentialSpr
  * @summary List team members for the current owner account
  */
 export const ListAgentsResponse = zod.object({
-  "plan": zod.enum(['basic', 'pro', 'business']),
+  "plan": zod.enum(['basic', 'pro', 'business', 'enterprise']),
   "maxAgents": zod.number(),
   "usedAgents": zod.number(),
   "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
