@@ -5,3 +5,4 @@
 - [OAuth callback HTML XSS](oauth-html-callback-xss.md) — error/email/detail are attacker-controllable; escape `& < > " '` everywhere, not just `<`.
 - [Sync-config tenant binding](sync-config-tenant-binding.md) — per-ownerPhone configs (sheet sync etc.) must include userId + filter every read/write, or a phone reassignment leaks the prior tenant's binding.
 - [Multi-resource migration pattern](multi-resource-migration-pattern.md) — transition tenancy keys via phased nullable column → backfill → route refactor → tighten; never cut-over in one step.
+- [drizzle sql tag spreads JS arrays](drizzle-sql-array-tuple.md) — `sql\`COALESCE(col, ${jsArr})\`` produces `($1,$2,…)` not `ARRAY[…]::T[]`; fatal for array columns, use `sql.join` + explicit cast.

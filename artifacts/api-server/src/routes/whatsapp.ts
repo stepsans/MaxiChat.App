@@ -1244,7 +1244,15 @@ async function persistWaMessage(
         fillSet.senderName = sql`COALESCE(${chatMessagesTable.senderName}, ${parsed.senderName})`;
       }
       if (parsed.mentionedPhoneDigits.length) {
-        fillSet.mentionedPhoneDigits = sql`COALESCE(${chatMessagesTable.mentionedPhoneDigits}, ${parsed.mentionedPhoneDigits})`;
+        // drizzle's `sql` tag spreads a JS array into an SQL tuple `($1,$2,…)`,
+        // which is incompatible with a text[] column. Build an explicit
+        // `ARRAY[$1,$2,…]::text[]` literal so a single param stays a 1-element
+        // array and an N-element array stays N-element.
+        const mentionedArr = sql`ARRAY[${sql.join(
+          parsed.mentionedPhoneDigits.map((d) => sql`${d}`),
+          sql`, `,
+        )}]::text[]`;
+        fillSet.mentionedPhoneDigits = sql`COALESCE(${chatMessagesTable.mentionedPhoneDigits}, ${mentionedArr})`;
       }
       if (Object.keys(fillSet).length > 0) {
         await db
