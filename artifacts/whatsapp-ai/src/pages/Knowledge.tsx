@@ -57,6 +57,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import KnowledgeSyncCard from "@/components/KnowledgeSyncCard";
+import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 
 const TYPE_COLOR_PALETTE = [
   "bg-orange-500/10 text-orange-400 border-orange-500/20",
@@ -79,6 +80,7 @@ const entrySchema = z.object({
   type: z.string().min(1, "Type is required"),
   title: z.string().min(1, "Title is required"),
   content: z.string().min(1, "Content is required"),
+  channelIds: z.array(z.number().int().positive()).default([]),
 });
 
 type EntryForm = z.infer<typeof entrySchema>;
@@ -88,6 +90,7 @@ type KnowledgeEntry = {
   type: string;
   title: string;
   content: string;
+  channelIds: number[];
   createdAt: string;
   updatedAt: string;
 };
@@ -252,13 +255,13 @@ export default function Knowledge() {
 
   const form = useForm<EntryForm>({
     resolver: zodResolver(entrySchema),
-    defaultValues: { type: "product", title: "", content: "" },
+    defaultValues: { type: "product", title: "", content: "", channelIds: [] },
   });
 
   const openCreate = () => {
     setEditEntry(null);
     const defaultType = typeList[0]?.value ?? "product";
-    form.reset({ type: defaultType, title: "", content: "" });
+    form.reset({ type: defaultType, title: "", content: "", channelIds: [] });
     setDialogOpen(true);
   };
 
@@ -268,6 +271,7 @@ export default function Knowledge() {
       type: entry.type,
       title: entry.title,
       content: entry.content,
+      channelIds: entry.channelIds ?? [],
     });
     setDialogOpen(true);
   };
@@ -505,6 +509,21 @@ export default function Knowledge() {
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="channelIds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Berlaku di channel</FormLabel>
+                    <ChannelMultiSelect
+                      value={field.value ?? []}
+                      onChange={field.onChange}
+                      testIdPrefix="knowledge-channels"
+                    />
                     <FormMessage />
                   </FormItem>
                 )}

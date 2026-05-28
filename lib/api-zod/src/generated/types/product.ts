@@ -53,6 +53,8 @@ export interface Product {
      * @maxItems 10
      */
   videoUrls: string[];
+  /** Channels this product is scoped to. Empty array = global (available on every channel the owner has). */
+  channelIds: number[];
   createdAt: string;
   updatedAt: string;
 }

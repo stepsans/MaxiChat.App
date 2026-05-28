@@ -2016,10 +2016,13 @@ components:
 
     Chat:
       type: object
-      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId]
+      required: [id, channelId, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId]
       properties:
         id:
           type: integer
+        channelId:
+          type: ["integer", "null"]
+          description: "Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the 'All channels' aggregate view."
         phoneNumber:
           type: string
         contactName:
@@ -2175,7 +2178,7 @@ components:
 
     KnowledgeEntry:
       type: object
-      required: [id, type, title, content, createdAt, updatedAt]
+      required: [id, type, title, content, channelIds, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -2185,6 +2188,11 @@ components:
           type: string
         content:
           type: string
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Channels this entry is scoped to. Empty array = global (available on every channel the owner has)."
         createdAt:
           type: string
         updatedAt:
@@ -2200,6 +2208,11 @@ components:
           type: string
         content:
           type: string
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Optional channel scope. Omit (or pass empty array) for global; pass channel ids to restrict."
 
     KnowledgeUpdate:
       type: object
@@ -2210,6 +2223,11 @@ components:
           type: string
         content:
           type: string
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Pass to replace the assignment set. Omit to leave assignments unchanged; pass [] to make the entry global."
 
     KnowledgeType:
       type: object
@@ -2300,7 +2318,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, flyerUrl, productUrl, videoUrls, createdAt, updatedAt]
+      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -2341,6 +2359,11 @@ components:
             type: string
           description: "Up to 10 video URLs per product"
           maxItems: 10
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Channels this product is scoped to. Empty array = global (available on every channel the owner has)."
         createdAt:
           type: string
         updatedAt:
@@ -2736,7 +2759,7 @@ components:
 
     TextShortcut:
       type: object
-      required: [id, shortcut, replacement]
+      required: [id, shortcut, replacement, channelIds]
       properties:
         id:
           type: integer
@@ -2744,6 +2767,11 @@ components:
           type: string
         replacement:
           type: string
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Channels this shortcut is scoped to. Empty array = global."
 
     TextShortcutInput:
       type: object
@@ -2758,6 +2786,11 @@ components:
           type: string
           minLength: 1
           maxLength: 4000
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Optional channel scope. Omit / [] for global; pass channel ids to restrict."
 
     PostStatusInput:
       type: object

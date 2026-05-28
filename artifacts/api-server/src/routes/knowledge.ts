@@ -19,6 +19,12 @@ import {
   requireOwnerUserId,
   getOwnerPrimaryPhone,
 } from "../lib/channel-context";
+import {
+  parseChannelIdsInput,
+  replaceChannelAssignments,
+  verifyChannelOwnership,
+  loadChannelIdsBatch,
+} from "../lib/channel-assignments";
 
 const router = Router();
 // Agen tidak boleh add/edit/delete/import — semua mutasi knowledge butuh
@@ -181,9 +187,14 @@ router.get("/", async (req, res): Promise<void> => {
       .from(knowledgeTable)
       .where(eq(knowledgeTable.userId, ownerUserId))
       .orderBy(knowledgeTable.createdAt);
+    const joins = await loadChannelIdsBatch(
+      "knowledge",
+      entries.map((e) => e.id)
+    );
     res.json(
       entries.map((e) => ({
         ...e,
+        channelIds: joins.get(e.id) ?? [],
         createdAt: e.createdAt.toISOString(),
         updatedAt: e.updatedAt.toISOString(),
       }))
@@ -199,6 +210,12 @@ router.post("/", async (req, res): Promise<void> => {
     const parsed = CreateKnowledgeBody.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
+    const channelIds = parseChannelIdsInput(req.body?.channelIds);
+    if (channelIds === "invalid") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
+
     const owner = await resolveWriteOwner(
       req,
       res,
@@ -206,17 +223,37 @@ router.post("/", async (req, res): Promise<void> => {
     );
     if (!owner) return;
 
+    // `parsed.data` may contain `channelIds` once codegen picks it up; that
+    // field isn't a column on knowledgeTable so we strip it before insert.
+    const { channelIds: _ignored, ...insertable } = parsed.data as typeof parsed.data & {
+      channelIds?: unknown;
+    };
+    void _ignored;
+
     const [entry] = await db
       .insert(knowledgeTable)
       .values({
-        ...parsed.data,
+        ...insertable,
         ownerPhone: owner.ownerPhone,
         userId: owner.ownerUserId,
       })
       .returning();
 
+    const assigned = await replaceChannelAssignments(
+      "knowledge",
+      entry.id,
+      channelIds,
+      owner.ownerUserId
+    );
+    if (assigned === "forbidden") {
+      await db.delete(knowledgeTable).where(eq(knowledgeTable.id, entry.id));
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
+
     res.status(201).json({
       ...entry,
+      channelIds: channelIds ?? [],
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
     });
@@ -234,12 +271,30 @@ router.put("/:id", async (req, res): Promise<void> => {
     const bodyParsed = UpdateKnowledgeBody.safeParse(req.body);
     if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
+    const channelIds = parseChannelIdsInput(req.body?.channelIds);
+    if (channelIds === "invalid") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
+
     const ownerUserId = await requireOwnerUserId(req, res);
     if (ownerUserId == null) return;
 
+    // Pre-flight ownership check so a forbidden channelId fails the request
+    // BEFORE the row update commits (avoids partial writes).
+    if ((await verifyChannelOwnership(ownerUserId, channelIds)) === "forbidden") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
+
+    const { channelIds: _ignored, ...patch } = bodyParsed.data as typeof bodyParsed.data & {
+      channelIds?: unknown;
+    };
+    void _ignored;
+
     const [updated] = await db
       .update(knowledgeTable)
-      .set({ ...bodyParsed.data, updatedAt: new Date() })
+      .set({ ...patch, updatedAt: new Date() })
       .where(
         and(
           eq(knowledgeTable.id, idParsed.data.id),
@@ -250,8 +305,12 @@ router.put("/:id", async (req, res): Promise<void> => {
 
     if (!updated) { res.status(404).json({ error: "Entry not found" }); return; }
 
+    await replaceChannelAssignments("knowledge", updated.id, channelIds, ownerUserId);
+    const joins = await loadChannelIdsBatch("knowledge", [updated.id]);
+
     res.json({
       ...updated,
+      channelIds: joins.get(updated.id) ?? [],
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
     });

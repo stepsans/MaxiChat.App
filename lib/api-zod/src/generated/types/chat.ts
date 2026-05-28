@@ -10,6 +10,11 @@ import type { ChatTag } from './chatTag';
 
 export interface Chat {
   id: number;
+  /**
+     * Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the 'All channels' aggregate view.
+     * @nullable
+     */
+  channelId: number | null;
   phoneNumber: string;
   contactName: string;
   /** @nullable */

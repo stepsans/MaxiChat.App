@@ -66,6 +66,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { resolveImageSrc } from "@/lib/utils";
 import ProductSyncCard from "@/components/ProductSyncCard";
+import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 
 type Product = {
   id: number;
@@ -82,6 +83,7 @@ type Product = {
   flyerUrl: string | null;
   productUrl: string | null;
   videoUrls: string[];
+  channelIds: number[];
   createdAt: string;
   updatedAt: string;
 };
@@ -224,6 +226,7 @@ export default function Products() {
   };
   const [form, setForm] = useState({ ...emptyForm });
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [channelIds, setChannelIds] = useState<number[]>([]);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [uploadingImg, setUploadingImg] = useState(false);
   const imgInputRef = useRef<HTMLInputElement | null>(null);
@@ -301,11 +304,13 @@ export default function Products() {
     setForm({ ...emptyForm });
     setImageUrl(null);
     setVideoUrls([]);
+    setChannelIds([]);
     setDialogOpen(true);
   };
 
   const openEdit = (p: Product) => {
     setEditing(p);
+    setChannelIds(p.channelIds ?? []);
     setForm({
       code: p.code,
       name: p.name,
@@ -379,6 +384,7 @@ export default function Products() {
       flyerUrl: form.flyerUrl.trim() ? form.flyerUrl.trim() : null,
       productUrl: strOrNull(form.productUrl),
       videoUrls: videoUrls.map((s) => s.trim()).filter((s) => s.length > 0).slice(0, 10),
+      channelIds,
     };
     if (editing) {
       update.mutate({ id: editing.id, data });
@@ -1029,6 +1035,16 @@ export default function Products() {
                   </div>
                 )}
               </div>
+            </div>
+            <div className="space-y-1.5 pt-2">
+              <label className="text-xs font-medium text-foreground">
+                Berlaku di channel
+              </label>
+              <ChannelMultiSelect
+                value={channelIds}
+                onChange={setChannelIds}
+                testIdPrefix="product-channels"
+              />
             </div>
           </div>
 

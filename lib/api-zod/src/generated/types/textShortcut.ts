@@ -10,4 +10,6 @@ export interface TextShortcut {
   id: number;
   shortcut: string;
   replacement: string;
+  /** Channels this shortcut is scoped to. Empty array = global. */
+  channelIds: number[];
 }

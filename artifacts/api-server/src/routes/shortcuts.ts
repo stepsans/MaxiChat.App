@@ -5,6 +5,12 @@ import {
   requireOwnerUserId,
   getOwnerPrimaryPhone,
 } from "../lib/channel-context";
+import {
+  parseChannelIdsInput,
+  replaceChannelAssignments,
+  verifyChannelOwnership,
+  loadChannelIdsBatch,
+} from "../lib/channel-assignments";
 
 const router = Router();
 
@@ -30,8 +36,11 @@ async function resolveWriteOwner(
   return { ownerUserId, ownerPhone };
 }
 
-function rowToDto(r: typeof textShortcutsTable.$inferSelect) {
-  return { id: r.id, shortcut: r.shortcut, replacement: r.replacement };
+function rowToDto(
+  r: typeof textShortcutsTable.$inferSelect,
+  channelIds: number[]
+) {
+  return { id: r.id, shortcut: r.shortcut, replacement: r.replacement, channelIds };
 }
 
 router.get("/", async (req, res): Promise<void> => {
@@ -43,7 +52,11 @@ router.get("/", async (req, res): Promise<void> => {
       .from(textShortcutsTable)
       .where(sql`${textShortcutsTable.userId} = ${ownerUserId}`)
       .orderBy(desc(textShortcutsTable.updatedAt));
-    res.json(rows.map(rowToDto));
+    const joins = await loadChannelIdsBatch(
+      "shortcut",
+      rows.map((r) => r.id)
+    );
+    res.json(rows.map((r) => rowToDto(r, joins.get(r.id) ?? [])));
   } catch (err) {
     req.log.error({ err }, "Failed to list shortcuts");
     res.status(500).json({ error: "Internal server error" });
@@ -64,6 +77,11 @@ router.post("/", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Replacement must be 1-4000 characters" });
       return;
     }
+    const channelIds = parseChannelIdsInput(req.body?.channelIds);
+    if (channelIds === "invalid") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
     try {
       const [row] = await db
         .insert(textShortcutsTable)
@@ -74,7 +92,20 @@ router.post("/", async (req, res): Promise<void> => {
           replacement,
         })
         .returning();
-      res.json(rowToDto(row));
+      const assigned = await replaceChannelAssignments(
+        "shortcut",
+        row.id,
+        channelIds,
+        owner.ownerUserId
+      );
+      if (assigned === "forbidden") {
+        await db
+          .delete(textShortcutsTable)
+          .where(sql`${textShortcutsTable.id} = ${row.id}`);
+        res.status(400).json({ error: "Invalid channelIds" });
+        return;
+      }
+      res.json(rowToDto(row, channelIds ?? []));
     } catch (err: any) {
       // 23505 = unique violation (per-user, lower(shortcut)).
       if (err?.code === "23505") {
@@ -104,6 +135,17 @@ router.put("/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid shortcut or replacement" });
       return;
     }
+    const channelIds = parseChannelIdsInput(req.body?.channelIds);
+    if (channelIds === "invalid") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
+    // Pre-flight ownership check so a forbidden channelId fails the request
+    // BEFORE the row update commits (avoids partial writes).
+    if ((await verifyChannelOwnership(ownerUserId, channelIds)) === "forbidden") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
     try {
       const [row] = await db
         .update(textShortcutsTable)
@@ -116,7 +158,9 @@ router.put("/:id", async (req, res): Promise<void> => {
         res.status(404).json({ error: "Shortcut not found" });
         return;
       }
-      res.json(rowToDto(row));
+      await replaceChannelAssignments("shortcut", row.id, channelIds, ownerUserId);
+      const joins = await loadChannelIdsBatch("shortcut", [row.id]);
+      res.json(rowToDto(row, joins.get(row.id) ?? []));
     } catch (err: any) {
       if (err?.code === "23505") {
         res.status(409).json({ error: "Shortcut sudah ada" });

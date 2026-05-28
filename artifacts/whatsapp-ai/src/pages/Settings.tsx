@@ -14,6 +14,7 @@ import {
   getListShortcutsQueryKey,
 } from "@workspace/api-client-react";
 import type { TextShortcut } from "@workspace/api-client-react";
+import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 import ShortcutSyncCard from "@/components/ShortcutSyncCard";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -434,9 +435,11 @@ function ShortcutsCard() {
 
   const [draftShortcut, setDraftShortcut] = useState("");
   const [draftReplacement, setDraftReplacement] = useState("");
+  const [draftChannelIds, setDraftChannelIds] = useState<number[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editShortcut, setEditShortcut] = useState("");
   const [editReplacement, setEditReplacement] = useState("");
+  const [editChannelIds, setEditChannelIds] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -456,6 +459,7 @@ function ShortcutsCard() {
         invalidate();
         setDraftShortcut("");
         setDraftReplacement("");
+        setDraftChannelIds([]);
         toast({ title: "Shortcut ditambahkan." });
       },
       onError: onErr("Gagal menambahkan shortcut"),
@@ -491,6 +495,7 @@ function ShortcutsCard() {
     setEditingId(s.id);
     setEditShortcut(s.shortcut);
     setEditReplacement(s.replacement);
+    setEditChannelIds(s.channelIds ?? []);
   }
 
   function triggerDownload(blob: Blob, filename: string) {
@@ -677,43 +682,58 @@ function ShortcutsCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Add new row */}
-        <div className="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-2 items-start p-3 rounded-lg bg-sidebar-accent/40 border border-border">
-          <Input
-            data-testid="input-new-shortcut"
-            value={draftShortcut}
-            onChange={(e) => setDraftShortcut(e.target.value.slice(0, 64))}
-            placeholder="/hi"
-            className="font-mono text-sm"
-          />
-          <Textarea
-            data-testid="textarea-new-replacement"
-            value={draftReplacement}
-            onChange={(e) => setDraftReplacement(e.target.value.slice(0, 4000))}
-            placeholder={"hello, nice to know you"}
-            rows={2}
-            className="text-sm"
-          />
-          <Button
-            data-testid="button-add-shortcut"
-            size="sm"
-            onClick={() => {
-              const sc = normaliseShortcut(draftShortcut);
-              const rep = draftReplacement.trimEnd();
-              if (!sc || !rep) return;
-              create.mutate({ data: { shortcut: sc, replacement: rep } });
-            }}
-            disabled={
-              create.isPending || !draftShortcut.trim() || !draftReplacement.trim()
-            }
-            className="md:self-start gap-1.5"
-          >
-            {create.isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Plus className="w-3.5 h-3.5" />
-            )}
-            Tambah
-          </Button>
+        <div className="p-3 rounded-lg bg-sidebar-accent/40 border border-border space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-[180px_1fr_auto] gap-2 items-start">
+            <Input
+              data-testid="input-new-shortcut"
+              value={draftShortcut}
+              onChange={(e) => setDraftShortcut(e.target.value.slice(0, 64))}
+              placeholder="/hi"
+              className="font-mono text-sm"
+            />
+            <Textarea
+              data-testid="textarea-new-replacement"
+              value={draftReplacement}
+              onChange={(e) => setDraftReplacement(e.target.value.slice(0, 4000))}
+              placeholder={"hello, nice to know you"}
+              rows={2}
+              className="text-sm"
+            />
+            <Button
+              data-testid="button-add-shortcut"
+              size="sm"
+              onClick={() => {
+                const sc = normaliseShortcut(draftShortcut);
+                const rep = draftReplacement.trimEnd();
+                if (!sc || !rep) return;
+                create.mutate({
+                  data: {
+                    shortcut: sc,
+                    replacement: rep,
+                    channelIds: draftChannelIds,
+                  },
+                });
+              }}
+              disabled={
+                create.isPending || !draftShortcut.trim() || !draftReplacement.trim()
+              }
+              className="md:self-start gap-1.5"
+            >
+              {create.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              Tambah
+            </Button>
+          </div>
+          <div className="md:max-w-md">
+            <ChannelMultiSelect
+              value={draftChannelIds}
+              onChange={setDraftChannelIds}
+              testIdPrefix="new-shortcut-channels"
+            />
+          </div>
         </div>
 
         {/* Existing rows */}
@@ -743,15 +763,22 @@ function ShortcutsCard() {
                         onChange={(e) => setEditShortcut(e.target.value.slice(0, 64))}
                         className="font-mono text-sm h-full"
                       />
-                      <Textarea
-                        data-testid={`textarea-edit-replacement-${s.id}`}
-                        value={editReplacement}
-                        onChange={(e) =>
-                          setEditReplacement(e.target.value.slice(0, 4000))
-                        }
-                        rows={Math.min(6, Math.max(2, editReplacement.split("\n").length))}
-                        className="text-sm min-h-10"
-                      />
+                      <div className="space-y-2">
+                        <Textarea
+                          data-testid={`textarea-edit-replacement-${s.id}`}
+                          value={editReplacement}
+                          onChange={(e) =>
+                            setEditReplacement(e.target.value.slice(0, 4000))
+                          }
+                          rows={Math.min(6, Math.max(2, editReplacement.split("\n").length))}
+                          className="text-sm min-h-10"
+                        />
+                        <ChannelMultiSelect
+                          value={editChannelIds}
+                          onChange={setEditChannelIds}
+                          testIdPrefix={`edit-shortcut-channels-${s.id}`}
+                        />
+                      </div>
                       <div className="flex gap-1 md:flex-col md:self-stretch">
                         <Button
                           data-testid={`button-save-shortcut-${s.id}`}
@@ -763,7 +790,11 @@ function ShortcutsCard() {
                             if (!sc || !rep) return;
                             update.mutate({
                               id: s.id,
-                              data: { shortcut: sc, replacement: rep },
+                              data: {
+                                shortcut: sc,
+                                replacement: rep,
+                                channelIds: editChannelIds,
+                              },
                             });
                           }}
                           disabled={update.isPending}

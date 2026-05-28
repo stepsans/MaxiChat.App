@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ChatAvatar } from "@/components/ChatAvatar";
+import { useActiveChannel } from "@/contexts/ChannelContext";
 import {
   Bot,
   UserCheck,
@@ -86,6 +87,11 @@ export default function ChatListPane({ selectedChatId }: Props) {
   const [scope, setScope] = useState<"personal" | "group">("personal");
   const qc = useQueryClient();
   const { toast } = useToast();
+  // Surface the per-chat channel badge only in the "All channels" view —
+  // when the user has focused a single channel the badge is redundant.
+  const { activeChannelId, channels } = useActiveChannel();
+  const showChannelBadge = activeChannelId === "all" && (channels?.length ?? 0) > 1;
+  const channelById = new Map((channels ?? []).map((c) => [c.id, c]));
 
   const { data: chats, isLoading } = useListChats(
     {},
@@ -254,6 +260,10 @@ export default function ChatListPane({ selectedChatId }: Props) {
             {filtered.map((chat) => {
               const TagIcon = tagIcons[chat.tag];
               const isSelected = selectedChatId === chat.id;
+              const chatChannel =
+                showChannelBadge && chat.channelId != null
+                  ? channelById.get(chat.channelId)
+                  : null;
               // Prefer pushName (stored in contactName) over the raw JID even
               // for LID chats — only fall back to the LID number when no
               // pushName has ever been received.
@@ -287,6 +297,15 @@ export default function ChatListPane({ selectedChatId }: Props) {
                   />
                   <div className="flex-1 min-w-0 border-b border-[hsl(var(--wa-divider))] group-last:border-b-0 py-1.5">
                     <div className="flex items-baseline gap-2 mb-0.5">
+                      {chatChannel && (
+                        <span
+                          className="inline-block w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-background self-center"
+                          style={{ backgroundColor: chatChannel.color }}
+                          title={chatChannel.label}
+                          aria-label={`Channel: ${chatChannel.label}`}
+                          data-testid={`chat-channel-dot-${chat.id}`}
+                        />
+                      )}
                       <span className="text-[15px] font-normal text-foreground truncate flex-1">
                         {displayName}
                       </span>

@@ -11,6 +11,8 @@ export interface KnowledgeEntry {
   type: string;
   title: string;
   content: string;
+  /** Channels this entry is scoped to. Empty array = global (available on every channel the owner has). */
+  channelIds: number[];
   createdAt: string;
   updatedAt: string;
 }

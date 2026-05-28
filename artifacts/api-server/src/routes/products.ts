@@ -18,6 +18,12 @@ import {
   requireOwnerUserId,
   getOwnerPrimaryPhone,
 } from "../lib/channel-context";
+import {
+  parseChannelIdsInput,
+  replaceChannelAssignments,
+  verifyChannelOwnership,
+  loadChannelIdsBatch,
+} from "../lib/channel-assignments";
 
 // Products are a shared resource (per-user). Reads scope by user_id; writes
 // also need owner_phone (legacy NOT NULL column) — derive from primary
@@ -76,9 +82,13 @@ const fileUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-function serialize(p: typeof productsTable.$inferSelect) {
+function serialize(
+  p: typeof productsTable.$inferSelect,
+  channelIds: number[]
+) {
   return {
     ...p,
+    channelIds,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };
@@ -168,7 +178,11 @@ router.get("/", async (req, res): Promise<void> => {
       .from(productsTable)
       .where(eq(productsTable.userId, ownerUserId))
       .orderBy(productsTable.createdAt);
-    res.json(rows.map(serialize));
+    const joins = await loadChannelIdsBatch(
+      "product",
+      rows.map((r) => r.id)
+    );
+    res.json(rows.map((r) => serialize(r, joins.get(r.id) ?? [])));
   } catch (err) {
     req.log.error({ err }, "Failed to list products");
     res.status(500).json({ error: "Internal server error" });
@@ -180,6 +194,11 @@ router.post("/", async (req, res): Promise<void> => {
     const parsed = ProductBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+      return;
+    }
+    const channelIds = parseChannelIdsInput(req.body?.channelIds);
+    if (channelIds === "invalid") {
+      res.status(400).json({ error: "Invalid channelIds" });
       return;
     }
     const owner = await resolveWriteOwner(
@@ -197,7 +216,18 @@ router.post("/", async (req, res): Promise<void> => {
           userId: owner.ownerUserId,
         })
         .returning();
-      res.status(201).json(serialize(created));
+      const assigned = await replaceChannelAssignments(
+        "product",
+        created.id,
+        channelIds,
+        owner.ownerUserId
+      );
+      if (assigned === "forbidden") {
+        await db.delete(productsTable).where(eq(productsTable.id, created.id));
+        res.status(400).json({ error: "Invalid channelIds" });
+        return;
+      }
+      res.status(201).json(serialize(created, channelIds ?? []));
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === "23505") {
         res.status(409).json({ error: "Kode produk sudah dipakai" });
@@ -223,8 +253,19 @@ router.put("/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
       return;
     }
+    const channelIds = parseChannelIdsInput(req.body?.channelIds);
+    if (channelIds === "invalid") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
     const ownerUserId = await requireOwnerUserId(req, res);
     if (ownerUserId == null) return;
+    // Pre-flight ownership check so a forbidden channelId fails the request
+    // BEFORE the row update commits (avoids partial writes).
+    if ((await verifyChannelOwnership(ownerUserId, channelIds)) === "forbidden") {
+      res.status(400).json({ error: "Invalid channelIds" });
+      return;
+    }
     try {
       const [updated] = await db
         .update(productsTable)
@@ -232,7 +273,9 @@ router.put("/:id", async (req, res): Promise<void> => {
         .where(and(eq(productsTable.id, id), eq(productsTable.userId, ownerUserId)))
         .returning();
       if (!updated) { res.status(404).json({ error: "Product not found" }); return; }
-      res.json(serialize(updated));
+      await replaceChannelAssignments("product", updated.id, channelIds, ownerUserId);
+      const joins = await loadChannelIdsBatch("product", [updated.id]);
+      res.json(serialize(updated, joins.get(updated.id) ?? []));
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === "23505") {
         res.status(409).json({ error: "Kode produk sudah dipakai" });

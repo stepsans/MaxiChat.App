@@ -10,4 +10,6 @@ export interface KnowledgeInput {
   type: string;
   title: string;
   content: string;
+  /** Optional channel scope. Omit (or pass empty array) for global; pass channel ids to restrict. */
+  channelIds?: number[];
 }

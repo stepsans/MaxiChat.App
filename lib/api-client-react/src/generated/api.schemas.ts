@@ -89,6 +89,11 @@ export const ChatTag = {
 
 export interface Chat {
   id: number;
+  /**
+     * Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the 'All channels' aggregate view.
+     * @nullable
+     */
+  channelId: number | null;
   phoneNumber: string;
   contactName: string;
   /** @nullable */
@@ -238,6 +243,8 @@ export interface KnowledgeEntry {
   type: string;
   title: string;
   content: string;
+  /** Channels this entry is scoped to. Empty array = global (available on every channel the owner has). */
+  channelIds: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -246,12 +253,16 @@ export interface KnowledgeInput {
   type: string;
   title: string;
   content: string;
+  /** Optional channel scope. Omit (or pass empty array) for global; pass channel ids to restrict. */
+  channelIds?: number[];
 }
 
 export interface KnowledgeUpdate {
   type?: string;
   title?: string;
   content?: string;
+  /** Pass to replace the assignment set. Omit to leave assignments unchanged; pass [] to make the entry global. */
+  channelIds?: number[];
 }
 
 export interface KnowledgeType {
@@ -372,6 +383,8 @@ export interface Product {
      * @maxItems 10
      */
   videoUrls: string[];
+  /** Channels this product is scoped to. Empty array = global (available on every channel the owner has). */
+  channelIds: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -840,6 +853,8 @@ export interface TextShortcut {
   id: number;
   shortcut: string;
   replacement: string;
+  /** Channels this shortcut is scoped to. Empty array = global. */
+  channelIds: number[];
 }
 
 export interface TextShortcutInput {
@@ -854,6 +869,8 @@ export interface TextShortcutInput {
      * @maxLength 4000
      */
   replacement: string;
+  /** Optional channel scope. Omit / [] for global; pass channel ids to restrict. */
+  channelIds?: number[];
 }
 
 export interface PostStatusInput {

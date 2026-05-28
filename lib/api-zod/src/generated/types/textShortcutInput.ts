@@ -18,4 +18,6 @@ export interface TextShortcutInput {
      * @maxLength 4000
      */
   replacement: string;
+  /** Optional channel scope. Omit / [] for global; pass channel ids to restrict. */
+  channelIds?: number[];
 }

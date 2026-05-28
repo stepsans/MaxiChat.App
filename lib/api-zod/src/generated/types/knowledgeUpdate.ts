@@ -10,4 +10,6 @@ export interface KnowledgeUpdate {
   type?: string;
   title?: string;
   content?: string;
+  /** Pass to replace the assignment set. Omit to leave assignments unchanged; pass [] to make the entry global. */
+  channelIds?: number[];
 }

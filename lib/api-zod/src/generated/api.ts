@@ -216,6 +216,7 @@ export const ListChatsQueryParams = zod.object({
 
 export const ListChatsResponseItem = zod.object({
   "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
@@ -318,6 +319,7 @@ export const UpdateChatBody = zod.object({
 
 export const UpdateChatResponse = zod.object({
   "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
@@ -409,6 +411,7 @@ export const AssignChatBody = zod.object({
 
 export const AssignChatResponse = zod.object({
   "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
@@ -440,6 +443,7 @@ export const TakeoverChatBody = zod.object({
 
 export const TakeoverChatResponse = zod.object({
   "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
@@ -466,6 +470,7 @@ export const ListKnowledgeResponseItem = zod.object({
   "type": zod.string(),
   "title": zod.string(),
   "content": zod.string(),
+  "channelIds": zod.array(zod.number()).describe('Channels this entry is scoped to. Empty array = global (available on every channel the owner has).'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -478,7 +483,8 @@ export const ListKnowledgeResponse = zod.array(ListKnowledgeResponseItem)
 export const CreateKnowledgeBody = zod.object({
   "type": zod.string(),
   "title": zod.string(),
-  "content": zod.string()
+  "content": zod.string(),
+  "channelIds": zod.array(zod.number()).optional().describe('Optional channel scope. Omit (or pass empty array) for global; pass channel ids to restrict.')
 })
 
 
@@ -492,7 +498,8 @@ export const UpdateKnowledgeParams = zod.object({
 export const UpdateKnowledgeBody = zod.object({
   "type": zod.string().optional(),
   "title": zod.string().optional(),
-  "content": zod.string().optional()
+  "content": zod.string().optional(),
+  "channelIds": zod.array(zod.number()).optional().describe('Pass to replace the assignment set. Omit to leave assignments unchanged; pass [] to make the entry global.')
 })
 
 export const UpdateKnowledgeResponse = zod.object({
@@ -500,6 +507,7 @@ export const UpdateKnowledgeResponse = zod.object({
   "type": zod.string(),
   "title": zod.string(),
   "content": zod.string(),
+  "channelIds": zod.array(zod.number()).describe('Channels this entry is scoped to. Empty array = global (available on every channel the owner has).'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -960,6 +968,7 @@ export const ListProductsResponseItem = zod.object({
   "flyerUrl": zod.string().nullable().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow.'),
   "productUrl": zod.string().nullable(),
   "videoUrls": zod.array(zod.string()).max(listProductsResponseVideoUrlsMax).describe('Up to 10 video URLs per product'),
+  "channelIds": zod.array(zod.number()).describe('Channels this product is scoped to. Empty array = global (available on every channel the owner has).'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -1064,6 +1073,7 @@ export const UpdateProductResponse = zod.object({
   "flyerUrl": zod.string().nullable().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow.'),
   "productUrl": zod.string().nullable(),
   "videoUrls": zod.array(zod.string()).max(updateProductResponseVideoUrlsMax).describe('Up to 10 video URLs per product'),
+  "channelIds": zod.array(zod.number()).describe('Channels this product is scoped to. Empty array = global (available on every channel the owner has).'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -1495,7 +1505,8 @@ export const DeleteStatusResponse = zod.object({
 export const ListShortcutsResponseItem = zod.object({
   "id": zod.number(),
   "shortcut": zod.string(),
-  "replacement": zod.string()
+  "replacement": zod.string(),
+  "channelIds": zod.array(zod.number()).describe('Channels this shortcut is scoped to. Empty array = global.')
 })
 export const ListShortcutsResponse = zod.array(ListShortcutsResponseItem)
 
@@ -1511,13 +1522,15 @@ export const createShortcutBodyReplacementMax = 4000;
 
 export const CreateShortcutBody = zod.object({
   "shortcut": zod.string().min(1).max(createShortcutBodyShortcutMax).describe('Trigger token, e.g. \"\/almt\". Matched case-insensitively.'),
-  "replacement": zod.string().min(1).max(createShortcutBodyReplacementMax)
+  "replacement": zod.string().min(1).max(createShortcutBodyReplacementMax),
+  "channelIds": zod.array(zod.number()).optional().describe('Optional channel scope. Omit \/ [] for global; pass channel ids to restrict.')
 })
 
 export const CreateShortcutResponse = zod.object({
   "id": zod.number(),
   "shortcut": zod.string(),
-  "replacement": zod.string()
+  "replacement": zod.string(),
+  "channelIds": zod.array(zod.number()).describe('Channels this shortcut is scoped to. Empty array = global.')
 })
 
 
@@ -1536,13 +1549,15 @@ export const updateShortcutBodyReplacementMax = 4000;
 
 export const UpdateShortcutBody = zod.object({
   "shortcut": zod.string().min(1).max(updateShortcutBodyShortcutMax).describe('Trigger token, e.g. \"\/almt\". Matched case-insensitively.'),
-  "replacement": zod.string().min(1).max(updateShortcutBodyReplacementMax)
+  "replacement": zod.string().min(1).max(updateShortcutBodyReplacementMax),
+  "channelIds": zod.array(zod.number()).optional().describe('Optional channel scope. Omit \/ [] for global; pass channel ids to restrict.')
 })
 
 export const UpdateShortcutResponse = zod.object({
   "id": zod.number(),
   "shortcut": zod.string(),
-  "replacement": zod.string()
+  "replacement": zod.string(),
+  "channelIds": zod.array(zod.number()).describe('Channels this shortcut is scoped to. Empty array = global.')
 })
 
 
