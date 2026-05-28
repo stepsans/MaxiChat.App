@@ -3,3 +3,4 @@
 - [Baileys messages.upsert pipeline](baileys-message-pipeline.md) — accept all upsert types, epoch-guard is `continue` not `return`, history sync must download media + back-fill on conflict.
 - [OAuth callback HTML XSS](oauth-html-callback-xss.md) — error/email/detail are attacker-controllable; escape `& < > " '` everywhere, not just `<`.
 - [Sync-config tenant binding](sync-config-tenant-binding.md) — per-ownerPhone configs (sheet sync etc.) must include userId + filter every read/write, or a phone reassignment leaks the prior tenant's binding.
+- [Multi-resource migration pattern](multi-resource-migration-pattern.md) — transition tenancy keys via phased nullable column → backfill → route refactor → tighten; never cut-over in one step.

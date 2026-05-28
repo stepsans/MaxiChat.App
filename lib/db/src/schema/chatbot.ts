@@ -3,6 +3,7 @@ import {
   serial,
   text,
   boolean,
+  integer,
   jsonb,
   timestamp,
   uniqueIndex,
@@ -18,6 +19,7 @@ export const chatbotFlowsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     ownerPhone: text("owner_phone").notNull(),
+    channelId: integer("channel_id"),
     name: text("name").notNull(),
     isActive: boolean("is_active").notNull().default(false),
     // { nodes: FlowNode[], edges: FlowEdge[] } — see flowGraphSchema below.
@@ -33,6 +35,14 @@ export const chatbotFlowsTable = pgTable(
     chatbotFlowsActiveUnique: uniqueIndex("chatbot_flows_active_unique")
       .on(t.ownerPhone)
       .where(sql`${t.isActive}`),
+    // Channel-grained "at most one active flow per channel" — parallel to
+    // the owner_phone one during the multi-channel transition. Old index
+    // will be dropped in the T009 tighten phase.
+    chatbotFlowsChannelActiveUnique: uniqueIndex(
+      "chatbot_flows_channel_active_unique"
+    )
+      .on(t.channelId)
+      .where(sql`${t.isActive} AND ${t.channelId} IS NOT NULL`),
   })
 );
 

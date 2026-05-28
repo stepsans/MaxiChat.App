@@ -6,6 +6,7 @@ import {
   integer,
   timestamp,
   uniqueIndex,
+  index,
   jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -22,6 +23,11 @@ export const chatsTable = pgTable(
     // operator scans their own QR, they see only their own conversations,
     // not the previous account's history.
     ownerPhone: text("owner_phone").notNull(),
+    // Multi-channel pivot. NULLABLE during the v2 transition (T002 backfill is
+    // done; new inserts from un-migrated route code still write NULL until
+    // T004 lands). After the route refactor we will SET NOT NULL and the
+    // owner_phone column can be retired.
+    channelId: integer("channel_id"),
     phoneNumber: text("phone_number").notNull(),
     contactName: text("contact_name").notNull(),
     nickname: text("nickname"),
@@ -130,6 +136,7 @@ export const whatsappStatusesTable = pgTable(
   {
     id: serial("id").primaryKey(),
     ownerPhone: text("owner_phone").notNull(),
+    channelId: integer("channel_id"),
     // For incoming: the contact JID (participant) who posted. For mine: the
     // owner's own JID. Used to group statuses by author in the UI.
     authorJid: text("author_jid").notNull(),
@@ -168,6 +175,9 @@ export const textShortcutsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     ownerPhone: text("owner_phone").notNull(),
+    // Shared at superadmin level after the multi-channel migration. NULLABLE
+    // during transition; T005 will SET NOT NULL and start filtering by userId.
+    userId: integer("user_id"),
     shortcut: text("shortcut").notNull(),
     replacement: text("replacement").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -177,6 +187,11 @@ export const textShortcutsTable = pgTable(
     textShortcutsOwnerShortcutUnique: uniqueIndex(
       "text_shortcuts_owner_shortcut_unique"
     ).on(t.ownerPhone, sql`lower(${t.shortcut})`),
+    // Future-proof: superadmin-level uniqueness. Will outlive the
+    // owner_phone-scoped one once T009 drops legacy columns.
+    textShortcutsUserLowerUnique: uniqueIndex(
+      "text_shortcuts_user_lower_unique"
+    ).on(t.userId, sql`lower(${t.shortcut})`),
   })
 );
 
@@ -191,6 +206,7 @@ export const knowledgeTypesTable = pgTable(
   {
     id: serial("id").primaryKey(),
     ownerPhone: text("owner_phone").notNull(),
+    userId: integer("user_id"),
     value: text("value").notNull(),
     label: text("label").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -200,20 +216,31 @@ export const knowledgeTypesTable = pgTable(
       t.ownerPhone,
       t.value
     ),
+    knowledgeTypesUserValueUnique: uniqueIndex("knowledge_types_user_value_unique").on(
+      t.userId,
+      t.value
+    ),
   })
 );
 
 export type KnowledgeType = typeof knowledgeTypesTable.$inferSelect;
 
-export const knowledgeTable = pgTable("knowledge_entries", {
-  id: serial("id").primaryKey(),
-  ownerPhone: text("owner_phone").notNull(),
-  type: text("type").notNull(),
-  title: text("title").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const knowledgeTable = pgTable(
+  "knowledge_entries",
+  {
+    id: serial("id").primaryKey(),
+    ownerPhone: text("owner_phone").notNull(),
+    userId: integer("user_id"),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    knowledgeEntriesUserIdIdx: index("knowledge_entries_user_id_idx").on(t.userId),
+  })
+);
 
 export const insertKnowledgeSchema = createInsertSchema(knowledgeTable).omit({
   id: true,
@@ -229,6 +256,7 @@ export const settingsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     ownerPhone: text("owner_phone").notNull(),
+    channelId: integer("channel_id"),
     systemPrompt: text("system_prompt").notNull(),
     autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
     replyDelayMin: integer("reply_delay_min").notNull().default(1),
@@ -253,6 +281,7 @@ export const productsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     ownerPhone: text("owner_phone").notNull(),
+    userId: integer("user_id"),
     code: text("code").notNull(),
     name: text("name").notNull(),
     category: text("category"),
@@ -274,6 +303,10 @@ export const productsTable = pgTable(
     // different accounts can both have e.g. code "BUKU-01" without colliding.
     productsOwnerCodeUnique: uniqueIndex("products_owner_code_unique").on(
       t.ownerPhone,
+      t.code
+    ),
+    productsUserCodeUnique: uniqueIndex("products_user_code_unique").on(
+      t.userId,
       t.code
     ),
   })

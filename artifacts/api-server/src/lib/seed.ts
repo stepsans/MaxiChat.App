@@ -1,14 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   usersTable,
   userWhatsappTable,
   whatsappSessionTable,
+  channelsTable,
 } from "@workspace/db";
 import { logger } from "./logger";
+
+// Default presentation for the user's first WhatsApp channel created during
+// the multi-channel migration. WhatsApp brand green + icon slug consumed by
+// the frontend channel switcher.
+// Matches the T001 SQL migration backfill so channels created at runtime
+// look identical to ones backfilled from user_whatsapp.
+const DEFAULT_WA_COLOR = "#25D366";
+const DEFAULT_WA_ICON = "whatsapp";
 
 // Fixed allowlist — only these three accounts may sign in. Passwords are
 // hashed at startup; bcrypt comparison is constant-time per-hash so plain
@@ -135,6 +144,22 @@ export async function runSeed(): Promise<void> {
     migrateLegacyAuthDir(userId);
   }
 
+  // T001/T004 — guarantee every known user has a primary WA channel row
+  // before any request can hit a channel-aware route. The T001 SQL
+  // migration already inserted rows for users that had a user_whatsapp
+  // binding; this catches the rest (newly-created seed users and any
+  // users created in flight before runSeed re-ran).
+  for (const userId of userIdsByEmail.values()) {
+    try {
+      await ensurePrimaryWhatsappChannelForUser(userId);
+    } catch (err) {
+      logger.error(
+        { err, userId },
+        "Failed to ensure primary WhatsApp channel for user"
+      );
+    }
+  }
+
   logger.info(
     { users: userIdsByEmail.size },
     "Auth seed complete"
@@ -255,4 +280,71 @@ export async function setOwnerPhoneForUser(
       target: userWhatsappTable.userId,
       set: { ownerPhone, updatedAt: new Date() },
     });
+}
+
+// Multi-channel migration: every user that exists in the system gets a
+// "primary" WhatsApp channel row so the runtime has a stable channelId to
+// key off. Idempotent — returns the existing row's id if one is already
+// there. Returns the channel id of the user's oldest/primary WA channel.
+//
+// The pre-migration `user_whatsapp` table is still the legacy source of
+// truth for pairing status and is read here as a fallback so a freshly-
+// seeded user whose row predates T001 still gets a populated channel.
+export async function ensurePrimaryWhatsappChannelForUser(
+  userId: number
+): Promise<number> {
+  const existing = await db
+    .select({ id: channelsTable.id })
+    .from(channelsTable)
+    .where(
+      and(eq(channelsTable.userId, userId), eq(channelsTable.kind, "whatsapp"))
+    )
+    .orderBy(channelsTable.createdAt)
+    .limit(1);
+  if (existing[0]) return existing[0].id;
+  // Backfill owner_phone + status from the legacy user_whatsapp row so the
+  // first channel reflects the historical pairing state without a re-scan.
+  const [uw] = await db
+    .select()
+    .from(userWhatsappTable)
+    .where(eq(userWhatsappTable.userId, userId))
+    .limit(1);
+  const [row] = await db
+    .insert(channelsTable)
+    .values({
+      userId,
+      kind: "whatsapp",
+      label: "WhatsApp 1",
+      color: DEFAULT_WA_COLOR,
+      icon: DEFAULT_WA_ICON,
+      // Always start 'disconnected'. The boot-time auto-reconnect loop in
+      // whatsapp.ts will pull this to 'connected' via syncChannelStatus
+      // ONLY if the socket actually comes back up. Don't optimistically
+      // claim 'connected' just because a legacy owner_phone binding
+      // exists — that would paint a green dot in the UI for a dead
+      // socket while the server is still booting. ownerPhone is still
+      // backfilled so the binding (which number owns this channel)
+      // survives, matching the persistence behavior of user_whatsapp.
+      status: "disconnected",
+      ownerPhone: uw?.ownerPhone ?? null,
+    })
+    .returning({ id: channelsTable.id });
+  return row.id;
+}
+
+// Convenience read-only accessor. Returns null if the user has no WA
+// channel yet (should not happen for seeded users after runSeed, but cheap
+// to defend).
+export async function getPrimaryWhatsappChannelId(
+  userId: number
+): Promise<number | null> {
+  const [row] = await db
+    .select({ id: channelsTable.id })
+    .from(channelsTable)
+    .where(
+      and(eq(channelsTable.userId, userId), eq(channelsTable.kind, "whatsapp"))
+    )
+    .orderBy(channelsTable.createdAt)
+    .limit(1);
+  return row?.id ?? null;
 }

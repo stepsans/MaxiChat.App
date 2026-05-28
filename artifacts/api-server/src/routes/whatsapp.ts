@@ -15,6 +15,7 @@ import {
   whatsappStatusesTable,
   chatbotFlowsTable,
   productsTable,
+  channelsTable,
   type FlowGraph,
   type FlowNode,
 } from "@workspace/db";
@@ -26,6 +27,7 @@ import {
   getOwnerPhoneForUser,
   setOwnerPhoneForUser,
   resolveOwnerUserId,
+  ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
 
 // Whether the signed-in user owns the WhatsApp pairing (super_admin) or
@@ -62,6 +64,12 @@ interface UserCtx {
   epoch: number;
   // Digits-only phone of THIS user's currently linked WA account.
   ownerPhone: string | null;
+  // Multi-channel runtime: the channels.id this ctx represents. Currently
+  // 1:1 with userId (each user has one primary WA channel) but stored
+  // explicitly so pairing/disconnect can mirror status to the channels
+  // table — and so T005 can re-key the map by channelId without touching
+  // every call site. Populated lazily on first startBaileys() for the user.
+  channelId: number | null;
 }
 
 const userCtxs = new Map<number, UserCtx>();
@@ -69,10 +77,37 @@ const userCtxs = new Map<number, UserCtx>();
 function getCtx(userId: number): UserCtx {
   let c = userCtxs.get(userId);
   if (!c) {
-    c = { sock: null, isConnecting: false, epoch: 0, ownerPhone: null };
+    c = {
+      sock: null,
+      isConnecting: false,
+      epoch: 0,
+      ownerPhone: null,
+      channelId: null,
+    };
     userCtxs.set(userId, c);
   }
   return c;
+}
+
+// Mirror this ctx's pairing state onto the channels table so the new
+// multi-channel surface (channel CRUD, frontend switcher) sees a live
+// status. Fire-and-forget — never block the pairing hot path on a
+// secondary write.
+async function syncChannelStatus(
+  channelId: number,
+  patch: { status: string; ownerPhone?: string | null }
+): Promise<void> {
+  try {
+    await db
+      .update(channelsTable)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(channelsTable.id, channelId));
+  } catch (err) {
+    logger.warn(
+      { err, channelId, patch },
+      "channels-status sync failed (non-fatal)"
+    );
+  }
 }
 
 // Convenience for route handlers — session middleware guarantees userId is set.
@@ -1827,6 +1862,21 @@ async function startBaileys(userId: number) {
   if (ctx.isConnecting || (ctx.sock && (ctx.sock as any).ws?.readyState === 1)) return;
   ctx.isConnecting = true;
   const myEpoch = ++ctx.epoch;
+  // Bind this ctx to the user's primary WA channel id before we wire any
+  // event handlers — handlers that fire post-pairing need a stable
+  // channelId to mirror status onto. Idempotent: returns the existing
+  // channels.id if one was already created by the T001 migration or a
+  // previous startBaileys call.
+  if (ctx.channelId == null) {
+    try {
+      ctx.channelId = await ensurePrimaryWhatsappChannelForUser(userId);
+    } catch (err) {
+      logger.error(
+        { err, userId },
+        "Failed to ensure primary WA channel; channels-table mirror will be skipped"
+      );
+    }
+  }
   const session = await getOrCreateSession(userId);
   const sessionId = session.id;
 
@@ -1924,6 +1974,15 @@ async function startBaileys(userId: number) {
           phoneNumber,
           connectedAt: new Date(),
         });
+        // Multi-channel mirror: keep channels.status / channels.owner_phone
+        // in lockstep with the live ctx. The frontend switcher reads
+        // these to render per-channel connectivity dots.
+        if (ctx.channelId != null) {
+          void syncChannelStatus(ctx.channelId, {
+            status: "connected",
+            ownerPhone: normalised,
+          });
+        }
         ctx.isConnecting = false;
       }
 
@@ -1935,6 +1994,15 @@ async function startBaileys(userId: number) {
           phoneNumber: null,
           connectedAt: null,
         });
+        // Channel mirror: socket dropped. We deliberately do NOT clear
+        // channels.owner_phone here — the binding (this channel "owns"
+        // this number) survives transient network drops, matching the
+        // pre-migration behavior of user_whatsapp. Hard unpair is the
+        // /disconnect endpoint, which also leaves owner_phone (see the
+        // note there).
+        if (ctx.channelId != null) {
+          void syncChannelStatus(ctx.channelId, { status: "disconnected" });
+        }
         ctx.sock = null;
         ctx.isConnecting = false;
         ctx.ownerPhone = null;
@@ -2386,6 +2454,15 @@ router.post("/disconnect", async (req, res): Promise<void> => {
       phoneNumber: null,
       connectedAt: null,
     });
+    // Channel mirror: surface the disconnect on the channels table too.
+    // Matches the pre-migration behavior of leaving the owner_phone
+    // binding in place (see the note on the connection.close handler) —
+    // a re-pair of the SAME number reuses the same channel without
+    // re-creating it; pairing a DIFFERENT number on this channel will
+    // update ownerPhone via syncChannelStatus in connection.open.
+    if (ctx.channelId != null) {
+      void syncChannelStatus(ctx.channelId, { status: "disconnected" });
+    }
     res.json({ status: updated.status, qrCode: null, phoneNumber: null, connectedAt: null });
   } catch (err) {
     req.log.error({ err }, "Failed to disconnect WhatsApp");
