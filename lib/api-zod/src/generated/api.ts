@@ -61,6 +61,14 @@ export const GetMeResponse = zod.object({
 
 
 /**
+ * @summary Delete the current user's own account and end the session
+ */
+export const DeleteMeResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary Self-register a new account (email verification required before sign-in)
  */
 export const signupBodyPasswordMin = 8;

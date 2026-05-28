@@ -44,13 +44,43 @@ export function getSessionUserId(req: Request): number | null {
 
 // Express middleware that gates every request behind a valid session. Mounted
 // on `/api` *after* the public auth routes are registered.
-export function requireAuth(
+//
+// We also re-verify that the session's userId still maps to an active row,
+// so a session cookie for a deleted/disabled user can't keep accessing the
+// API after self-delete / admin disable. The DB hit is one indexed lookup
+// per request, acceptable for our scale. On mismatch we destroy the
+// session and clear the cookie before returning 401.
+export async function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction
-): void {
-  if (getSessionUserId(req) == null) {
+): Promise<void> {
+  const userId = getSessionUserId(req);
+  if (userId == null) {
     res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+  try {
+    const [row] = await db
+      .select({ id: usersTable.id, status: usersTable.status })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    if (!row || row.status !== "active") {
+      req.session.destroy(() => {
+        res.clearCookie("vjchat.sid");
+        res.status(401).json({ error: "Session expired" });
+      });
+      return;
+    }
+  } catch (err) {
+    // Don't leak the user error path on DB blips — log and 500 so the
+    // client can retry rather than getting silently logged out.
+    (req as Request & { log?: { error: (o: unknown, m?: string) => void } }).log?.error(
+      { err },
+      "requireAuth DB lookup failed"
+    );
+    res.status(500).json({ error: "Internal server error" });
     return;
   }
   next();

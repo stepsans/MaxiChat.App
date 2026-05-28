@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
+import { channelsTable } from "./channels";
 
 // Visual chatbot flow graph. Each channel may have multiple flows but at
 // most one row with is_active=true. Enforced by a partial unique index plus
@@ -18,7 +19,9 @@ export const chatbotFlowsTable = pgTable(
   "chatbot_flows",
   {
     id: serial("id").primaryKey(),
-    channelId: integer("channel_id").notNull(),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channelsTable.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     isActive: boolean("is_active").notNull().default(false),
     // { nodes: FlowNode[], edges: FlowEdge[] } — see flowGraphSchema below.

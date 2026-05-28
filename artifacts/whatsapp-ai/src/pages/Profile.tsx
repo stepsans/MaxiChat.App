@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useGetMe, getGetMeQueryKey, useDeleteMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Camera, Loader2, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Camera, Loader2, Trash2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Profile() {
@@ -28,7 +38,31 @@ export default function Profile() {
   const [companyName, setCompanyName] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const deleteMut = useDeleteMe({
+    mutation: {
+      onSuccess: () => {
+        // Cookie cleared by server. Clear React Query cache and bounce
+        // to login — full reload to ditch any in-memory app state.
+        qc.clear();
+        window.location.href = "/login";
+      },
+      onError: (err: unknown) => {
+        const message =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message)
+            : "Gagal menghapus akun";
+        toast({
+          title: "Gagal menghapus akun",
+          description: message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   // Hydrate the form once the /me request returns. We intentionally don't
   // sync on every change so the user's in-progress edits aren't blown away
@@ -285,7 +319,117 @@ export default function Profile() {
             </div>
           </CardContent>
         </Card>
+
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Zona Berbahaya
+            </CardTitle>
+            <CardDescription>
+              Hapus akun ini secara permanen. Tindakan ini tidak bisa dibatalkan.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+              <div className="text-sm">
+                <p className="font-medium text-foreground mb-1">
+                  Yang akan terhapus:
+                </p>
+                <ul className="list-disc pl-5 space-y-0.5 text-muted-foreground">
+                  <li>Profil dan akses login Anda</li>
+                  {isSuperAdmin ? (
+                    <>
+                      <li>
+                        <strong className="text-foreground">
+                          Seluruh anggota tim
+                        </strong>{" "}
+                        di bawah perusahaan Anda
+                      </li>
+                      <li>
+                        <strong className="text-foreground">
+                          Semua channel
+                        </strong>{" "}
+                        WhatsApp/Telegram, riwayat chat, flow, produk, dan
+                        knowledge
+                      </li>
+                    </>
+                  ) : (
+                    <li>
+                      Akses Anda ke channel & chat perusahaan (data perusahaan
+                      tidak ikut terhapus)
+                    </li>
+                  )}
+                </ul>
+              </div>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setDeleteConfirm("");
+                  setDeleteOpen(true);
+                }}
+                disabled={deleteMut.isPending}
+                data-testid="button-open-delete-account"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Hapus Akun Saya
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Yakin ingin menghapus akun?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Tindakan ini <strong>tidak bisa dibatalkan</strong>.{" "}
+                  {isSuperAdmin
+                    ? "Seluruh data perusahaan Anda — anggota tim, channel, riwayat chat, flow, produk — akan dihapus permanen."
+                    : "Akses Anda ke aplikasi akan dicabut. Data perusahaan tidak terhapus."}
+                </p>
+                <p>
+                  Untuk konfirmasi, ketik <strong>HAPUS</strong> di kotak di
+                  bawah ini:
+                </p>
+                <Input
+                  value={deleteConfirm}
+                  onChange={(e) => setDeleteConfirm(e.target.value)}
+                  placeholder="Ketik HAPUS"
+                  autoComplete="off"
+                  data-testid="input-delete-confirm"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={deleteMut.isPending}
+              data-testid="button-cancel-delete"
+            >
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteConfirm !== "HAPUS" || deleteMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteConfirm !== "HAPUS") return;
+                deleteMut.mutate();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              {deleteMut.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Hapus Permanen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

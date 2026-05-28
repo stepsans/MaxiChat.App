@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   integer,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // Application users. Self-signup is allowed but new accounts land in
@@ -30,7 +31,13 @@ export const usersTable = pgTable("users", {
   profilePhotoUrl: text("profile_photo_url"),
   // Team hierarchy: when an "owner" user invites CS staff, the invitee's
   // parentUserId points at the owner. NULL = top-level account (super_admin).
-  parentUserId: integer("parent_user_id"),
+  // Self-FK with ON DELETE CASCADE so deleting a super_admin auto-removes
+  // their entire invited team (and transitively everything else owned at
+  // the user level via cascading FKs on user_id columns).
+  parentUserId: integer("parent_user_id").references(
+    (): AnyPgColumn => usersTable.id,
+    { onDelete: "cascade" }
+  ),
   // Role inside the WhatsApp team. "super_admin" is the owner (parent_user_id
   // NULL). Invited members are "supervisor" (sees all chats, can assign) or
   // "agent" (sees only chats assigned to them).

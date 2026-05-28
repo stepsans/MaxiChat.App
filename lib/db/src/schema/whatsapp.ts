@@ -12,6 +12,8 @@ import {
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./auth";
+import { channelsTable } from "./channels";
 
 export const chatsTable = pgTable(
   "chats",
@@ -20,7 +22,9 @@ export const chatsTable = pgTable(
     // Multi-channel pivot. Every chat belongs to exactly one channel; the
     // dashboard's "All channels" view aggregates across the user's
     // permitted channels via channel_assignments.
-    channelId: integer("channel_id").notNull(),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channelsTable.id, { onDelete: "cascade" }),
     phoneNumber: text("phone_number").notNull(),
     contactName: text("contact_name").notNull(),
     nickname: text("nickname"),
@@ -41,7 +45,10 @@ export const chatsTable = pgTable(
     // supervisors only). Plain integer (no FK) to avoid a cross-schema
     // circular reference; the chats route validates the user belongs to the
     // same owner before writing.
-    assignedUserId: integer("assigned_user_id"),
+    assignedUserId: integer("assigned_user_id").references(
+      () => usersTable.id,
+      { onDelete: "set null" }
+    ),
     // KPI tracking. Set the first time the chat is assigned to an agent
     // (manually or via round-robin) and never updated afterward, so reports
     // can compute "time-to-first-assign". firstAgentReplyAt is set on the
@@ -127,7 +134,9 @@ export const whatsappStatusesTable = pgTable(
   "whatsapp_statuses",
   {
     id: serial("id").primaryKey(),
-    channelId: integer("channel_id").notNull(),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channelsTable.id, { onDelete: "cascade" }),
     // For incoming: the contact JID (participant) who posted. For mine: the
     // owner's own JID. Used to group statuses by author in the UI.
     authorJid: text("author_jid").notNull(),
@@ -167,7 +176,9 @@ export const textShortcutsTable = pgTable(
     id: serial("id").primaryKey(),
     // Shared at superadmin level: every shortcut is keyed by the owning
     // super_admin user.
-    userId: integer("user_id").notNull(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     shortcut: text("shortcut").notNull(),
     replacement: text("replacement").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -191,7 +202,9 @@ export const knowledgeTypesTable = pgTable(
   {
     id: serial("id").primaryKey(),
     ownerPhone: text("owner_phone").notNull(),
-    userId: integer("user_id"),
+    userId: integer("user_id").references(() => usersTable.id, {
+      onDelete: "cascade",
+    }),
     value: text("value").notNull(),
     label: text("label").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -214,7 +227,9 @@ export const knowledgeTable = pgTable(
   "knowledge_entries",
   {
     id: serial("id").primaryKey(),
-    userId: integer("user_id").notNull(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     type: text("type").notNull(),
     title: text("title").notNull(),
     content: text("content").notNull(),
@@ -239,7 +254,9 @@ export const settingsTable = pgTable(
   "settings",
   {
     id: serial("id").primaryKey(),
-    channelId: integer("channel_id").notNull(),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channelsTable.id, { onDelete: "cascade" }),
     systemPrompt: text("system_prompt").notNull(),
     autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
     replyDelayMin: integer("reply_delay_min").notNull().default(1),
@@ -263,7 +280,9 @@ export const productsTable = pgTable(
   "products",
   {
     id: serial("id").primaryKey(),
-    userId: integer("user_id").notNull(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     code: text("code").notNull(),
     name: text("name").notNull(),
     category: text("category"),

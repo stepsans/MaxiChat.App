@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { eq, and, isNull, gt, desc } from "drizzle-orm";
+import { eq, and, ne, isNull, gt, desc, sql } from "drizzle-orm";
 import { randomBytes, createHash } from "node:crypto";
 import {
   db,
@@ -348,6 +348,79 @@ router.patch("/me/photo", async (req, res): Promise<void> => {
     res.json({ profilePhotoUrl: url || null });
   } catch (err) {
     req.log.error({ err }, "PATCH /auth/me/photo failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DELETE /auth/me — let the currently signed-in user delete their own
+// account. CASCADE on parent_user_id + channels.user_id removes the
+// whole tenant subtree (team members, channels, chats, …) for a
+// super_admin; for an invited member only their own row is removed.
+//
+// Guards:
+//   - Block deleting the last active platform admin so the workspace
+//     can never lock itself out of /admin (same invariant as
+//     adminDeleteUser).
+//   - Serialize with the same advisory lock used by admin mutations so
+//     two concurrent self-deletes / admin demotions can't race past
+//     the last-admin check.
+const SELF_DELETE_LOCK_KEY = 0x564a4341; // 'VJCA' — same key as admin.ts
+router.delete("/me", async (req, res): Promise<void> => {
+  const userId = req.session?.userId;
+  if (typeof userId !== "number") {
+    res.status(401).json({ error: "Tidak masuk" });
+    return;
+  }
+  try {
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${SELF_DELETE_LOCK_KEY})`
+      );
+      const [target] = await tx
+        .select({ id: usersTable.id, role: usersTable.role, status: usersTable.status })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+      if (!target) {
+        return { error: { status: 404, message: "Akun tidak ditemukan" } as const };
+      }
+      if (target.role === "admin" && target.status === "active") {
+        const [{ count }] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(usersTable)
+          .where(
+            and(
+              eq(usersTable.role, "admin"),
+              eq(usersTable.status, "active"),
+              ne(usersTable.id, userId)
+            )
+          );
+        if (count === 0) {
+          return {
+            error: {
+              status: 403,
+              message:
+                "Anda admin platform terakhir. Tunjuk admin lain dulu sebelum menghapus akun.",
+            } as const,
+          };
+        }
+      }
+      await tx.delete(usersTable).where(eq(usersTable.id, userId));
+      return { ok: true as const };
+    });
+    if ("error" in result && result.error) {
+      res.status(result.error.status).json({ error: result.error.message });
+      return;
+    }
+    req.session.destroy((err) => {
+      if (err) {
+        req.log.error({ err }, "Session destroy after self-delete failed");
+      }
+      res.clearCookie("vjchat.sid");
+      res.json({ success: true });
+    });
+  } catch (err) {
+    req.log.error({ err }, "DELETE /auth/me failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

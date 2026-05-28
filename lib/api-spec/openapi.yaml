@@ -81,6 +81,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthMeResponse"
+    delete:
+      operationId: deleteMe
+      tags: [auth]
+      summary: Delete the current user's own account and end the session
+      responses:
+        "200":
+          description: Account deleted; session ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Refused (e.g. last active platform admin)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Account no longer exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /auth/signup:
     post:
