@@ -94,11 +94,12 @@ function defaultSettingsResponse() {
   };
 }
 
-router.get("/", async (req, res) => {
+router.get("/", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res.json(defaultSettingsResponse());
+      res.json(defaultSettingsResponse());
+      return;
     }
     const settings = await getOrCreateSettings(ownerPhone);
     res.json(serializeSettings(settings));
@@ -108,16 +109,20 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.put("/", async (req, res) => {
+router.put("/", async (req, res): Promise<void> => {
   try {
     const parsed = UpdateSettingsBody.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
 
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum menyimpan pengaturan." });
+      return;
     }
 
     const current = await getOrCreateSettings(ownerPhone);

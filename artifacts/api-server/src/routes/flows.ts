@@ -96,7 +96,7 @@ function serializeFull(f: typeof chatbotFlowsTable.$inferSelect) {
 // --- Image upload for Message/Question nodes ---
 router.post("/upload-image", requireSupervisorOrAbove, flowCreate, flowImageUpload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "Missing file" });
+    if (!req.file) { res.status(400).json({ error: "Missing file" }); return; }
     const url = `/api/media/${path.basename(req.file.path)}`;
     res.json({ url });
   } catch (err) {
@@ -105,27 +105,30 @@ router.post("/upload-image", requireSupervisorOrAbove, flowCreate, flowImageUplo
   }
 });
 
-router.get("/", flowView, async (req, res) => {
+router.get("/", flowView, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.json([]);
+  if (!ownerPhone) { res.json([]); return; }
   const rows = await db
     .select()
     .from(chatbotFlowsTable)
     .where(eq(chatbotFlowsTable.ownerPhone, ownerPhone))
     .orderBy(desc(chatbotFlowsTable.isActive), desc(chatbotFlowsTable.updatedAt));
-  return res.json(rows.map(serializeSummary));
+  res.json(rows.map(serializeSummary));
+  return;
 });
 
-router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res) => {
+router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.status(400).json({ error: "no_owner_phone" });
+  if (!ownerPhone) { res.status(400).json({ error: "no_owner_phone" }); return; }
   const parsed = z
     .object({ name: z.string().trim().min(1).max(120) })
     .safeParse(req.body);
-  if (!parsed.success)
-    return res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
+    return;
+  }
   const [row] = await db
     .insert(chatbotFlowsTable)
     .values({
@@ -134,30 +137,32 @@ router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res) => {
       graph: { nodes: [], edges: [] },
     })
     .returning();
-  return res.status(201).json(serializeFull(row!));
+  res.status(201).json(serializeFull(row!));
+  return;
 });
 
-router.get("/:id", flowView, async (req, res) => {
+router.get("/:id", flowView, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.status(404).json({ error: "not_found" });
+  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id)) return res.status(404).json({ error: "not_found" });
+  if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
   const [row] = await db
     .select()
     .from(chatbotFlowsTable)
     .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
     .limit(1);
-  if (!row) return res.status(404).json({ error: "not_found" });
-  return res.json(serializeFull(row));
+  if (!row) { res.status(404).json({ error: "not_found" }); return; }
+  res.json(serializeFull(row));
+  return;
 });
 
-router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res) => {
+router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.status(404).json({ error: "not_found" });
+  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id)) return res.status(404).json({ error: "not_found" });
+  if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
 
   const parsed = z
     .object({
@@ -165,8 +170,10 @@ router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res) => {
       graph: FlowGraphSchema.optional(),
     })
     .safeParse(req.body);
-  if (!parsed.success)
-    return res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
+    return;
+  }
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.data.name !== undefined) patch["name"] = parsed.data.name;
@@ -180,17 +187,19 @@ router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res) => {
       const src = nodesById.get(e.source);
       const tgt = nodesById.get(e.target);
       if (!src || !tgt) {
-        return res
+        res
           .status(400)
           .json({ error: "invalid_graph", message: "edge references missing node" });
+        return;
       }
       if (e.sourceHandle) {
         const opts = src.data.options ?? [];
         if (!opts.some((o) => o.id === e.sourceHandle)) {
-          return res.status(400).json({
+          res.status(400).json({
             error: "invalid_graph",
             message: "edge sourceHandle does not match any option on source node",
           });
+          return;
         }
       }
     }
@@ -202,30 +211,32 @@ router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res) => {
     .set(patch)
     .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
     .returning();
-  if (!row) return res.status(404).json({ error: "not_found" });
-  return res.json(serializeFull(row));
+  if (!row) { res.status(404).json({ error: "not_found" }); return; }
+  res.json(serializeFull(row));
+  return;
 });
 
-router.delete("/:id", requireSupervisorOrAbove, flowDelete, async (req, res) => {
+router.delete("/:id", requireSupervisorOrAbove, flowDelete, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.status(404).json({ error: "not_found" });
+  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id)) return res.status(404).json({ error: "not_found" });
+  if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
   const result = await db
     .delete(chatbotFlowsTable)
     .where(and(eq(chatbotFlowsTable.id, id), eq(chatbotFlowsTable.ownerPhone, ownerPhone)))
     .returning({ id: chatbotFlowsTable.id });
-  if (result.length === 0) return res.status(404).json({ error: "not_found" });
-  return res.status(204).end();
+  if (result.length === 0) { res.status(404).json({ error: "not_found" }); return; }
+  res.status(204).end();
+  return;
 });
 
-router.post("/:id/activate", requireSupervisorOrAbove, flowEdit, async (req, res) => {
+router.post("/:id/activate", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.status(404).json({ error: "not_found" });
+  if (!ownerPhone) { res.status(404).json({ error: "not_found" }); return; }
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id)) return res.status(404).json({ error: "not_found" });
+  if (!Number.isInteger(id)) { res.status(404).json({ error: "not_found" }); return; }
 
   // Swap atomically: deactivate any current active flow for this owner, then
   // activate the requested one. The partial unique index on (owner_phone)
@@ -246,35 +257,38 @@ router.post("/:id/activate", requireSupervisorOrAbove, flowEdit, async (req, res
       .returning();
     return row;
   });
-  if (!updated) return res.status(404).json({ error: "not_found" });
-  return res.json(serializeFull(updated));
+  if (!updated) { res.status(404).json({ error: "not_found" }); return; }
+  res.json(serializeFull(updated));
+  return;
 });
 
 // Clear flow cooldown / in-progress state for all chats of the current owner.
 // Useful for testing: lets the Default trigger fire on the next message
 // without waiting the configured cooldown window.
-router.post("/reset-cooldown", requireSupervisorOrAbove, flowEdit, async (req, res) => {
+router.post("/reset-cooldown", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.json({ cleared: 0 });
+  if (!ownerPhone) { res.json({ cleared: 0 }); return; }
   const result = await db
     .update(chatsTable)
     .set({ flowState: null })
     .where(eq(chatsTable.ownerPhone, ownerPhone));
-  return res.json({ cleared: result.rowCount ?? 0 });
+  res.json({ cleared: result.rowCount ?? 0 });
+  return;
 });
 
-router.post("/active/deactivate", requireSupervisorOrAbove, flowEdit, async (req, res) => {
+router.post("/active/deactivate", requireSupervisorOrAbove, flowEdit, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const ownerPhone = await getCurrentOwnerPhone(userId);
-  if (!ownerPhone) return res.status(204).end();
+  if (!ownerPhone) { res.status(204).end(); return; }
   await db
     .update(chatbotFlowsTable)
     .set({ isActive: false, updatedAt: new Date() })
     .where(
       and(eq(chatbotFlowsTable.ownerPhone, ownerPhone), eq(chatbotFlowsTable.isActive, true))
     );
-  return res.status(204).end();
+  res.status(204).end();
+  return;
 });
 
 export default router;

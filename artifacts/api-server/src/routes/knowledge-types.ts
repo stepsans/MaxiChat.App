@@ -57,10 +57,10 @@ export async function ensureKnowledgeTypesSeed(ownerPhone: string): Promise<void
   seededOwners.add(ownerPhone);
 }
 
-router.get("/", async (req, res) => {
+router.get("/", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) return res.json([]);
+    if (!ownerPhone) { res.json([]); return; }
     await ensureKnowledgeTypesSeed(ownerPhone);
     const rows = await db
       .select()
@@ -74,17 +74,19 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", async (req, res): Promise<void> => {
   try {
     const parsed = CreateBody.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+      return;
     }
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum menambah type." });
+      return;
     }
     const value = parsed.data.value.toLowerCase();
     const label = parsed.data.label;
@@ -98,7 +100,8 @@ router.post("/", async (req, res) => {
       .returning();
 
     if (inserted.length === 0) {
-      return res.status(409).json({ error: `Type "${value}" sudah ada` });
+      res.status(409).json({ error: `Type "${value}" sudah ada` });
+      return;
     }
     res.status(201).json(serialize(inserted[0]));
   } catch (err) {
@@ -107,17 +110,19 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
+      res.status(400).json({ error: "Invalid id" });
+      return;
     }
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus type." });
+      return;
     }
     const result = await db.transaction(async (tx) => {
       const [type] = await tx
@@ -153,7 +158,8 @@ router.delete("/:id", async (req, res) => {
     });
 
     if (result.status !== 200) {
-      return res.status(result.status).json({ error: result.error });
+      res.status(result.status).json({ error: result.error });
+      return;
     }
     res.json({ success: true });
   } catch (err) {

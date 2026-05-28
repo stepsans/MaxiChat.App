@@ -1,4 +1,2 @@
-- [Email verification flow](email-verification.md) — dev-fallback `devVerifyUrl` MUST be gated behind `NODE_ENV !== "production"`, and verify-email MUST only flip `pending+unverified` rows or it becomes an account-reactivation bypass.
-- [Verify URLs and host headers](verify-url-origin.md) — never derive verification/reset link origin from `req.get("host")` in production; require an explicit `PUBLIC_URL` env to avoid host-header poisoning.
-- [Orval response-schema name collisions](orval-response-naming.md) — naming a component `XResponse` and using it as the response of operation `x` produces both a zod `XResponse` const and an interface `XResponse` → re-export collision; use a distinct component name like `XResult`.
-- [Drizzle push needs TTY](drizzle-push-tty.md) — `drizzle-kit push` prompts interactively when the DB has tables the schema doesn't define; apply targeted additions via raw SQL through `executeSql` instead of risking unrelated drops.
+- [Express 5 handler conventions](express5-handler-conventions.md) — return types, never `return res.X()`, and the unbraced-if trap when bulk-rewriting that pattern.
+- [google-auth-library is transitive](google-auth-library-transitive.md) — never add as dep; use `InstanceType<typeof google.auth.OAuth2>` from `googleapis`.

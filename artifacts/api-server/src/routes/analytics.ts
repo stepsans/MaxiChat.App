@@ -11,14 +11,14 @@ const router = Router();
 // gated by analytics.canView.
 router.use(requirePermission("analytics", "view"));
 
-router.get("/summary", async (req, res) => {
+router.get("/summary", async (req, res): Promise<void> => {
   try {
     // Per-phone isolation: when disconnected, every counter is zero — the
     // dashboard for "nobody logged in" must not show another account's
     // numbers. Once a phone connects, only its own data is aggregated.
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res.json({
+      res.json({
         totalChats: 0,
         aiHandled: 0,
         needsHuman: 0,
@@ -30,6 +30,7 @@ router.get("/summary", async (req, res) => {
         todayChats: 0,
         closingRate: 0,
       });
+      return;
     }
     const chats = await db
       .select()
@@ -78,16 +79,17 @@ router.get("/summary", async (req, res) => {
   }
 });
 
-router.get("/common-questions", async (req, res) => {
+router.get("/common-questions", async (req, res): Promise<void> => {
   try {
     // Scope keyword counting to the current account's inbound messages only.
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res.json([
+      res.json([
         { question: "Pertanyaan harga", count: 0 },
         { question: "Cara order", count: 0 },
         { question: "Info produk", count: 0 },
       ]);
+      return;
     }
     const ownedChats = await db
       .select({ id: chatsTable.id })

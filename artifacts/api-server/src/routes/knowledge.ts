@@ -72,13 +72,14 @@ function exportFilename(ext: string): string {
   return `knowledge-base-${stamp}.${ext}`;
 }
 
-router.get("/export.csv", async (req, res) => {
+router.get("/export.csv", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor knowledge." });
+      return;
     }
     const entries = await db
       .select()
@@ -104,13 +105,14 @@ router.get("/export.csv", async (req, res) => {
   }
 });
 
-router.get("/export.xlsx", async (req, res) => {
+router.get("/export.xlsx", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor knowledge." });
+      return;
     }
     const entries = await db
       .select()
@@ -156,10 +158,10 @@ router.get("/export.xlsx", async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) return res.json([]);
+    if (!ownerPhone) { res.json([]); return; }
     const entries = await db
       .select()
       .from(knowledgeTable)
@@ -178,16 +180,17 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", async (req, res): Promise<void> => {
   try {
     const parsed = CreateKnowledgeBody.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum menambah knowledge." });
+      return;
     }
 
     const [entry] = await db
@@ -206,19 +209,20 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", async (req, res): Promise<void> => {
   try {
     const idParsed = UpdateKnowledgeParams.safeParse({ id: Number(req.params.id) });
-    if (!idParsed.success) return res.status(400).json({ error: "Invalid id" });
+    if (!idParsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
     const bodyParsed = UpdateKnowledgeBody.safeParse(req.body);
-    if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengubah knowledge." });
+      return;
     }
 
     const [updated] = await db
@@ -232,7 +236,7 @@ router.put("/:id", async (req, res) => {
       )
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Entry not found" });
+    if (!updated) { res.status(404).json({ error: "Entry not found" }); return; }
 
     res.json({
       ...updated,
@@ -245,16 +249,17 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req, res): Promise<void> => {
   try {
     const idParsed = DeleteKnowledgeParams.safeParse({ id: Number(req.params.id) });
-    if (!idParsed.success) return res.status(400).json({ error: "Invalid id" });
+    if (!idParsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus knowledge." });
+      return;
     }
 
     const deleted = await db
@@ -267,7 +272,7 @@ router.delete("/:id", async (req, res) => {
       )
       .returning();
 
-    if (deleted.length === 0) return res.status(404).json({ error: "Entry not found" });
+    if (deleted.length === 0) { res.status(404).json({ error: "Entry not found" }); return; }
 
     res.json({ success: true });
   } catch (err) {
@@ -352,21 +357,23 @@ let importInFlight = false;
 
 router.post("/import", upload.single("file"), async (req, res) => {
   if (importInFlight) {
-    return res
+    res
       .status(409)
       .json({ error: "Import sedang berjalan, tunggu sebentar." });
+    return;
   }
   importInFlight = true;
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengimpor knowledge." });
+      return;
     }
 
     const file = req.file;
-    if (!file) return res.status(400).json({ error: "File tidak ditemukan di field 'file'" });
+    if (!file) { res.status(400).json({ error: "File tidak ditemukan di field 'file'" }); return; }
 
     const name = (file.originalname ?? "").toLowerCase();
     const mime = (file.mimetype ?? "").toLowerCase();
@@ -389,17 +396,19 @@ router.post("/import", upload.single("file"), async (req, res) => {
         if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
         rows = parseCsv(text);
       } else {
-        return res.status(400).json({
+        res.status(400).json({
           error: "Format file tidak didukung. Gunakan .csv atau .xlsx",
         });
+        return;
       }
     } catch (e) {
       req.log.error({ err: e }, "Failed to parse import file");
-      return res.status(400).json({ error: "Gagal membaca isi file." });
+      res.status(400).json({ error: "Gagal membaca isi file." });
+      return;
     }
 
     const { entries, error } = rowsToEntries(rows);
-    if (error) return res.status(400).json({ error });
+    if (error) { res.status(400).json({ error }); return; }
 
     const validTypes = await loadValidTypes(ownerPhone);
     const newTypes = new Set<string>();

@@ -17,11 +17,7 @@ import {
   PanelLeftOpen,
   CircleDashed,
   LogOut,
-  Sun,
-  Moon,
-  Monitor,
 } from "lucide-react";
-import { useTheme, type Theme } from "@/hooks/use-theme";
 import { SiWhatsapp } from "react-icons/si";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -326,19 +322,6 @@ export default function Layout({
           <StatusBadge collapsed={collapsed} />
         </div>
 
-        {/* Theme switcher: light / dark / system. Sits above the account
-            row so it's reachable both when the sidebar is expanded
-            (segmented control) and collapsed (single icon cycling through
-            modes via tooltip). */}
-        <div
-          className={cn(
-            "border-t border-border",
-            collapsed ? "px-2 py-3 flex justify-center" : "px-3 py-3"
-          )}
-        >
-          <ThemeSwitcher collapsed={collapsed} />
-        </div>
-
         {/* Account: avatar + role/name/company + logout */}
         {user && (
           <div
@@ -431,79 +414,6 @@ function AccountAvatar({
       aria-label={name ?? "Akun"}
     >
       {initial}
-    </div>
-  );
-}
-
-// Tri-state theme switcher (Light / Dark / System) used in the sidebar
-// footer. Expanded → segmented control with three icon buttons. Collapsed
-// → single icon button cycling light → dark → system → light on click,
-// with a tooltip surfacing the current mode.
-function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
-  const { theme, setTheme } = useTheme();
-  const options: Array<{ value: Theme; label: string; Icon: typeof Sun }> = [
-    { value: "light", label: "Terang", Icon: Sun },
-    { value: "dark", label: "Gelap", Icon: Moon },
-    { value: "system", label: "Sistem", Icon: Monitor },
-  ];
-
-  if (collapsed) {
-    const current = options.find((o) => o.value === theme) ?? options[1];
-    const Icon = current.Icon;
-    const next: Theme =
-      theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={`Tema: ${current.label}. Klik untuk ganti.`}
-            data-testid="button-theme-cycle"
-            onClick={() => setTheme(next)}
-            className="flex items-center justify-center w-8 h-8 rounded-md text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          >
-            <Icon className="w-4 h-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">Tema: {current.label}</TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-1.5" data-testid="theme-switcher">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-        Tema
-      </div>
-      <div
-        role="radiogroup"
-        aria-label="Pilih tema"
-        className="flex items-center bg-sidebar-accent/40 rounded-md p-0.5 gap-0.5"
-      >
-        {options.map(({ value, label, Icon }) => {
-          const active = theme === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              aria-label={label}
-              data-testid={`button-theme-${value}`}
-              onClick={() => setTheme(value)}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1 h-7 rounded text-[11px] font-medium transition-colors",
-                active
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
-              )}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">{label}</span>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }

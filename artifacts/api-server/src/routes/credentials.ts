@@ -386,7 +386,7 @@ a{color:#60a5fa}</style></head>
 // next call reuses it. Throws if the credential isn't connected.
 export async function getAuthorizedOAuthClient(
   cred: Credential
-): Promise<import("google-auth-library").OAuth2Client> {
+): Promise<InstanceType<typeof google.auth.OAuth2>> {
   if (!cred.accessTokenEnc) {
     throw new Error("Credential not connected");
   }

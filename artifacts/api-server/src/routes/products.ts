@@ -136,10 +136,10 @@ function bodyToInsert(b: z.infer<typeof ProductBody>) {
   };
 }
 
-router.get("/", async (req, res) => {
+router.get("/", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) return res.json([]);
+    if (!ownerPhone) { res.json([]); return; }
     const rows = await db
       .select()
       .from(productsTable)
@@ -152,17 +152,19 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", async (req, res): Promise<void> => {
   try {
     const parsed = ProductBody.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+      return;
     }
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum menambah produk." });
+      return;
     }
     try {
       const [created] = await db
@@ -172,7 +174,8 @@ router.post("/", async (req, res) => {
       res.status(201).json(serialize(created));
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === "23505") {
-        return res.status(409).json({ error: "Kode produk sudah dipakai" });
+        res.status(409).json({ error: "Kode produk sudah dipakai" });
+        return;
       }
       throw e;
     }
@@ -182,21 +185,24 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
+      res.status(400).json({ error: "Invalid id" });
+      return;
     }
     const parsed = ProductBody.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
+      return;
     }
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengubah produk." });
+      return;
     }
     try {
       const [updated] = await db
@@ -204,11 +210,12 @@ router.put("/:id", async (req, res) => {
         .set({ ...bodyToInsert(parsed.data), updatedAt: new Date() })
         .where(and(eq(productsTable.id, id), eq(productsTable.ownerPhone, ownerPhone)))
         .returning();
-      if (!updated) return res.status(404).json({ error: "Product not found" });
+      if (!updated) { res.status(404).json({ error: "Product not found" }); return; }
       res.json(serialize(updated));
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === "23505") {
-        return res.status(409).json({ error: "Kode produk sudah dipakai" });
+        res.status(409).json({ error: "Kode produk sudah dipakai" });
+        return;
       }
       throw e;
     }
@@ -218,23 +225,25 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
+      res.status(400).json({ error: "Invalid id" });
+      return;
     }
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum menghapus produk." });
+      return;
     }
     const deleted = await db
       .delete(productsTable)
       .where(and(eq(productsTable.id, id), eq(productsTable.ownerPhone, ownerPhone)))
       .returning();
-    if (deleted.length === 0) return res.status(404).json({ error: "Product not found" });
+    if (deleted.length === 0) { res.status(404).json({ error: "Product not found" }); return; }
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete product");
@@ -245,7 +254,7 @@ router.delete("/:id", async (req, res) => {
 // --- Image upload ---
 router.post("/upload-image", imageUpload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "Missing file" });
+    if (!req.file) { res.status(400).json({ error: "Missing file" }); return; }
     const url = `/api/media/${path.basename(req.file.path)}`;
     res.json({ url });
   } catch (err) {
@@ -300,13 +309,14 @@ function rowToCsvField(v: unknown): string {
   return needsQuote ? `"${safe}"` : safe;
 }
 
-router.get("/export.csv", async (req, res) => {
+router.get("/export.csv", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor produk." });
+      return;
     }
     const rows = await db
       .select()
@@ -332,13 +342,14 @@ router.get("/export.csv", async (req, res) => {
   }
 });
 
-router.get("/export.xlsx", async (req, res) => {
+router.get("/export.xlsx", async (req, res): Promise<void> => {
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengekspor produk." });
+      return;
     }
     const rows = await db
       .select()
@@ -512,19 +523,24 @@ type ProductCol = keyof typeof EXPORT_HEADERS_MAP;
 
 let productImportInFlight = false;
 
-router.post("/import", fileUpload.single("file"), async (req, res) => {
+router.post("/import", fileUpload.single("file"), async (req, res): Promise<void> => {
   if (productImportInFlight) {
-    return res.status(409).json({ error: "Import sedang berjalan, tunggu sebentar." });
+    res.status(409).json({ error: "Import sedang berjalan, tunggu sebentar." });
+    return;
   }
   productImportInFlight = true;
   try {
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum mengimpor produk." });
+      return;
     }
-    if (!req.file) return res.status(400).json({ error: "Missing file" });
+    if (!req.file) {
+      res.status(400).json({ error: "Missing file" });
+      return;
+    }
     const name = (req.file.originalname || "").toLowerCase();
     let rows: string[][];
     try {
@@ -533,15 +549,18 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
       } else if (name.endsWith(".csv")) {
         rows = parseCsv(req.file.buffer.toString("utf-8"));
       } else {
-        return res.status(400).json({ error: "Format tidak didukung. Gunakan .csv atau .xlsx." });
+        res.status(400).json({ error: "Format tidak didukung. Gunakan .csv atau .xlsx." });
+        return;
       }
     } catch (e) {
       req.log.error({ err: e }, "Failed to parse product import file");
-      return res.status(400).json({ error: "Gagal membaca isi file." });
+      res.status(400).json({ error: "Gagal membaca isi file." });
+      return;
     }
 
     if (rows.length === 0) {
-      return res.status(400).json({ error: "File kosong." });
+      res.status(400).json({ error: "File kosong." });
+      return;
     }
 
     const headerCells = rows[0].map((c) => c.trim().toLowerCase());
@@ -552,10 +571,11 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
     });
 
     if (colIndex.code === undefined || colIndex.name === undefined || colIndex.price === undefined) {
-      return res.status(400).json({
+      res.status(400).json({
         error:
           "Header wajib: Kode Product, Nama Barang, Harga Pricelist. Header lain (Category, Harga Silver/Gold/Platinum/Reseller/Distributor, Link Foto, Link Flyer, Link Website, Link Video) opsional.",
       });
+      return;
     }
 
     const cell = (r: string[], k: ProductCol): string =>
@@ -629,7 +649,8 @@ router.post("/import", fileUpload.single("file"), async (req, res) => {
     }
 
     if (entries.length === 0) {
-      return res.status(400).json({ error: "Tidak ada baris valid di file." });
+      res.status(400).json({ error: "Tidak ada baris valid di file." });
+      return;
     }
 
     // Owner-scoped wipe & replace: only this account's catalog is rebuilt;
@@ -707,19 +728,21 @@ const syncToKnowledgeInFlight = new Set<string>();
 // AI (which is fed only from the knowledge base) can answer questions like
 // "produk apa saja di kategori X". Internal tier prices (silver/gold/etc.)
 // are intentionally excluded — they are app-only data, never for customers.
-router.post("/sync-to-knowledge", async (req, res) => {
+router.post("/sync-to-knowledge", async (req, res): Promise<void> => {
   let ownerPhone: string | null = null;
   try {
     ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(503)
         .json({ error: "Hubungkan WhatsApp dulu sebelum sync ke knowledge base." });
+      return;
     }
     if (syncToKnowledgeInFlight.has(ownerPhone)) {
-      return res
+      res
         .status(409)
         .json({ error: "Sync sedang berjalan, tunggu sebentar." });
+      return;
     }
     syncToKnowledgeInFlight.add(ownerPhone);
     await ensureKnowledgeTypesSeed(ownerPhone);

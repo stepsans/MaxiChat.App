@@ -2112,7 +2112,7 @@ export async function initWhatsapp() {
 
 const router = Router();
 
-router.get("/status", async (req, res) => {
+router.get("/status", async (req, res): Promise<void> => {
   try {
     const userId = requireUserId(req);
     // Invited team members (supervisor / agent) share the super_admin's
@@ -2131,24 +2131,26 @@ router.get("/status", async (req, res) => {
   }
 });
 
-router.post("/connect", async (req, res) => {
+router.post("/connect", async (req, res): Promise<void> => {
   try {
     const userId = requireUserId(req);
     // Only the super_admin can pair / re-pair a WhatsApp number for the
     // team. Supervisor / agent inherit the owner's session.
     if (!(await isWhatsappOwner(userId))) {
-      return res.status(403).json({
+      res.status(403).json({
         error: "Hanya pemilik akun yang dapat menghubungkan WhatsApp.",
       });
+      return;
     }
     const session = await getOrCreateSession(userId);
     if (session.status === "connected") {
-      return res.json({
+      res.json({
         status: session.status,
         qrCode: null,
         phoneNumber: session.phoneNumber ?? null,
         connectedAt: session.connectedAt?.toISOString() ?? null,
       });
+      return;
     }
     await setStatus(session.id, "connecting");
     startBaileys(userId).catch((err) =>
@@ -2205,13 +2207,14 @@ router.put("/profile/bio", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/disconnect", async (req, res) => {
+router.post("/disconnect", async (req, res): Promise<void> => {
   try {
     const userId = requireUserId(req);
     if (!(await isWhatsappOwner(userId))) {
-      return res.status(403).json({
+      res.status(403).json({
         error: "Hanya pemilik akun yang dapat memutuskan WhatsApp.",
       });
+      return;
     }
     const ctx = getCtx(userId);
     // Bump THIS user's epoch FIRST so any in-flight handler callbacks abort

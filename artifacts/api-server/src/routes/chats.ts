@@ -366,7 +366,7 @@ async function loadOwnedChat(userId: number, chatId: number) {
   return chat ?? null;
 }
 
-router.get("/", async (req, res) => {
+router.get("/", async (req, res): Promise<void> => {
   try {
     const parsed = ListChatsQueryParams.safeParse(req.query);
     const status = parsed.success ? parsed.data.status : undefined;
@@ -378,7 +378,8 @@ router.get("/", async (req, res) => {
     const userId = req.session.userId!;
     const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
-      return res.json([]);
+      res.json([]);
+      return;
     }
 
     // Role-aware filter: agents only see chats explicitly assigned to them;
@@ -454,15 +455,17 @@ function normalisePhoneDigits(raw: string): string {
   return digits;
 }
 
-router.post("/open-by-phone", async (req, res) => {
+router.post("/open-by-phone", async (req, res): Promise<void> => {
   try {
     const parsed = OpenChatByPhoneBody.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid body" });
+      res.status(400).json({ error: "Invalid body" });
+      return;
     }
     const digits = normalisePhoneDigits(parsed.data.phoneNumber);
     if (digits.length < 8 || digits.length > 15) {
-      return res.status(400).json({ error: "Invalid phone number" });
+      res.status(400).json({ error: "Invalid phone number" });
+      return;
     }
     // Personal chats are stored as "+<digits>"; group jids use "@g.us" and
     // are not creatable from this UI.
@@ -470,9 +473,10 @@ router.post("/open-by-phone", async (req, res) => {
 
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
     if (!ownerPhone) {
-      return res
+      res
         .status(409)
         .json({ error: "WhatsApp belum terhubung. Pair akun WhatsApp terlebih dulu." });
+      return;
     }
 
     // Deterministic "open-or-create": try INSERT … ON CONFLICT DO NOTHING. If
@@ -497,7 +501,8 @@ router.post("/open-by-phone", async (req, res) => {
       .returning({ id: chatsTable.id });
 
     if (inserted[0]) {
-      return res.json({ chatId: inserted[0].id, created: true, phoneNumber });
+      res.json({ chatId: inserted[0].id, created: true, phoneNumber });
+      return;
     }
 
     const [existing] = await db
@@ -510,40 +515,43 @@ router.post("/open-by-phone", async (req, res) => {
 
     if (!existing) {
       // Should be impossible: insert was a no-op, so a row must exist.
-      return res.status(500).json({ error: "Failed to open chat" });
+      res.status(500).json({ error: "Failed to open chat" });
+      return;
     }
-    return res.json({ chatId: existing.id, created: false, phoneNumber });
+    res.json({ chatId: existing.id, created: false, phoneNumber });
+    return;
   } catch (err) {
     req.log.error({ err }, "Failed to open chat by phone");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/:id/refresh-avatar", async (req, res) => {
+router.post("/:id/refresh-avatar", async (req, res): Promise<void> => {
   try {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
-    if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
     const chat = await loadOwnedChat(req.session.userId!, parsed.data.id);
-    if (!chat) return res.status(404).json({ error: "Chat not found" });
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const url = await refreshChatProfilePic(req.session.userId!, chat, {
       force: true,
     });
-    return res.json({ profilePicUrl: url });
+    res.json({ profilePicUrl: url });
+    return;
   } catch (err) {
     req.log.error({ err }, "Failed to refresh chat avatar");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req, res): Promise<void> => {
   try {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
-    if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
     const chat = await loadOwnedChat(req.session.userId!, parsed.data.id);
-    if (!chat) return res.status(404).json({ error: "Chat not found" });
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const messages = await db
       .select()
@@ -578,16 +586,16 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", async (req, res): Promise<void> => {
   try {
     const idParsed = UpdateChatParams.safeParse({ id: Number(req.params.id) });
-    if (!idParsed.success) return res.status(400).json({ error: "Invalid id" });
+    if (!idParsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
     const bodyParsed = UpdateChatBody.safeParse(req.body);
-    if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
     const ownerPhone = await getCurrentOwnerPhone(req.session.userId!);
-    if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
+    if (!ownerPhone) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const [updated] = await db
       .update(chatsTable)
@@ -597,7 +605,7 @@ router.patch("/:id", async (req, res) => {
       )
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Chat not found" });
+    if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
 
     res.json({
       ...updated,
@@ -610,15 +618,16 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
+      res.status(400).json({ error: "Invalid id" });
+      return;
     }
 
     const existing = await loadOwnedChat(req.session.userId!, id);
-    if (!existing) return res.status(404).json({ error: "Chat not found" });
+    if (!existing) { res.status(404).json({ error: "Chat not found" }); return; }
 
     // Re-scope the delete itself by owner, so a session swap between the
     // load and the delete still leaves the previous owner's row intact.
@@ -635,16 +644,16 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-router.post("/:id/reply", async (req, res) => {
+router.post("/:id/reply", async (req, res): Promise<void> => {
   try {
     const idParsed = SendManualReplyParams.safeParse({ id: Number(req.params.id) });
-    if (!idParsed.success) return res.status(400).json({ error: "Invalid id" });
+    if (!idParsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
     const bodyParsed = SendManualReplyBody.safeParse(req.body);
-    if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
     const chat = await loadOwnedChat(req.session.userId!, idParsed.data.id);
-    if (!chat) return res.status(404).json({ error: "Chat not found" });
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
     // Append the human agent's signature so the recipient can tell who on
     // the team replied. See lib/sender-tag.ts for the format.
@@ -684,18 +693,18 @@ router.post("/:id/reply", async (req, res) => {
   }
 });
 
-router.post("/:id/takeover", async (req, res) => {
+router.post("/:id/takeover", async (req, res): Promise<void> => {
   try {
     const idParsed = TakeoverChatParams.safeParse({ id: Number(req.params.id) });
-    if (!idParsed.success) return res.status(400).json({ error: "Invalid id" });
+    if (!idParsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
 
     const bodyParsed = TakeoverChatBody.safeParse(req.body);
-    if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
 
     // Same authz scope as the rest of the chat routes: agents may only
     // toggle takeover on chats assigned to them.
     const where = await authorizedChatWhere(req.session.userId!, idParsed.data.id);
-    if (!where) return res.status(404).json({ error: "Chat not found" });
+    if (!where) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const [updated] = await db
       .update(chatsTable)
@@ -706,7 +715,7 @@ router.post("/:id/takeover", async (req, res) => {
       .where(where)
       .returning();
 
-    if (!updated) return res.status(404).json({ error: "Chat not found" });
+    if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
 
     res.json({
       ...updated,
@@ -723,36 +732,45 @@ router.post("/:id/takeover", async (req, res) => {
 // { userId: number | null }. Assigning to null clears the assignment.
 // The candidate user must belong to the same team (parent_user_id matches
 // the effective owner, or is the owner themselves).
-router.patch("/:id/assign", async (req, res) => {
+router.patch("/:id/assign", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
-    if (!Number.isFinite(id) || id <= 0)
-      return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
     const teamRole = req.session.teamRole ?? "super_admin";
     if (teamRole === "agent") {
-      return res.status(403).json({ error: "Agen tidak dapat melakukan assign" });
+      res.status(403).json({ error: "Agen tidak dapat melakukan assign" });
+      return;
     }
     const userId = req.session.userId!;
     const ownerPhone = await getCurrentOwnerPhone(userId);
-    if (!ownerPhone) return res.status(404).json({ error: "Chat not found" });
+    if (!ownerPhone) { res.status(404).json({ error: "Chat not found" }); return; }
 
     const raw = (req.body ?? {}) as { userId?: number | null };
     const targetUserId =
       raw.userId === null || raw.userId === undefined
         ? null
         : Number(raw.userId);
-    if (targetUserId !== null && (!Number.isInteger(targetUserId) || targetUserId <= 0)) {
-      return res.status(400).json({ error: "userId tidak valid" });
-    }
-
-    // Validate the candidate belongs to the same team as the current user.
     if (targetUserId !== null) {
+      const tu = targetUserId as number;
+      if (!Number.isInteger(tu) || tu <= 0) {
+        res.status(400).json({ error: "userId tidak valid" });
+        return;
+      }
+      // Validate the candidate belongs to the same team as the current user.
       const { isAssignableUnderOwner } = await import("./agents");
       const { getEffectiveOwnerUserId } = await import("../lib/auth");
       const ownerId = await getEffectiveOwnerUserId(userId);
-      const ok = await isAssignableUnderOwner(ownerId, targetUserId);
+      if (ownerId === null) {
+        res.status(403).json({ error: "Tidak ada owner aktif" });
+        return;
+      }
+      const ok = await isAssignableUnderOwner(ownerId, tu);
       if (!ok) {
-        return res.status(400).json({ error: "User bukan anggota tim Anda" });
+        res.status(400).json({ error: "User bukan anggota tim Anda" });
+        return;
       }
     }
 
@@ -772,7 +790,7 @@ router.patch("/:id/assign", async (req, res) => {
         sql`${chatsTable.id} = ${id} AND ${chatsTable.ownerPhone} = ${ownerPhone}`
       )
       .returning();
-    if (!updated) return res.status(404).json({ error: "Chat not found" });
+    if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
     res.json({
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
@@ -789,22 +807,26 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
+      res.status(400).json({ error: "Invalid id" });
+      return;
     }
     if (!req.file) {
-      return res.status(400).json({ error: "Missing file" });
+      res.status(400).json({ error: "Missing file" });
+      return;
     }
 
     if (!(await getActiveSocket(req.session.userId!))) {
       // Clean up the file we just saved
       await fs.unlink(req.file.path).catch(() => {});
-      return res.status(503).json({ error: "WhatsApp belum terhubung" });
+      res.status(503).json({ error: "WhatsApp belum terhubung" });
+      return;
     }
 
     const target = await jidForChat(req.session.userId!, id);
     if (!target) {
       await fs.unlink(req.file.path).catch(() => {});
-      return res.status(404).json({ error: "Chat not found" });
+      res.status(404).json({ error: "Chat not found" });
+      return;
     }
 
     const rawCaption = (req.body?.caption as string | undefined)?.trim() || undefined;
@@ -830,7 +852,8 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     } catch (err) {
       req.log.error({ err }, "Failed to send media via WhatsApp");
       await fs.unlink(req.file.path).catch(() => {});
-      return res.status(500).json({ error: "Failed to send media" });
+      res.status(500).json({ error: "Failed to send media" });
+      return;
     }
 
     const mediaUrl = `/api/media/${path.basename(req.file.path)}`;
@@ -883,31 +906,35 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
 });
 
 // Send contact card via WhatsApp
-router.post("/:id/contact", async (req, res) => {
+router.post("/:id/contact", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
+      res.status(400).json({ error: "Invalid id" });
+      return;
     }
     const name = (req.body?.name as string | undefined)?.trim();
     const phone = (req.body?.phone as string | undefined)?.trim();
     if (!name || !phone) {
-      return res.status(400).json({ error: "Name and phone are required" });
+      res.status(400).json({ error: "Name and phone are required" });
+      return;
     }
 
     if (!(await getActiveSocket(req.session.userId!))) {
-      return res.status(503).json({ error: "WhatsApp belum terhubung" });
+      res.status(503).json({ error: "WhatsApp belum terhubung" });
+      return;
     }
 
     const target = await jidForChat(req.session.userId!, id);
-    if (!target) return res.status(404).json({ error: "Chat not found" });
+    if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
 
     let waMessageId: string | null = null;
     try {
       waMessageId = await sendContactToJid(req.session.userId!, target.jid, name, phone);
     } catch (err) {
       req.log.error({ err }, "Failed to send contact via WhatsApp");
-      return res.status(500).json({ error: "Failed to send contact" });
+      res.status(500).json({ error: "Failed to send contact" });
+      return;
     }
 
     const preview = `👤 ${name}`;
@@ -949,23 +976,26 @@ router.post("/:id/contact", async (req, res) => {
 });
 
 // Send a product (image + caption) from the catalog to a chat
-router.post("/:id/product", async (req, res) => {
+router.post("/:id/product", async (req, res): Promise<void> => {
   try {
     const id = Number(req.params.id);
     const productId = Number(req.body?.productId);
     if (!Number.isFinite(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
+      res.status(400).json({ error: "Invalid id" });
+      return;
     }
     if (!Number.isFinite(productId) || productId <= 0) {
-      return res.status(400).json({ error: "Invalid productId" });
+      res.status(400).json({ error: "Invalid productId" });
+      return;
     }
 
     if (!(await getActiveSocket(req.session.userId!))) {
-      return res.status(503).json({ error: "WhatsApp belum terhubung" });
+      res.status(503).json({ error: "WhatsApp belum terhubung" });
+      return;
     }
 
     const target = await jidForChat(req.session.userId!, id);
-    if (!target) return res.status(404).json({ error: "Chat not found" });
+    if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
 
     // Owner-scoped product lookup: an operator can only send products from
     // their own catalog. Even a leaked product id from another account
@@ -979,7 +1009,7 @@ router.post("/:id/product", async (req, res) => {
           eq(productsTable.ownerPhone, target.chat.ownerPhone)
         )
       );
-    if (!product) return res.status(404).json({ error: "Product not found" });
+    if (!product) { res.status(404).json({ error: "Product not found" }); return; }
 
     const priceFmt = new Intl.NumberFormat("id-ID", {
       style: "currency",
@@ -1049,7 +1079,7 @@ router.post("/:id/product", async (req, res) => {
     let waMessageId: string | null = null;
     if (imageBuffer && imageMimeType) {
       const sock = await getActiveSocket(req.session.userId!);
-      if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
+      if (!sock) { res.status(503).json({ error: "WhatsApp belum terhubung" }); return; }
       try {
         const sent = await sock.sendMessage(target.jid, {
           image: imageBuffer,
@@ -1063,17 +1093,19 @@ router.post("/:id/product", async (req, res) => {
         mediaFilename = product.name;
       } catch (err) {
         req.log.error({ err, productId }, "Failed to send product image");
-        return res.status(500).json({ error: "Failed to send product image" });
+        res.status(500).json({ error: "Failed to send product image" });
+        return;
       }
     } else {
       const sock = await getActiveSocket(req.session.userId!);
-      if (!sock) return res.status(503).json({ error: "WhatsApp belum terhubung" });
+      if (!sock) { res.status(503).json({ error: "WhatsApp belum terhubung" }); return; }
       try {
         const sent = await sock.sendMessage(target.jid, { text: caption });
         waMessageId = sent?.key?.id ?? null;
       } catch (err) {
         req.log.error({ err, productId }, "Failed to send product as text");
-        return res.status(500).json({ error: "Failed to send product" });
+        res.status(500).json({ error: "Failed to send product" });
+        return;
       }
     }
 
