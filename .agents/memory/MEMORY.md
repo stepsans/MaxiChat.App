@@ -1,2 +1,3 @@
 - [Express 5 handler conventions](express5-handler-conventions.md) — return types, never `return res.X()`, and the unbraced-if trap when bulk-rewriting that pattern.
 - [google-auth-library is transitive](google-auth-library-transitive.md) — never add as dep; use `InstanceType<typeof google.auth.OAuth2>` from `googleapis`.
+- [Baileys message pipeline](baileys-message-pipeline.md) — accept all upsert types (notify/append/prepend/replace); epoch guard must `continue` mid-loop, never `return` — wrong choice silently drops messages.

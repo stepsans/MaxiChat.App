@@ -1862,11 +1862,30 @@ async function startBaileys(userId: number) {
         { type, count: messages.length, jids: messages.map((m) => m.key.remoteJid) },
         "messages.upsert received"
       );
-      if (type !== "notify" && type !== "append") return;
+      // Process all real message-event types. Baileys emits:
+      //   - "notify"   = brand-new live message
+      //   - "append"   = catch-up message during sync
+      //   - "prepend"  = older message being backfilled after history sync
+      //   - "replace"  = edited/replacement message
+      // Previously we only accepted notify/append, which silently dropped
+      // backfilled history chunks ("putus chat" in MaxiChat while the
+      // message was still present on the phone).
+      if (
+        type !== "notify" &&
+        type !== "append" &&
+        type !== "prepend" &&
+        type !== "replace"
+      ) {
+        return;
+      }
 
       for (const msg of messages) {
         try {
-          if (myEpoch !== ctx.epoch) return;
+          // Don't bail out of the whole batch if the connection epoch
+          // changes mid-loop — we already captured ownerPhone, so each
+          // surviving message can still be persisted safely. A `return`
+          // here used to silently lose the tail of every batch when the
+          // socket flickered, because Baileys won't re-emit those events.
           if (msg.key?.remoteJid === "status@broadcast") {
             await persistWaStatus(ownerPhone, ownerJid, msg, downloadMediaMessage, true).catch(
               (err) => logger.error({ err }, "Failed to persist live status")
@@ -1881,7 +1900,6 @@ async function startBaileys(userId: number) {
             resolveGroupName
           );
           if (!parsed) continue;
-          if (myEpoch !== ctx.epoch) return;
 
           const { chat, inserted } = await persistWaMessage(userId, ownerPhone, parsed, {
             incrementUnread: true,
@@ -1889,6 +1907,10 @@ async function startBaileys(userId: number) {
           if (!inserted) continue;
           if (parsed.fromMe) continue;
           if (parsed.isGroup) continue;
+          // Auto-reply is the only place where a stale epoch genuinely
+          // matters (we shouldn't reply on behalf of a disconnected
+          // socket). Persistence above is safe even after a reconnect.
+          if (myEpoch !== ctx.epoch) continue;
 
           await maybeTriggerAutoReply(userId, ownerPhone, myEpoch, chat, parsed.jid, parsed.messageContent);
         } catch (err) {
@@ -1946,7 +1968,10 @@ async function startBaileys(userId: number) {
       let ingested = 0;
       for (const msg of messages) {
         try {
-          if (myEpoch !== ctx.epoch) return;
+          // Use `continue`, not `return`: a mid-batch epoch flip used
+          // to silently drop the tail of every history sync (= missing
+          // older chats in MaxiChat that were still visible on the
+          // phone). Captured ownerPhone keeps writes isolated correctly.
           if (msg.key?.remoteJid === "status@broadcast") {
             await persistWaStatus(ownerPhone, ownerJid, msg, downloadMediaMessage, false).catch(
               (err) => logger.error({ err }, "Failed to persist history status")
@@ -1961,7 +1986,6 @@ async function startBaileys(userId: number) {
             resolveGroupName
           );
           if (!parsed) continue;
-          if (myEpoch !== ctx.epoch) return;
           const { inserted } = await persistWaMessage(userId, ownerPhone, parsed, {
             incrementUnread: false,
           });
