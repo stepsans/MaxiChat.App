@@ -27,5 +27,17 @@ The pattern `if (myEpoch !== ctx.epoch) return;` placed inside a `for (const msg
 - Gate only the outbound-send step (`maybeTriggerAutoReply`, manual replies, presence updates) with the epoch check — and use `continue` so the rest of the batch still persists.
 - Same rule applies to `messaging-history.set` ingestion loops.
 
-## Rule 3 — JID suffix allowlist
+## Rule 3 — History sync must download media AND back-fill on conflict
+Two coupled traps when ingesting `messaging-history.set`:
+
+1. If `parseWaMessage` is called with `downloadMedia: false` for history, every historical row is persisted with `mediaUrl=null`. Operator sees the text/caption but every PDF / image / video is a dead placeholder.
+2. Persisting via `onConflictDoNothing(waMessageId)` means a *later* history sync that finally has the file (or now has sender info) can't repair the existing row — the conflict silently no-ops.
+
+**Why:** A history chunk is the only chance to capture that message's media keys; if you don't download then and don't back-fill on conflict, the media is lost until the user manually re-pairs and clears the row.
+
+**How to apply:**
+- Pass `downloadMedia: true` to `parseWaMessage` from the `messaging-history.set` loop, not just from `messages.upsert`. Sequential awaits in the loop already throttle the fetch storm.
+- On a no-op conflict, follow up with an `UPDATE … SET col = COALESCE(col, $new)` for media (url/type/mime/filename), sender (jid/phoneDigits/name), and mentions. COALESCE guarantees we never clobber an already-good value.
+
+## Rule 4 — JID suffix allowlist
 `parseWaMessage` allows `@s.whatsapp.net`, `@lid`, and group JIDs. Drops `@broadcast`, `@newsletter`, `status@broadcast`. If WhatsApp introduces a new suffix (e.g. `@bot`), messages from those JIDs will be silently dropped here — revisit the allowlist if users report missing chats from new contact types.

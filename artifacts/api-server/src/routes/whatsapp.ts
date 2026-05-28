@@ -1120,6 +1120,48 @@ async function persistWaMessage(
       .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
       .returning({ id: chatMessagesTable.id });
     inserted = result.length > 0;
+
+    // Back-fill an already-persisted row when this pass finally has data
+    // the original insert lacked. Two real-world cases:
+    //   1) A history-sync chunk first stored the row with mediaUrl=null
+    //      (download was disabled). A later resync now has the file.
+    //   2) The initial insert was outbound or arrived before we captured
+    //      sender info; a later prepend/append carries the participant.
+    // We only fill NULLs (COALESCE) so we never clobber an already-good
+    // value, and never touch immutable fields like content/timestamp.
+    if (!inserted) {
+      const fillSet: Record<string, unknown> = {};
+      if (parsed.media?.mediaUrl) {
+        fillSet.mediaUrl = sql`COALESCE(${chatMessagesTable.mediaUrl}, ${parsed.media.mediaUrl})`;
+        if (parsed.media.mediaType) {
+          fillSet.mediaType = sql`COALESCE(${chatMessagesTable.mediaType}, ${parsed.media.mediaType})`;
+        }
+        if (parsed.media.mediaMimeType) {
+          fillSet.mediaMimeType = sql`COALESCE(${chatMessagesTable.mediaMimeType}, ${parsed.media.mediaMimeType})`;
+        }
+        if (parsed.media.mediaFilename) {
+          fillSet.mediaFilename = sql`COALESCE(${chatMessagesTable.mediaFilename}, ${parsed.media.mediaFilename})`;
+        }
+      }
+      if (parsed.senderJid) {
+        fillSet.senderJid = sql`COALESCE(${chatMessagesTable.senderJid}, ${parsed.senderJid})`;
+      }
+      if (parsed.senderPhoneDigits) {
+        fillSet.senderPhoneDigits = sql`COALESCE(${chatMessagesTable.senderPhoneDigits}, ${parsed.senderPhoneDigits})`;
+      }
+      if (parsed.senderName) {
+        fillSet.senderName = sql`COALESCE(${chatMessagesTable.senderName}, ${parsed.senderName})`;
+      }
+      if (parsed.mentionedPhoneDigits.length) {
+        fillSet.mentionedPhoneDigits = sql`COALESCE(${chatMessagesTable.mentionedPhoneDigits}, ${parsed.mentionedPhoneDigits})`;
+      }
+      if (Object.keys(fillSet).length > 0) {
+        await db
+          .update(chatMessagesTable)
+          .set(fillSet)
+          .where(eq(chatMessagesTable.waMessageId, parsed.waMessageId));
+      }
+    }
   } else {
     await db.insert(chatMessagesTable).values({
       chatId: chat.id,
@@ -2042,11 +2084,17 @@ async function startBaileys(userId: number) {
             );
             continue;
           }
+          // Download media for historical messages too — otherwise the
+          // operator sees the chat history but every PDF / image / video
+          // shows as a placeholder with mediaUrl=null. Downloads are
+          // sequential here (we await each one) so we don't fan out a
+          // huge fetch storm; individual failures are logged inside
+          // parseWaMessage and we still persist the row with metadata.
           const parsed = await parseWaMessage(
             msg,
             isJidGroup as (j: string) => boolean,
             downloadMediaMessage,
-            false,
+            true,
             resolveGroupName
           );
           if (!parsed) continue;
