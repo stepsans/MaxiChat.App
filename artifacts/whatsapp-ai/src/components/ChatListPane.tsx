@@ -254,9 +254,13 @@ export default function ChatListPane({ selectedChatId }: Props) {
             {filtered.map((chat) => {
               const TagIcon = tagIcons[chat.tag];
               const isSelected = selectedChatId === chat.id;
+              // Prefer pushName (stored in contactName) over the raw JID even
+              // for LID chats — only fall back to the LID number when no
+              // pushName has ever been received.
               const displayName =
                 chat.nickname?.trim() ||
-                (chat.isLid ? chat.phoneNumber : chat.contactName);
+                chat.contactName ||
+                chat.phoneNumber;
               const subtitle = isGroupChat(chat)
                 ? "Grup"
                 : chat.isLid

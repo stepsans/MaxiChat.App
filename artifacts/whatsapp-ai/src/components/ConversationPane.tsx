@@ -369,9 +369,13 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   }
 
   const isGroup = chat.phoneNumber.endsWith("@g.us");
+  // Prefer pushName (stored in contactName) over the raw JID — even for LID
+  // chats — so the header shows "Efendi" instead of a bare LID number when
+  // WhatsApp has shared the contact's profile name.
   const displayName =
     chat.nickname?.trim() ||
-    (chat.isLid ? chat.phoneNumber : chat.contactName);
+    chat.contactName ||
+    chat.phoneNumber;
   const subtitle = isGroup
     ? "Grup"
     : chat.isLid
