@@ -71,6 +71,8 @@ import {
   Search,
   RefreshCw,
   X,
+  PanelRightOpen,
+  PanelRightClose,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -143,6 +145,20 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const [productPanelOpen, setProductPanelOpen] = useState(false);
   const [sendingProductId, setSendingProductId] = useState<number | null>(null);
   const [productSearch, setProductSearch] = useState("");
+  // Right-side info panel that hosts Tag / Status / Manual / Assign.
+  // Persist open/closed across reloads so the user's preference sticks.
+  const [infoPanelOpen, setInfoPanelOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("chat-info-panel") !== "closed";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        "chat-info-panel",
+        infoPanelOpen ? "open" : "closed",
+      );
+    }
+  }, [infoPanelOpen]);
 
   const { data: products } = useListProducts({
     query: {
@@ -387,7 +403,10 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[hsl(var(--wa-conversation))]">
+    <div className="flex-1 flex min-w-0 bg-[hsl(var(--wa-conversation))]">
+      {/* Main chat column (header + search + messages + compose). The
+          collapsible info panel sits to its right inside the outer row. */}
+      <div className="flex-1 flex flex-col min-w-0">
       {/* Conversation header */}
       <div className="flex items-center gap-3 px-4 h-[60px] bg-[hsl(var(--wa-panel-header))] border-b border-[hsl(var(--wa-divider))] flex-shrink-0">
         <Link
@@ -415,90 +434,24 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
 
         {/* Header actions */}
         <div className="flex items-center gap-2">
-          <Select
-            value={chat.tag}
-            onValueChange={(val) =>
-              updateChat.mutate({ id: chatId, data: { tag: val as any } })
-            }
+          <button
+            data-testid="button-toggle-info-panel"
+            type="button"
+            onClick={() => setInfoPanelOpen((v) => !v)}
+            className={cn(
+              "p-2 rounded-full transition-colors",
+              infoPanelOpen
+                ? "text-foreground bg-white/10"
+                : "text-[hsl(var(--wa-meta))] hover:text-foreground hover:bg-white/5",
+            )}
+            title={infoPanelOpen ? "Sembunyikan panel info" : "Tampilkan panel info"}
           >
-            <SelectTrigger
-              data-testid="select-chat-tag"
-              className="h-8 w-28 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No tag</SelectItem>
-              <SelectItem value="hot_lead">Hot Lead</SelectItem>
-              <SelectItem value="cold">Cold</SelectItem>
-              <SelectItem value="closing">Closing</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={chat.status}
-            onValueChange={(val) =>
-              updateChat.mutate({ id: chatId, data: { status: val as any } })
-            }
-          >
-            <SelectTrigger
-              data-testid="select-chat-status"
-              className="h-8 w-32 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ai_handled">AI Handled</SelectItem>
-              <SelectItem value="needs_human">Needs Human</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-1.5 px-2 h-8 rounded-md border border-[hsl(var(--wa-divider))]">
-            <Switch
-              data-testid="switch-human-takeover"
-              id="takeover"
-              checked={chat.isHumanTakeover}
-              onCheckedChange={(checked) =>
-                takeover.mutate({ id: chatId, data: { takeover: checked } })
-              }
-            />
-            <Label htmlFor="takeover" className="text-[11px] text-[hsl(var(--wa-meta))] cursor-pointer">
-              Manual
-            </Label>
-          </div>
-
-          {canAssign && (
-            <Select
-              value={
-                chat.assignedUserId == null ? "__unassigned" : String(chat.assignedUserId)
-              }
-              onValueChange={(v) =>
-                assignMut.mutate({
-                  id: chatId,
-                  data: { userId: v === "__unassigned" ? null : Number(v) },
-                })
-              }
-            >
-              <SelectTrigger
-                data-testid="select-chat-assign"
-                className="h-8 w-36 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
-              >
-                <SelectValue placeholder="Assign…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__unassigned">Belum di-assign</SelectItem>
-                {agentsData?.agents
-                  .filter((a) => a.status === "active")
-                  .map((a) => (
-                    <SelectItem key={a.id} value={String(a.id)}>
-                      {a.name ?? a.email}
-                      {a.teamRole === "supervisor" ? " (Supv)" : ""}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          )}
+            {infoPanelOpen ? (
+              <PanelRightClose className="w-4 h-4" />
+            ) : (
+              <PanelRightOpen className="w-4 h-4" />
+            )}
+          </button>
 
           <Sheet open={productPanelOpen} onOpenChange={setProductPanelOpen}>
             <SheetTrigger asChild>
@@ -949,6 +902,144 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           </button>
         </div>
       </div>
+
+      </div>
+      {/* Right-side info panel — Tag, AI Handled/Status, Manual takeover,
+          and Assign. Collapsible so the chat takes the full width when
+          the user doesn't need these controls. */}
+      {infoPanelOpen ? (
+        <aside
+          className="w-64 flex-shrink-0 border-l border-[hsl(var(--wa-divider))] bg-[hsl(var(--wa-panel-header))] flex flex-col"
+          data-testid="chat-info-panel"
+        >
+          <div className="h-[60px] flex items-center justify-between px-4 border-b border-[hsl(var(--wa-divider))] flex-shrink-0">
+            <p className="text-sm font-medium">Info Chat</p>
+            <button
+              type="button"
+              data-testid="button-close-info-panel"
+              onClick={() => setInfoPanelOpen(false)}
+              className="p-1.5 rounded-full text-[hsl(var(--wa-meta))] hover:text-foreground hover:bg-white/5 transition-colors"
+              title="Sembunyikan panel"
+            >
+              <PanelRightClose className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+                Tag
+              </Label>
+              <Select
+                value={chat.tag}
+                onValueChange={(val) =>
+                  updateChat.mutate({ id: chatId, data: { tag: val as any } })
+                }
+              >
+                <SelectTrigger
+                  data-testid="select-chat-tag"
+                  className="h-9 w-full text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No tag</SelectItem>
+                  <SelectItem value="hot_lead">Hot Lead</SelectItem>
+                  <SelectItem value="cold">Cold</SelectItem>
+                  <SelectItem value="closing">Closing</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+                Status
+              </Label>
+              <Select
+                value={chat.status}
+                onValueChange={(val) =>
+                  updateChat.mutate({ id: chatId, data: { status: val as any } })
+                }
+              >
+                <SelectTrigger
+                  data-testid="select-chat-status"
+                  className="h-9 w-full text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ai_handled">AI Handled</SelectItem>
+                  <SelectItem value="needs_human">Needs Human</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+                Mode Balas
+              </Label>
+              <div className="flex items-center justify-between gap-2 px-3 h-9 rounded-md border border-[hsl(var(--wa-divider))]">
+                <Label
+                  htmlFor="takeover"
+                  className="text-xs text-foreground cursor-pointer"
+                >
+                  Manual
+                </Label>
+                <Switch
+                  data-testid="switch-human-takeover"
+                  id="takeover"
+                  checked={chat.isHumanTakeover}
+                  onCheckedChange={(checked) =>
+                    takeover.mutate({ id: chatId, data: { takeover: checked } })
+                  }
+                />
+              </div>
+              <p className="text-[10px] text-[hsl(var(--wa-meta))]">
+                Aktifkan untuk menonaktifkan balasan AI di chat ini.
+              </p>
+            </div>
+
+            {canAssign && (
+              <div className="space-y-1.5">
+                <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+                  Ditugaskan ke
+                </Label>
+                <Select
+                  value={
+                    chat.assignedUserId == null
+                      ? "__unassigned"
+                      : String(chat.assignedUserId)
+                  }
+                  onValueChange={(v) =>
+                    assignMut.mutate({
+                      id: chatId,
+                      data: { userId: v === "__unassigned" ? null : Number(v) },
+                    })
+                  }
+                >
+                  <SelectTrigger
+                    data-testid="select-chat-assign"
+                    className="h-9 w-full text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                  >
+                    <SelectValue placeholder="Assign…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__unassigned">Belum di-assign</SelectItem>
+                    {agentsData?.agents
+                      .filter((a) => a.status === "active")
+                      .map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          {a.name ?? a.email}
+                          {a.teamRole === "supervisor" ? " (Supv)" : ""}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        </aside>
+      ) : null}
 
       {/* Contact share dialog */}
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
