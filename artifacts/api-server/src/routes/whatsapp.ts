@@ -1465,7 +1465,7 @@ function checkAddressBlocked(addr: string): boolean {
 //     connect; mitigating that fully requires pinning the resolved IP via a
 //     custom dispatcher. Accepted tradeoff for the small, admin-curated
 //     product catalog this serves.
-async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
+export async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
   if (imageUrl.startsWith("/api/media/")) {
     const filename = path.basename(imageUrl.slice("/api/media/".length));
     const filepath = path.join(MEDIA_DIR, filename);

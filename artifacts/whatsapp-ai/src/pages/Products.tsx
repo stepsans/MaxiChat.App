@@ -43,6 +43,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plus,
   Pencil,
@@ -62,6 +63,7 @@ import {
   ArrowUp,
   ArrowDown,
   ChevronsUpDown,
+  FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { resolveImageSrc } from "@/lib/utils";
@@ -199,6 +201,8 @@ export default function Products() {
   const [showInternalPrices, setShowInternalPrices] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [generatingQuote, setGeneratingQuote] = useState(false);
   function toggleSort(key: SortKey) {
     if (sortBy !== key) {
       setSortBy(key);
@@ -433,6 +437,54 @@ export default function Products() {
     window.location.href = `/api/products/export.${format}`;
   };
 
+  const toggleSelect = (id: number, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleGenerateQuotation = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setGeneratingQuote(true);
+    try {
+      const res = await fetch("/api/products/quotation.pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        let msg = "Gagal membuat quotation.";
+        try {
+          const j = await res.json();
+          if (j?.error) msg = j.error;
+        } catch {}
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `quotation_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: `Quotation dibuat (${ids.length} produk)` });
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Gagal membuat quotation.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingQuote(false);
+    }
+  };
+
   const isPending = create.isPending || update.isPending;
 
   const q = search.trim().toLowerCase();
@@ -573,6 +625,21 @@ export default function Products() {
             onChange={handleImport}
             data-testid="input-import-products"
           />
+          {selectedIds.size > 0 && (
+            <Button
+              size="sm"
+              onClick={handleGenerateQuotation}
+              disabled={generatingQuote}
+              data-testid="button-generate-quotation"
+            >
+              {generatingQuote ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              Generate Quotation ({selectedIds.size})
+            </Button>
+          )}
           {can.mutateProducts && (<>
           <Button
             variant="outline"
@@ -654,6 +721,31 @@ export default function Products() {
           <table className="w-full text-xs border-collapse">
             <thead className="bg-secondary sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
                 <tr className="text-left">
+                  <th className="px-3 py-2 font-medium w-8">
+                    <Checkbox
+                      checked={
+                        filteredProducts.length > 0 &&
+                        filteredProducts.every((p) => selectedIds.has(p.id))
+                          ? true
+                          : filteredProducts.some((p) => selectedIds.has(p.id))
+                            ? "indeterminate"
+                            : false
+                      }
+                      onCheckedChange={(checked) => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (checked) {
+                            filteredProducts.forEach((p) => next.add(p.id));
+                          } else {
+                            filteredProducts.forEach((p) => next.delete(p.id));
+                          }
+                          return next;
+                        });
+                      }}
+                      aria-label="Pilih semua produk"
+                      data-testid="checkbox-select-all-products"
+                    />
+                  </th>
                   <SortableTh sortKey="id" label="ID" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <th className="px-3 py-2 font-medium">Foto</th>
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
@@ -681,6 +773,14 @@ export default function Products() {
                     data-testid={`product-row-${p.id}`}
                     className="border-t border-border hover:bg-accent/30"
                   >
+                    <td className="px-3 py-2">
+                      <Checkbox
+                        checked={selectedIds.has(p.id)}
+                        onCheckedChange={(checked) => toggleSelect(p.id, checked === true)}
+                        aria-label={`Pilih ${p.name}`}
+                        data-testid={`checkbox-select-product-${p.id}`}
+                      />
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{p.id}</td>
                     <td className="px-3 py-2">
                       <div className="w-10 h-10 rounded bg-secondary overflow-hidden flex items-center justify-center">

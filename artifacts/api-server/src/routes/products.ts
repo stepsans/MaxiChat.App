@@ -14,6 +14,7 @@ import { MEDIA_DIR } from "./whatsapp";
 import { ensureKnowledgeTypesSeed } from "./knowledge-types";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
+import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import {
   requireOwnerUserId,
   getOwnerPrimaryPhone,
@@ -48,6 +49,7 @@ const router = Router();
 router.get("/", requirePermission("products", "view"));
 router.get("/export.csv", requirePermission("products", "view"));
 router.get("/export.xlsx", requirePermission("products", "view"));
+router.post("/quotation.pdf", requirePermission("products", "view"));
 router.post("/", requireSupervisorOrAbove, requirePermission("products", "create"));
 router.put("/:id", requireSupervisorOrAbove, requirePermission("products", "edit"));
 router.delete("/:id", requireSupervisorOrAbove, requirePermission("products", "delete"));
@@ -428,6 +430,56 @@ router.get("/export.xlsx", async (req, res): Promise<void> => {
     res.send(Buffer.from(buf));
   } catch (err) {
     req.log.error({ err }, "Failed to export products xlsx");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Generate a quotation (penawaran harga) PDF for a selected set of products.
+// Each row shows the product photo, name and pricelist price (productsTable.price).
+// POST body: { ids: number[] }. Scoped to the caller's tenant via userId.
+const quotationBodySchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(200),
+});
+
+router.post("/quotation.pdf", async (req, res): Promise<void> => {
+  try {
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
+    const parsed = quotationBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Pilih minimal satu produk." });
+      return;
+    }
+    const uniqueIds = [...new Set(parsed.data.ids)];
+    const rows = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.userId, ownerUserId))
+      .orderBy(productsTable.id);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    // Preserve the order the client selected the products in.
+    const items: QuotationItem[] = uniqueIds
+      .map((id) => byId.get(id))
+      .filter((r): r is NonNullable<typeof r> => r != null)
+      .map((r) => ({
+        name: r.name,
+        code: r.code,
+        price: r.price ?? 0,
+        imageUrl: r.imageUrl ?? null,
+      }));
+    if (items.length === 0) {
+      res.status(404).json({ error: "Produk tidak ditemukan." });
+      return;
+    }
+    const pdf = await buildQuotationPdf(items);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="quotation_${exportTimestamp()}.pdf"`,
+    );
+    res.send(Buffer.from(pdf));
+  } catch (err) {
+    req.log.error({ err }, "Failed to generate quotation pdf");
     res.status(500).json({ error: "Internal server error" });
   }
 });
