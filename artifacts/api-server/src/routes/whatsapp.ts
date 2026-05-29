@@ -20,8 +20,8 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, sql, inArray } from "drizzle-orm";
 import { withTag, stripTrailingTag, CHATBOT_TAG, AI_TAG } from "../lib/sender-tag.js";
-import { openai } from "@workspace/integrations-openai-ai-server";
 import { logger } from "../lib/logger";
+import { resolveAiClient } from "../lib/ai-provider";
 import {
   getOwnerPhoneForUser,
   setOwnerPhoneForUser,
@@ -815,8 +815,11 @@ ATURAN MUTLAK:
 ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
 --- END KNOWLEDGE BASE ---`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    // Resolve the tenant's AI client + model. Defaults to the managed Replit
+    // integration (gpt-4o-mini) when the tenant hasn't opted into BYOK.
+    const { client, model } = await resolveAiClient(userId);
+    const response = await client.chat.completions.create({
+      model,
       messages: [
         { role: "system", content: systemPrompt },
         ...history,

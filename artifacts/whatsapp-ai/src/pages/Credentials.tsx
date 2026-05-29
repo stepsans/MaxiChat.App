@@ -7,8 +7,15 @@ import {
   useDeleteCredential,
   useStartCredentialOauth,
   getListCredentialsQueryKey,
+  useGetAiProvider,
+  useUpdateAiProvider,
+  useTestAiProvider,
+  getGetAiProviderQueryKey,
+  AiProviderName,
   type Credential,
   type CredentialType,
+  type AiProviderConfig,
+  type AiProviderMode,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +43,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   KeyRound,
@@ -52,6 +68,8 @@ import {
   ExternalLink,
   RotateCcw,
   BookOpen,
+  Sparkles,
+  Settings2,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 
@@ -157,7 +175,9 @@ export default function CredentialsPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div className="flex-1 overflow-auto px-6 py-4 space-y-6">
+        <AiProviderCard />
+
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-14 w-full" />
@@ -273,6 +293,323 @@ export default function CredentialsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+const PROVIDER_META: Record<
+  AiProviderName,
+  { label: string; modelPlaceholder: string; baseUrlPlaceholder: string }
+> = {
+  [AiProviderName.openai]: {
+    label: "OpenAI",
+    modelPlaceholder: "gpt-4o-mini",
+    baseUrlPlaceholder: "(default OpenAI endpoint)",
+  },
+  [AiProviderName.gemini]: {
+    label: "Google Gemini",
+    modelPlaceholder: "gemini-2.0-flash",
+    baseUrlPlaceholder: "https://generativelanguage.googleapis.com/v1beta/openai/",
+  },
+  [AiProviderName.openrouter]: {
+    label: "OpenRouter",
+    modelPlaceholder: "openai/gpt-4o-mini",
+    baseUrlPlaceholder: "https://openrouter.ai/api/v1",
+  },
+};
+
+function AiProviderCard() {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, isError } = useGetAiProvider({
+    query: { queryKey: getGetAiProviderQueryKey() },
+  });
+
+  // The endpoint is Super-Admin-only; a 403 simply means this member can't
+  // manage AI billing. Hide the card entirely for them.
+  if (isError) return null;
+
+  const cfg = data ?? null;
+  const isByok = cfg?.mode === "byok";
+  const providerLabel = cfg
+    ? PROVIDER_META[cfg.provider].label
+    : "OpenAI";
+
+  return (
+    <div className="border border-border rounded-lg p-4 flex items-center justify-between gap-4 bg-card">
+      <div className="flex items-start gap-3 min-w-0">
+        <div className="w-9 h-9 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-5 h-5 text-primary" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">AI Provider</h2>
+            {isLoading ? (
+              <Skeleton className="h-4 w-16" />
+            ) : isByok ? (
+              <Badge variant="secondary" className="text-[10px]">
+                {providerLabel} · API key sendiri
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">
+                Replit AI (default)
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1 max-w-prose">
+            {isByok
+              ? `Balasan AI memakai API key ${providerLabel} Anda sendiri${
+                  cfg?.model ? ` (model ${cfg.model})` : ""
+                }. Tagihan langsung ke provider.`
+              : "Balasan AI memakai layanan bawaan Replit — tanpa konfigurasi, tanpa API key. Pilih provider sendiri untuk pakai API key Anda."}
+          </p>
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="flex-shrink-0"
+        onClick={() => setOpen(true)}
+        disabled={isLoading}
+      >
+        <Settings2 className="w-4 h-4 mr-1.5" /> Konfigurasi
+      </Button>
+
+      {open && cfg && (
+        <AiProviderDialog config={cfg} onClose={() => setOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function AiProviderDialog({
+  config,
+  onClose,
+}: {
+  config: AiProviderConfig;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const [mode, setMode] = useState<AiProviderMode>(config.mode);
+  const [provider, setProvider] = useState<AiProviderName>(config.provider);
+  const [model, setModel] = useState(config.model ?? "");
+  const [baseUrl, setBaseUrl] = useState(config.baseUrl ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+
+  const meta = PROVIDER_META[provider];
+  const isByok = mode === "byok";
+
+  const updateMut = useUpdateAiProvider();
+  const testMut = useTestAiProvider();
+
+  async function handleTest() {
+    setTestResult(null);
+    try {
+      const res = await testMut.mutateAsync({
+        data: {
+          provider,
+          ...(model.trim() ? { model: model.trim() } : {}),
+          ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+          ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        },
+      });
+      setTestResult(res);
+    } catch (e: unknown) {
+      const err = e as { data?: { error?: string }; message?: string };
+      setTestResult({
+        ok: false,
+        message: err?.data?.error || err?.message || "Gagal menguji koneksi.",
+      });
+    }
+  }
+
+  async function handleSave() {
+    // Guard: switching to BYOK needs a key (either freshly typed or stored).
+    if (isByok && !apiKey.trim() && !config.hasApiKey) {
+      toast({
+        title: "API key wajib diisi",
+        description: "Masukkan API key provider untuk mode 'API key sendiri'.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await updateMut.mutateAsync({
+        data: {
+          mode,
+          provider,
+          ...(model.trim() ? { model: model.trim() } : {}),
+          ...(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+          ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        },
+      });
+      qc.invalidateQueries({ queryKey: getGetAiProviderQueryKey() });
+      toast({ title: "Konfigurasi AI tersimpan" });
+      onClose();
+    } catch (e: unknown) {
+      const err = e as { data?: { error?: string }; message?: string };
+      toast({
+        title: "Gagal menyimpan",
+        description: err?.data?.error || err?.message || "Server error",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Konfigurasi AI Provider</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <RadioGroup
+            value={mode}
+            onValueChange={(v) => {
+              setMode(v as AiProviderMode);
+              setTestResult(null);
+            }}
+            className="gap-2"
+          >
+            <label
+              className="flex items-start gap-3 rounded-md border border-border p-3 cursor-pointer hover:bg-muted/40"
+              htmlFor="ai-mode-replit"
+            >
+              <RadioGroupItem value="replit" id="ai-mode-replit" className="mt-0.5" />
+              <div>
+                <div className="text-sm font-medium">Replit AI (default)</div>
+                <div className="text-xs text-muted-foreground">
+                  Layanan bawaan, tanpa konfigurasi atau API key. Direkomendasikan.
+                </div>
+              </div>
+            </label>
+            <label
+              className="flex items-start gap-3 rounded-md border border-border p-3 cursor-pointer hover:bg-muted/40"
+              htmlFor="ai-mode-byok"
+            >
+              <RadioGroupItem value="byok" id="ai-mode-byok" className="mt-0.5" />
+              <div>
+                <div className="text-sm font-medium">API key sendiri</div>
+                <div className="text-xs text-muted-foreground">
+                  Pakai API key OpenAI, Gemini, atau OpenRouter Anda. Tagihan
+                  langsung ke provider.
+                </div>
+              </div>
+            </label>
+          </RadioGroup>
+
+          {isByok && (
+            <div className="space-y-4 border-t border-border pt-4">
+              <Field label="Provider">
+                <Select
+                  value={provider}
+                  onValueChange={(v) => {
+                    setProvider(v as AiProviderName);
+                    setTestResult(null);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.values(AiProviderName).map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {PROVIDER_META[p].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field
+                label="API Key"
+                hint={
+                  config.hasApiKey
+                    ? `Tersimpan: ${config.maskedApiKey ?? "••••"}. Kosongkan untuk pakai key yang ada.`
+                    : undefined
+                }
+              >
+                <Input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={config.hasApiKey ? "••••••••" : "sk-..."}
+                  autoComplete="off"
+                />
+              </Field>
+
+              <Field label="Model" hint="Kosongkan untuk pakai model default provider.">
+                <Input
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={meta.modelPlaceholder}
+                />
+              </Field>
+
+              <Field
+                label="Base URL (opsional)"
+                hint="Hanya untuk endpoint kustom / proxy."
+              >
+                <Input
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder={meta.baseUrlPlaceholder}
+                />
+              </Field>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTest}
+                  disabled={testMut.isPending}
+                >
+                  {testMut.isPending && (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  )}
+                  Test koneksi
+                </Button>
+                {testResult && (
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs ${
+                      testResult.ok ? "text-emerald-500" : "text-destructive"
+                    }`}
+                  >
+                    {testResult.ok ? (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <AlertCircle className="w-3.5 h-3.5" />
+                    )}
+                    {testResult.message}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={updateMut.isPending}
+            >
+              {updateMut.isPending && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              Simpan
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

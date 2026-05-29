@@ -2103,3 +2103,71 @@ export const ResetFlowCooldownResponse = zod.object({
 })
 
 
+/**
+ * @summary Get the tenant's AI provider configuration (API key masked)
+ */
+export const GetAiProviderResponse = zod.object({
+  "mode": zod.enum(['replit', 'byok']).describe('\'replit\' uses the managed integration (default); \'byok\' uses the tenant\'s own API key.'),
+  "provider": zod.enum(['openai', 'gemini', 'openrouter']),
+  "model": zod.string().nullable().describe('Chosen model id, or null to use the provider default.'),
+  "baseUrl": zod.string().nullable().describe('Optional OpenAI-compatible base URL override.'),
+  "hasApiKey": zod.boolean().describe('True when an encrypted API key is stored for this tenant.'),
+  "maskedApiKey": zod.string().nullable().describe('Masked preview of the stored key (e.g. \'sk-...AB12\'); never the full key.'),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Update the tenant's AI provider configuration
+ */
+export const updateAiProviderBodyModelMax = 200;
+
+export const updateAiProviderBodyBaseUrlMax = 500;
+
+export const updateAiProviderBodyApiKeyMax = 500;
+
+
+
+export const UpdateAiProviderBody = zod.object({
+  "mode": zod.enum(['replit', 'byok']).describe('\'replit\' uses the managed integration (default); \'byok\' uses the tenant\'s own API key.'),
+  "provider": zod.enum(['openai', 'gemini', 'openrouter']).optional(),
+  "model": zod.string().max(updateAiProviderBodyModelMax).optional(),
+  "baseUrl": zod.string().max(updateAiProviderBodyBaseUrlMax).optional(),
+  "apiKey": zod.string().max(updateAiProviderBodyApiKeyMax).optional().describe('Plaintext API key. Omit to keep the existing stored key.')
+})
+
+export const UpdateAiProviderResponse = zod.object({
+  "mode": zod.enum(['replit', 'byok']).describe('\'replit\' uses the managed integration (default); \'byok\' uses the tenant\'s own API key.'),
+  "provider": zod.enum(['openai', 'gemini', 'openrouter']),
+  "model": zod.string().nullable().describe('Chosen model id, or null to use the provider default.'),
+  "baseUrl": zod.string().nullable().describe('Optional OpenAI-compatible base URL override.'),
+  "hasApiKey": zod.boolean().describe('True when an encrypted API key is stored for this tenant.'),
+  "maskedApiKey": zod.string().nullable().describe('Masked preview of the stored key (e.g. \'sk-...AB12\'); never the full key.'),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Test connectivity to an AI provider with the given or stored key
+ */
+export const testAiProviderBodyModelMax = 200;
+
+export const testAiProviderBodyBaseUrlMax = 500;
+
+export const testAiProviderBodyApiKeyMax = 500;
+
+
+
+export const TestAiProviderBody = zod.object({
+  "provider": zod.enum(['openai', 'gemini', 'openrouter']),
+  "model": zod.string().max(testAiProviderBodyModelMax).optional(),
+  "baseUrl": zod.string().max(testAiProviderBodyBaseUrlMax).optional(),
+  "apiKey": zod.string().max(testAiProviderBodyApiKeyMax).optional().describe('Plaintext API key to test. Omit to test the stored key.')
+})
+
+export const TestAiProviderResponse = zod.object({
+  "ok": zod.boolean(),
+  "message": zod.string()
+})
+
+

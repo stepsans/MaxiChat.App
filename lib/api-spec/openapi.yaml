@@ -30,6 +30,8 @@ tags:
     description: Chatbot flow builder
   - name: permissions
     description: Per-team-role menu permission matrix
+  - name: ai-provider
+    description: Per-tenant AI provider configuration (Replit-managed or bring-your-own-key)
 paths:
   /auth/login:
     post:
@@ -2131,8 +2133,152 @@ paths:
                 properties:
                   cleared: { type: integer }
 
+  /ai-provider:
+    get:
+      operationId: getAiProvider
+      tags: [ai-provider]
+      summary: Get the tenant's AI provider configuration (API key masked)
+      responses:
+        "200":
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderConfig"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateAiProvider
+      tags: [ai-provider]
+      summary: Update the tenant's AI provider configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiProviderInput"
+      responses:
+        "200":
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderConfig"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-provider/test:
+    post:
+      operationId: testAiProvider
+      tags: [ai-provider]
+      summary: Test connectivity to an AI provider with the given or stored key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiProviderTestInput"
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderTestResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    AiProviderMode:
+      type: string
+      enum: [replit, byok]
+      description: "'replit' uses the managed integration (default); 'byok' uses the tenant's own API key."
+    AiProviderName:
+      type: string
+      enum: [openai, gemini, openrouter]
+    AiProviderConfig:
+      type: object
+      required: [mode, provider, model, baseUrl, hasApiKey, maskedApiKey, updatedAt]
+      properties:
+        mode: { $ref: "#/components/schemas/AiProviderMode" }
+        provider: { $ref: "#/components/schemas/AiProviderName" }
+        model:
+          type: ["string", "null"]
+          description: "Chosen model id, or null to use the provider default."
+        baseUrl:
+          type: ["string", "null"]
+          description: "Optional OpenAI-compatible base URL override."
+        hasApiKey:
+          type: boolean
+          description: "True when an encrypted API key is stored for this tenant."
+        maskedApiKey:
+          type: ["string", "null"]
+          description: "Masked preview of the stored key (e.g. 'sk-...AB12'); never the full key."
+        updatedAt:
+          type: ["string", "null"]
+          format: date-time
+    AiProviderInput:
+      type: object
+      required: [mode]
+      properties:
+        mode: { $ref: "#/components/schemas/AiProviderMode" }
+        provider: { $ref: "#/components/schemas/AiProviderName" }
+        model:
+          type: string
+          maxLength: 200
+        baseUrl:
+          type: string
+          maxLength: 500
+        apiKey:
+          type: string
+          description: "Plaintext API key. Omit to keep the existing stored key."
+          maxLength: 500
+    AiProviderTestInput:
+      type: object
+      required: [provider]
+      properties:
+        provider: { $ref: "#/components/schemas/AiProviderName" }
+        model:
+          type: string
+          maxLength: 200
+        baseUrl:
+          type: string
+          maxLength: 500
+        apiKey:
+          type: string
+          description: "Plaintext API key to test. Omit to test the stored key."
+          maxLength: 500
+    AiProviderTestResult:
+      type: object
+      required: [ok, message]
+      properties:
+        ok: { type: boolean }
+        message: { type: string }
     PermissionCell:
       type: object
       required: [canView, canCreate, canEdit, canDelete]

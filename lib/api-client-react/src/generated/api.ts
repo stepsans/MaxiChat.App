@@ -22,6 +22,10 @@ import type {
 import type {
   AdminUpdateUserInput,
   AdminUser,
+  AiProviderConfig,
+  AiProviderInput,
+  AiProviderTestInput,
+  AiProviderTestResult,
   AnalyticsSummary,
   AssignChatInput,
   AuthMeResponse,
@@ -7676,5 +7680,224 @@ export const useResetFlowCooldown = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getResetFlowCooldownMutationOptions(options));
+    }
+
+export const getGetAiProviderUrl = () => {
+
+
+
+
+  return `/api/ai-provider`
+}
+
+/**
+ * @summary Get the tenant's AI provider configuration (API key masked)
+ */
+export const getAiProvider = async ( options?: RequestInit): Promise<AiProviderConfig> => {
+
+  return customFetch<AiProviderConfig>(getGetAiProviderUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAiProviderQueryKey = () => {
+    return [
+    `/api/ai-provider`
+    ] as const;
+    }
+
+
+export const getGetAiProviderQueryOptions = <TData = Awaited<ReturnType<typeof getAiProvider>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiProvider>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAiProviderQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiProvider>>> = ({ signal }) => getAiProvider({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAiProvider>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAiProviderQueryResult = NonNullable<Awaited<ReturnType<typeof getAiProvider>>>
+export type GetAiProviderQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the tenant's AI provider configuration (API key masked)
+ */
+
+export function useGetAiProvider<TData = Awaited<ReturnType<typeof getAiProvider>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiProvider>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAiProviderQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAiProviderUrl = () => {
+
+
+
+
+  return `/api/ai-provider`
+}
+
+/**
+ * @summary Update the tenant's AI provider configuration
+ */
+export const updateAiProvider = async (aiProviderInput: AiProviderInput, options?: RequestInit): Promise<AiProviderConfig> => {
+
+  return customFetch<AiProviderConfig>(getUpdateAiProviderUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiProviderInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAiProviderMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAiProvider>>, TError,{data: BodyType<AiProviderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAiProvider>>, TError,{data: BodyType<AiProviderInput>}, TContext> => {
+
+const mutationKey = ['updateAiProvider'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAiProvider>>, {data: BodyType<AiProviderInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAiProvider(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAiProviderMutationResult = NonNullable<Awaited<ReturnType<typeof updateAiProvider>>>
+    export type UpdateAiProviderMutationBody = BodyType<AiProviderInput>
+    export type UpdateAiProviderMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the tenant's AI provider configuration
+ */
+export const useUpdateAiProvider = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAiProvider>>, TError,{data: BodyType<AiProviderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAiProvider>>,
+        TError,
+        {data: BodyType<AiProviderInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAiProviderMutationOptions(options));
+    }
+
+export const getTestAiProviderUrl = () => {
+
+
+
+
+  return `/api/ai-provider/test`
+}
+
+/**
+ * @summary Test connectivity to an AI provider with the given or stored key
+ */
+export const testAiProvider = async (aiProviderTestInput: AiProviderTestInput, options?: RequestInit): Promise<AiProviderTestResult> => {
+
+  return customFetch<AiProviderTestResult>(getTestAiProviderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiProviderTestInput,)
+  }
+);}
+
+
+
+
+export const getTestAiProviderMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testAiProvider>>, TError,{data: BodyType<AiProviderTestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testAiProvider>>, TError,{data: BodyType<AiProviderTestInput>}, TContext> => {
+
+const mutationKey = ['testAiProvider'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testAiProvider>>, {data: BodyType<AiProviderTestInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  testAiProvider(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestAiProviderMutationResult = NonNullable<Awaited<ReturnType<typeof testAiProvider>>>
+    export type TestAiProviderMutationBody = BodyType<AiProviderTestInput>
+    export type TestAiProviderMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Test connectivity to an AI provider with the given or stored key
+ */
+export const useTestAiProvider = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testAiProvider>>, TError,{data: BodyType<AiProviderTestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testAiProvider>>,
+        TError,
+        {data: BodyType<AiProviderTestInput>},
+        TContext
+      > => {
+      return useMutation(getTestAiProviderMutationOptions(options));
     }
 

@@ -5,6 +5,82 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * 'replit' uses the managed integration (default); 'byok' uses the tenant's own API key.
+ */
+export type AiProviderMode = typeof AiProviderMode[keyof typeof AiProviderMode];
+
+
+export const AiProviderMode = {
+  replit: 'replit',
+  byok: 'byok',
+} as const;
+
+export type AiProviderName = typeof AiProviderName[keyof typeof AiProviderName];
+
+
+export const AiProviderName = {
+  openai: 'openai',
+  gemini: 'gemini',
+  openrouter: 'openrouter',
+} as const;
+
+export interface AiProviderConfig {
+  mode: AiProviderMode;
+  provider: AiProviderName;
+  /**
+     * Chosen model id, or null to use the provider default.
+     * @nullable
+     */
+  model: string | null;
+  /**
+     * Optional OpenAI-compatible base URL override.
+     * @nullable
+     */
+  baseUrl: string | null;
+  /** True when an encrypted API key is stored for this tenant. */
+  hasApiKey: boolean;
+  /**
+     * Masked preview of the stored key (e.g. 'sk-...AB12'); never the full key.
+     * @nullable
+     */
+  maskedApiKey: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export interface AiProviderInput {
+  mode: AiProviderMode;
+  provider?: AiProviderName;
+  /** @maxLength 200 */
+  model?: string;
+  /** @maxLength 500 */
+  baseUrl?: string;
+  /**
+     * Plaintext API key. Omit to keep the existing stored key.
+     * @maxLength 500
+     */
+  apiKey?: string;
+}
+
+export interface AiProviderTestInput {
+  provider: AiProviderName;
+  /** @maxLength 200 */
+  model?: string;
+  /** @maxLength 500 */
+  baseUrl?: string;
+  /**
+     * Plaintext API key to test. Omit to test the stored key.
+     * @maxLength 500
+     */
+  apiKey?: string;
+}
+
+export interface AiProviderTestResult {
+  ok: boolean;
+  message: string;
+}
+
 export interface PermissionCell {
   canView: boolean;
   canCreate: boolean;
