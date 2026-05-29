@@ -14,3 +14,4 @@
 - [Self-delete cascade requirements](self-delete-cascade.md) — tenant deletion needs FK cascades on every user_id/channel_id + users.parent_user_id self-FK; route-level deletes alone leave orphans.
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.
+- [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).

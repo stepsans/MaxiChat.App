@@ -37,7 +37,10 @@ const MenuKeySchema = z.enum(
   PERMISSION_MENUS as unknown as [PermissionMenu, ...PermissionMenu[]]
 );
 
-const RoleMatrixSchema = z.record(MenuKeySchema, PermCellSchema);
+// NOTE: must be partialRecord. In zod v4 `z.record` with an enum key is
+// exhaustive (every menu key required); the editors send only changed cells,
+// so a full record would reject partial payloads with "Invalid payload".
+const RoleMatrixSchema = z.partialRecord(MenuKeySchema, PermCellSchema);
 
 const UpdateMatrixSchema = z.object({
   supervisor: RoleMatrixSchema.optional(),
@@ -91,7 +94,9 @@ router.put("/", requireSuperAdmin, async (req, res): Promise<void> => {
 
 // ---------- Per-user permission overrides ----------
 
-const UserOverridesSchema = z.record(MenuKeySchema, PermCellSchema);
+// partialRecord (not record): see RoleMatrixSchema note — only changed cells
+// are sent, so an exhaustive record would 400 on every partial save.
+const UserOverridesSchema = z.partialRecord(MenuKeySchema, PermCellSchema);
 const UpdateUserPermissionSchema = z.object({
   // null = reset to role default (delete all overrides for this user)
   overrides: UserOverridesSchema.nullable(),
