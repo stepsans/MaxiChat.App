@@ -836,7 +836,7 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
 }
 
 interface IncomingMedia {
-  mediaType: "image" | "video" | "document" | "audio" | "contact";
+  mediaType: "image" | "video" | "document" | "audio" | "sticker" | "contact";
   mediaUrl: string | null;
   mediaMimeType: string | null;
   mediaFilename: string | null;
@@ -936,13 +936,18 @@ async function parseWaMessage(
     "";
 
   let media: IncomingMedia | undefined;
-  let mediaKind: "image" | "video" | "document" | "audio" | null = null;
+  let mediaKind: "image" | "video" | "document" | "audio" | "sticker" | null =
+    null;
   let mediaMime: string | null = null;
   let mediaFilename: string | null = null;
 
   if (inner.imageMessage) {
     mediaKind = "image";
     mediaMime = inner.imageMessage.mimetype ?? "image/jpeg";
+  } else if (inner.stickerMessage) {
+    // Stickers are webp images; download + show them like an image.
+    mediaKind = "sticker";
+    mediaMime = inner.stickerMessage.mimetype ?? "image/webp";
   } else if (inner.videoMessage) {
     mediaKind = "video";
     mediaMime = inner.videoMessage.mimetype ?? "video/mp4";
@@ -1005,8 +1010,6 @@ async function parseWaMessage(
       mediaMimeType: "text/vcard",
       mediaFilename: displayName,
     };
-  } else if (inner.stickerMessage) {
-    if (!messageContent) messageContent = "🏷️ Stiker";
   } else if (inner.locationMessage || inner.liveLocationMessage) {
     const loc = inner.locationMessage ?? inner.liveLocationMessage;
     const name = loc?.name ? ` ${loc.name}` : "";
@@ -1122,6 +1125,7 @@ function buildPreview(messageText: string, media?: IncomingMedia): string {
   if (!media) return "";
   switch (media.mediaType) {
     case "image": return "📷 Gambar";
+    case "sticker": return "🏷️ Stiker";
     case "video": return "🎥 Video";
     case "audio": return "🎤 Audio";
     case "document": return `📄 ${media.mediaFilename ?? "Dokumen"}`;

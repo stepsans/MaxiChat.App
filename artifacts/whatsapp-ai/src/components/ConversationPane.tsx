@@ -920,6 +920,17 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                             />
                           </button>
                         )}
+                        {mediaType === "sticker" && mediaUrl && (
+                          <img
+                            src={mediaUrl}
+                            alt="Stiker"
+                            className="w-32 h-32 object-contain mb-1"
+                            data-testid={`sticker-preview-${msg.id}`}
+                          />
+                        )}
+                        {mediaType === "sticker" && !mediaUrl && (
+                          <p className="text-xs opacity-70 mb-1">🏷️ Stiker</p>
+                        )}
                         {mediaType === "video" && mediaUrl && (
                           <video
                             src={mediaUrl}
