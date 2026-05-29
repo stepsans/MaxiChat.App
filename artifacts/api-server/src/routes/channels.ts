@@ -96,19 +96,16 @@ function serialize(c: typeof channelsTable.$inferSelect) {
   };
 }
 
-// GET /channels — list every channel for the owning account.
-// Visible to all team roles so invited agents can see/switch the same
-// dropdown the super_admin sees.
+// GET /channels — list the channels the signed-in user may switch between.
+// super_admin sees every channel owned by their tenant (even ones created
+// by their supervisors/agents). supervisor/agent see ONLY the channels
+// assigned to them via user_channel_access (deny by default — an empty
+// assignment yields an empty switcher). The filtering lives in
+// listOwnedChannels → getAllowedChannelIds so every per-channel surface
+// (chats/flows/statuses/analytics) stays consistent with the switcher.
 router.get("/", async (req, res): Promise<void> => {
   try {
     const rows = await listOwnedChannels(req);
-    // NOTE: we intentionally do NOT filter by user_channel_access here.
-    // Per-user channel access is scoped to CHATS ONLY — the channel
-    // switcher is shared with flows/statuses/analytics/etc which must
-    // stay team-wide. Chat-side filtering happens inside chats.ts. A
-    // restricted user picking a forbidden channel from the switcher will
-    // see an empty chats list (deny-by-default) but can still operate
-    // the other surfaces for that channel.
     res.json(rows.map(serialize));
   } catch (err) {
     req.log.error({ err }, "list channels failed");

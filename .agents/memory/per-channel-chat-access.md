@@ -1,14 +1,14 @@
 ---
-name: Per-channel chat access scope
-description: How per-user channel allow-list (user_channel_access) is layered without breaking team-wide features that share the channel switcher.
+name: Per-channel channel access scope
+description: How per-user channel allow-list (user_channel_access) scopes the channel switcher and every per-channel surface for supervisors/agents.
 ---
 
-Per-user `user_channel_access` rows gate **chat visibility only** — not the channel switcher, and not flows/statuses/analytics/knowledge/products.
+Per-user `user_channel_access` rows gate the **whole channel switcher** for supervisor/agent: they see ONLY the channels assigned to them. super_admin always sees every channel owned by their tenant (including channels created by their supervisors/agents). Deny-by-default: zero rows = empty switcher.
 
-**Why:** the spec said "deny-by-default → empty switcher for users with zero rows" AND "scope = chats only, other surfaces stay team-wide". Those are internally inconsistent because the switcher is a single shared `X-Channel-Id` context used by every channel-scoped page. Filtering `/channels` for chat permissions silently hides those channels from flows/statuses/analytics too — breaking the team-wide guarantee. The chat-only guarantee is the stronger of the two product requirements, so the switcher stays full and the chats list goes empty (with deny-by-default semantics) when a restricted user lands on a forbidden channel.
+**Why:** the product owner explicitly required "User/Supervisor only see channels assigned to them; Super Admin sees all." The switcher is a single shared `X-Channel-Id` context used by every channel-scoped page, so scoping the switcher naturally scopes chats/flows/statuses/analytics together — which is the intended behavior. (This REVERSES an earlier short-lived "chat-only" interpretation; do not reintroduce a full team-wide switcher for restricted users.)
 
 **How to apply:**
-- Filter inside chat-touching endpoints only: `GET /chats`, `authorizedChatWhere` (covers all `/chats/:id*` mutations and reads), and `POST /chats/open-by-phone`. Any new chat-touching endpoint must intersect `scope.channelIds` with `getAllowedChannelIds(uid)` and 404/empty-list on miss.
-- Do NOT filter `GET /channels` or `resolveChannelScope` — those feed the shared switcher and the team-wide features.
+- The single source of truth is `getAllowedChannelIds(sessionUid)` (super_admin → all owned; others → exact `user_channel_access` rows, tenant-validated via join). All channel resolution funnels through it.
+- In `channel-context.ts`: `listOwnedChannels`, `loadOwnedChannel`, `resolveActiveChannel` (reject forbidden `X-Channel-Id` header; pick lowest-id ALLOWED channel as primary), and `resolveChannelScope` ("all" mode intersects with allowed) all filter by it. Any NEW channel resolver must do the same or it becomes a bypass.
 - `setAllowedChannelIds` must validate channel ownership **inside** the same tx as the delete+insert, behind the `FOR UPDATE` on the users row, or a concurrent channel delete FK-fails the whole save.
-- New supervisor/agent users get deny-by-default (zero rows = no chats). The initial rollout needed a one-time SQL backfill granting every existing supervisor/agent every channel in their tenant; without it, existing users would silently lose access on deploy.
+- Deny-by-default operational risk: existing supervisors/agents with empty `user_channel_access` see ZERO channels until a super_admin assigns them via the "Akses Channel" card (Permission per User tab). Communicate this or bulk-assign before relying on it in prod.

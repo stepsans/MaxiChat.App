@@ -500,9 +500,11 @@ export function UserPermissionEditor() {
   );
 }
 
-// Per-user channel access — gates chat visibility ONLY (flows, statuses,
-// analytics, knowledge, products remain team-wide). Empty selection means
-// the user sees no chats and an empty channel switcher.
+// Per-user channel access — gates which channels appear in this user's
+// channel switcher. Supervisor/agent see ONLY the channels checked here
+// (deny by default); super_admin always sees every channel in the tenant.
+// Restricting the switcher also restricts every per-channel surface
+// (chats/flows/statuses/analytics) since they follow the active channel.
 function ChannelAccessCard({ userId }: { userId: number }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -582,11 +584,11 @@ function ChannelAccessCard({ userId }: { userId: number }) {
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="px-4 py-3 border-b bg-muted/40 flex flex-wrap items-center gap-2">
         <div className="flex-1 min-w-[200px]">
-          <h3 className="text-sm font-semibold">Akses Channel (Chats)</h3>
+          <h3 className="text-sm font-semibold">Akses Channel</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Hanya channel yang dicentang yang akan terlihat di daftar chat &
-            channel switcher untuk user ini. Tidak memengaruhi flow / status /
-            analytics.
+            Hanya channel yang dicentang yang akan tampil di channel switcher
+            user ini (dan otomatis membatasi chat / flow / status / analytics
+            untuk channel tersebut). Super Admin selalu melihat semua channel.
           </p>
         </div>
         <Button

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { and, asc, eq } from "drizzle-orm";
 import { db, channelsTable } from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "./auth";
+import { getAllowedChannelIds } from "./user-channel-access";
 
 export type ChannelRow = typeof channelsTable.$inferSelect;
 
@@ -24,8 +25,11 @@ function readHeader(req: Request): string | null {
 }
 
 // Look up a channel by id and confirm it belongs to the signed-in user's
-// owning account (super_admin → self; supervisor/agent → parent). Returns
-// null on ownership mismatch / not found so callers can 403/404 cleanly.
+// owning account (super_admin → self; supervisor/agent → parent) AND that
+// the signed-in user is allowed to see it. For super_admin the allow-list
+// is "every owned channel"; for supervisor/agent it's exactly the rows in
+// user_channel_access (deny by default). Returns null on ownership
+// mismatch / not-allowed / not-found so callers can 403/404 cleanly.
 export async function loadOwnedChannel(
   req: Request,
   channelId: number
@@ -33,6 +37,8 @@ export async function loadOwnedChannel(
   const sessionUid = getSessionUserId(req);
   if (sessionUid == null) return null;
   const ownerUid = await getEffectiveOwnerUserId(sessionUid);
+  const allowed = await getAllowedChannelIds(sessionUid);
+  if (!allowed.has(channelId)) return null;
   const [row] = await db
     .select()
     .from(channelsTable)
@@ -55,6 +61,7 @@ export async function resolveActiveChannel(
   const sessionUid = getSessionUserId(req);
   if (sessionUid == null) return null;
   const ownerUid = await getEffectiveOwnerUserId(sessionUid);
+  const allowed = await getAllowedChannelIds(sessionUid);
 
   const raw = readHeader(req);
   if (raw === ALL_CHANNELS) {
@@ -63,6 +70,10 @@ export async function resolveActiveChannel(
   if (raw != null) {
     const id = Number.parseInt(raw, 10);
     if (!Number.isFinite(id) || id <= 0) return null;
+    // Reject a channel the caller isn't allowed to see — prevents a
+    // restricted user from bypassing the switcher by sending a forbidden
+    // X-Channel-Id header directly.
+    if (!allowed.has(id)) return null;
     const [row] = await db
       .select()
       .from(channelsTable)
@@ -72,27 +83,34 @@ export async function resolveActiveChannel(
     return { kind: "channel", channel: row };
   }
 
-  // No header → primary channel (lowest id for the owner).
-  const [primary] = await db
-    .select()
-    .from(channelsTable)
-    .where(eq(channelsTable.userId, ownerUid))
-    .orderBy(asc(channelsTable.id))
-    .limit(1);
-  return primary ? { kind: "channel", channel: primary } : null;
-}
-
-// List every channel owned by the signed-in user (resolved via parent for
-// invited agents). Ordered by id so the dropdown is stable.
-export async function listOwnedChannels(req: Request): Promise<ChannelRow[]> {
-  const sessionUid = getSessionUserId(req);
-  if (sessionUid == null) return [];
-  const ownerUid = await getEffectiveOwnerUserId(sessionUid);
-  return db
+  // No header → primary channel: the lowest-id channel the caller is
+  // ALLOWED to see (not merely the owner's lowest id). Returns null when
+  // the caller has no assigned channels (deny by default).
+  const owned = await db
     .select()
     .from(channelsTable)
     .where(eq(channelsTable.userId, ownerUid))
     .orderBy(asc(channelsTable.id));
+  const primary = owned.find((c) => allowed.has(c.id));
+  return primary ? { kind: "channel", channel: primary } : null;
+}
+
+// List the channels the signed-in user is allowed to see in the switcher.
+// super_admin → every channel owned by their tenant; supervisor/agent →
+// exactly the channels assigned to them via user_channel_access (deny by
+// default — an empty assignment means an empty switcher). Ordered by id so
+// the dropdown is stable.
+export async function listOwnedChannels(req: Request): Promise<ChannelRow[]> {
+  const sessionUid = getSessionUserId(req);
+  if (sessionUid == null) return [];
+  const ownerUid = await getEffectiveOwnerUserId(sessionUid);
+  const allowed = await getAllowedChannelIds(sessionUid);
+  const rows = await db
+    .select()
+    .from(channelsTable)
+    .where(eq(channelsTable.userId, ownerUid))
+    .orderBy(asc(channelsTable.id));
+  return rows.filter((r) => allowed.has(r.id));
 }
 
 // ---- Route helpers ---------------------------------------------------------
@@ -169,12 +187,17 @@ export async function resolveChannelScope(
       mode: "single",
     };
   }
+  // "All channels" aggregate: restrict to the channels this caller is
+  // actually allowed to see (super_admin → all owned; others → assigned).
+  const sessionUid = getSessionUserId(req);
+  const allowed =
+    sessionUid == null ? new Set<number>() : await getAllowedChannelIds(sessionUid);
   const all = await db
     .select({ id: channelsTable.id })
     .from(channelsTable)
     .where(eq(channelsTable.userId, sel.ownerUserId));
   return {
-    channelIds: all.map((r) => r.id),
+    channelIds: all.map((r) => r.id).filter((id) => allowed.has(id)),
     ownerUserId: sel.ownerUserId,
     mode: "all",
   };

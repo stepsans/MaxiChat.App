@@ -6,7 +6,7 @@
 - [Sync-config tenant binding](sync-config-tenant-binding.md) — per-ownerPhone configs (sheet sync etc.) must include userId + filter every read/write, or a phone reassignment leaks the prior tenant's binding.
 - [Multi-resource migration pattern](multi-resource-migration-pattern.md) — transition tenancy keys via phased nullable column → backfill → route refactor → tighten; never cut-over in one step.
 - [Telegram channel pipeline](telegram-channel-pipeline.md) — chat key `tg:<id>` reuses phone_number column; webhook auth via secret header (mount before requireAuth); outbound needs explicit send (no echo unlike Baileys).
-- [Per-channel chat access scope](per-channel-chat-access.md) — `user_channel_access` gates chats only; never filter `/channels` or `resolveChannelScope` or you'll silently hide flows/statuses/analytics too.
+- [Per-channel channel access scope](per-channel-chat-access.md) — `user_channel_access` scopes the WHOLE switcher for supervisor/agent (super_admin sees all); funnel every channel resolver through `getAllowedChannelIds`.
 - [drizzle sql tag spreads JS arrays](drizzle-sql-array-tuple.md) — `sql\`COALESCE(col, ${jsArr})\`` produces `($1,$2,…)` not `ARRAY[…]::T[]`; fatal for array columns, use `sql.join` + explicit cast.
 - [Self-delete cascade requirements](self-delete-cascade.md) — tenant deletion needs FK cascades on every user_id/channel_id + users.parent_user_id self-FK; route-level deletes alone leave orphans.
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
