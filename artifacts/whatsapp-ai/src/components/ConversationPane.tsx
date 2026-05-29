@@ -128,6 +128,23 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [pendingFileKind, setPendingFileKind] = useState<MediaKind>("document");
   const [uploading, setUploading] = useState(false);
+  // Image pasted (Ctrl/Cmd+V) or picked into a staging area. Held so the user
+  // can add a caption before sending instead of firing off immediately.
+  const [pastedImage, setPastedImage] = useState<File | null>(null);
+  const [pastedPreview, setPastedPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pastedImage) {
+      setPastedPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(pastedImage);
+    setPastedPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pastedImage]);
+  // Drop a staged paste whenever we switch chats so it can't leak across rooms.
+  useEffect(() => {
+    setPastedImage(null);
+  }, [chatId]);
   const [contactOpen, setContactOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -206,16 +223,12 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     setTimeout(() => fileInputRef.current?.click(), 0);
   }
 
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-
+  async function uploadMedia(file: File, caption: string) {
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
-      if (reply.trim()) fd.append("caption", reply.trim());
+      if (caption.trim()) fd.append("caption", caption.trim());
       const res = await fetch(`/api/chats/${chatId}/media`, {
         method: "POST",
         body: fd,
@@ -236,6 +249,51 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       });
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await uploadMedia(file, reply);
+  }
+
+  // Pull the first image out of a clipboard paste (e.g. a screenshot) and
+  // stage it for sending. Returns true if an image was captured so the caller
+  // can suppress the default text paste.
+  function captureImageFromClipboard(
+    items: DataTransferItemList | null | undefined,
+  ): boolean {
+    if (!items) return false;
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          setPastedImage(file);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Send whatever is staged: a pasted image (with the text box as its caption)
+  // takes priority, otherwise the typed text is sent as a normal message.
+  function handleSend() {
+    // Guard the keyboard path too (the button is disabled, Enter isn't) so an
+    // in-flight upload/send can't be duplicated or run concurrently.
+    if (uploading || sendReply.isPending) return;
+    if (pastedImage) {
+      const caption = expandShortcuts(reply, shortcutMap, true);
+      const img = pastedImage;
+      setPastedImage(null);
+      void uploadMedia(img, caption);
+      return;
+    }
+    const finalText = expandShortcuts(reply, shortcutMap, true).trim();
+    if (finalText) {
+      sendReply.mutate({ id: chatId, data: { content: finalText } });
     }
   }
 
@@ -1006,9 +1064,35 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           />
 
           <div className="flex-1 bg-[hsl(var(--wa-panel))] rounded-lg px-3 py-2">
+            {pastedImage && pastedPreview && (
+              <div
+                className="mb-2 flex items-start gap-2"
+                data-testid="pasted-image-preview"
+              >
+                <div className="relative">
+                  <img
+                    src={pastedPreview}
+                    alt="Gambar untuk dikirim"
+                    className="max-h-32 max-w-[200px] rounded-md object-cover border border-[hsl(var(--wa-divider))]"
+                  />
+                  <button
+                    type="button"
+                    data-testid="button-remove-pasted-image"
+                    onClick={() => setPastedImage(null)}
+                    className="absolute -top-2 -right-2 p-1 rounded-full bg-black/70 text-white hover:bg-black transition-colors"
+                    title="Hapus gambar"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <span className="text-[11px] text-[hsl(var(--wa-meta))] mt-1">
+                  Tambahkan keterangan lalu tekan kirim.
+                </span>
+              </div>
+            )}
             <textarea
               data-testid="textarea-reply"
-              placeholder="Ketik pesan"
+              placeholder={pastedImage ? "Tambahkan keterangan…" : "Ketik pesan"}
               value={reply}
               onChange={(e) => {
                 // Inline shortcut expansion: every keystroke we expand any
@@ -1017,6 +1101,14 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                 // user can still finish typing it.
                 const next = expandShortcuts(e.target.value, shortcutMap, false);
                 setReply(next);
+              }}
+              onPaste={(e) => {
+                // A screenshot / copied image arrives as a file item in the
+                // clipboard. Capture it as an attachment instead of letting
+                // the browser drop binary noise into the text box.
+                if (captureImageFromClipboard(e.clipboardData?.items)) {
+                  e.preventDefault();
+                }
               }}
               rows={1}
               className="w-full bg-transparent text-[15px] text-foreground placeholder:text-[hsl(var(--wa-meta))] focus:outline-none resize-none max-h-32"
@@ -1028,13 +1120,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  const finalText = expandShortcuts(reply, shortcutMap, true).trim();
-                  if (finalText) {
-                    sendReply.mutate({
-                      id: chatId,
-                      data: { content: finalText },
-                    });
-                  }
+                  handleSend();
                 }
               }}
             />
@@ -1043,19 +1129,14 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           <button
             data-testid="button-send-reply"
             type="button"
-            onClick={() => {
-              const finalText = expandShortcuts(reply, shortcutMap, true).trim();
-              if (finalText) {
-                sendReply.mutate({ id: chatId, data: { content: finalText } });
-              }
-            }}
-            disabled={sendReply.isPending}
+            onClick={handleSend}
+            disabled={sendReply.isPending || uploading}
             className="p-2 rounded-full text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors disabled:opacity-50"
-            title={reply.trim() ? "Kirim" : "Pesan suara"}
+            title={reply.trim() || pastedImage ? "Kirim" : "Pesan suara"}
           >
-            {sendReply.isPending ? (
+            {sendReply.isPending || uploading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
-            ) : reply.trim() ? (
+            ) : reply.trim() || pastedImage ? (
               <Send className="w-5 h-5 text-[hsl(var(--wa-accent))]" />
             ) : (
               <Mic className="w-5 h-5" />
