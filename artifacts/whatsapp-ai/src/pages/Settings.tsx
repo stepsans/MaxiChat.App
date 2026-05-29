@@ -1,5 +1,7 @@
 import { useEffect } from "react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   useGetSettings,
   useUpdateSettings,
@@ -68,7 +70,19 @@ type SettingsForm = z.infer<typeof settingsSchema>;
 export default function Settings() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const { menus, isLoading: permLoading } = usePermissions();
+  const canViewSettings = menus.settings.canView;
+  const canEditSettings = menus.settings.canEdit;
   const { data: settings, isLoading } = useGetSettings();
+
+  // Agents (and any role without settings access) must not reach this page,
+  // even via a direct URL — the sidebar already hides the link, this closes
+  // the deep-link hole. Wait for permissions to resolve before deciding so
+  // we never bounce a super_admin/supervisor mid-load.
+  useEffect(() => {
+    if (!permLoading && !canViewSettings) navigate("/");
+  }, [permLoading, canViewSettings, navigate]);
 
   const update = useUpdateSettings({
     mutation: {
@@ -105,12 +119,15 @@ export default function Settings() {
   }, [settings, form]);
 
   const onSubmit = (data: SettingsForm) => {
+    // Defense in depth: ignore submissions from anyone without edit rights,
+    // covering non-button submit paths (Enter key, programmatic submit).
+    if (!canEditSettings) return;
     // OpenAPI restricts flowCooldownMinutes to a literal union; the form
     // already validates this against COOLDOWN_OPTIONS so the cast is safe.
     update.mutate({ data: data as unknown as Parameters<typeof update.mutate>[0]["data"] });
   };
 
-  if (isLoading) {
+  if (isLoading || permLoading) {
     return (
       <div className="p-6 space-y-4">
         <Skeleton className="h-8 w-48" />
@@ -119,6 +136,10 @@ export default function Settings() {
       </div>
     );
   }
+
+  // Permissions resolved and the user can't view settings — render nothing
+  // while the redirect above takes effect (avoids a flash of the form).
+  if (!canViewSettings) return null;
 
   const isDirty = form.formState.isDirty;
 
@@ -144,7 +165,7 @@ export default function Settings() {
             type="submit"
             form="settings-form"
             size="sm"
-            disabled={update.isPending || !isDirty}
+            disabled={update.isPending || !isDirty || !canEditSettings}
           >
             {update.isPending && (
               <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
@@ -189,6 +210,7 @@ export default function Settings() {
                           data-testid="switch-auto-reply"
                           checked={field.value}
                           onCheckedChange={field.onChange}
+                          disabled={!canEditSettings}
                         />
                       </FormControl>
                     </FormItem>

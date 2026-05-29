@@ -259,7 +259,7 @@ export default function Layout({
         >
           {navItems
             .filter((it) => {
-              const tr = (user?.teamRole ?? "super_admin") as TeamRole;
+              const tr = (user?.teamRole ?? "agent") as TeamRole;
               // Static-role items (Dashboard, Agen) are gated by `roles`.
               if (it.roles) return it.roles.includes(tr);
               // Matrix-gated items: super_admin always sees them; everyone
