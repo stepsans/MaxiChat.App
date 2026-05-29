@@ -717,16 +717,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/Settings"
 
+  /settings/general:
     put:
-      operationId: updateSettings
+      operationId: updateGeneralSettings
       tags: [settings]
-      summary: Update AI settings
+      summary: Update business-wide AI settings (super admin only)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SettingsUpdate"
+              $ref: "#/components/schemas/GeneralSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+
+  /settings/auto-reply:
+    put:
+      operationId: updateAutoReply
+      tags: [settings]
+      summary: Toggle AI auto-reply for the active channel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoReplyUpdate"
       responses:
         "200":
           description: Updated settings
@@ -2528,13 +2548,12 @@ components:
         updatedAt:
           type: string
 
-    SettingsUpdate:
+    GeneralSettingsUpdate:
       type: object
+      required: [systemPrompt, replyDelayMin, replyDelayMax, fallbackMessage, flowCooldownMinutes]
       properties:
         systemPrompt:
           type: string
-        autoReplyEnabled:
-          type: boolean
         replyDelayMin:
           type: integer
         replyDelayMax:
@@ -2544,6 +2563,13 @@ components:
         flowCooldownMinutes:
           type: integer
           enum: [5, 15, 30, 60, 120]
+
+    AutoReplyUpdate:
+      type: object
+      required: [autoReplyEnabled]
+      properties:
+        autoReplyEnabled:
+          type: boolean
 
     AnalyticsSummary:
       type: object

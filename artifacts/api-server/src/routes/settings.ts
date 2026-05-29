@@ -1,135 +1,90 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
+import { tenantSettingsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { UpdateGeneralSettingsBody, UpdateAutoReplyBody } from "@workspace/api-zod";
 import { settingsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
-import { UpdateSettingsBody } from "@workspace/api-zod";
-import { requirePermission } from "../lib/role-permissions";
+import { requireSuperAdmin } from "../lib/team-permissions";
+import { requireOwnedChannelLoose } from "../lib/channel-context";
 import {
-  requireOwnedChannelLoose,
-  requireConnectedChannel,
-  type ChannelRow,
-} from "../lib/channel-context";
+  getOrCreateChannelSettings,
+  getOrCreateTenantSettings,
+  getMergedSettings,
+} from "../lib/settings-store";
 
 const router = Router();
 
-// Settings read is open to anyone signed in (the page shows current AI
-// behavior even to agents); writes go through the matrix.
-router.put("/", requirePermission("settings", "edit"));
-
-const DEFAULT_SYSTEM_PROMPT = `Kamu adalah customer service profesional yang ramah, cepat, dan membantu closing.
-
-Gunakan gaya bahasa:
-- Santai tapi sopan
-- Gunakan emoji secukupnya
-- Jawaban singkat, jelas, dan tidak bertele-tele
-- Maksimal 2-4 kalimat
-
-Tugas kamu:
-- Jawab pertanyaan dengan jelas berdasarkan knowledge base
-- Jika memungkinkan, arahkan ke pembelian
-- Gunakan bahasa natural seperti manusia
-- Jangan jawab di luar knowledge
-- Jika tidak tahu, sampaikan dengan sopan bahwa admin akan membantu`;
-
-const DEFAULT_FALLBACK =
-  "Aku bantu cek dulu ya kak, nanti admin kami bantu jawab lebih detail 🙏";
-
-// Per-channel settings. Filter by channel_id (the source of truth post-T009);
-// owner_phone is gone from this table.
-export async function getOrCreateSettings(channel: ChannelRow) {
-  const rows = await db
-    .select()
-    .from(settingsTable)
-    .where(eq(settingsTable.channelId, channel.id))
-    .limit(1);
-  if (rows.length > 0) return rows[0];
-
-  const [created] = await db
-    .insert(settingsTable)
-    .values({
-      channelId: channel.id,
-      systemPrompt: DEFAULT_SYSTEM_PROMPT,
-      autoReplyEnabled: true,
-      replyDelayMin: 1,
-      replyDelayMax: 3,
-      fallbackMessage: DEFAULT_FALLBACK,
-      flowCooldownMinutes: 5,
-    })
-    .onConflictDoNothing({ target: settingsTable.channelId })
-    .returning();
-  if (created) return created;
-
-  const [existing] = await db
-    .select()
-    .from(settingsTable)
-    .where(eq(settingsTable.channelId, channel.id))
-    .limit(1);
-  return existing;
-}
-
-function serializeSettings(s: typeof settingsTable.$inferSelect) {
-  return {
-    ...s,
-    updatedAt: s.updatedAt.toISOString(),
-  };
-}
-
-// When no WhatsApp account is connected, we still respond with a sensible
-// read-only default so the Settings UI doesn't error out — but we don't
-// persist anything and PUT is blocked with 503.
-function defaultSettingsResponse() {
-  const now = new Date();
-  return {
-    id: 0,
-    systemPrompt: DEFAULT_SYSTEM_PROMPT,
-    autoReplyEnabled: true,
-    replyDelayMin: 1,
-    replyDelayMax: 3,
-    fallbackMessage: DEFAULT_FALLBACK,
-    flowCooldownMinutes: 5,
-    updatedAt: now.toISOString(),
-  };
-}
-
+// GET is reachable by every signed-in user (incl. agents) so they can view
+// the AI behaviour and edit their own per-channel auto-reply. The merged view
+// works for unpaired channels too — per-channel rows key on channel.id and the
+// tenant general row keys on channel.userId, neither needs ownerPhone.
 router.get("/", async (req, res): Promise<void> => {
   try {
-    // GET is reachable pre-pairing so the UI can render defaults; we just
-    // require a single channel selected (not "all").
     const channel = await requireOwnedChannelLoose(req, res);
     if (!channel) return;
-    if (!channel.ownerPhone) {
-      res.json(defaultSettingsResponse());
-      return;
-    }
-    const settings = await getOrCreateSettings(channel);
-    res.json(serializeSettings(settings));
+    const merged = await getMergedSettings(channel);
+    res.json(merged);
   } catch (err) {
     req.log.error({ err }, "Failed to get settings");
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.put("/", async (req, res): Promise<void> => {
+// Business-wide ("general") settings — only super admins may edit. Applies to
+// the whole tenant (all channels), keyed on the effective owner user id.
+router.put("/general", requireSuperAdmin, async (req, res): Promise<void> => {
   try {
-    const parsed = UpdateSettingsBody.safeParse(req.body);
+    const parsed = UpdateGeneralSettingsBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid body" });
       return;
     }
 
-    const channel = await requireConnectedChannel(req, res);
+    const channel = await requireOwnedChannelLoose(req, res);
     if (!channel) return;
 
-    const current = await getOrCreateSettings(channel);
-    const [updated] = await db
-      .update(settingsTable)
+    // Ensure a tenant row exists, then update it for this owner.
+    await getOrCreateTenantSettings(channel.userId);
+    await db
+      .update(tenantSettingsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(and(eq(settingsTable.id, current.id), eq(settingsTable.channelId, channel.id)))
-      .returning();
+      .where(eq(tenantSettingsTable.ownerUserId, channel.userId));
 
-    res.json(serializeSettings(updated));
+    res.json(await getMergedSettings(channel));
   } catch (err) {
-    req.log.error({ err }, "Failed to update settings");
+    req.log.error({ err }, "Failed to update general settings");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Per-channel AI auto-reply toggle — any signed-in user with access to the
+// active channel may flip this for their own number. No permission gate.
+router.put("/auto-reply", async (req, res): Promise<void> => {
+  try {
+    const parsed = UpdateAutoReplyBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+
+    const channel = await requireOwnedChannelLoose(req, res);
+    if (!channel) return;
+    if (!channel.ownerPhone) {
+      res
+        .status(503)
+        .json({ error: "WhatsApp belum terhubung untuk channel ini." });
+      return;
+    }
+
+    const current = await getOrCreateChannelSettings(channel);
+    await db
+      .update(settingsTable)
+      .set({ autoReplyEnabled: parsed.data.autoReplyEnabled, updatedAt: new Date() })
+      .where(eq(settingsTable.id, current.id));
+
+    res.json(await getMergedSettings(channel));
+  } catch (err) {
+    req.log.error({ err }, "Failed to update auto-reply");
     res.status(500).json({ error: "Internal server error" });
   }
 });

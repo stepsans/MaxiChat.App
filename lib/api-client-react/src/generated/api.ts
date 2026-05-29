@@ -26,6 +26,7 @@ import type {
   AssignChatInput,
   AuthMeResponse,
   AuthUser,
+  AutoReplyUpdate,
   Channel,
   ChannelCreate,
   ChannelPairQr,
@@ -52,6 +53,7 @@ import type {
   FlowCreateInput,
   FlowSummary,
   FlowUpdateInput,
+  GeneralSettingsUpdate,
   GetKnowledgeSyncConfig200,
   GetProductSyncConfig200,
   GetShortcutSyncConfig200,
@@ -86,7 +88,6 @@ import type {
   RunShortcutSync200,
   SendProductBody,
   Settings,
-  SettingsUpdate,
   ShortcutSyncConfigInput,
   SignupInput,
   SignupResponse,
@@ -2249,37 +2250,37 @@ export function useGetSettings<TData = Awaited<ReturnType<typeof getSettings>>, 
 
 
 
-export const getUpdateSettingsUrl = () => {
+export const getUpdateGeneralSettingsUrl = () => {
 
 
 
 
-  return `/api/settings`
+  return `/api/settings/general`
 }
 
 /**
- * @summary Update AI settings
+ * @summary Update business-wide AI settings (super admin only)
  */
-export const updateSettings = async (settingsUpdate: SettingsUpdate, options?: RequestInit): Promise<Settings> => {
+export const updateGeneralSettings = async (generalSettingsUpdate: GeneralSettingsUpdate, options?: RequestInit): Promise<Settings> => {
 
-  return customFetch<Settings>(getUpdateSettingsUrl(),
+  return customFetch<Settings>(getUpdateGeneralSettingsUrl(),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      settingsUpdate,)
+      generalSettingsUpdate,)
   }
 );}
 
 
 
 
-export const getUpdateSettingsMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSettings>>, TError,{data: BodyType<SettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof updateSettings>>, TError,{data: BodyType<SettingsUpdate>}, TContext> => {
+export const getUpdateGeneralSettingsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGeneralSettings>>, TError,{data: BodyType<GeneralSettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateGeneralSettings>>, TError,{data: BodyType<GeneralSettingsUpdate>}, TContext> => {
 
-const mutationKey = ['updateSettings'];
+const mutationKey = ['updateGeneralSettings'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -2289,10 +2290,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSettings>>, {data: BodyType<SettingsUpdate>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateGeneralSettings>>, {data: BodyType<GeneralSettingsUpdate>}> = (props) => {
           const {data} = props ?? {};
 
-          return  updateSettings(data,requestOptions)
+          return  updateGeneralSettings(data,requestOptions)
         }
 
 
@@ -2302,22 +2303,93 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type UpdateSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateSettings>>>
-    export type UpdateSettingsMutationBody = BodyType<SettingsUpdate>
-    export type UpdateSettingsMutationError = ErrorType<unknown>
+    export type UpdateGeneralSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateGeneralSettings>>>
+    export type UpdateGeneralSettingsMutationBody = BodyType<GeneralSettingsUpdate>
+    export type UpdateGeneralSettingsMutationError = ErrorType<unknown>
 
     /**
- * @summary Update AI settings
+ * @summary Update business-wide AI settings (super admin only)
  */
-export const useUpdateSettings = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSettings>>, TError,{data: BodyType<SettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useUpdateGeneralSettings = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGeneralSettings>>, TError,{data: BodyType<GeneralSettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof updateSettings>>,
+        Awaited<ReturnType<typeof updateGeneralSettings>>,
         TError,
-        {data: BodyType<SettingsUpdate>},
+        {data: BodyType<GeneralSettingsUpdate>},
         TContext
       > => {
-      return useMutation(getUpdateSettingsMutationOptions(options));
+      return useMutation(getUpdateGeneralSettingsMutationOptions(options));
+    }
+
+export const getUpdateAutoReplyUrl = () => {
+
+
+
+
+  return `/api/settings/auto-reply`
+}
+
+/**
+ * @summary Toggle AI auto-reply for the active channel
+ */
+export const updateAutoReply = async (autoReplyUpdate: AutoReplyUpdate, options?: RequestInit): Promise<Settings> => {
+
+  return customFetch<Settings>(getUpdateAutoReplyUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      autoReplyUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateAutoReplyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAutoReply>>, TError,{data: BodyType<AutoReplyUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAutoReply>>, TError,{data: BodyType<AutoReplyUpdate>}, TContext> => {
+
+const mutationKey = ['updateAutoReply'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAutoReply>>, {data: BodyType<AutoReplyUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAutoReply(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAutoReplyMutationResult = NonNullable<Awaited<ReturnType<typeof updateAutoReply>>>
+    export type UpdateAutoReplyMutationBody = BodyType<AutoReplyUpdate>
+    export type UpdateAutoReplyMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Toggle AI auto-reply for the active channel
+ */
+export const useUpdateAutoReply = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAutoReply>>, TError,{data: BodyType<AutoReplyUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAutoReply>>,
+        TError,
+        {data: BodyType<AutoReplyUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateAutoReplyMutationOptions(options));
     }
 
 export const getListChannelsUrl = () => {

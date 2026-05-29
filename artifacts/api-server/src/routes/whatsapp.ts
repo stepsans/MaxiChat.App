@@ -28,6 +28,7 @@ import {
   resolveOwnerUserId,
   ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
+import { getOrCreateTenantSettings } from "../lib/settings-store";
 
 // Whether the signed-in user owns the WhatsApp pairing (super_admin) or
 // merely inherits it (supervisor / agent). Invited members must not be able
@@ -778,6 +779,10 @@ export async function generateAiReply(
     const settings = settingsRows[0];
     if (!settings?.autoReplyEnabled) return null;
 
+    // General AI settings (system prompt etc.) are business-wide, keyed on the
+    // tenant owner (userId), not per-channel.
+    const tenant = await getOrCreateTenantSettings(userId);
+
     const knowledgeEntries = await db
       .select()
       .from(knowledgeTable)
@@ -799,7 +804,7 @@ export async function generateAiReply(
       content: m.direction === "outbound" ? stripTrailingTag(m.content) : m.content,
     }));
 
-    const systemPrompt = `${settings.systemPrompt}
+    const systemPrompt = `${tenant.systemPrompt}
 
 ATURAN MUTLAK:
 - HANYA gunakan informasi dari KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
@@ -1692,15 +1697,10 @@ async function tryRunFlow(
     | { flowId?: number; currentNodeId?: string; defaultMutedUntil?: number }
     | null;
   // Cooldown after any flow exit before the Default trigger may re-fire.
-  // Configurable per owner in Settings (5/15/30/60/120 minutes). We read
-  // just the column to avoid a circular import with routes/settings.ts and
-  // to avoid touching the rest of the settings row on every inbound msg.
-  const [settingsRow] = await db
-    .select({ flowCooldownMinutes: settingsTable.flowCooldownMinutes })
-    .from(settingsTable)
-    .where(eq(settingsTable.channelId, channelId))
-    .limit(1);
-  const cooldownMin = settingsRow?.flowCooldownMinutes ?? 5;
+  // Configurable business-wide in Settings (5/15/30/60/120 minutes), keyed
+  // on the tenant owner.
+  const tenant = await getOrCreateTenantSettings(userId);
+  const cooldownMin = tenant.flowCooldownMinutes ?? 5;
   const cooldownMs = cooldownMin * 60 * 1000;
   const muteState = { defaultMutedUntil: Date.now() + cooldownMs };
 
@@ -1866,8 +1866,10 @@ async function maybeTriggerAutoReply(
   const settings = settingsRows[0];
   if (!settings?.autoReplyEnabled) return;
 
-  const delayMin = (settings.replyDelayMin ?? 1) * 1000;
-  const delayMax = (settings.replyDelayMax ?? 3) * 1000;
+  // Reply delay + fallback message are business-wide (tenant), not per-channel.
+  const tenant = await getOrCreateTenantSettings(userId);
+  const delayMin = (tenant.replyDelayMin ?? 1) * 1000;
+  const delayMax = (tenant.replyDelayMax ?? 3) * 1000;
   const delay = Math.random() * (delayMax - delayMin) + delayMin;
 
   setTimeout(async () => {
@@ -1881,7 +1883,7 @@ async function maybeTriggerAutoReply(
       // Sign AI-generated replies with the "powered by AI" tag. The
       // configured fallbackMessage is a canned operator-authored string,
       // so we leave it unsigned to avoid misattributing it to the AI.
-      const replyText = aiReply ? withTag(aiReply, AI_TAG) : settings.fallbackMessage;
+      const replyText = aiReply ? withTag(aiReply, AI_TAG) : tenant.fallbackMessage;
 
       if (epoch !== ctx.epoch) return;
 

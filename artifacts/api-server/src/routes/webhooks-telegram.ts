@@ -16,6 +16,7 @@ import {
   type TelegramUpdate,
 } from "../lib/telegram";
 import { generateAiReply } from "./whatsapp";
+import { getOrCreateTenantSettings } from "../lib/settings-store";
 
 const router = Router();
 
@@ -165,8 +166,10 @@ async function processUpdate(
   const settings = settingsRows[0];
   if (!settings?.autoReplyEnabled) return;
 
-  const delayMin = (settings.replyDelayMin ?? 1) * 1000;
-  const delayMax = (settings.replyDelayMax ?? 3) * 1000;
+  // Reply delay + fallback message are business-wide (tenant), not per-channel.
+  const tenant = await getOrCreateTenantSettings(ownerUserId);
+  const delayMin = (tenant.replyDelayMin ?? 1) * 1000;
+  const delayMax = (tenant.replyDelayMax ?? 3) * 1000;
   const delay = Math.random() * (delayMax - delayMin) + delayMin;
   await new Promise((r) => setTimeout(r, delay));
 
@@ -180,7 +183,7 @@ async function processUpdate(
   if (fresh?.isHumanTakeover) return;
 
   const ai = await generateAiReply(channelId, ownerUserId, chat.id, parsed.text);
-  const replyText = ai ? withTag(ai, AI_TAG) : settings.fallbackMessage;
+  const replyText = ai ? withTag(ai, AI_TAG) : tenant.fallbackMessage;
   if (!replyText) return;
 
   let sentMessageId: number | null = null;

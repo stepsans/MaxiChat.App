@@ -1,10 +1,10 @@
 import { useEffect } from "react";
-import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
   useGetSettings,
-  useUpdateSettings,
+  useUpdateGeneralSettings,
+  useUpdateAutoReply,
   getGetSettingsQueryKey,
   useGetWhatsappBio,
   useUpdateWhatsappBio,
@@ -25,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Lock } from "lucide-react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import * as XLSX from "xlsx";
 import { useRef } from "react";
@@ -51,9 +51,10 @@ import { useToast } from "@/hooks/use-toast";
 
 const COOLDOWN_OPTIONS = [5, 15, 30, 60, 120] as const;
 
-const settingsSchema = z.object({
+// Business-wide ("general") settings — only super admins may edit these.
+// Auto-reply is per-channel and lives in its own card outside this form.
+const generalSchema = z.object({
   systemPrompt: z.string().min(1, "System prompt is required"),
-  autoReplyEnabled: z.boolean(),
   replyDelayMin: z.coerce.number().int().min(0).max(30),
   replyDelayMax: z.coerce.number().int().min(0).max(60),
   fallbackMessage: z.string().min(1, "Fallback message is required"),
@@ -65,39 +66,47 @@ const settingsSchema = z.object({
     }),
 });
 
-type SettingsForm = z.infer<typeof settingsSchema>;
+type GeneralForm = z.infer<typeof generalSchema>;
 
 export default function Settings() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [, navigate] = useLocation();
-  const { menus, isLoading: permLoading } = usePermissions();
-  const canViewSettings = menus.settings.canView;
-  const canEditSettings = menus.settings.canEdit;
+  const { isSuperAdmin, isLoading: permLoading } = usePermissions();
+  // Only super admins can edit the business-wide general settings; everyone
+  // else (supervisor, agent) sees them read-only.
+  const canEditGeneral = isSuperAdmin;
   const { data: settings, isLoading } = useGetSettings();
 
-  // Agents (and any role without settings access) must not reach this page,
-  // even via a direct URL — the sidebar already hides the link, this closes
-  // the deep-link hole. Wait for permissions to resolve before deciding so
-  // we never bounce a super_admin/supervisor mid-load.
-  useEffect(() => {
-    if (!permLoading && !canViewSettings) navigate("/");
-  }, [permLoading, canViewSettings, navigate]);
-
-  const update = useUpdateSettings({
+  const update = useUpdateGeneralSettings({
     mutation: {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
-        toast({ title: "Settings saved." });
+        toast({ title: "Pengaturan umum disimpan." });
       },
     },
   });
 
-  const form = useForm<SettingsForm>({
-    resolver: zodResolver(settingsSchema),
+  const autoReply = useUpdateAutoReply({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
+        toast({ title: "Auto reply diperbarui." });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal memperbarui auto reply",
+          description:
+            err instanceof Error ? err.message : "WhatsApp belum terhubung?",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const form = useForm<GeneralForm>({
+    resolver: zodResolver(generalSchema),
     defaultValues: {
       systemPrompt: "",
-      autoReplyEnabled: true,
       replyDelayMin: 1,
       replyDelayMax: 3,
       fallbackMessage: "",
@@ -109,7 +118,6 @@ export default function Settings() {
     if (settings) {
       form.reset({
         systemPrompt: settings.systemPrompt,
-        autoReplyEnabled: settings.autoReplyEnabled,
         replyDelayMin: settings.replyDelayMin,
         replyDelayMax: settings.replyDelayMax,
         fallbackMessage: settings.fallbackMessage,
@@ -118,10 +126,10 @@ export default function Settings() {
     }
   }, [settings, form]);
 
-  const onSubmit = (data: SettingsForm) => {
+  const onSubmit = (data: GeneralForm) => {
     // Defense in depth: ignore submissions from anyone without edit rights,
     // covering non-button submit paths (Enter key, programmatic submit).
-    if (!canEditSettings) return;
+    if (!canEditGeneral) return;
     // OpenAPI restricts flowCooldownMinutes to a literal union; the form
     // already validates this against COOLDOWN_OPTIONS so the cast is safe.
     update.mutate({ data: data as unknown as Parameters<typeof update.mutate>[0]["data"] });
@@ -137,10 +145,6 @@ export default function Settings() {
     );
   }
 
-  // Permissions resolved and the user can't view settings — render nothing
-  // while the redirect above takes effect (avoids a flash of the form).
-  if (!canViewSettings) return null;
-
   const isDirty = form.formState.isDirty;
 
   return (
@@ -154,70 +158,82 @@ export default function Settings() {
             Konfigurasi perilaku AI, auto-reply, dan tampilan
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {isDirty && (
-            <span className="hidden sm:inline text-xs text-muted-foreground">
-              Ada perubahan belum disimpan
-            </span>
-          )}
-          <Button
-            data-testid="button-save-settings"
-            type="submit"
-            form="settings-form"
-            size="sm"
-            disabled={update.isPending || !isDirty || !canEditSettings}
-          >
-            {update.isPending && (
-              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+        {canEditGeneral && (
+          <div className="flex items-center gap-2">
+            {isDirty && (
+              <span className="hidden sm:inline text-xs text-muted-foreground">
+                Ada perubahan belum disimpan
+              </span>
             )}
-            Simpan
-          </Button>
-        </div>
+            <Button
+              data-testid="button-save-settings"
+              type="submit"
+              form="settings-form"
+              size="sm"
+              disabled={update.isPending || !isDirty}
+            >
+              {update.isPending && (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              )}
+              Simpan
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 p-6 max-w-6xl w-full mx-auto space-y-5">
+        {/* Auto reply — per-channel, editable by everyone. Saves immediately
+            on toggle via its own endpoint (no need for super admin). */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Bot className="w-4 h-4 text-primary" />
+              Auto Reply
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Aktifkan AI untuk membalas pesan masuk secara otomatis di nomor ini
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Aktifkan AI Auto Reply</p>
+                <p className="text-xs text-muted-foreground">
+                  AI akan menjawab 24/7 semua pesan yang masuk
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {autoReply.isPending && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                )}
+                <Switch
+                  data-testid="switch-auto-reply"
+                  checked={settings?.autoReplyEnabled ?? true}
+                  disabled={autoReply.isPending}
+                  onCheckedChange={(checked) =>
+                    autoReply.mutate({ data: { autoReplyEnabled: checked } })
+                  }
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Form {...form}>
           <form
             id="settings-form"
             onSubmit={form.handleSubmit(onSubmit)}
             className="grid grid-cols-1 lg:grid-cols-2 gap-5"
           >
-            {/* Auto reply — compact, kiri atas */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Bot className="w-4 h-4 text-primary" />
-                  Auto Reply
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Aktifkan AI untuk membalas pesan WhatsApp masuk secara otomatis
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FormField
-                  control={form.control}
-                  name="autoReplyEnabled"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between">
-                      <div>
-                        <FormLabel className="text-sm">Aktifkan AI Auto Reply</FormLabel>
-                        <FormDescription className="text-xs">
-                          AI akan menjawab 24/7 semua pesan yang masuk
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          data-testid="switch-auto-reply"
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          disabled={!canEditSettings}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
+            {!canEditGeneral && (
+              <div className="lg:col-span-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+                <Lock className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-xs text-muted-foreground">
+                  Pengaturan umum ini berlaku untuk seluruh bisnis. Hanya Super
+                  Admin yang dapat mengubahnya — Anda hanya dapat melihatnya.
+                </p>
+              </div>
+            )}
 
             {/* Reply delay — sebelah kanan */}
             <Card>
@@ -244,6 +260,7 @@ export default function Settings() {
                             type="number"
                             min={0}
                             max={30}
+                            disabled={!canEditGeneral}
                             {...field}
                           />
                         </FormControl>
@@ -263,6 +280,7 @@ export default function Settings() {
                             type="number"
                             min={0}
                             max={60}
+                            disabled={!canEditGeneral}
                             {...field}
                           />
                         </FormControl>
@@ -298,9 +316,10 @@ export default function Settings() {
                       <FormControl>
                         <select
                           data-testid="select-flow-cooldown"
-                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                           value={String(field.value ?? 5)}
                           onChange={(e) => field.onChange(Number(e.target.value))}
+                          disabled={!canEditGeneral}
                         >
                           {COOLDOWN_OPTIONS.map((m) => (
                             <option key={m} value={m}>
@@ -339,6 +358,7 @@ export default function Settings() {
                           rows={4}
                           className="resize-none text-sm"
                           placeholder="cth. Aku bantu cek dulu ya kak..."
+                          disabled={!canEditGeneral}
                           {...field}
                         />
                       </FormControl>
@@ -372,6 +392,7 @@ export default function Settings() {
                           rows={12}
                           className="resize-y font-mono text-xs"
                           placeholder="Tulis system prompt AI Anda di sini..."
+                          disabled={!canEditGeneral}
                           {...field}
                         />
                       </FormControl>

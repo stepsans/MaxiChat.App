@@ -260,6 +260,10 @@ export default function Layout({
           {navItems
             .filter((it) => {
               const tr = (user?.teamRole ?? "agent") as TeamRole;
+              // Settings is always visible: every role has personal items
+              // there (auto-reply, theme, bio). General settings inside are
+              // gated to super_admin within the page itself.
+              if (it.menu === "settings") return true;
               // Static-role items (Dashboard, Agen) are gated by `roles`.
               if (it.roles) return it.roles.includes(tr);
               // Matrix-gated items: super_admin always sees them; everyone

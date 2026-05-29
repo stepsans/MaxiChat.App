@@ -396,10 +396,10 @@ export interface Settings {
   updatedAt: string;
 }
 
-export type SettingsUpdateFlowCooldownMinutes = typeof SettingsUpdateFlowCooldownMinutes[keyof typeof SettingsUpdateFlowCooldownMinutes];
+export type GeneralSettingsUpdateFlowCooldownMinutes = typeof GeneralSettingsUpdateFlowCooldownMinutes[keyof typeof GeneralSettingsUpdateFlowCooldownMinutes];
 
 
-export const SettingsUpdateFlowCooldownMinutes = {
+export const GeneralSettingsUpdateFlowCooldownMinutes = {
   NUMBER_5: 5,
   NUMBER_15: 15,
   NUMBER_30: 30,
@@ -407,13 +407,16 @@ export const SettingsUpdateFlowCooldownMinutes = {
   NUMBER_120: 120,
 } as const;
 
-export interface SettingsUpdate {
-  systemPrompt?: string;
-  autoReplyEnabled?: boolean;
-  replyDelayMin?: number;
-  replyDelayMax?: number;
-  fallbackMessage?: string;
-  flowCooldownMinutes?: SettingsUpdateFlowCooldownMinutes;
+export interface GeneralSettingsUpdate {
+  systemPrompt: string;
+  replyDelayMin: number;
+  replyDelayMax: number;
+  fallbackMessage: string;
+  flowCooldownMinutes: GeneralSettingsUpdateFlowCooldownMinutes;
+}
+
+export interface AutoReplyUpdate {
+  autoReplyEnabled: boolean;
 }
 
 export interface AnalyticsSummary {

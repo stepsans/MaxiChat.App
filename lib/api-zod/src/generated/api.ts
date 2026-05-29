@@ -549,18 +549,36 @@ export const GetSettingsResponse = zod.object({
 
 
 /**
- * @summary Update AI settings
+ * @summary Update business-wide AI settings (super admin only)
  */
-export const UpdateSettingsBody = zod.object({
-  "systemPrompt": zod.string().optional(),
-  "autoReplyEnabled": zod.boolean().optional(),
-  "replyDelayMin": zod.number().optional(),
-  "replyDelayMax": zod.number().optional(),
-  "fallbackMessage": zod.string().optional(),
-  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).optional()
+export const UpdateGeneralSettingsBody = zod.object({
+  "systemPrompt": zod.string(),
+  "replyDelayMin": zod.number(),
+  "replyDelayMax": zod.number(),
+  "fallbackMessage": zod.string(),
+  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)])
 })
 
-export const UpdateSettingsResponse = zod.object({
+export const UpdateGeneralSettingsResponse = zod.object({
+  "id": zod.number(),
+  "systemPrompt": zod.string(),
+  "autoReplyEnabled": zod.boolean(),
+  "replyDelayMin": zod.number(),
+  "replyDelayMax": zod.number(),
+  "fallbackMessage": zod.string(),
+  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Toggle AI auto-reply for the active channel
+ */
+export const UpdateAutoReplyBody = zod.object({
+  "autoReplyEnabled": zod.boolean()
+})
+
+export const UpdateAutoReplyResponse = zod.object({
   "id": zod.number(),
   "systemPrompt": zod.string(),
   "autoReplyEnabled": zod.boolean(),

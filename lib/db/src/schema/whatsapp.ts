@@ -276,6 +276,35 @@ export const settingsTable = pgTable(
 
 export type Settings = typeof settingsTable.$inferSelect;
 
+// Business-wide ("general") AI settings. One row per tenant, keyed on the
+// tenant root user (channelsTable.userId is always the effective owner, so
+// these are resolved via that id). Super admin edits; supervisor/agent read
+// only. Per-channel auto-reply stays on settingsTable.autoReplyEnabled; the
+// legacy general columns on settingsTable are no longer read once a tenant
+// row exists.
+export const tenantSettingsTable = pgTable(
+  "tenant_settings",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    systemPrompt: text("system_prompt").notNull(),
+    replyDelayMin: integer("reply_delay_min").notNull().default(1),
+    replyDelayMax: integer("reply_delay_max").notNull().default(3),
+    fallbackMessage: text("fallback_message").notNull(),
+    flowCooldownMinutes: integer("flow_cooldown_minutes").notNull().default(5),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    tenantSettingsOwnerUnique: uniqueIndex("tenant_settings_owner_unique").on(
+      t.ownerUserId
+    ),
+  })
+);
+
+export type TenantSettings = typeof tenantSettingsTable.$inferSelect;
+
 export const productsTable = pgTable(
   "products",
   {

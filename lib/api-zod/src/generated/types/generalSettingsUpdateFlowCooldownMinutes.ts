@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SettingsUpdateFlowCooldownMinutes = typeof SettingsUpdateFlowCooldownMinutes[keyof typeof SettingsUpdateFlowCooldownMinutes];
+export type GeneralSettingsUpdateFlowCooldownMinutes = typeof GeneralSettingsUpdateFlowCooldownMinutes[keyof typeof GeneralSettingsUpdateFlowCooldownMinutes];
 
 
-export const SettingsUpdateFlowCooldownMinutes = {
+export const GeneralSettingsUpdateFlowCooldownMinutes = {
   NUMBER_5: 5,
   NUMBER_15: 15,
   NUMBER_30: 30,
