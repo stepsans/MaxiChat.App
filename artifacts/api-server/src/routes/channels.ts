@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "../lib/auth";
 import { loadOwnedChannel, listOwnedChannels } from "../lib/channel-context";
+import { grantChannelAccess } from "../lib/user-channel-access";
 import { requireSuperAdmin } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import {
@@ -167,6 +168,13 @@ router.post("/", requirePermission("channels", "create"), async (req, res): Prom
         status: "disconnected",
       })
       .returning();
+    // Whoever creates a channel must keep access to it. Super admin
+    // (uid === ownerUid) already sees every tenant channel implicitly, so a
+    // row is only needed for invited members (agent/supervisor) — otherwise
+    // deny-by-default would hide the channel they just created.
+    if (uid !== ownerUid) {
+      await grantChannelAccess(uid, row.id);
+    }
     res.status(201).json(serialize(row));
   } catch (err: unknown) {
     // Unique violation on (user_id, label) — friendly error so the UI can

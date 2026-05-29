@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useActiveChannel } from "@/contexts/ChannelContext";
+import { usePermissions } from "@/hooks/use-permissions";
 
 // Compact dropdown shown in the sidebar header. Color dot reflects the
 // active channel (or a neutral grey for "All channels"); label shows the
@@ -18,9 +19,33 @@ import { useActiveChannel } from "@/contexts/ChannelContext";
 export function ChannelSwitcher({ collapsed }: { collapsed: boolean }) {
   const { channels, activeChannelId, activeChannel, setActiveChannelId } =
     useActiveChannel();
+  const { menus } = usePermissions();
+  const canCreate = menus.channels.canCreate;
+  const canViewChannels = menus.channels.canView;
 
+  // No channels yet: an invited member who can create still needs a way to
+  // reach the add flow (the dropdown below only renders once they have at
+  // least one). Offer a compact add affordance; otherwise render nothing.
   if (channels.length === 0) {
-    return null;
+    if (!canCreate) return null;
+    return (
+      <Link
+        href="/channels?add=1"
+        data-testid="channel-add-link-empty"
+        className={cn(
+          "flex items-center gap-2 rounded-md border border-border bg-background/40 hover:bg-sidebar-accent transition-colors",
+          collapsed ? "w-9 h-9 justify-center p-0" : "w-full px-2 py-1.5"
+        )}
+        aria-label="Tambah channel"
+      >
+        <Plus className="w-3.5 h-3.5 text-foreground/70 flex-shrink-0" />
+        {!collapsed && (
+          <span className="flex-1 min-w-0 text-xs font-medium text-foreground/90 truncate text-left">
+            Tambah channel
+          </span>
+        )}
+      </Link>
+    );
   }
 
   const isAll = activeChannelId === "all";
@@ -95,19 +120,23 @@ export function ChannelSwitcher({ collapsed }: { collapsed: boolean }) {
             </DropdownMenuItem>
           </>
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/channels" data-testid="channel-manage-link" className="gap-2 cursor-pointer">
-            <Settings2 className="w-3.5 h-3.5 text-foreground/70" />
-            <span className="flex-1">Kelola channel</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/channels?add=1" data-testid="channel-add-link" className="gap-2 cursor-pointer">
-            <Plus className="w-3.5 h-3.5 text-foreground/70" />
-            <span className="flex-1">Tambah channel</span>
-          </Link>
-        </DropdownMenuItem>
+        {(canViewChannels || canCreate) && <DropdownMenuSeparator />}
+        {canViewChannels && (
+          <DropdownMenuItem asChild>
+            <Link href="/channels" data-testid="channel-manage-link" className="gap-2 cursor-pointer">
+              <Settings2 className="w-3.5 h-3.5 text-foreground/70" />
+              <span className="flex-1">Kelola channel</span>
+            </Link>
+          </DropdownMenuItem>
+        )}
+        {canCreate && (
+          <DropdownMenuItem asChild>
+            <Link href="/channels?add=1" data-testid="channel-add-link" className="gap-2 cursor-pointer">
+              <Plus className="w-3.5 h-3.5 text-foreground/70" />
+              <span className="flex-1">Tambah channel</span>
+            </Link>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

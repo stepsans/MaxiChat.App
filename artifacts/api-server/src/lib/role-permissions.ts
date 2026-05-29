@@ -59,8 +59,9 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     chats: allow(true, true, true, true),
     statuses: allow(true, true, true, true),
     settings: allow(true, false, true, false),
-    // Default: supervisor can see channels but only the owner pairs/deletes.
-    channels: allow(true, false, false, false),
+    // Supervisor can add & connect their own channels; deletion stays with
+    // the super_admin who centrally manages the tenant's channels.
+    channels: allow(true, true, true, false),
   } as const;
   const agt = {
     knowledge: allow(true, false, false, false),
@@ -71,7 +72,10 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     chats: allow(true, true, true, false),
     statuses: allow(true, true, false, false),
     settings: allow(false, false, false, false),
-    channels: allow(false, false, false, false),
+    // Agent can add & connect their own channels (auto-granted access on
+    // create); deletion stays super_admin-only — channels are centrally
+    // managed by the tenant owner.
+    channels: allow(true, true, true, false),
   } as const;
   return {
     super_admin: Object.fromEntries(

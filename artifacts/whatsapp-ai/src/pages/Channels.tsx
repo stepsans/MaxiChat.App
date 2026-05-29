@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -374,6 +375,9 @@ function ChannelRow({
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { menus } = usePermissions();
+  const canEdit = menus.channels.canEdit;
+  const canDelete = menus.channels.canDelete;
   const [label, setLabel] = useState(channel.label);
   const [color, setColor] = useState(channel.color);
   const [icon, setIcon] = useState(channel.icon);
@@ -488,9 +492,9 @@ function ChannelRow({
   // - WhatsApp: show whenever not currently connected; label changes based on
   //   whether a number has been paired before.
   // - Telegram: show when no bot bound yet OR explicitly disconnected.
-  const canPairWa = isWhatsapp && channel.status !== "connected";
-  const canConnectTg = isTelegram && !tgUsername;
-  const canDisconnect = channel.status === "connected";
+  const canPairWa = isWhatsapp && channel.status !== "connected" && canEdit;
+  const canConnectTg = isTelegram && !tgUsername && canEdit;
+  const canDisconnect = channel.status === "connected" && canEdit;
 
   return (
     <div className="border border-border rounded-lg p-4 space-y-3 bg-card">
@@ -569,7 +573,7 @@ function ChannelRow({
           <StatusBadge status={channel.status} />
           <Button
             size="sm"
-            disabled={!dirty || update.isPending}
+            disabled={!dirty || update.isPending || !canEdit}
             onClick={() =>
               update.mutate({
                 id: channel.id,
@@ -650,21 +654,23 @@ function ChannelRow({
             Putus
           </Button>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-red-600 hover:text-red-700 hover:bg-red-500/10"
-          disabled={del.isPending}
-          onClick={() => setConfirmDelete(true)}
-          data-testid={`channel-delete-${channel.id}`}
-        >
-          {del.isPending ? (
-            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-          ) : (
-            <Trash2 className="w-3 h-3 mr-1" />
-          )}
-          Hapus
-        </Button>
+        {canDelete && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-600 hover:text-red-700 hover:bg-red-500/10"
+            disabled={del.isPending}
+            onClick={() => setConfirmDelete(true)}
+            data-testid={`channel-delete-${channel.id}`}
+          >
+            {del.isPending ? (
+              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+            ) : (
+              <Trash2 className="w-3 h-3 mr-1" />
+            )}
+            Hapus
+          </Button>
+        )}
       </div>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
@@ -882,12 +888,21 @@ function AddChannelDialog({
 
 export default function Channels() {
   const { data, isLoading } = useListChannels();
+  const { menus } = usePermissions();
+  const canCreate = menus.channels.canCreate;
   const [addOpen, setAddOpen] = useState(() => {
     if (typeof window === "undefined") return false;
     return new URLSearchParams(window.location.search).get("add") === "1";
   });
   const [pairChannelId, setPairChannelId] = useState<number | null>(null);
   const [tgChannelId, setTgChannelId] = useState<number | null>(null);
+
+  // Permissions resolve asynchronously, so a deep-link to ?add=1 may open the
+  // dialog before we know the user can't create. Close it once we learn they
+  // lack permission, so they never hit a 403 on submit.
+  useEffect(() => {
+    if (!canCreate && addOpen) setAddOpen(false);
+  }, [canCreate, addOpen]);
 
   const channels = useMemo(() => data ?? [], [data]);
 
@@ -902,10 +917,12 @@ export default function Channels() {
             badge percakapan.
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)} data-testid="channel-add-button">
-          <Plus className="w-4 h-4 mr-1" />
-          Tambah
-        </Button>
+        {canCreate && (
+          <Button onClick={() => setAddOpen(true)} data-testid="channel-add-button">
+            <Plus className="w-4 h-4 mr-1" />
+            Tambah
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -929,12 +946,14 @@ export default function Channels() {
         </div>
       )}
 
-      <AddChannelDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        onCreatedWa={(id) => setPairChannelId(id)}
-        onCreatedTg={(id) => setTgChannelId(id)}
-      />
+      {canCreate && (
+        <AddChannelDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          onCreatedWa={(id) => setPairChannelId(id)}
+          onCreatedTg={(id) => setTgChannelId(id)}
+        />
+      )}
       <PairDialog
         channelId={pairChannelId}
         open={pairChannelId != null}

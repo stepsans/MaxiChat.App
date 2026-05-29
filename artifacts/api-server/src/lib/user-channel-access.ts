@@ -93,6 +93,21 @@ export async function setAllowedChannelIds(
   return stored;
 }
 
+// Grant a single channel to a user without disturbing their other rows.
+// Used when a non-super-admin creates a channel: the creator must keep
+// access to what they just made (deny-by-default would otherwise hide it
+// the moment it's centralised under the tenant owner). Idempotent — a
+// repeat grant is a no-op via onConflictDoNothing.
+export async function grantChannelAccess(
+  userId: number,
+  channelId: number
+): Promise<void> {
+  await db
+    .insert(userChannelAccessTable)
+    .values({ userId, channelId })
+    .onConflictDoNothing();
+}
+
 // Returns the full list of channels owned by `ownerUserId` (used as the
 // "all possible options" set in the permission editor + as the fallback
 // list for super_admin).
