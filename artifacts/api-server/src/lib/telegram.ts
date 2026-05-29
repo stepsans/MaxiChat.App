@@ -82,6 +82,37 @@ export async function sendMessage(
   return { messageId: r.message_id };
 }
 
+// Send a file as a document. Telegram's sendDocument requires
+// multipart/form-data (the JSON `call` helper above can't carry the binary),
+// so we build a FormData with the file as a Blob and POST it directly.
+export async function sendDocument(
+  token: string,
+  chatId: number | string,
+  document: Uint8Array,
+  filename: string,
+  caption?: string,
+  mimeType = "application/octet-stream"
+): Promise<{ messageId: number }> {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  if (caption) form.append("caption", caption);
+  // Copy into a fresh ArrayBuffer-backed view so the Blob ctor accepts it
+  // regardless of the source buffer's backing store (SharedArrayBuffer etc.).
+  const bytes = new Uint8Array(document.byteLength);
+  bytes.set(document);
+  form.append("document", new Blob([bytes], { type: mimeType }), filename);
+  const res = await fetch(`${API}/bot${token}/sendDocument`, {
+    method: "POST",
+    body: form,
+  });
+  const json = (await res.json()) as TgResponse<{ message_id: number }>;
+  if (!json.ok) {
+    const desc = (json as { description?: string }).description ?? "unknown";
+    throw new Error(`telegram sendDocument failed: ${desc}`);
+  }
+  return { messageId: json.result.message_id };
+}
+
 // ---------- Inbound update normalisation ----------
 //
 // We accept Telegram's raw Update payload but only consume `message` and

@@ -10,6 +10,7 @@
 - [Frontend permission gating](frontend-permission-gating.md) — hiding a nav item ≠ gating the page; routes are unguarded so each page must self-guard on canView + disable controls on canEdit; default teamRole to "agent" not "super_admin".
 - [drizzle sql tag spreads JS arrays](drizzle-sql-array-tuple.md) — `sql\`COALESCE(col, ${jsArr})\`` produces `($1,$2,…)` not `ARRAY[…]::T[]`; fatal for array columns, use `sql.join` + explicit cast.
 - [Server-side PDF generation](server-pdf-generation.md) — use pdf-lib not pdfkit (esbuild can't bundle pdfkit's .afm fonts); normalize images via sharp→png before embed; reuse exported loadImageBuffer.
+- [Dual-channel outbound send](dual-channel-send.md) — branch on channel.kind; Telegram needs explicit push+record+multipart sendDocument; ALL WA sends use the PRIMARY channel (getPrimaryCtxForUser), not chat.channelId.
 - [Self-delete cascade requirements](self-delete-cascade.md) — tenant deletion needs FK cascades on every user_id/channel_id + users.parent_user_id self-FK; route-level deletes alone leave orphans.
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.

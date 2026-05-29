@@ -8,6 +8,8 @@ import {
   useDeleteProduct,
   useSyncProductsToKnowledge,
   getListProductsQueryKey,
+  useListChats,
+  type Chat,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -203,6 +205,9 @@ export default function Products() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [generatingQuote, setGeneratingQuote] = useState(false);
+  const [recipientOpen, setRecipientOpen] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [sendingChatId, setSendingChatId] = useState<number | null>(null);
   function toggleSort(key: SortKey) {
     if (sortBy !== key) {
       setSortBy(key);
@@ -236,6 +241,9 @@ export default function Products() {
   const imgInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: products, isLoading } = useListProducts();
+  const { data: chats, isLoading: chatsLoading } = useListChats(undefined, {
+    query: { enabled: recipientOpen, queryKey: ["chats", "quotation-recipients"] },
+  });
   const invalidate = () => qc.invalidateQueries({ queryKey: getListProductsQueryKey() });
 
   const create = useCreateProduct({
@@ -485,6 +493,41 @@ export default function Products() {
     }
   };
 
+  // Deliver the quotation PDF to a chosen chat over its channel.
+  const handleSendQuotation = async (chat: Chat) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || sendingChatId != null) return;
+    setSendingChatId(chat.id);
+    try {
+      const res = await fetch(`/api/chats/${chat.id}/quotation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ productIds: ids }),
+      });
+      if (!res.ok) {
+        let msg = "Gagal mengirim quotation.";
+        try {
+          const j = await res.json();
+          if (j?.error) msg = j.error;
+        } catch {}
+        throw new Error(msg);
+      }
+      const recipient = chat.nickname || chat.contactName || chat.phoneNumber;
+      toast({ title: `Quotation terkirim ke ${recipient}` });
+      setRecipientOpen(false);
+      setRecipientSearch("");
+      setSelectedIds(new Set());
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Gagal mengirim quotation.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingChatId(null);
+    }
+  };
+
   const isPending = create.isPending || update.isPending;
 
   const q = search.trim().toLowerCase();
@@ -628,15 +671,13 @@ export default function Products() {
           {selectedIds.size > 0 && (
             <Button
               size="sm"
-              onClick={handleGenerateQuotation}
-              disabled={generatingQuote}
+              onClick={() => {
+                setRecipientSearch("");
+                setRecipientOpen(true);
+              }}
               data-testid="button-generate-quotation"
             >
-              {generatingQuote ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <FileText className="w-3.5 h-3.5 mr-1.5" />
-              )}
+              <FileText className="w-3.5 h-3.5 mr-1.5" />
               Generate Quotation ({selectedIds.size})
             </Button>
           )}
@@ -1182,6 +1223,113 @@ export default function Products() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={recipientOpen} onOpenChange={setRecipientOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Kirim Quotation ke Pelanggan</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Pilih kontak tujuan. File PDF penawaran ({selectedIds.size}{" "}
+              produk) akan langsung dikirim ke chat-nya.
+            </p>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={recipientSearch}
+                onChange={(e) => setRecipientSearch(e.target.value)}
+                placeholder="Cari nama atau nomor…"
+                className="h-9 text-sm pl-8"
+                data-testid="input-recipient-search"
+              />
+            </div>
+            <div className="max-h-72 overflow-y-auto -mx-1 px-1 space-y-1">
+              {chatsLoading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 mx-auto animate-spin" />
+                </div>
+              ) : (
+                (() => {
+                  const term = recipientSearch.trim().toLowerCase();
+                  const list = (chats ?? []).filter((c) => {
+                    if (!term) return true;
+                    return (
+                      (c.nickname ?? "").toLowerCase().includes(term) ||
+                      c.contactName.toLowerCase().includes(term) ||
+                      c.phoneNumber.toLowerCase().includes(term)
+                    );
+                  });
+                  if (list.length === 0) {
+                    return (
+                      <div className="py-8 text-center text-sm text-muted-foreground">
+                        Tidak ada kontak.
+                      </div>
+                    );
+                  }
+                  return list.map((c) => {
+                    const name = c.nickname || c.contactName || c.phoneNumber;
+                    const isTg = c.phoneNumber.startsWith("tg:");
+                    const sub = isTg ? "Telegram" : c.phoneNumber;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={sendingChatId != null}
+                        onClick={() => handleSendQuotation(c)}
+                        className="w-full flex items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted disabled:opacity-50 transition-colors"
+                        data-testid={`button-send-quotation-${c.id}`}
+                      >
+                        <div className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden flex items-center justify-center">
+                          {c.profilePicUrl ? (
+                            <img
+                              src={c.profilePicUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {name.slice(0, 2).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {sub}
+                          </p>
+                        </div>
+                        {sendingChatId === c.id && (
+                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                        )}
+                      </button>
+                    );
+                  });
+                })()
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRecipientOpen(false);
+                handleGenerateQuotation();
+              }}
+              disabled={generatingQuote || sendingChatId != null}
+              data-testid="button-download-quotation"
+            >
+              {generatingQuote ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              Unduh PDF saja
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

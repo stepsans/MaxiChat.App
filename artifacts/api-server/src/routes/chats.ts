@@ -12,7 +12,11 @@ import mime from "mime-types";
 import type { Request, Response } from "express";
 import { db } from "@workspace/db";
 import { chatsTable, chatMessagesTable, productsTable, channelsTable } from "@workspace/db";
-import { sendMessage as tgSendMessage } from "../lib/telegram";
+import {
+  sendMessage as tgSendMessage,
+  sendDocument as tgSendDocument,
+} from "../lib/telegram";
+import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import {
@@ -37,6 +41,7 @@ import {
 import {
   resolveChannelScope,
   requireConnectedChannel,
+  requireOwnerUserId,
 } from "../lib/channel-context";
 
 const router = Router();
@@ -1007,6 +1012,186 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to send media");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Generate a quotation PDF for the given products and deliver it to this
+// chat over its channel (WhatsApp document or Telegram document). Mirrors the
+// dual-channel structure of POST /:id/reply.
+router.post("/:id/quotation", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const rawIds = (req.body as { productIds?: unknown })?.productIds;
+    const productIds = Array.isArray(rawIds)
+      ? rawIds
+          .map((v) => Number(v))
+          .filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    if (productIds.length === 0 || productIds.length > 200) {
+      res.status(400).json({ error: "Pilih minimal satu produk." });
+      return;
+    }
+
+    const chat = await loadOwnedChat(req, res, id);
+    if (!chat) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
+
+    // Build the quotation items from the owner's catalog, preserving the
+    // order the client selected them in.
+    const rows = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.userId, ownerUserId));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const uniqueIds = [...new Set(productIds)];
+    const items: QuotationItem[] = uniqueIds
+      .map((pid) => byId.get(pid))
+      .filter((r): r is NonNullable<typeof r> => r != null)
+      .map((r) => ({
+        name: r.name,
+        code: r.code,
+        price: r.price ?? 0,
+        imageUrl: r.imageUrl ?? null,
+      }));
+    if (items.length === 0) {
+      res.status(404).json({ error: "Produk tidak ditemukan." });
+      return;
+    }
+
+    const pdf = await buildQuotationPdf(items);
+
+    // Persist the PDF as a media file so the recorded message can reference it
+    // (same convention as POST /:id/media).
+    await fs.mkdir(MEDIA_DIR, { recursive: true });
+    const storedName = `${randomUUID()}.pdf`;
+    const filepath = path.join(MEDIA_DIR, storedName);
+    await fs.writeFile(filepath, Buffer.from(pdf));
+    const displayName = `Penawaran-Harga-${new Date()
+      .toISOString()
+      .slice(0, 10)}.pdf`;
+    const mimeType = "application/pdf";
+
+    const agentTag = await resolveAgentTag(req.session.userId!);
+    const caption = withTag(`Penawaran harga (${items.length} produk)`, agentTag);
+
+    const [channel] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, chat.channelId))
+      .limit(1);
+
+    let dedupeKey: string | null = null;
+    if (channel?.kind === "telegram") {
+      const meta = (channel.metadata as Record<string, unknown> | null)?.[
+        "telegram"
+      ] as { botToken?: string } | undefined;
+      const tgChatId = chat.phoneNumber.startsWith("tg:")
+        ? Number.parseInt(chat.phoneNumber.slice(3), 10)
+        : NaN;
+      if (!meta?.botToken || !Number.isFinite(tgChatId)) {
+        await fs.unlink(filepath).catch(() => {});
+        res.status(400).json({
+          error: "Channel Telegram belum terhubung. Hubungkan bot dulu.",
+        });
+        return;
+      }
+      try {
+        const sent = await tgSendDocument(
+          meta.botToken,
+          tgChatId,
+          pdf,
+          displayName,
+          caption,
+          mimeType
+        );
+        dedupeKey = `tg:${tgChatId}:${sent.messageId}`;
+      } catch (err) {
+        req.log.error({ err, chatId: id }, "telegram quotation send failed");
+        await fs.unlink(filepath).catch(() => {});
+        res.status(502).json({ error: "Gagal kirim ke Telegram" });
+        return;
+      }
+    } else {
+      if (!(await getActiveSocket(req.session.userId!))) {
+        await fs.unlink(filepath).catch(() => {});
+        res.status(503).json({ error: "WhatsApp belum terhubung" });
+        return;
+      }
+      const target = await jidForChat(req, res, id);
+      if (!target) {
+        await fs.unlink(filepath).catch(() => {});
+        res.status(404).json({ error: "Chat not found" });
+        return;
+      }
+      try {
+        dedupeKey = await sendMediaToJid(
+          req.session.userId!,
+          target.jid,
+          filepath,
+          mimeType,
+          "document",
+          caption,
+          displayName
+        );
+      } catch (err) {
+        req.log.error({ err, chatId: id }, "whatsapp quotation send failed");
+        await fs.unlink(filepath).catch(() => {});
+        res.status(500).json({ error: "Gagal kirim ke WhatsApp" });
+        return;
+      }
+    }
+
+    const mediaUrl = `/api/media/${storedName}`;
+    const inserted = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: id,
+        direction: "outbound",
+        content: caption,
+        isAiGenerated: false,
+        mediaType: "document",
+        mediaUrl,
+        mediaMimeType: mimeType,
+        mediaFilename: displayName,
+        waMessageId: dedupeKey,
+      })
+      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .returning();
+    const [message] = inserted.length
+      ? inserted
+      : dedupeKey
+        ? await db
+            .select()
+            .from(chatMessagesTable)
+            .where(eq(chatMessagesTable.waMessageId, dedupeKey))
+            .limit(1)
+        : [];
+
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: `📄 ${displayName}`, lastMessageAt: new Date() })
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${chat.channelId}`
+      );
+
+    res.json(
+      message
+        ? { ...message, createdAt: message.createdAt.toISOString() }
+        : { ok: true }
+    );
+  } catch (err) {
+    req.log.error({ err }, "Failed to send quotation");
     res.status(500).json({ error: "Internal server error" });
   }
 });
