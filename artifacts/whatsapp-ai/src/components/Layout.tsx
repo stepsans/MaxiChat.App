@@ -10,6 +10,7 @@ import {
   GitBranch,
   KeyRound,
   Users,
+  Sparkles,
   Wifi,
   WifiOff,
   Loader2,
@@ -57,6 +58,7 @@ const navItems: Array<{
   roles?: TeamRole[];
 }> = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["super_admin", "supervisor"] },
+  { href: "/ai-studio", label: "AI Studio", icon: Sparkles },
   { href: "/chats", label: "Chats", icon: MessageSquare, menu: "chats" },
   { href: "/status", label: "Status", icon: CircleDashed, menu: "statuses" },
   { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },
@@ -261,8 +263,9 @@ export default function Layout({
             .filter((it) => {
               const tr = (user?.teamRole ?? "agent") as TeamRole;
               // Settings is always visible: every role has personal items
-              // there (auto-reply, theme, bio). General settings inside are
-              // gated to super_admin within the page itself.
+              // there (theme, bio, shortcuts). AI Studio (auto-reply + general
+              // AI settings) is also always visible, with the general settings
+              // form gated to super_admin within the page itself.
               if (it.menu === "settings") return true;
               // Static-role items (Dashboard, Agen) are gated by `roles`.
               if (it.roles) return it.roles.includes(tr);
