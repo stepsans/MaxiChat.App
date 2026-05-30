@@ -39,6 +39,16 @@ export interface Product {
      * @nullable
      */
   priceDistributor: number | null;
+  /**
+     * Internal stock figure — never sent to customers
+     * @nullable
+     */
+  stock: number | null;
+  /**
+     * Internal stock-on-hand figure — never sent to customers
+     * @nullable
+     */
+  stockOnHand: number | null;
   /** @nullable */
   imageUrl: string | null;
   /**

@@ -249,12 +249,51 @@ function formatRupiah(value: number): string {
   }).format(value);
 }
 
+// Product category is derived from the FIRST LETTER of the product code:
+// B → Bahan, M → Mesin (default view), S → Sparepart, anything else → Lainnya.
+type ProductBucket = "B" | "M" | "S" | "O";
+
+const PRODUCT_BUCKETS: { value: ProductBucket; label: string }[] = [
+  { value: "B", label: "Bahan" },
+  { value: "M", label: "Mesin" },
+  { value: "S", label: "Sparepart" },
+  { value: "O", label: "Lainnya" },
+];
+
+function productBucket(code: string): ProductBucket {
+  const first = (code ?? "").trim().charAt(0).toUpperCase();
+  if (first === "B") return "B";
+  if (first === "M") return "M";
+  if (first === "S") return "S";
+  return "O";
+}
+
+// Internal-only stock display. The send-product and quotation flows never
+// include these figures, so they stay visible to agents but never reach the
+// customer. Returns null when both figures are absent.
+function StockLine({ product }: { product: Product }) {
+  const hasStock = product.stock != null;
+  const hasSoh = product.stockOnHand != null;
+  if (!hasStock && !hasSoh) return null;
+  return (
+    <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
+      {hasStock ? `Stok: ${product.stock}` : null}
+      {hasStock && hasSoh ? " · " : null}
+      {hasSoh ? `Ready: ${product.stockOnHand}` : null}
+    </p>
+  );
+}
+
 // Products are user-scoped on the server: both POST /chats/:id/product and
 // POST /chats/:id/quotation accept any product owned by the chat's owner,
 // regardless of the product's channelIds. So we deliberately do NOT channel-filter
-// here — doing so would hide products the backend would happily send. We only
-// apply the search filter. Shared by both the Products and Order tabs.
-function useFilteredProducts(search: string): {
+// here — doing so would hide products the backend would happily send. We apply
+// the search filter plus the category-bucket filter (derived from code prefix).
+// Shared by both the Products and Order tabs.
+function useFilteredProducts(
+  search: string,
+  bucket: ProductBucket
+): {
   products: Product[];
   filtered: Product[];
   isLoading: boolean;
@@ -264,15 +303,45 @@ function useFilteredProducts(search: string): {
   });
   const products = (data ?? []) as Product[];
   const q = search.trim().toLowerCase();
-  const filtered = q
-    ? products.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.code.toLowerCase().includes(q) ||
-          (p.category ?? "").toLowerCase().includes(q)
-      )
-    : products;
+  const filtered = products.filter((p) => {
+    if (productBucket(p.code) !== bucket) return false;
+    if (!q) return true;
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.code.toLowerCase().includes(q) ||
+      (p.category ?? "").toLowerCase().includes(q)
+    );
+  });
   return { products, filtered, isLoading };
+}
+
+// Category combo box shared by both tabs. Defaults to "Mesin" via tab state.
+function CategoryFilter({
+  value,
+  onChange,
+  testId,
+}: {
+  value: ProductBucket;
+  onChange: (v: ProductBucket) => void;
+  testId: string;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as ProductBucket)}>
+      <SelectTrigger
+        data-testid={testId}
+        className="h-9 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {PRODUCT_BUCKETS.map((b) => (
+          <SelectItem key={b.value} value={b.value} className="text-xs">
+            {b.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 // Products tab: pick one product, then send it (image + caption) to the chat
@@ -280,8 +349,9 @@ function useFilteredProducts(search: string): {
 function ProductsTab({ chatId }: { chatId: number }) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [bucket, setBucket] = useState<ProductBucket>("M");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const { products, filtered, isLoading } = useFilteredProducts(search);
+  const { products, filtered, isLoading } = useFilteredProducts(search, bucket);
 
   // Reset the selection whenever the active chat changes so a product picked for
   // one conversation can't be sent to another after switching chats.
@@ -307,15 +377,22 @@ function ProductsTab({ chatId }: { chatId: number }) {
 
   return (
     <div className="flex flex-1 flex-col p-3 gap-3 min-h-0">
-      <div className="relative flex-shrink-0">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
-        <Input
-          data-testid="input-product-search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari produk…"
-          className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+      <div className="flex-shrink-0 flex flex-col gap-2">
+        <CategoryFilter
+          value={bucket}
+          onChange={setBucket}
+          testId="select-product-category"
         />
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
+          <Input
+            data-testid="input-product-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cari produk…"
+            className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+          />
+        </div>
       </div>
 
       {isLoading ? (
@@ -366,6 +443,7 @@ function ProductsTab({ chatId }: { chatId: number }) {
                     <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
                       {p.code} · {formatRupiah(p.price)}
                     </p>
+                    <StockLine product={p} />
                   </div>
                   {isSelected ? (
                     <Check className="w-3.5 h-3.5 text-[hsl(var(--wa-accent))] flex-shrink-0" />
@@ -399,8 +477,9 @@ function ProductsTab({ chatId }: { chatId: number }) {
 function OrderTab({ chatId }: { chatId: number }) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [bucket, setBucket] = useState<ProductBucket>("M");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const { products, filtered, isLoading } = useFilteredProducts(search);
+  const { products, filtered, isLoading } = useFilteredProducts(search, bucket);
 
   // Reset the selection whenever the active chat changes so products picked for
   // one conversation can't end up in another's quotation after switching chats.
@@ -433,15 +512,22 @@ function OrderTab({ chatId }: { chatId: number }) {
 
   return (
     <div className="flex flex-1 flex-col p-3 gap-3 min-h-0">
-      <div className="relative flex-shrink-0">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
-        <Input
-          data-testid="input-order-search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari produk…"
-          className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+      <div className="flex-shrink-0 flex flex-col gap-2">
+        <CategoryFilter
+          value={bucket}
+          onChange={setBucket}
+          testId="select-order-category"
         />
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
+          <Input
+            data-testid="input-order-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Cari produk…"
+            className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+          />
+        </div>
       </div>
 
       {isLoading ? (
@@ -489,6 +575,7 @@ function OrderTab({ chatId }: { chatId: number }) {
                     <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
                       {p.code} · {formatRupiah(p.price)}
                     </p>
+                    <StockLine product={p} />
                   </div>
                 </button>
               </li>

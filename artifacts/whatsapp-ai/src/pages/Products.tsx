@@ -83,6 +83,8 @@ type Product = {
   pricePlatinum: number | null;
   priceReseller: number | null;
   priceDistributor: number | null;
+  stock: number | null;
+  stockOnHand: number | null;
   imageUrl: string | null;
   flyerUrl: string | null;
   productUrl: string | null;
@@ -230,6 +232,8 @@ export default function Products() {
     pricePlatinum: "",
     priceReseller: "",
     priceDistributor: "",
+    stock: "",
+    stockOnHand: "",
     productUrl: "",
     flyerUrl: "",
   };
@@ -333,6 +337,8 @@ export default function Products() {
       pricePlatinum: p.pricePlatinum !== null ? String(p.pricePlatinum) : "",
       priceReseller: p.priceReseller !== null ? String(p.priceReseller) : "",
       priceDistributor: p.priceDistributor !== null ? String(p.priceDistributor) : "",
+      stock: p.stock !== null ? String(p.stock) : "",
+      stockOnHand: p.stockOnHand !== null ? String(p.stockOnHand) : "",
       productUrl: p.productUrl ?? "",
       flyerUrl: p.flyerUrl ?? "",
     });
@@ -392,6 +398,8 @@ export default function Products() {
       pricePlatinum: numOrNull(form.pricePlatinum),
       priceReseller: numOrNull(form.priceReseller),
       priceDistributor: numOrNull(form.priceDistributor),
+      stock: numOrNull(form.stock),
+      stockOnHand: numOrNull(form.stockOnHand),
       imageUrl: imageUrl ?? null,
       flyerUrl: form.flyerUrl.trim() ? form.flyerUrl.trim() : null,
       productUrl: strOrNull(form.productUrl),
@@ -1070,10 +1078,25 @@ export default function Products() {
                   placeholder="kosong = N/A"
                   testid="input-product-distributor"
                 />
+                <Field
+                  label="Stok"
+                  value={form.stock}
+                  onChange={(v) => setForm({ ...form, stock: v })}
+                  placeholder="kosong = N/A"
+                  testid="input-product-stock"
+                />
+                <Field
+                  label="Stok Ready (on hand)"
+                  value={form.stockOnHand}
+                  onChange={(v) => setForm({ ...form, stockOnHand: v })}
+                  placeholder="kosong = N/A"
+                  testid="input-product-stock-on-hand"
+                />
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Hanya <b>Harga Pricelist</b> yang dikirim ke customer. Silver/Gold/Platinum/Reseller/
-                Distributor adalah info internal di app.
+                Distributor, <b>Stok</b> &amp; <b>Stok Ready</b> adalah info internal di app — tidak
+                dikirim ke customer.
               </p>
             </div>
 

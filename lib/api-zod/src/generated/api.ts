@@ -1207,6 +1207,8 @@ export const ListProductsResponseItem = zod.object({
   "pricePlatinum": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceReseller": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "stock": zod.number().nullable().describe('Internal stock figure — never sent to customers'),
+  "stockOnHand": zod.number().nullable().describe('Internal stock-on-hand figure — never sent to customers'),
   "imageUrl": zod.string().nullable(),
   "flyerUrl": zod.string().nullable().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow.'),
   "productUrl": zod.string().nullable(),
@@ -1235,6 +1237,10 @@ export const createProductBodyPriceResellerMin = 0;
 
 export const createProductBodyPriceDistributorMin = 0;
 
+export const createProductBodyStockMin = 0;
+
+export const createProductBodyStockOnHandMin = 0;
+
 export const createProductBodyVideoUrlsMax = 10;
 
 
@@ -1249,6 +1255,8 @@ export const CreateProductBody = zod.object({
   "pricePlatinum": zod.number().min(createProductBodyPricePlatinumMin).nullish(),
   "priceReseller": zod.number().min(createProductBodyPriceResellerMin).nullish(),
   "priceDistributor": zod.number().min(createProductBodyPriceDistributorMin).nullish(),
+  "stock": zod.number().min(createProductBodyStockMin).nullish(),
+  "stockOnHand": zod.number().min(createProductBodyStockOnHandMin).nullish(),
   "imageUrl": zod.string().nullish(),
   "flyerUrl": zod.string().nullish().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed).'),
   "productUrl": zod.string().nullish(),
@@ -1277,6 +1285,10 @@ export const updateProductBodyPriceResellerMin = 0;
 
 export const updateProductBodyPriceDistributorMin = 0;
 
+export const updateProductBodyStockMin = 0;
+
+export const updateProductBodyStockOnHandMin = 0;
+
 export const updateProductBodyVideoUrlsMax = 10;
 
 
@@ -1291,6 +1303,8 @@ export const UpdateProductBody = zod.object({
   "pricePlatinum": zod.number().min(updateProductBodyPricePlatinumMin).nullish(),
   "priceReseller": zod.number().min(updateProductBodyPriceResellerMin).nullish(),
   "priceDistributor": zod.number().min(updateProductBodyPriceDistributorMin).nullish(),
+  "stock": zod.number().min(updateProductBodyStockMin).nullish(),
+  "stockOnHand": zod.number().min(updateProductBodyStockOnHandMin).nullish(),
   "imageUrl": zod.string().nullish(),
   "flyerUrl": zod.string().nullish().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed).'),
   "productUrl": zod.string().nullish(),
@@ -1312,6 +1326,8 @@ export const UpdateProductResponse = zod.object({
   "pricePlatinum": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceReseller": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceDistributor": zod.number().nullable().describe('Internal only — never sent to customers'),
+  "stock": zod.number().nullable().describe('Internal stock figure — never sent to customers'),
+  "stockOnHand": zod.number().nullable().describe('Internal stock-on-hand figure — never sent to customers'),
   "imageUrl": zod.string().nullable(),
   "flyerUrl": zod.string().nullable().describe('Iframe HTML or URL pointing to a flyer image (e.g. Google Drive preview embed). Sent as the 2nd message in the send-product flow.'),
   "productUrl": zod.string().nullable(),

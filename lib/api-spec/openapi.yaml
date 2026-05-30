@@ -3016,7 +3016,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
+      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, stock, stockOnHand, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -3044,6 +3044,12 @@ components:
         priceDistributor:
           type: ["integer", "null"]
           description: "Internal only — never sent to customers"
+        stock:
+          type: ["integer", "null"]
+          description: "Internal stock figure — never sent to customers"
+        stockOnHand:
+          type: ["integer", "null"]
+          description: "Internal stock-on-hand figure — never sent to customers"
         imageUrl:
           type: ["string", "null"]
         flyerUrl:
@@ -3100,6 +3106,14 @@ components:
           format: int32
           minimum: 0
         priceDistributor:
+          type: ["integer", "null"]
+          format: int32
+          minimum: 0
+        stock:
+          type: ["integer", "null"]
+          format: int32
+          minimum: 0
+        stockOnHand:
           type: ["integer", "null"]
           format: int32
           minimum: 0

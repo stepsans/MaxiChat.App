@@ -381,6 +381,9 @@ export const productsTable = pgTable(
     pricePlatinum: integer("price_platinum"),
     priceReseller: integer("price_reseller"),
     priceDistributor: integer("price_distributor"),
+    // Internal stock figures — surfaced to agents only, never sent to customers.
+    stock: integer("stock"),
+    stockOnHand: integer("stock_on_hand"),
     imageUrl: text("image_url"),
     flyerUrl: text("flyer_url"),
     productUrl: text("product_url"),

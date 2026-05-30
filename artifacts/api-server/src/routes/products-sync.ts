@@ -235,6 +235,8 @@ function rowsToEntries(rows: string[][], headerRow: number): {
       pricePlatinum: parseIntCell(cell(r, "pricePlatinum")),
       priceReseller: parseIntCell(cell(r, "priceReseller")),
       priceDistributor: parseIntCell(cell(r, "priceDistributor")),
+      stock: parseIntCell(cell(r, "stock")),
+      stockOnHand: parseIntCell(cell(r, "stockOnHand")),
       imageUrl: urlOrNull(cell(r, "imageUrl")),
       flyerUrl: ((): string | null => {
         const raw = cell(r, "flyerUrl");

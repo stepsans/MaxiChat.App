@@ -594,6 +594,16 @@ export interface Product {
      * @nullable
      */
   priceDistributor: number | null;
+  /**
+     * Internal stock figure — never sent to customers
+     * @nullable
+     */
+  stock: number | null;
+  /**
+     * Internal stock-on-hand figure — never sent to customers
+     * @nullable
+     */
+  stockOnHand: number | null;
   /** @nullable */
   imageUrl: string | null;
   /**
@@ -648,6 +658,16 @@ export interface ProductInput {
      * @nullable
      */
   priceDistributor?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  stock?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  stockOnHand?: number | null;
   /** @nullable */
   imageUrl?: string | null;
   /**

@@ -40,6 +40,16 @@ export interface ProductInput {
      * @nullable
      */
   priceDistributor?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  stock?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  stockOnHand?: number | null;
   /** @nullable */
   imageUrl?: string | null;
   /**
