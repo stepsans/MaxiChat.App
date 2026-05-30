@@ -120,7 +120,7 @@ function ShortcutTab({
 }) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [sendingId, setSendingId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const { data, isLoading } = useListShortcuts({
     query: { queryKey: getListShortcutsQueryKey() },
   });
@@ -144,23 +144,22 @@ function ShortcutTab({
       )
     : inScope;
 
-  async function handleSend(s: TextShortcut) {
-    setSendingId(s.id);
+  async function handleSend() {
+    if (selectedId == null) return;
     try {
-      await send.mutateAsync({ id: chatId, data: { shortcutId: s.id } });
+      await send.mutateAsync({ id: chatId, data: { shortcutId: selectedId } });
+      setSelectedId(null);
     } catch (err) {
       toast({
         title: "Gagal mengirim shortcut",
         description: err instanceof Error ? err.message : "Coba lagi.",
         variant: "destructive",
       });
-    } finally {
-      setSendingId(null);
     }
   }
 
   return (
-    <div className="flex flex-1 flex-col p-3 gap-3">
+    <div className="flex flex-1 flex-col p-3 gap-3 min-h-0">
       <div className="relative flex-shrink-0">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
         <Input
@@ -183,48 +182,65 @@ function ShortcutTab({
             : "Tidak ada shortcut yang cocok."}
         </p>
       ) : (
-        <ul className="flex flex-col gap-2 overflow-y-auto">
-          {filtered.map((s) => (
-            <li
-              key={s.id}
-              data-testid={`shortcut-item-${s.id}`}
-              className="rounded-lg border border-[hsl(var(--wa-divider))] p-2.5 space-y-1.5"
-            >
-              <div className="flex items-center gap-1.5">
-                <code className="font-mono text-[11px] bg-white/5 px-1.5 py-0.5 rounded text-foreground">
-                  {s.shortcut}
-                </code>
-                {s.link ? (
-                  <span
-                    data-testid={`shortcut-photo-badge-${s.id}`}
-                    className="inline-flex items-center gap-1 text-[10px] text-[hsl(var(--wa-accent))]"
-                    title="Dikirim sebagai foto"
-                  >
-                    <ImageIcon className="w-3 h-3" /> Foto
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-xs text-[hsl(var(--wa-meta))] line-clamp-2 whitespace-pre-wrap break-words">
-                {s.replacement}
-              </p>
-              <Button
-                data-testid={`button-send-shortcut-${s.id}`}
-                size="sm"
-                onClick={() => handleSend(s)}
-                disabled={sendingId === s.id}
-                className="h-7 w-full gap-1.5 text-xs"
-              >
-                {sendingId === s.id ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
-                )}
-                Kirim
-              </Button>
-            </li>
-          ))}
+        <ul className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
+          {filtered.map((s) => {
+            const isSelected = selectedId === s.id;
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  data-testid={`shortcut-item-${s.id}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    setSelectedId((cur) => (cur === s.id ? null : s.id))
+                  }
+                  className={cn(
+                    "w-full text-left rounded-lg border p-2.5 space-y-1.5 transition-colors",
+                    isSelected
+                      ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))]/10"
+                      : "border-[hsl(var(--wa-divider))] hover:bg-white/5"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <code className="font-mono text-[11px] bg-white/5 px-1.5 py-0.5 rounded text-foreground">
+                      {s.shortcut}
+                    </code>
+                    {s.link ? (
+                      <span
+                        data-testid={`shortcut-photo-badge-${s.id}`}
+                        className="inline-flex items-center gap-1 text-[10px] text-[hsl(var(--wa-accent))]"
+                        title="Dikirim sebagai foto"
+                      >
+                        <ImageIcon className="w-3 h-3" /> Foto
+                      </span>
+                    ) : null}
+                    {isSelected ? (
+                      <Check className="w-3.5 h-3.5 text-[hsl(var(--wa-accent))] ml-auto" />
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-[hsl(var(--wa-meta))] line-clamp-2 whitespace-pre-wrap break-words">
+                    {s.replacement}
+                  </p>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
+
+      <Button
+        data-testid="button-send-shortcut"
+        onClick={handleSend}
+        disabled={selectedId == null || send.isPending}
+        className="h-9 w-full gap-1.5 text-xs flex-shrink-0"
+      >
+        {send.isPending ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <Send className="w-3.5 h-3.5" />
+        )}
+        Kirim
+      </Button>
     </div>
   );
 }
