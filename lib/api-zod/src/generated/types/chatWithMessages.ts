@@ -12,6 +12,8 @@ import type { CustomerLabel } from './customerLabel';
 
 export interface ChatWithMessages {
   id: number;
+  /** The channel this chat belongs to. Used to scope channel-restricted resources (e.g. shortcuts) to the active chat. */
+  channelId: number;
   phoneNumber: string;
   contactName: string;
   /** @nullable */

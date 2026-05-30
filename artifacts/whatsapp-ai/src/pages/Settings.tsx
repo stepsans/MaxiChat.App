@@ -359,10 +359,12 @@ function ShortcutsCard() {
 
   const [draftShortcut, setDraftShortcut] = useState("");
   const [draftReplacement, setDraftReplacement] = useState("");
+  const [draftLink, setDraftLink] = useState("");
   const [draftChannelIds, setDraftChannelIds] = useState<number[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editShortcut, setEditShortcut] = useState("");
   const [editReplacement, setEditReplacement] = useState("");
+  const [editLink, setEditLink] = useState("");
   const [editChannelIds, setEditChannelIds] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
@@ -383,6 +385,7 @@ function ShortcutsCard() {
         invalidate();
         setDraftShortcut("");
         setDraftReplacement("");
+        setDraftLink("");
         setDraftChannelIds([]);
         toast({ title: "Shortcut ditambahkan." });
       },
@@ -419,6 +422,7 @@ function ShortcutsCard() {
     setEditingId(s.id);
     setEditShortcut(s.shortcut);
     setEditReplacement(s.replacement);
+    setEditLink(s.link ?? "");
     setEditChannelIds(s.channelIds ?? []);
   }
 
@@ -615,14 +619,23 @@ function ShortcutsCard() {
               placeholder="/hi"
               className="font-mono text-sm"
             />
-            <Textarea
-              data-testid="textarea-new-replacement"
-              value={draftReplacement}
-              onChange={(e) => setDraftReplacement(e.target.value.slice(0, 4000))}
-              placeholder={"hello, nice to know you"}
-              rows={2}
-              className="text-sm"
-            />
+            <div className="space-y-2">
+              <Textarea
+                data-testid="textarea-new-replacement"
+                value={draftReplacement}
+                onChange={(e) => setDraftReplacement(e.target.value.slice(0, 4000))}
+                placeholder={"hello, nice to know you"}
+                rows={2}
+                className="text-sm"
+              />
+              <Input
+                data-testid="input-new-link"
+                value={draftLink}
+                onChange={(e) => setDraftLink(e.target.value.slice(0, 2000))}
+                placeholder="Link gambar (opsional) — dikirim sebagai foto"
+                className="text-xs"
+              />
+            </div>
             <Button
               data-testid="button-add-shortcut"
               size="sm"
@@ -630,10 +643,12 @@ function ShortcutsCard() {
                 const sc = normaliseShortcut(draftShortcut);
                 const rep = draftReplacement.trimEnd();
                 if (!sc || !rep) return;
+                const lk = draftLink.trim();
                 create.mutate({
                   data: {
                     shortcut: sc,
                     replacement: rep,
+                    link: lk ? lk : null,
                     channelIds: draftChannelIds,
                   },
                 });
@@ -697,6 +712,13 @@ function ShortcutsCard() {
                           rows={Math.min(6, Math.max(2, editReplacement.split("\n").length))}
                           className="text-sm min-h-10"
                         />
+                        <Input
+                          data-testid={`input-edit-link-${s.id}`}
+                          value={editLink}
+                          onChange={(e) => setEditLink(e.target.value.slice(0, 2000))}
+                          placeholder="Link gambar (opsional) — dikirim sebagai foto"
+                          className="text-xs"
+                        />
                         <ChannelMultiSelect
                           value={editChannelIds}
                           onChange={setEditChannelIds}
@@ -712,11 +734,13 @@ function ShortcutsCard() {
                             const sc = normaliseShortcut(editShortcut);
                             const rep = editReplacement.trimEnd();
                             if (!sc || !rep) return;
+                            const lk = editLink.trim();
                             update.mutate({
                               id: s.id,
                               data: {
                                 shortcut: sc,
                                 replacement: rep,
+                                link: lk ? lk : null,
                                 channelIds: editChannelIds,
                               },
                             });

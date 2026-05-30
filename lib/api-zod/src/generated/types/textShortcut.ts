@@ -10,6 +10,8 @@ export interface TextShortcut {
   id: number;
   shortcut: string;
   replacement: string;
+  /** Optional image URL. When set, sending the shortcut delivers the image as a photo with `replacement` as caption. */
+  link: string | null;
   /** Channels this shortcut is scoped to. Empty array = global. */
   channelIds: number[];
 }

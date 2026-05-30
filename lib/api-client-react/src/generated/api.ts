@@ -94,6 +94,7 @@ import type {
   RunProductSync200,
   RunShortcutSync200,
   SendProductBody,
+  SendShortcutBody,
   SetChatLabels,
   Settings,
   ShortcutSyncConfigInput,
@@ -1674,6 +1675,78 @@ export const useSendProductToChat = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getSendProductToChatMutationOptions(options));
+    }
+
+export const getSendShortcutToChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/shortcut`
+}
+
+/**
+ * @summary Send a text shortcut (optionally as a photo) to a chat
+ */
+export const sendShortcutToChat = async (id: number,
+    sendShortcutBody: SendShortcutBody, options?: RequestInit): Promise<ChatMessage> => {
+
+  return customFetch<ChatMessage>(getSendShortcutToChatUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sendShortcutBody,)
+  }
+);}
+
+
+
+
+export const getSendShortcutToChatMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendShortcutToChat>>, TError,{id: number;data: BodyType<SendShortcutBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendShortcutToChat>>, TError,{id: number;data: BodyType<SendShortcutBody>}, TContext> => {
+
+const mutationKey = ['sendShortcutToChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendShortcutToChat>>, {id: number;data: BodyType<SendShortcutBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendShortcutToChat(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendShortcutToChatMutationResult = NonNullable<Awaited<ReturnType<typeof sendShortcutToChat>>>
+    export type SendShortcutToChatMutationBody = BodyType<SendShortcutBody>
+    export type SendShortcutToChatMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send a text shortcut (optionally as a photo) to a chat
+ */
+export const useSendShortcutToChat = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendShortcutToChat>>, TError,{id: number;data: BodyType<SendShortcutBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendShortcutToChat>>,
+        TError,
+        {id: number;data: BodyType<SendShortcutBody>},
+        TContext
+      > => {
+      return useMutation(getSendShortcutToChatMutationOptions(options));
     }
 
 export const getSendManualReplyUrl = (id: number,) => {

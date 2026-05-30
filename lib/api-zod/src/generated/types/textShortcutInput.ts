@@ -18,6 +18,11 @@ export interface TextShortcutInput {
      * @maxLength 4000
      */
   replacement: string;
+  /**
+     * Optional image URL. When set, the shortcut is sent as a photo with `replacement` as caption.
+     * @maxLength 2000
+     */
+  link?: string | null;
   /** Optional channel scope. Omit / [] for global; pass channel ids to restrict. */
   channelIds?: number[];
 }

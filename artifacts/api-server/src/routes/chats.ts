@@ -18,10 +18,12 @@ import {
   channelsTable,
   chatLabelsTable,
   customerLabelsTable,
+  textShortcutsTable,
 } from "@workspace/db";
 import {
   sendMessage as tgSendMessage,
   sendDocument as tgSendDocument,
+  sendPhoto as tgSendPhoto,
 } from "../lib/telegram";
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
@@ -51,6 +53,7 @@ import {
   requireConnectedChannel,
   requireOwnerUserId,
 } from "../lib/channel-context";
+import { loadChannelIdsBatch } from "../lib/channel-assignments";
 
 const router = Router();
 
@@ -1671,6 +1674,221 @@ router.post("/:id/product", async (req, res): Promise<void> => {
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to send product");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Send a text shortcut to a chat. If the shortcut carries a `link` (an image
+// URL), the image is delivered as a photo with `replacement` as the caption;
+// otherwise `replacement` is sent as plain text. Dual-channel: WhatsApp via the
+// active socket, Telegram via the Bot API.
+router.post("/:id/shortcut", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    const shortcutId = Number(req.body?.shortcutId);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (!Number.isFinite(shortcutId) || shortcutId <= 0) {
+      res.status(400).json({ error: "Invalid shortcutId" });
+      return;
+    }
+
+    const chat = await loadOwnedChat(req, res, id);
+    if (!chat) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+    // channel_id is nullable during the tenancy transition — treat NULL as a
+    // tenant-isolation failure rather than joining against NULL.
+    if (chat.channelId == null) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+
+    // Shortcuts are owner-scoped (keyed by the owning super_admin user). Resolve
+    // the owner via the chat's channel — never via the session — so an agent on
+    // someone else's chat can't send a foreign tenant's shortcut.
+    const [channel] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, chat.channelId))
+      .limit(1);
+    if (!channel) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+
+    const [shortcut] = await db
+      .select()
+      .from(textShortcutsTable)
+      .where(
+        and(
+          eq(textShortcutsTable.id, shortcutId),
+          eq(textShortcutsTable.userId, channel.userId)
+        )
+      )
+      .limit(1);
+    if (!shortcut) {
+      res.status(404).json({ error: "Shortcut not found" });
+      return;
+    }
+
+    // Channel-scope consistency: a shortcut with NO channel assignments is
+    // global (sendable on any of the owner's channels); one WITH assignments is
+    // restricted to those channels only. Mirror the same scoping the resource
+    // CRUD enforces so a channel-A-only shortcut can't leak into channel B.
+    const assignedChannelIds =
+      (await loadChannelIdsBatch("shortcut", [shortcut.id])).get(shortcut.id) ??
+      [];
+    if (
+      assignedChannelIds.length > 0 &&
+      !assignedChannelIds.includes(chat.channelId)
+    ) {
+      res.status(404).json({ error: "Shortcut not found" });
+      return;
+    }
+
+    const agentTag = await resolveAgentTag(req.session.userId!);
+    const caption = withTag(shortcut.replacement, agentTag);
+
+    // Resolve the image bytes when a link is present. Google Drive share links
+    // are routed through flyerInputToImageUrl. A fetch failure falls back to a
+    // text-only send so the agent's message still goes out.
+    let imageBuffer: Buffer | null = null;
+    let imageMimeType: string | null = null;
+    if (
+      shortcut.link &&
+      (shortcut.link.startsWith("http://") ||
+        shortcut.link.startsWith("https://"))
+    ) {
+      const resolvedUrl =
+        flyerInputToImageUrl(shortcut.link) ?? shortcut.link;
+      try {
+        const fetched = await fetchRemoteImageSafe(resolvedUrl);
+        imageBuffer = fetched.buffer;
+        imageMimeType = fetched.mimeType;
+      } catch (err) {
+        req.log.warn(
+          { err, shortcutId, url: shortcut.link, resolvedUrl },
+          "Failed to fetch shortcut image, falling back to text"
+        );
+      }
+    }
+
+    let dedupeKey: string | null = null;
+    let mediaType: "image" | null = null;
+    let mediaUrl: string | null = null;
+    let mediaMimeType: string | null = null;
+    let mediaFilename: string | null = null;
+
+    if (channel.kind === "telegram") {
+      const meta = (channel.metadata as Record<string, unknown> | null)?.[
+        "telegram"
+      ] as { botToken?: string } | undefined;
+      const tgChatId = chat.phoneNumber.startsWith("tg:")
+        ? Number.parseInt(chat.phoneNumber.slice(3), 10)
+        : NaN;
+      if (!meta?.botToken || !Number.isFinite(tgChatId)) {
+        res.status(400).json({
+          error: "Channel Telegram belum terhubung. Hubungkan bot dulu.",
+        });
+        return;
+      }
+      try {
+        if (imageBuffer && imageMimeType) {
+          const sent = await tgSendPhoto(
+            meta.botToken,
+            tgChatId,
+            imageBuffer,
+            `${shortcut.shortcut}.jpg`,
+            caption,
+            imageMimeType
+          );
+          dedupeKey = `tg:${tgChatId}:${sent.messageId}`;
+          mediaType = "image";
+          mediaUrl = shortcut.link;
+          mediaMimeType = imageMimeType;
+          mediaFilename = shortcut.shortcut;
+        } else {
+          const sent = await tgSendMessage(meta.botToken, tgChatId, caption);
+          dedupeKey = `tg:${tgChatId}:${sent.messageId}`;
+        }
+      } catch (err) {
+        req.log.error({ err, chatId: id, shortcutId }, "telegram shortcut send failed");
+        res.status(502).json({ error: "Gagal kirim ke Telegram" });
+        return;
+      }
+    } else {
+      const sock = await getActiveSocket(req.session.userId!);
+      if (!sock) {
+        res.status(503).json({ error: "WhatsApp belum terhubung" });
+        return;
+      }
+      const target = await jidForChat(req, res, id);
+      if (!target) {
+        res.status(404).json({ error: "Chat not found" });
+        return;
+      }
+      try {
+        if (imageBuffer && imageMimeType) {
+          const sent = await sock.sendMessage(target.jid, {
+            image: imageBuffer,
+            caption,
+            mimetype: imageMimeType,
+          });
+          dedupeKey = sent?.key?.id ?? null;
+          mediaType = "image";
+          mediaUrl = shortcut.link;
+          mediaMimeType = imageMimeType;
+          mediaFilename = shortcut.shortcut;
+        } else {
+          const sent = await sock.sendMessage(target.jid, { text: caption });
+          dedupeKey = sent?.key?.id ?? null;
+        }
+      } catch (err) {
+        req.log.error({ err, chatId: id, shortcutId }, "Failed to send shortcut");
+        res.status(500).json({ error: "Failed to send shortcut" });
+        return;
+      }
+    }
+
+    // Dedupe against the WA echo from messages.upsert via the WA message id.
+    const insertedRows = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: id,
+        direction: "outbound",
+        content: caption,
+        isAiGenerated: false,
+        mediaType,
+        mediaUrl,
+        mediaMimeType,
+        mediaFilename,
+        waMessageId: dedupeKey,
+      })
+      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .returning();
+    const [message] = insertedRows.length
+      ? insertedRows
+      : await db
+          .select()
+          .from(chatMessagesTable)
+          .where(eq(chatMessagesTable.waMessageId, dedupeKey!))
+          .limit(1);
+
+    const preview = mediaType === "image" ? `🖼️ ${caption}` : caption;
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: preview.slice(0, 200), lastMessageAt: new Date() })
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${chat.channelId}`
+      );
+
+    res.json({ ...message, createdAt: message.createdAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send shortcut");
     res.status(500).json({ error: "Internal server error" });
   }
 });

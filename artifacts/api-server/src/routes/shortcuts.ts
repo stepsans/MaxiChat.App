@@ -36,11 +36,28 @@ async function resolveWriteOwner(
   return { ownerUserId, ownerPhone };
 }
 
+// Normalize an optional `link` body field. Empty/whitespace → null (clears the
+// link). A non-empty value over 2000 chars is rejected. Returns "invalid" so
+// callers can 400 without throwing.
+function normalizeLinkInput(input: unknown): string | null | "invalid" {
+  if (input == null) return null;
+  const s = String(input).trim();
+  if (!s) return null;
+  if (s.length > 2000) return "invalid";
+  return s;
+}
+
 function rowToDto(
   r: typeof textShortcutsTable.$inferSelect,
   channelIds: number[]
 ) {
-  return { id: r.id, shortcut: r.shortcut, replacement: r.replacement, channelIds };
+  return {
+    id: r.id,
+    shortcut: r.shortcut,
+    replacement: r.replacement,
+    link: r.link ?? null,
+    channelIds,
+  };
 }
 
 router.get("/", async (req, res): Promise<void> => {
@@ -77,6 +94,11 @@ router.post("/", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Replacement must be 1-4000 characters" });
       return;
     }
+    const link = normalizeLinkInput(req.body?.link);
+    if (link === "invalid") {
+      res.status(400).json({ error: "Link must be 2000 characters or fewer" });
+      return;
+    }
     const channelIds = parseChannelIdsInput(req.body?.channelIds);
     if (channelIds === "invalid") {
       res.status(400).json({ error: "Invalid channelIds" });
@@ -89,6 +111,7 @@ router.post("/", async (req, res): Promise<void> => {
           userId: owner.ownerUserId,
           shortcut,
           replacement,
+          link,
         })
         .returning();
       const assigned = await replaceChannelAssignments(
@@ -134,6 +157,11 @@ router.put("/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid shortcut or replacement" });
       return;
     }
+    const link = normalizeLinkInput(req.body?.link);
+    if (link === "invalid") {
+      res.status(400).json({ error: "Link must be 2000 characters or fewer" });
+      return;
+    }
     const channelIds = parseChannelIdsInput(req.body?.channelIds);
     if (channelIds === "invalid") {
       res.status(400).json({ error: "Invalid channelIds" });
@@ -148,7 +176,7 @@ router.put("/:id", async (req, res): Promise<void> => {
     try {
       const [row] = await db
         .update(textShortcutsTable)
-        .set({ shortcut, replacement, updatedAt: new Date() })
+        .set({ shortcut, replacement, link, updatedAt: new Date() })
         .where(
           sql`${textShortcutsTable.id} = ${id} AND ${textShortcutsTable.userId} = ${ownerUserId}`
         )

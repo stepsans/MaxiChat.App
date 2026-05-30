@@ -555,6 +555,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /chats/{id}/shortcut:
+    post:
+      operationId: sendShortcutToChat
+      tags: [chats, shortcuts]
+      summary: Send a text shortcut (optionally as a photo) to a chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendShortcutBody"
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "404":
+          description: Chat or shortcut not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: WhatsApp not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}/reply:
     post:
       operationId: sendManualReply
@@ -2632,10 +2669,13 @@ components:
 
     ChatWithMessages:
       type: object
-      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId, labels, messages]
+      required: [id, channelId, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId, labels, messages]
       properties:
         id:
           type: integer
+        channelId:
+          type: integer
+          description: The channel this chat belongs to. Used to scope channel-restricted resources (e.g. shortcuts) to the active chat.
         phoneNumber:
           type: string
         contactName:
@@ -3374,7 +3414,7 @@ components:
 
     TextShortcut:
       type: object
-      required: [id, shortcut, replacement, channelIds]
+      required: [id, shortcut, replacement, link, channelIds]
       properties:
         id:
           type: integer
@@ -3382,6 +3422,10 @@ components:
           type: string
         replacement:
           type: string
+        link:
+          type: string
+          nullable: true
+          description: "Optional image URL. When set, sending the shortcut delivers the image as a photo with `replacement` as caption."
         channelIds:
           type: array
           items:
@@ -3401,11 +3445,24 @@ components:
           type: string
           minLength: 1
           maxLength: 4000
+        link:
+          type: string
+          nullable: true
+          maxLength: 2000
+          description: "Optional image URL. When set, the shortcut is sent as a photo with `replacement` as caption."
         channelIds:
           type: array
           items:
             type: integer
           description: "Optional channel scope. Omit / [] for global; pass channel ids to restrict."
+
+    SendShortcutBody:
+      type: object
+      required: [shortcutId]
+      properties:
+        shortcutId:
+          type: integer
+          description: Id of the text shortcut to send to the chat.
 
     PostStatusInput:
       type: object

@@ -291,6 +291,7 @@ export const GetChatParams = zod.object({
 
 export const GetChatResponse = zod.object({
   "id": zod.number(),
+  "channelId": zod.number().describe('The channel this chat belongs to. Used to scope channel-restricted resources (e.g. shortcuts) to the active chat.'),
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
@@ -393,6 +394,30 @@ export const SendProductToChatBody = zod.object({
 })
 
 export const SendProductToChatResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
+})
+
+
+/**
+ * @summary Send a text shortcut (optionally as a photo) to a chat
+ */
+export const SendShortcutToChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendShortcutToChatBody = zod.object({
+  "shortcutId": zod.number().describe('Id of the text shortcut to send to the chat.')
+})
+
+export const SendShortcutToChatResponse = zod.object({
   "id": zod.number(),
   "chatId": zod.number(),
   "direction": zod.enum(['inbound', 'outbound']),
@@ -1696,6 +1721,7 @@ export const ListShortcutsResponseItem = zod.object({
   "id": zod.number(),
   "shortcut": zod.string(),
   "replacement": zod.string(),
+  "link": zod.string().nullable().describe('Optional image URL. When set, sending the shortcut delivers the image as a photo with `replacement` as caption.'),
   "channelIds": zod.array(zod.number()).describe('Channels this shortcut is scoped to. Empty array = global.')
 })
 export const ListShortcutsResponse = zod.array(ListShortcutsResponseItem)
@@ -1708,11 +1734,14 @@ export const createShortcutBodyShortcutMax = 64;
 
 export const createShortcutBodyReplacementMax = 4000;
 
+export const createShortcutBodyLinkMax = 2000;
+
 
 
 export const CreateShortcutBody = zod.object({
   "shortcut": zod.string().min(1).max(createShortcutBodyShortcutMax).describe('Trigger token, e.g. \"\/almt\". Matched case-insensitively.'),
   "replacement": zod.string().min(1).max(createShortcutBodyReplacementMax),
+  "link": zod.string().max(createShortcutBodyLinkMax).nullish().describe('Optional image URL. When set, the shortcut is sent as a photo with `replacement` as caption.'),
   "channelIds": zod.array(zod.number()).optional().describe('Optional channel scope. Omit \/ [] for global; pass channel ids to restrict.')
 })
 
@@ -1720,6 +1749,7 @@ export const CreateShortcutResponse = zod.object({
   "id": zod.number(),
   "shortcut": zod.string(),
   "replacement": zod.string(),
+  "link": zod.string().nullable().describe('Optional image URL. When set, sending the shortcut delivers the image as a photo with `replacement` as caption.'),
   "channelIds": zod.array(zod.number()).describe('Channels this shortcut is scoped to. Empty array = global.')
 })
 
@@ -1735,11 +1765,14 @@ export const updateShortcutBodyShortcutMax = 64;
 
 export const updateShortcutBodyReplacementMax = 4000;
 
+export const updateShortcutBodyLinkMax = 2000;
+
 
 
 export const UpdateShortcutBody = zod.object({
   "shortcut": zod.string().min(1).max(updateShortcutBodyShortcutMax).describe('Trigger token, e.g. \"\/almt\". Matched case-insensitively.'),
   "replacement": zod.string().min(1).max(updateShortcutBodyReplacementMax),
+  "link": zod.string().max(updateShortcutBodyLinkMax).nullish().describe('Optional image URL. When set, the shortcut is sent as a photo with `replacement` as caption.'),
   "channelIds": zod.array(zod.number()).optional().describe('Optional channel scope. Omit \/ [] for global; pass channel ids to restrict.')
 })
 
@@ -1747,6 +1780,7 @@ export const UpdateShortcutResponse = zod.object({
   "id": zod.number(),
   "shortcut": zod.string(),
   "replacement": zod.string(),
+  "link": zod.string().nullable().describe('Optional image URL. When set, sending the shortcut delivers the image as a photo with `replacement` as caption.'),
   "channelIds": zod.array(zod.number()).describe('Channels this shortcut is scoped to. Empty array = global.')
 })
 

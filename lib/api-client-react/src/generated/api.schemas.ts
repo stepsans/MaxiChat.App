@@ -351,6 +351,8 @@ export const ChatWithMessagesTag = {
 
 export interface ChatWithMessages {
   id: number;
+  /** The channel this chat belongs to. Used to scope channel-restricted resources (e.g. shortcuts) to the active chat. */
+  channelId: number;
   phoneNumber: string;
   contactName: string;
   /** @nullable */
@@ -1078,6 +1080,8 @@ export interface TextShortcut {
   id: number;
   shortcut: string;
   replacement: string;
+  /** Optional image URL. When set, sending the shortcut delivers the image as a photo with `replacement` as caption. */
+  link: string | null;
   /** Channels this shortcut is scoped to. Empty array = global. */
   channelIds: number[];
 }
@@ -1094,8 +1098,18 @@ export interface TextShortcutInput {
      * @maxLength 4000
      */
   replacement: string;
+  /**
+     * Optional image URL. When set, the shortcut is sent as a photo with `replacement` as caption.
+     * @maxLength 2000
+     */
+  link?: string | null;
   /** Optional channel scope. Omit / [] for global; pass channel ids to restrict. */
   channelIds?: number[];
+}
+
+export interface SendShortcutBody {
+  /** Id of the text shortcut to send to the chat. */
+  shortcutId: number;
 }
 
 export interface PostStatusInput {

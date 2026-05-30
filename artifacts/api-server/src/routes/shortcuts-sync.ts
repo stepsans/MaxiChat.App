@@ -163,6 +163,7 @@ type SyncResult = {
 interface ParsedShortcut {
   shortcut: string;
   replacement: string;
+  link: string | null;
 }
 
 function normalizeHeader(s: string): string {
@@ -184,6 +185,9 @@ function rowsToShortcuts(
   );
   const shortcutIdx = headers.indexOf("shortcut");
   const replacementIdx = headers.indexOf("replacement");
+  // "link" (col C) is optional. When present, the cell value becomes the image
+  // URL sent as a photo (replacement = caption) when the shortcut is sent.
+  const linkIdx = headers.indexOf("link");
   if (shortcutIdx === -1 || replacementIdx === -1) {
     throw new Error(
       "Header tab wajib: shortcut, replacement. Pastikan baris header benar."
@@ -195,6 +199,9 @@ function rowsToShortcuts(
     const r = rows[i] ?? [];
     const shortcut = (r[shortcutIdx] ?? "").toString().trim();
     const replacement = (r[replacementIdx] ?? "").toString().replace(/\s+$/, "");
+    const linkRaw =
+      linkIdx === -1 ? "" : (r[linkIdx] ?? "").toString().trim();
+    const link = linkRaw.length > 0 && linkRaw.length <= 2000 ? linkRaw : null;
     if (!shortcut && !replacement) continue;
     if (!shortcut || !replacement) {
       skipped++;
@@ -204,7 +211,7 @@ function rowsToShortcuts(
       skipped++;
       continue;
     }
-    map.set(shortcut.toLowerCase(), { shortcut, replacement });
+    map.set(shortcut.toLowerCase(), { shortcut, replacement, link });
   }
   return { entries: Array.from(map.values()), skipped };
 }

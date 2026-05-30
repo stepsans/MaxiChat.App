@@ -3,9 +3,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useListCustomerLabels,
   useSetChatLabels,
+  useListShortcuts,
+  useSendShortcutToChat,
+  getListShortcutsQueryKey,
   getGetChatQueryKey,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
+import type { TextShortcut } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +38,10 @@ import {
   Zap,
   Package,
   Receipt,
+  Search,
+  Send,
+  ImageIcon,
+  Loader2,
 } from "lucide-react";
 
 export type ChatLabel = { id: number; name: string; color: string };
@@ -46,6 +56,7 @@ type AgentLike = {
 
 type ChatLike = {
   id: number;
+  channelId: number;
   nickname?: string | null;
   contactName: string;
   phoneNumber: string;
@@ -93,6 +104,127 @@ function ComingSoon({ label }: { label: string }) {
     <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center text-[hsl(var(--wa-meta))]">
       <p className="text-sm font-medium">{label}</p>
       <p className="text-xs">Segera hadir.</p>
+    </div>
+  );
+}
+
+// Shortcut tab: searchable list of the owner's text shortcuts. Each row can be
+// sent to the active chat. Shortcuts carrying a `link` are delivered as a photo
+// (with the replacement text as caption); the rest are sent as plain text.
+function ShortcutTab({
+  chatId,
+  channelId,
+}: {
+  chatId: number;
+  channelId: number;
+}) {
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [sendingId, setSendingId] = useState<number | null>(null);
+  const { data, isLoading } = useListShortcuts({
+    query: { queryKey: getListShortcutsQueryKey() },
+  });
+  const shortcuts = (data ?? []) as TextShortcut[];
+
+  const send = useSendShortcutToChat();
+
+  // Mirror the server's channel-scope rule: a shortcut with no channel
+  // assignments is global; one with assignments is only available on the listed
+  // channels. Hide shortcuts not sendable on the active chat's channel.
+  const inScope = shortcuts.filter(
+    (s) => s.channelIds.length === 0 || s.channelIds.includes(channelId)
+  );
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? inScope.filter(
+        (s) =>
+          s.shortcut.toLowerCase().includes(q) ||
+          s.replacement.toLowerCase().includes(q)
+      )
+    : inScope;
+
+  async function handleSend(s: TextShortcut) {
+    setSendingId(s.id);
+    try {
+      await send.mutateAsync({ id: chatId, data: { shortcutId: s.id } });
+    } catch (err) {
+      toast({
+        title: "Gagal mengirim shortcut",
+        description: err instanceof Error ? err.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col p-3 gap-3">
+      <div className="relative flex-shrink-0">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
+        <Input
+          data-testid="input-shortcut-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari shortcut…"
+          className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-xs text-[hsl(var(--wa-meta))] text-center py-6">
+          {shortcuts.length === 0
+            ? "Belum ada shortcut. Tambahkan di Pengaturan."
+            : "Tidak ada shortcut yang cocok."}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2 overflow-y-auto">
+          {filtered.map((s) => (
+            <li
+              key={s.id}
+              data-testid={`shortcut-item-${s.id}`}
+              className="rounded-lg border border-[hsl(var(--wa-divider))] p-2.5 space-y-1.5"
+            >
+              <div className="flex items-center gap-1.5">
+                <code className="font-mono text-[11px] bg-white/5 px-1.5 py-0.5 rounded text-foreground">
+                  {s.shortcut}
+                </code>
+                {s.link ? (
+                  <span
+                    data-testid={`shortcut-photo-badge-${s.id}`}
+                    className="inline-flex items-center gap-1 text-[10px] text-[hsl(var(--wa-accent))]"
+                    title="Dikirim sebagai foto"
+                  >
+                    <ImageIcon className="w-3 h-3" /> Foto
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-xs text-[hsl(var(--wa-meta))] line-clamp-2 whitespace-pre-wrap break-words">
+                {s.replacement}
+              </p>
+              <Button
+                data-testid={`button-send-shortcut-${s.id}`}
+                size="sm"
+                onClick={() => handleSend(s)}
+                disabled={sendingId === s.id}
+                className="h-7 w-full gap-1.5 text-xs"
+              >
+                {sendingId === s.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                Kirim
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -427,7 +559,7 @@ export function ChatInfoSidebar({
             )}
           </div>
         ) : tab === "shortcut" ? (
-          <ComingSoon label="Shortcut" />
+          <ShortcutTab chatId={chatId} channelId={chat.channelId} />
         ) : tab === "products" ? (
           <ComingSoon label="Produk" />
         ) : (

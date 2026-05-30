@@ -113,6 +113,35 @@ export async function sendDocument(
   return { messageId: json.result.message_id };
 }
 
+// Send an image as a photo with an optional caption. Like sendDocument,
+// Telegram's sendPhoto needs multipart/form-data for raw bytes, so we POST a
+// FormData with the image as a Blob.
+export async function sendPhoto(
+  token: string,
+  chatId: number | string,
+  photo: Uint8Array,
+  filename: string,
+  caption?: string,
+  mimeType = "image/jpeg"
+): Promise<{ messageId: number }> {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  if (caption) form.append("caption", caption);
+  const bytes = new Uint8Array(photo.byteLength);
+  bytes.set(photo);
+  form.append("photo", new Blob([bytes], { type: mimeType }), filename);
+  const res = await fetch(`${API}/bot${token}/sendPhoto`, {
+    method: "POST",
+    body: form,
+  });
+  const json = (await res.json()) as TgResponse<{ message_id: number }>;
+  if (!json.ok) {
+    const desc = (json as { description?: string }).description ?? "unknown";
+    throw new Error(`telegram sendPhoto failed: ${desc}`);
+  }
+  return { messageId: json.result.message_id };
+}
+
 // ---------- Inbound update normalisation ----------
 //
 // We accept Telegram's raw Update payload but only consume `message` and

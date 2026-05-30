@@ -237,6 +237,10 @@ export const textShortcutsTable = pgTable(
       .references(() => usersTable.id, { onDelete: "cascade" }),
     shortcut: text("shortcut").notNull(),
     replacement: text("replacement").notNull(),
+    // Optional image URL (sheet sync col C "Link"). When present, sending the
+    // shortcut to a chat delivers the image as a photo with `replacement` as
+    // the caption; otherwise `replacement` is sent as plain text.
+    link: text("link"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

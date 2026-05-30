@@ -9,6 +9,7 @@
 - [Per-channel channel access scope](per-channel-chat-access.md) — `user_channel_access` scopes the WHOLE switcher for supervisor/agent (super_admin sees all); funnel every channel resolver through `getAllowedChannelIds`.
 - [Frontend permission gating](frontend-permission-gating.md) — hiding a nav item ≠ gating the page; routes are unguarded so each page must self-guard on canView + disable controls on canEdit; default teamRole to "agent" not "super_admin".
 - [drizzle sql tag spreads JS arrays](drizzle-sql-array-tuple.md) — `sql\`COALESCE(col, ${jsArr})\`` produces `($1,$2,…)` not `ARRAY[…]::T[]`; fatal for array columns, use `sql.join` + explicit cast.
+- [Channel-scope on resource send-actions](resource-channel-scope-on-send.md) — acting on a shared resource (shortcut/product/knowledge) in a chat must re-check its per-channel assignment, not just owner scope.
 - [Chat-returning endpoints attach joined fields](chat-response-joined-fields.md) — every chat handler (assign/takeover too, not just list/get) must append `labels[]` w/ full CustomerLabel shape; TS won't catch the drift.
 - [Incoming sticker media](incoming-media-sticker.md) — stickers reuse the image download path (free-text media_type, no migration); sticker-only msgs have empty content so they skip auto-reply by design.
 - [AI provider BYOK](ai-provider-byok.md) — all AI calls go through `resolveAiClient`; replit default is behavior-identical; baseUrl is SSRF-guarded; api-server has no direct openai dep.
