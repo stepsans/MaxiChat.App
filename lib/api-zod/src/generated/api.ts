@@ -431,6 +431,34 @@ export const SendShortcutToChatResponse = zod.object({
 
 
 /**
+ * @summary Generate a quotation PDF from selected products and send it to a chat
+ */
+export const SendQuotationToChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const sendQuotationToChatBodyProductIdsMax = 200;
+
+
+
+export const SendQuotationToChatBody = zod.object({
+  "productIds": zod.array(zod.number()).min(1).max(sendQuotationToChatBodyProductIdsMax).describe('Ids of the products to include in the quotation, in display order.')
+})
+
+export const SendQuotationToChatResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
+})
+
+
+/**
  * @summary Send a manual reply to a chat
  */
 export const SendManualReplyParams = zod.object({

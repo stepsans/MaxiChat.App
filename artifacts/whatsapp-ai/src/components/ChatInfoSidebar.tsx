@@ -5,11 +5,15 @@ import {
   useSetChatLabels,
   useListShortcuts,
   useSendShortcutToChat,
+  useListProducts,
+  useSendProductToChat,
+  useSendQuotationToChat,
   getListShortcutsQueryKey,
+  getListProductsQueryKey,
   getGetChatQueryKey,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
-import type { TextShortcut } from "@workspace/api-client-react";
+import type { TextShortcut, Product } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -41,6 +45,7 @@ import {
   Search,
   Send,
   ImageIcon,
+  FileText,
   Loader2,
 } from "lucide-react";
 
@@ -97,15 +102,6 @@ function readableText(hex: string): string {
   const b = parseInt(full.slice(4, 6), 16) || 0;
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.6 ? "#111827" : "#ffffff";
-}
-
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center text-[hsl(var(--wa-meta))]">
-      <p className="text-sm font-medium">{label}</p>
-      <p className="text-xs">Segera hadir.</p>
-    </div>
-  );
 }
 
 // Shortcut tab: searchable list of the owner's text shortcuts. Each row can be
@@ -240,6 +236,281 @@ function ShortcutTab({
           <Send className="w-3.5 h-3.5" />
         )}
         Kirim
+      </Button>
+    </div>
+  );
+}
+
+function formatRupiah(value: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+// Products are user-scoped on the server: both POST /chats/:id/product and
+// POST /chats/:id/quotation accept any product owned by the chat's owner,
+// regardless of the product's channelIds. So we deliberately do NOT channel-filter
+// here — doing so would hide products the backend would happily send. We only
+// apply the search filter. Shared by both the Products and Order tabs.
+function useFilteredProducts(search: string): {
+  products: Product[];
+  filtered: Product[];
+  isLoading: boolean;
+} {
+  const { data, isLoading } = useListProducts({
+    query: { queryKey: getListProductsQueryKey() },
+  });
+  const products = (data ?? []) as Product[];
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? products.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.code.toLowerCase().includes(q) ||
+          (p.category ?? "").toLowerCase().includes(q)
+      )
+    : products;
+  return { products, filtered, isLoading };
+}
+
+// Products tab: pick one product, then send it (image + caption) to the chat
+// via the single bottom Kirim button — same selection pattern as ShortcutTab.
+function ProductsTab({ chatId }: { chatId: number }) {
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { products, filtered, isLoading } = useFilteredProducts(search);
+
+  // Reset the selection whenever the active chat changes so a product picked for
+  // one conversation can't be sent to another after switching chats.
+  useEffect(() => {
+    setSelectedId(null);
+  }, [chatId]);
+
+  const send = useSendProductToChat();
+
+  async function handleSend() {
+    if (selectedId == null) return;
+    try {
+      await send.mutateAsync({ id: chatId, data: { productId: selectedId } });
+      setSelectedId(null);
+    } catch (err) {
+      toast({
+        title: "Gagal mengirim produk",
+        description: err instanceof Error ? err.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col p-3 gap-3 min-h-0">
+      <div className="relative flex-shrink-0">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
+        <Input
+          data-testid="input-product-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari produk…"
+          className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-xs text-[hsl(var(--wa-meta))] text-center py-6">
+          {products.length === 0
+            ? "Belum ada produk. Tambahkan di Pengaturan."
+            : "Tidak ada produk yang cocok."}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
+          {filtered.map((p) => {
+            const isSelected = selectedId === p.id;
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  data-testid={`product-item-${p.id}`}
+                  aria-pressed={isSelected}
+                  onClick={() =>
+                    setSelectedId((cur) => (cur === p.id ? null : p.id))
+                  }
+                  className={cn(
+                    "w-full text-left rounded-lg border p-2.5 flex items-center gap-2.5 transition-colors",
+                    isSelected
+                      ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))]/10"
+                      : "border-[hsl(var(--wa-divider))] hover:bg-white/5"
+                  )}
+                >
+                  {p.imageUrl ? (
+                    <img
+                      src={p.imageUrl}
+                      alt={p.name}
+                      className="w-10 h-10 rounded object-cover flex-shrink-0 bg-white/5"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded flex items-center justify-center flex-shrink-0 bg-white/5 text-[hsl(var(--wa-meta))]">
+                      <Package className="w-4 h-4" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-foreground truncate">
+                      {p.name}
+                    </p>
+                    <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
+                      {p.code} · {formatRupiah(p.price)}
+                    </p>
+                  </div>
+                  {isSelected ? (
+                    <Check className="w-3.5 h-3.5 text-[hsl(var(--wa-accent))] flex-shrink-0" />
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <Button
+        data-testid="button-send-product"
+        onClick={handleSend}
+        disabled={selectedId == null || send.isPending}
+        className="h-9 w-full gap-1.5 text-xs flex-shrink-0"
+      >
+        {send.isPending ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <Send className="w-3.5 h-3.5" />
+        )}
+        Kirim
+      </Button>
+    </div>
+  );
+}
+
+// Order tab: pick several products, then generate a quotation PDF and send it
+// to the chat via the bottom "Buat Penawaran" button.
+function OrderTab({ chatId }: { chatId: number }) {
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const { products, filtered, isLoading } = useFilteredProducts(search);
+
+  // Reset the selection whenever the active chat changes so products picked for
+  // one conversation can't end up in another's quotation after switching chats.
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [chatId]);
+
+  const send = useSendQuotationToChat();
+  const selectedSet = new Set(selectedIds);
+
+  function toggle(id: number) {
+    setSelectedIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    );
+  }
+
+  async function handleSend() {
+    if (selectedIds.length === 0) return;
+    try {
+      await send.mutateAsync({ id: chatId, data: { productIds: selectedIds } });
+      setSelectedIds([]);
+    } catch (err) {
+      toast({
+        title: "Gagal membuat penawaran",
+        description: err instanceof Error ? err.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col p-3 gap-3 min-h-0">
+      <div className="relative flex-shrink-0">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
+        <Input
+          data-testid="input-order-search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari produk…"
+          className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-xs text-[hsl(var(--wa-meta))] text-center py-6">
+          {products.length === 0
+            ? "Belum ada produk. Tambahkan di Pengaturan."
+            : "Tidak ada produk yang cocok."}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
+          {filtered.map((p) => {
+            const isSelected = selectedSet.has(p.id);
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  data-testid={`order-item-${p.id}`}
+                  aria-pressed={isSelected}
+                  onClick={() => toggle(p.id)}
+                  className={cn(
+                    "w-full text-left rounded-lg border p-2.5 flex items-center gap-2.5 transition-colors",
+                    isSelected
+                      ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))]/10"
+                      : "border-[hsl(var(--wa-divider))] hover:bg-white/5"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "w-4 h-4 rounded border flex items-center justify-center flex-shrink-0",
+                      isSelected
+                        ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))] text-white"
+                        : "border-[hsl(var(--wa-divider))]"
+                    )}
+                  >
+                    {isSelected ? <Check className="w-3 h-3" /> : null}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-foreground truncate">
+                      {p.name}
+                    </p>
+                    <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
+                      {p.code} · {formatRupiah(p.price)}
+                    </p>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <Button
+        data-testid="button-send-quotation"
+        onClick={handleSend}
+        disabled={selectedIds.length === 0 || send.isPending}
+        className="h-9 w-full gap-1.5 text-xs flex-shrink-0"
+      >
+        {send.isPending ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <FileText className="w-3.5 h-3.5" />
+        )}
+        {selectedIds.length > 0
+          ? `Buat Penawaran (${selectedIds.length})`
+          : "Buat Penawaran"}
       </Button>
     </div>
   );
@@ -577,9 +848,9 @@ export function ChatInfoSidebar({
         ) : tab === "shortcut" ? (
           <ShortcutTab chatId={chatId} channelId={chat.channelId} />
         ) : tab === "products" ? (
-          <ComingSoon label="Produk" />
+          <ProductsTab chatId={chatId} />
         ) : (
-          <ComingSoon label="Sales Order" />
+          <OrderTab chatId={chatId} />
         )}
       </div>
     </aside>

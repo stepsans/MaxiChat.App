@@ -1112,6 +1112,15 @@ export interface SendShortcutBody {
   shortcutId: number;
 }
 
+export interface SendQuotationBody {
+  /**
+     * Ids of the products to include in the quotation, in display order.
+     * @minItems 1
+     * @maxItems 200
+     */
+  productIds: number[];
+}
+
 export interface PostStatusInput {
   /**
      * @minLength 1

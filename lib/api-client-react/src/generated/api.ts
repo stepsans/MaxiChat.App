@@ -94,6 +94,7 @@ import type {
   RunProductSync200,
   RunShortcutSync200,
   SendProductBody,
+  SendQuotationBody,
   SendShortcutBody,
   SetChatLabels,
   Settings,
@@ -1747,6 +1748,78 @@ export const useSendShortcutToChat = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getSendShortcutToChatMutationOptions(options));
+    }
+
+export const getSendQuotationToChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/quotation`
+}
+
+/**
+ * @summary Generate a quotation PDF from selected products and send it to a chat
+ */
+export const sendQuotationToChat = async (id: number,
+    sendQuotationBody: SendQuotationBody, options?: RequestInit): Promise<ChatMessage> => {
+
+  return customFetch<ChatMessage>(getSendQuotationToChatUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sendQuotationBody,)
+  }
+);}
+
+
+
+
+export const getSendQuotationToChatMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendQuotationToChat>>, TError,{id: number;data: BodyType<SendQuotationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendQuotationToChat>>, TError,{id: number;data: BodyType<SendQuotationBody>}, TContext> => {
+
+const mutationKey = ['sendQuotationToChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendQuotationToChat>>, {id: number;data: BodyType<SendQuotationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendQuotationToChat(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendQuotationToChatMutationResult = NonNullable<Awaited<ReturnType<typeof sendQuotationToChat>>>
+    export type SendQuotationToChatMutationBody = BodyType<SendQuotationBody>
+    export type SendQuotationToChatMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate a quotation PDF from selected products and send it to a chat
+ */
+export const useSendQuotationToChat = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendQuotationToChat>>, TError,{id: number;data: BodyType<SendQuotationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendQuotationToChat>>,
+        TError,
+        {id: number;data: BodyType<SendQuotationBody>},
+        TContext
+      > => {
+      return useMutation(getSendQuotationToChatMutationOptions(options));
     }
 
 export const getSendManualReplyUrl = (id: number,) => {

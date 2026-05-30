@@ -126,6 +126,7 @@ export * from './runKnowledgeSync200';
 export * from './runProductSync200';
 export * from './runShortcutSync200';
 export * from './sendProductBody';
+export * from './sendQuotationBody';
 export * from './sendShortcutBody';
 export * from './setChatLabels';
 export * from './settings';
