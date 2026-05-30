@@ -1758,6 +1758,11 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
     // text-only send so the agent's message still goes out.
     let imageBuffer: Buffer | null = null;
     let imageMimeType: string | null = null;
+    // Local served URL for the persisted copy. The raw `shortcut.link` (often a
+    // Google Drive share link) is NOT directly renderable in an <img>, so we
+    // persist the fetched bytes under MEDIA_DIR and record that path instead —
+    // otherwise the thumbnail/preview won't show in the MaxiChat conversation.
+    let mediaStoredUrl: string | null = null;
     if (
       shortcut.link &&
       (shortcut.link.startsWith("http://") ||
@@ -1769,11 +1774,19 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
         const fetched = await fetchRemoteImageSafe(resolvedUrl);
         imageBuffer = fetched.buffer;
         imageMimeType = fetched.mimeType;
+        await fs.mkdir(MEDIA_DIR, { recursive: true });
+        const ext = mime.extension(imageMimeType) || "jpg";
+        const storedName = `${randomUUID()}.${ext}`;
+        await fs.writeFile(path.join(MEDIA_DIR, storedName), imageBuffer);
+        mediaStoredUrl = `/api/media/${storedName}`;
       } catch (err) {
         req.log.warn(
           { err, shortcutId, url: shortcut.link, resolvedUrl },
           "Failed to fetch shortcut image, falling back to text"
         );
+        imageBuffer = null;
+        imageMimeType = null;
+        mediaStoredUrl = null;
       }
     }
 
@@ -1808,7 +1821,7 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
           );
           dedupeKey = `tg:${tgChatId}:${sent.messageId}`;
           mediaType = "image";
-          mediaUrl = shortcut.link;
+          mediaUrl = mediaStoredUrl;
           mediaMimeType = imageMimeType;
           mediaFilename = shortcut.shortcut;
         } else {
@@ -1840,7 +1853,7 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
           });
           dedupeKey = sent?.key?.id ?? null;
           mediaType = "image";
-          mediaUrl = shortcut.link;
+          mediaUrl = mediaStoredUrl;
           mediaMimeType = imageMimeType;
           mediaFilename = shortcut.shortcut;
         } else {
