@@ -228,6 +228,13 @@ export const ListChatsResponseItem = zod.object({
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "isHumanTakeover": zod.boolean(),
@@ -287,6 +294,13 @@ export const GetChatResponse = zod.object({
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "isHumanTakeover": zod.boolean(),
@@ -322,7 +336,9 @@ export const UpdateChatParams = zod.object({
 
 export const UpdateChatBody = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']).optional(),
-  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']).optional()
+  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']).optional(),
+  "nickname": zod.string().nullish().describe('Editable display name for the contact (overrides contactName in the header).'),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.')
 })
 
 export const UpdateChatResponse = zod.object({
@@ -331,6 +347,13 @@ export const UpdateChatResponse = zod.object({
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "isHumanTakeover": zod.boolean(),
@@ -423,6 +446,13 @@ export const AssignChatResponse = zod.object({
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "isHumanTakeover": zod.boolean(),
@@ -455,6 +485,13 @@ export const TakeoverChatResponse = zod.object({
   "phoneNumber": zod.string(),
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "isHumanTakeover": zod.boolean(),
@@ -467,6 +504,80 @@ export const TakeoverChatResponse = zod.object({
   "profilePicUrl": zod.string().nullable(),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
+})
+
+
+/**
+ * @summary Replace the full set of customer labels on a chat
+ */
+export const SetChatLabelsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SetChatLabelsBody = zod.object({
+  "labelIds": zod.array(zod.number()).describe('Full replacement set of label ids to attach to the chat.')
+})
+
+export const SetChatLabelsResponse = zod.object({
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary List the owner's customer labels
+ */
+export const ListCustomerLabelsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})
+export const ListCustomerLabelsResponse = zod.array(ListCustomerLabelsResponseItem)
+
+
+/**
+ * @summary Create a customer label (super-admin only)
+ */
+export const CreateCustomerLabelBody = zod.object({
+  "name": zod.string(),
+  "color": zod.string()
+})
+
+
+/**
+ * @summary Update a customer label (super-admin only)
+ */
+export const UpdateCustomerLabelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateCustomerLabelBody = zod.object({
+  "name": zod.string().optional(),
+  "color": zod.string().optional()
+})
+
+export const UpdateCustomerLabelResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a customer label (super-admin only)
+ */
+export const DeleteCustomerLabelParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteCustomerLabelResponse = zod.object({
+  "success": zod.boolean()
 })
 
 

@@ -28,6 +28,9 @@ export const chatsTable = pgTable(
     phoneNumber: text("phone_number").notNull(),
     contactName: text("contact_name").notNull(),
     nickname: text("nickname"),
+    // Free-text company/organisation the contact belongs to. Shown and
+    // editable in the chat Info sidebar (Tab 1). Null = not set.
+    company: text("company"),
     status: text("status").notNull().default("ai_handled"),
     tag: text("tag").notNull().default("none"),
     isHumanTakeover: boolean("is_human_takeover").notNull().default(false),
@@ -79,6 +82,59 @@ export const insertChatSchema = createInsertSchema(chatsTable).omit({
 
 export type Chat = typeof chatsTable.$inferSelect;
 export type InsertChat = z.infer<typeof insertChatSchema>;
+
+// Customer labels ("Label Customer") — colored tags a super_admin defines per
+// business (owner user) in Settings, e.g. "High Risk Cust", "Follow Up". A
+// contact can carry MANY labels (see chatLabelsTable). Owner-scoped by userId
+// (not ownerPhone) so a phone reassignment never leaks another tenant's labels.
+export const customerLabelsTable = pgTable(
+  "customer_labels",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // Hex color like "#ef4444" used for the chip background in the UI.
+    color: text("color").notNull().default("#64748b"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    customerLabelsOwnerNameUnique: uniqueIndex(
+      "customer_labels_owner_name_unique"
+    ).on(t.ownerUserId, t.name),
+  })
+);
+
+export const insertCustomerLabelSchema = createInsertSchema(customerLabelsTable).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type CustomerLabel = typeof customerLabelsTable.$inferSelect;
+export type InsertCustomerLabel = z.infer<typeof insertCustomerLabelSchema>;
+
+// Many-to-many join: which labels are attached to which chat/contact.
+export const chatLabelsTable = pgTable(
+  "chat_labels",
+  {
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chatsTable.id, { onDelete: "cascade" }),
+    labelId: integer("label_id")
+      .notNull()
+      .references(() => customerLabelsTable.id, { onDelete: "cascade" }),
+  },
+  (t) => ({
+    chatLabelsPk: uniqueIndex("chat_labels_chat_label_unique").on(
+      t.chatId,
+      t.labelId
+    ),
+    chatLabelsLabelIdx: index("chat_labels_label_idx").on(t.labelId),
+  })
+);
+
+export type ChatLabel = typeof chatLabelsTable.$inferSelect;
 
 export const chatMessagesTable = pgTable(
   "chat_messages",

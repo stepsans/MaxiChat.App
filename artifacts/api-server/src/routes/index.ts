@@ -20,6 +20,7 @@ import agentsRouter from "./agents";
 import permissionsRouter from "./permissions";
 import channelsRouter from "./channels";
 import aiProviderRouter from "./ai-provider";
+import customerLabelsRouter from "./customer-labels";
 import telegramWebhookRouter from "./webhooks-telegram";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
@@ -60,6 +61,7 @@ router.use("/shortcuts", shortcutsRouter);
 router.use("/flows", flowsRouter);
 router.use("/channels", channelsRouter);
 router.use("/ai-provider", aiProviderRouter);
+router.use("/customer-labels", customerLabelsRouter);
 
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.

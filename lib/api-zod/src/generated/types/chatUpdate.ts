@@ -11,4 +11,14 @@ import type { ChatUpdateTag } from './chatUpdateTag';
 export interface ChatUpdate {
   status?: ChatUpdateStatus;
   tag?: ChatUpdateTag;
+  /**
+     * Editable display name for the contact (overrides contactName in the header).
+     * @nullable
+     */
+  nickname?: string | null;
+  /**
+     * Free-text company/organisation the contact belongs to.
+     * @nullable
+     */
+  company?: string | null;
 }

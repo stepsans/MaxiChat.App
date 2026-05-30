@@ -256,6 +256,14 @@ export const ChatTag = {
   closing: 'closing',
 } as const;
 
+export interface CustomerLabel {
+  id: number;
+  name: string;
+  /** Hex color (e.g. "#ef4444") used for the chip background. */
+  color: string;
+  createdAt: string;
+}
+
 export interface Chat {
   id: number;
   /**
@@ -267,6 +275,13 @@ export interface Chat {
   contactName: string;
   /** @nullable */
   nickname: string | null;
+  /**
+     * Free-text company/organisation the contact belongs to.
+     * @nullable
+     */
+  company?: string | null;
+  /** Customer labels currently attached to this chat. */
+  labels: CustomerLabel[];
   status: ChatStatus;
   tag: ChatTag;
   isHumanTakeover: boolean;
@@ -340,6 +355,13 @@ export interface ChatWithMessages {
   contactName: string;
   /** @nullable */
   nickname: string | null;
+  /**
+     * Free-text company/organisation the contact belongs to.
+     * @nullable
+     */
+  company?: string | null;
+  /** Customer labels currently attached to this chat. */
+  labels: CustomerLabel[];
   status: ChatWithMessagesStatus;
   tag: ChatWithMessagesTag;
   isHumanTakeover: boolean;
@@ -397,6 +419,35 @@ export const ChatUpdateTag = {
 export interface ChatUpdate {
   status?: ChatUpdateStatus;
   tag?: ChatUpdateTag;
+  /**
+     * Editable display name for the contact (overrides contactName in the header).
+     * @nullable
+     */
+  nickname?: string | null;
+  /**
+     * Free-text company/organisation the contact belongs to.
+     * @nullable
+     */
+  company?: string | null;
+}
+
+export interface CreateCustomerLabelInput {
+  name: string;
+  color: string;
+}
+
+export interface UpdateCustomerLabelInput {
+  name?: string;
+  color?: string;
+}
+
+export interface SetChatLabels {
+  /** Full replacement set of label ids to attach to the chat. */
+  labelIds: number[];
+}
+
+export interface ChatLabelsResult {
+  labels: CustomerLabel[];
 }
 
 export interface ManualReplyInput {

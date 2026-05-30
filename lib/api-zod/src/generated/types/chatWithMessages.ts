@@ -8,6 +8,7 @@
 import type { ChatMessage } from './chatMessage';
 import type { ChatWithMessagesStatus } from './chatWithMessagesStatus';
 import type { ChatWithMessagesTag } from './chatWithMessagesTag';
+import type { CustomerLabel } from './customerLabel';
 
 export interface ChatWithMessages {
   id: number;
@@ -15,6 +16,13 @@ export interface ChatWithMessages {
   contactName: string;
   /** @nullable */
   nickname: string | null;
+  /**
+     * Free-text company/organisation the contact belongs to.
+     * @nullable
+     */
+  company?: string | null;
+  /** Customer labels currently attached to this chat. */
+  labels: CustomerLabel[];
   status: ChatWithMessagesStatus;
   tag: ChatWithMessagesTag;
   isHumanTakeover: boolean;

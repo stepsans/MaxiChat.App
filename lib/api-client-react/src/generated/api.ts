@@ -36,16 +36,19 @@ import type {
   ChannelPairQr,
   ChannelUpdate,
   Chat,
+  ChatLabelsResult,
   ChatMessage,
   ChatUpdate,
   ChatWithMessages,
   CommonQuestion,
   CreateAgentInput,
+  CreateCustomerLabelInput,
   CreateKnowledgeType400,
   CreateKnowledgeType409,
   Credential,
   CredentialCreateInput,
   CredentialUpdateInput,
+  CustomerLabel,
   DeleteKnowledgeType200,
   DeleteKnowledgeType400,
   DeleteKnowledgeType404,
@@ -91,6 +94,7 @@ import type {
   RunProductSync200,
   RunShortcutSync200,
   SendProductBody,
+  SetChatLabels,
   Settings,
   ShortcutSyncConfigInput,
   SignupInput,
@@ -108,6 +112,7 @@ import type {
   TextShortcut,
   TextShortcutInput,
   UpdateAgentInput,
+  UpdateCustomerLabelInput,
   UpdateUserChannelAccessRequest,
   UpdateUserPermissionRequest,
   UploadPhotoResponse,
@@ -1885,6 +1890,368 @@ export const useTakeoverChat = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getTakeoverChatMutationOptions(options));
+    }
+
+export const getSetChatLabelsUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/labels`
+}
+
+/**
+ * @summary Replace the full set of customer labels on a chat
+ */
+export const setChatLabels = async (id: number,
+    setChatLabels: SetChatLabels, options?: RequestInit): Promise<ChatLabelsResult> => {
+
+  return customFetch<ChatLabelsResult>(getSetChatLabelsUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setChatLabels,)
+  }
+);}
+
+
+
+
+export const getSetChatLabelsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setChatLabels>>, TError,{id: number;data: BodyType<SetChatLabels>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setChatLabels>>, TError,{id: number;data: BodyType<SetChatLabels>}, TContext> => {
+
+const mutationKey = ['setChatLabels'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setChatLabels>>, {id: number;data: BodyType<SetChatLabels>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setChatLabels(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetChatLabelsMutationResult = NonNullable<Awaited<ReturnType<typeof setChatLabels>>>
+    export type SetChatLabelsMutationBody = BodyType<SetChatLabels>
+    export type SetChatLabelsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Replace the full set of customer labels on a chat
+ */
+export const useSetChatLabels = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setChatLabels>>, TError,{id: number;data: BodyType<SetChatLabels>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setChatLabels>>,
+        TError,
+        {id: number;data: BodyType<SetChatLabels>},
+        TContext
+      > => {
+      return useMutation(getSetChatLabelsMutationOptions(options));
+    }
+
+export const getListCustomerLabelsUrl = () => {
+
+
+
+
+  return `/api/customer-labels`
+}
+
+/**
+ * @summary List the owner's customer labels
+ */
+export const listCustomerLabels = async ( options?: RequestInit): Promise<CustomerLabel[]> => {
+
+  return customFetch<CustomerLabel[]>(getListCustomerLabelsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCustomerLabelsQueryKey = () => {
+    return [
+    `/api/customer-labels`
+    ] as const;
+    }
+
+
+export const getListCustomerLabelsQueryOptions = <TData = Awaited<ReturnType<typeof listCustomerLabels>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerLabels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCustomerLabelsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCustomerLabels>>> = ({ signal }) => listCustomerLabels({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCustomerLabels>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCustomerLabelsQueryResult = NonNullable<Awaited<ReturnType<typeof listCustomerLabels>>>
+export type ListCustomerLabelsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the owner's customer labels
+ */
+
+export function useListCustomerLabels<TData = Awaited<ReturnType<typeof listCustomerLabels>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerLabels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCustomerLabelsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateCustomerLabelUrl = () => {
+
+
+
+
+  return `/api/customer-labels`
+}
+
+/**
+ * @summary Create a customer label (super-admin only)
+ */
+export const createCustomerLabel = async (createCustomerLabelInput: CreateCustomerLabelInput, options?: RequestInit): Promise<CustomerLabel> => {
+
+  return customFetch<CustomerLabel>(getCreateCustomerLabelUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createCustomerLabelInput,)
+  }
+);}
+
+
+
+
+export const getCreateCustomerLabelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerLabel>>, TError,{data: BodyType<CreateCustomerLabelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCustomerLabel>>, TError,{data: BodyType<CreateCustomerLabelInput>}, TContext> => {
+
+const mutationKey = ['createCustomerLabel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCustomerLabel>>, {data: BodyType<CreateCustomerLabelInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCustomerLabel(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCustomerLabelMutationResult = NonNullable<Awaited<ReturnType<typeof createCustomerLabel>>>
+    export type CreateCustomerLabelMutationBody = BodyType<CreateCustomerLabelInput>
+    export type CreateCustomerLabelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a customer label (super-admin only)
+ */
+export const useCreateCustomerLabel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerLabel>>, TError,{data: BodyType<CreateCustomerLabelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCustomerLabel>>,
+        TError,
+        {data: BodyType<CreateCustomerLabelInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCustomerLabelMutationOptions(options));
+    }
+
+export const getUpdateCustomerLabelUrl = (id: number,) => {
+
+
+
+
+  return `/api/customer-labels/${id}`
+}
+
+/**
+ * @summary Update a customer label (super-admin only)
+ */
+export const updateCustomerLabel = async (id: number,
+    updateCustomerLabelInput: UpdateCustomerLabelInput, options?: RequestInit): Promise<CustomerLabel> => {
+
+  return customFetch<CustomerLabel>(getUpdateCustomerLabelUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateCustomerLabelInput,)
+  }
+);}
+
+
+
+
+export const getUpdateCustomerLabelMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerLabel>>, TError,{id: number;data: BodyType<UpdateCustomerLabelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCustomerLabel>>, TError,{id: number;data: BodyType<UpdateCustomerLabelInput>}, TContext> => {
+
+const mutationKey = ['updateCustomerLabel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCustomerLabel>>, {id: number;data: BodyType<UpdateCustomerLabelInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCustomerLabel(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCustomerLabelMutationResult = NonNullable<Awaited<ReturnType<typeof updateCustomerLabel>>>
+    export type UpdateCustomerLabelMutationBody = BodyType<UpdateCustomerLabelInput>
+    export type UpdateCustomerLabelMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a customer label (super-admin only)
+ */
+export const useUpdateCustomerLabel = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerLabel>>, TError,{id: number;data: BodyType<UpdateCustomerLabelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCustomerLabel>>,
+        TError,
+        {id: number;data: BodyType<UpdateCustomerLabelInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCustomerLabelMutationOptions(options));
+    }
+
+export const getDeleteCustomerLabelUrl = (id: number,) => {
+
+
+
+
+  return `/api/customer-labels/${id}`
+}
+
+/**
+ * @summary Delete a customer label (super-admin only)
+ */
+export const deleteCustomerLabel = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteCustomerLabelUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteCustomerLabelMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerLabel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerLabel>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteCustomerLabel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCustomerLabel>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteCustomerLabel(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCustomerLabelMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCustomerLabel>>>
+
+    export type DeleteCustomerLabelMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a customer label (super-admin only)
+ */
+export const useDeleteCustomerLabel = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerLabel>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCustomerLabel>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteCustomerLabelMutationOptions(options));
     }
 
 export const getListKnowledgeUrl = () => {

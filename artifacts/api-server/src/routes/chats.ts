@@ -11,7 +11,14 @@ import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import type { Request, Response } from "express";
 import { db } from "@workspace/db";
-import { chatsTable, chatMessagesTable, productsTable, channelsTable } from "@workspace/db";
+import {
+  chatsTable,
+  chatMessagesTable,
+  productsTable,
+  channelsTable,
+  chatLabelsTable,
+  customerLabelsTable,
+} from "@workspace/db";
 import {
   sendMessage as tgSendMessage,
   sendDocument as tgSendDocument,
@@ -29,6 +36,7 @@ import {
   SendManualReplyParams,
   TakeoverChatParams,
   OpenChatByPhoneBody,
+  SetChatLabelsBody,
 } from "@workspace/api-zod";
 import { resolveOwnerUserId } from "../lib/seed";
 import {
@@ -402,6 +410,49 @@ async function loadOwnedChat(req: Request, res: Response, chatId: number) {
   return chat ?? null;
 }
 
+export type SerializedLabel = {
+  id: number;
+  name: string;
+  color: string;
+  createdAt: string;
+};
+
+// Batch-load the customer labels attached to each chat. Returns a map keyed
+// by chatId so list/detail serializers can attach a `labels` array without an
+// N+1 query. Labels are ordered by name for stable rendering.
+async function fetchLabelsForChats(
+  chatIds: number[]
+): Promise<Map<number, SerializedLabel[]>> {
+  const map = new Map<number, SerializedLabel[]>();
+  if (chatIds.length === 0) return map;
+  const rows = await db
+    .select({
+      chatId: chatLabelsTable.chatId,
+      id: customerLabelsTable.id,
+      name: customerLabelsTable.name,
+      color: customerLabelsTable.color,
+      createdAt: customerLabelsTable.createdAt,
+    })
+    .from(chatLabelsTable)
+    .innerJoin(
+      customerLabelsTable,
+      eq(chatLabelsTable.labelId, customerLabelsTable.id)
+    )
+    .where(inArray(chatLabelsTable.chatId, chatIds))
+    .orderBy(customerLabelsTable.name);
+  for (const r of rows) {
+    const list = map.get(r.chatId) ?? [];
+    list.push({
+      id: r.id,
+      name: r.name,
+      color: r.color,
+      createdAt: r.createdAt.toISOString(),
+    });
+    map.set(r.chatId, list);
+  }
+  return map;
+}
+
 router.get("/", async (req, res): Promise<void> => {
   try {
     const parsed = ListChatsQueryParams.safeParse(req.query);
@@ -473,11 +524,13 @@ router.get("/", async (req, res): Promise<void> => {
       }
     }
 
+    const labelMap = await fetchLabelsForChats(filtered.map((c) => c.id));
     res.json(
       filtered.map((c) => ({
         ...c,
         lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),
+        labels: labelMap.get(c.id) ?? [],
       }))
     );
   } catch (err) {
@@ -633,11 +686,13 @@ router.get("/:id", async (req, res): Promise<void> => {
       void refreshChatProfilePic(req.session.userId!, chat).catch(() => {});
     }
 
+    const labelMap = await fetchLabelsForChats([chat.id]);
     res.json({
       ...chat,
       unreadCount: 0,
       lastMessageAt: chat.lastMessageAt?.toISOString() ?? null,
       createdAt: chat.createdAt.toISOString(),
+      labels: labelMap.get(chat.id) ?? [],
       messages: messages.map((m) => ({
         ...m,
         createdAt: m.createdAt.toISOString(),
@@ -678,13 +733,76 @@ router.patch("/:id", async (req, res): Promise<void> => {
 
     if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
 
+    const labelMap = await fetchLabelsForChats([updated.id]);
     res.json({
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
+      labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
     req.log.error({ err }, "Failed to update chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Replace the full set of customer labels attached to a chat. Body:
+// { labelIds: number[] }. Only labels owned by the caller's owner are
+// accepted; unknown/foreign ids are silently dropped so a stale client can't
+// attach another tenant's label. Returns the updated label list.
+router.put("/:id/labels", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    if (!Number.isInteger(chatId) || chatId <= 0) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const parsed = SetChatLabelsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
+
+    const requested = Array.from(new Set(parsed.data.labelIds));
+    // Keep only label ids that actually belong to this owner.
+    const valid =
+      requested.length === 0
+        ? []
+        : (
+            await db
+              .select({ id: customerLabelsTable.id })
+              .from(customerLabelsTable)
+              .where(
+                and(
+                  eq(customerLabelsTable.ownerUserId, ownerUserId),
+                  inArray(customerLabelsTable.id, requested)
+                )
+              )
+          ).map((r) => r.id);
+
+    await db.transaction(async (tx) => {
+      await tx.delete(chatLabelsTable).where(eq(chatLabelsTable.chatId, chatId));
+      if (valid.length > 0) {
+        await tx
+          .insert(chatLabelsTable)
+          .values(valid.map((labelId) => ({ chatId, labelId })))
+          .onConflictDoNothing();
+      }
+    });
+
+    const labelMap = await fetchLabelsForChats([chatId]);
+    res.json({ labels: labelMap.get(chatId) ?? [] });
+  } catch (err) {
+    req.log.error({ err }, "Failed to set chat labels");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -828,10 +946,12 @@ router.post("/:id/takeover", async (req, res): Promise<void> => {
 
     if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
 
+    const labelMap = await fetchLabelsForChats([updated.id]);
     res.json({
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
+      labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
     req.log.error({ err }, "Failed to toggle takeover");
@@ -902,10 +1022,12 @@ router.patch("/:id/assign", async (req, res): Promise<void> => {
       )
       .returning();
     if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
+    const labelMap = await fetchLabelsForChats([updated.id]);
     res.json({
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
+      labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
     req.log.error({ err }, "Failed to assign chat");

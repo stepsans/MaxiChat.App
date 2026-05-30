@@ -630,6 +630,123 @@ paths:
               schema:
                 $ref: "#/components/schemas/Chat"
 
+  /chats/{id}/labels:
+    put:
+      operationId: setChatLabels
+      tags: [chats]
+      summary: Replace the full set of customer labels on a chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetChatLabels"
+      responses:
+        "200":
+          description: Updated label set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatLabelsResult"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /customer-labels:
+    get:
+      operationId: listCustomerLabels
+      tags: [customer-labels]
+      summary: List the owner's customer labels
+      responses:
+        "200":
+          description: List of customer labels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CustomerLabel"
+    post:
+      operationId: createCustomerLabel
+      tags: [customer-labels]
+      summary: Create a customer label (super-admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerLabelInput"
+      responses:
+        "201":
+          description: Created customer label
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerLabel"
+
+  /customer-labels/{id}:
+    put:
+      operationId: updateCustomerLabel
+      tags: [customer-labels]
+      summary: Update a customer label (super-admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomerLabelInput"
+      responses:
+        "200":
+          description: Updated customer label
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerLabel"
+        "404":
+          description: Label not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCustomerLabel
+      tags: [customer-labels]
+      summary: Delete a customer label (super-admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Label deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Label not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /knowledge:
     get:
       operationId: listKnowledge
@@ -2436,7 +2553,7 @@ components:
 
     Chat:
       type: object
-      required: [id, channelId, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId]
+      required: [id, channelId, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId, labels]
       properties:
         id:
           type: integer
@@ -2449,6 +2566,14 @@ components:
           type: string
         nickname:
           type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+          description: Free-text company/organisation the contact belongs to.
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerLabel"
+          description: Customer labels currently attached to this chat.
         status:
           type: string
           enum: [ai_handled, needs_human, closed]
@@ -2507,7 +2632,7 @@ components:
 
     ChatWithMessages:
       type: object
-      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId, messages]
+      required: [id, phoneNumber, contactName, nickname, status, tag, isHumanTakeover, lastMessage, lastMessageAt, pinnedAt, isArchived, isLid, unreadCount, profilePicUrl, createdAt, assignedUserId, labels, messages]
       properties:
         id:
           type: integer
@@ -2517,6 +2642,14 @@ components:
           type: string
         nickname:
           type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+          description: Free-text company/organisation the contact belongs to.
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerLabel"
+          description: Customer labels currently attached to this chat.
         status:
           type: string
           enum: [ai_handled, needs_human, closed]
@@ -2581,6 +2714,62 @@ components:
         tag:
           type: string
           enum: [none, hot_lead, cold, closing]
+        nickname:
+          type: ["string", "null"]
+          description: Editable display name for the contact (overrides contactName in the header).
+        company:
+          type: ["string", "null"]
+          description: Free-text company/organisation the contact belongs to.
+
+    CustomerLabel:
+      type: object
+      required: [id, name, color, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+          description: Hex color (e.g. "#ef4444") used for the chip background.
+        createdAt:
+          type: string
+
+    CreateCustomerLabelInput:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+
+    UpdateCustomerLabelInput:
+      type: object
+      properties:
+        name:
+          type: string
+        color:
+          type: string
+
+    SetChatLabels:
+      type: object
+      required: [labelIds]
+      properties:
+        labelIds:
+          type: array
+          items:
+            type: integer
+          description: Full replacement set of label ids to attach to the chat.
+
+    ChatLabelsResult:
+      type: object
+      required: [labels]
+      properties:
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerLabel"
 
     ManualReplyInput:
       type: object

@@ -8,17 +8,22 @@ import {
   useUpdateShortcut,
   useDeleteShortcut,
   getListShortcutsQueryKey,
+  useListCustomerLabels,
+  useCreateCustomerLabel,
+  useUpdateCustomerLabel,
+  useDeleteCustomerLabel,
 } from "@workspace/api-client-react";
-import type { TextShortcut } from "@workspace/api-client-react";
+import type { TextShortcut, CustomerLabel } from "@workspace/api-client-react";
 import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 import ShortcutSyncCard from "@/components/ShortcutSyncCard";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor } from "lucide-react";
+import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Tag } from "lucide-react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import * as XLSX from "xlsx";
 import { useRef } from "react";
@@ -49,7 +54,245 @@ export default function Settings() {
           <BioCard />
         </div>
         <ShortcutsCard />
+        <LabelsCard />
       </div>
+    </div>
+  );
+}
+
+const LABEL_PRESET_COLORS = [
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#06b6d4",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+  "#64748b",
+  "#111827",
+];
+
+function LabelsCard() {
+  const { isSuperAdmin } = usePermissions();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const labelsKey = ["/api/customer-labels"];
+  const { data: labels, isLoading } = useListCustomerLabels({
+    query: { queryKey: labelsKey },
+  });
+
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(LABEL_PRESET_COLORS[0]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState(LABEL_PRESET_COLORS[0]);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: labelsKey });
+  const onErr = (err: any) =>
+    toast({
+      title: "Gagal",
+      description: err?.data?.error ?? err?.message ?? "Coba lagi.",
+      variant: "destructive",
+    });
+
+  const createMut = useCreateCustomerLabel({
+    mutation: {
+      onSuccess: () => {
+        setName("");
+        setColor(LABEL_PRESET_COLORS[0]);
+        invalidate();
+      },
+      onError: onErr,
+    },
+  });
+  const updateMut = useUpdateCustomerLabel({
+    mutation: {
+      onSuccess: () => {
+        setEditingId(null);
+        invalidate();
+      },
+      onError: onErr,
+    },
+  });
+  const deleteMut = useDeleteCustomerLabel({
+    mutation: { onSuccess: invalidate, onError: onErr },
+  });
+
+  if (!isSuperAdmin) return null;
+
+  function startEdit(l: CustomerLabel) {
+    setEditingId(l.id);
+    setEditName(l.name);
+    setEditColor(l.color);
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Tag className="w-4 h-4 text-primary" />
+          Label Customer
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Buat label berwarna untuk menandai kontak. Bisa dipakai banyak label
+          per kontak dari panel info chat.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Create form */}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-[160px] space-y-1">
+            <label className="text-[11px] text-muted-foreground">Nama label</label>
+            <Input
+              data-testid="input-new-label-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="mis. High Risk Cust"
+              className="h-9 text-sm"
+            />
+          </div>
+          <ColorPicker value={color} onChange={setColor} testid="new" />
+          <Button
+            type="button"
+            size="sm"
+            data-testid="button-create-label"
+            disabled={!name.trim() || createMut.isPending}
+            onClick={() =>
+              createMut.mutate({ data: { name: name.trim(), color } })
+            }
+          >
+            {createMut.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+            Tambah
+          </Button>
+        </div>
+
+        {/* List */}
+        {isLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : !labels || labels.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Belum ada label.</p>
+        ) : (
+          <div className="space-y-2">
+            {labels.map((l) =>
+              editingId === l.id ? (
+                <div
+                  key={l.id}
+                  className="flex flex-wrap items-end gap-2 rounded-md border border-border p-2"
+                >
+                  <div className="flex-1 min-w-[140px] space-y-1">
+                    <Input
+                      data-testid={`input-edit-label-${l.id}`}
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <ColorPicker
+                    value={editColor}
+                    onChange={setEditColor}
+                    testid={`edit-${l.id}`}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    data-testid={`button-save-label-${l.id}`}
+                    disabled={!editName.trim() || updateMut.isPending}
+                    onClick={() =>
+                      updateMut.mutate({
+                        id: l.id,
+                        data: { name: editName.trim(), color: editColor },
+                      })
+                    }
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    data-testid={`button-cancel-label-${l.id}`}
+                    onClick={() => setEditingId(null)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  key={l.id}
+                  className="flex items-center gap-2 rounded-md border border-border px-3 py-2"
+                  data-testid={`row-label-${l.id}`}
+                >
+                  <span
+                    className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                    style={{ backgroundColor: l.color, color: "#fff" }}
+                  >
+                    {l.name}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {l.color}
+                  </span>
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      data-testid={`button-edit-label-${l.id}`}
+                      onClick={() => startEdit(l)}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      data-testid={`button-delete-label-${l.id}`}
+                      disabled={deleteMut.isPending}
+                      onClick={() => deleteMut.mutate({ id: l.id })}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ColorPicker({
+  value,
+  onChange,
+  testid,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  testid: string;
+}) {
+  return (
+    <div className="flex items-center gap-1" data-testid={`colorpicker-${testid}`}>
+      {LABEL_PRESET_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          aria-label={`Warna ${c}`}
+          data-testid={`color-${testid}-${c}`}
+          onClick={() => onChange(c)}
+          className="h-6 w-6 rounded-full border-2 transition-transform hover:scale-110"
+          style={{
+            backgroundColor: c,
+            borderColor: value === c ? "hsl(var(--foreground))" : "transparent",
+          }}
+        />
+      ))}
     </div>
   );
 }
