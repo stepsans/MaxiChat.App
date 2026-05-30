@@ -1,0 +1,90 @@
+
+Di sebelah kanan ada sidebar yang bisa maximize dan minimize. 
+
+Di sidebar tersebut ada beberapa tab
+
+Tab 1 - Information
+Berisi informasi orang yang chat sama kita.
+Tertera beberapa informasi diantaranya
+- Nama : Nama secara default ambil dari data nama yang tertera di baris 1. Bila nama sudah diganti, maka nama di baris pertama berubah menjadi nama yang baru.
+- Perusahaan
+- Label Customer berupa combo box, yang isinya daftar label yang bisa dibuat superadmin di halaman setting.
+No
+Label Customer
+Warna
+1
+High Risk Cust
+
+
+2
+Follow Up
+
+
+3
+Important Cust
+
+
+4
+Spam
+
+
+
+
+- Tag
+- Status
+- Mode Balas
+- Ditugaskan Ke
+
+Ini referensi dari tab 1 - detail
+
+Ketika edit contact seperti ini
+ 
+
+
+Tab 2 - Shortcut
+Tampilkan menu Shortcut / Text Expander berisi dengan list
+Ada kolom search di bagian atas dan tombol send ada di bagian bawah list.
+Yang ditambahkan dari modul Shortcut adalah shortcut bisa juga kirim berbentuk foto. Ambil data dari google sheet di kolom C
+
+Shortcut
+Replacement
+Link
+/hi
+hallo
+https://maxipro.click/api/public/product/image/3510?field=image_1920
+/mxpsby
+Maxipro Surabaya
+Jl. Lebak Sari No 28 Kav AA
+Surabaya
+https://drive.google.com/file/d/1ZubeZOTP9aH_TD_o4F_oKIxfXVVqVbGP/view?usp=sharing
+/mxpjkt
+Maxipro Jakarta
+Jl. Pangeran Jayakarta 44 Kav 35
+Jakarta
+https://maxipro.click/api/public/product/image/3510?field=image_1920
+
+
+
+Tab 3 - Products
+Modul kirim products pindahkan ke sini. 
+Modul ini di modif ada filter by combobox.
+Combo Box berisi 
+- Bahan - Cek Kode Barang yang huruf pertamanya B
+- Mesin (Default View) - Cek Kode Barang yang huruf pertamanya M
+- Sparepart - Cek Kode Barang yang huruf pertamanya S
+- Lainnya - Selain huruf depan kode barang B, M, S
+
+Pada list products, selain menampilkan kode, nama, harga, tampilkan juga informasi jumlah stock dan stock on hand. 
+Jumlah stock dan stock on hand ambil dari kolom O dan P
+
+Tombol send products tetap ada 
+
+Tab 4 - Sales Order
+Bisa buat sales order berupa pdf, dan ada tombol kirim ke room chat yang sedang dibuka
+Ada pemilihan nantinya harga setelah diskon ini mengambil dari harga 1 (di google sheet kolom E atau harga 2 (FGHIJ)
+Nama Customer dan Nomor Telepon ambil dari tab 1
+Jadi pemilihan barang, jumlah, harga, harga setelah diskon
+
+Setelah itu ada tombol generate pdf and send. Setelah generate pdf bisa di preview dulu sebelum dikirim ke customer.
+
+
