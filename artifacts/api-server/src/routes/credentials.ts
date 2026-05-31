@@ -38,14 +38,18 @@ declare module "express-session" {
 }
 
 const SCOPES_BY_TYPE: Record<string, string[]> = {
-  // Drive readonly so we can list the user's spreadsheets in the picker.
+  // spreadsheets (read-WRITE) so we can both read the product/knowledge sheets
+  // AND append rows for the sales-order export. Drive readonly so we can list
+  // the user's spreadsheets in the picker. NOTE: existing connected credentials
+  // were granted only the old readonly scope — users must Reconnect to grant
+  // write access before sales-order export will work.
   googleSheetsOAuth2Api: [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
   ],
   googleSheetsTriggerOAuth2Api: [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
   ],

@@ -1886,6 +1886,164 @@ paths:
                   deleted: { type: integer }
                   syncedAt: { type: string, format: date-time }
 
+  /sales-orders/sync-config:
+    get:
+      operationId: getSalesOrderSyncConfig
+      tags: [salesOrders]
+      summary: Get the Google Sheet export config for sales orders
+      responses:
+        "200":
+          description: Config, or null if not configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/SalesOrderSyncConfig"
+    put:
+      operationId: upsertSalesOrderSyncConfig
+      tags: [salesOrders]
+      summary: Create or update the sales-order export config (pass null to clear).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/SalesOrderSyncConfigInput"
+                - type: "null"
+      responses:
+        "200":
+          description: Updated config (or null after clearing)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/SalesOrderSyncConfig"
+
+  /sales-orders:
+    get:
+      operationId: listSalesOrders
+      tags: [salesOrders]
+      summary: List saved sales orders, optionally filtered by chat
+      parameters:
+        - name: chatId
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Sales orders (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesOrder"
+    post:
+      operationId: createSalesOrder
+      tags: [salesOrders]
+      summary: Create (save) a sales order. Totals are computed server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesOrderInput"
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesOrder"
+
+  /sales-orders/{id}:
+    get:
+      operationId: getSalesOrder
+      tags: [salesOrders]
+      summary: Get one sales order with its line items
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Sales order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesOrder"
+    patch:
+      operationId: updateSalesOrder
+      tags: [salesOrders]
+      summary: Update a sales order (replaces line items). Totals recomputed.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesOrderInput"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesOrder"
+    delete:
+      operationId: deleteSalesOrder
+      tags: [salesOrders]
+      summary: Delete a sales order
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+
+  /sales-orders/{id}/send:
+    post:
+      operationId: sendSalesOrder
+      tags: [salesOrders]
+      summary: Send an order summary to the customer's chat (WhatsApp/Telegram)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+
+  /sales-orders/{id}/sync-sheet:
+    post:
+      operationId: syncSalesOrderToSheet
+      tags: [salesOrders]
+      summary: Append this sales order as a row to the configured Google Sheet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Appended
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  syncedAt: { type: string, format: date-time }
+
   /whatsapp/profile/bio:
     get:
       operationId: getWhatsappBio
@@ -3737,6 +3895,106 @@ components:
         headerRow: { type: integer, minimum: 1, default: 1 }
         autoSyncEnabled: { type: boolean, default: false }
         intervalMinutes: { type: integer, enum: [5, 15, 30, 60], default: 15 }
+
+    SalesOrderItem:
+      type: object
+      required: [id, productId, code, name, qty, price, lineTotal]
+      properties:
+        id: { type: integer }
+        productId:
+          type: ["integer", "null"]
+          description: "Source catalog product id, or null for a custom line item"
+        code: { type: ["string", "null"] }
+        name: { type: string }
+        qty: { type: integer }
+        price:
+          type: integer
+          description: "Unit price in integer Rupiah"
+        lineTotal:
+          type: integer
+          description: "qty * price, in integer Rupiah"
+
+    SalesOrder:
+      type: object
+      required:
+        [id, chatId, customerName, customerPhone, ppnEnabled, ppnIncluded,
+         ppnRate, subtotal, ppnAmount, total, note, status, syncedToSheetAt,
+         createdAt, updatedAt, items]
+      properties:
+        id: { type: integer }
+        chatId: { type: ["integer", "null"] }
+        customerName: { type: ["string", "null"] }
+        customerPhone: { type: ["string", "null"] }
+        ppnEnabled: { type: boolean }
+        ppnIncluded:
+          type: boolean
+          description: "true = prices already include PPN; false = PPN added on top"
+        ppnRate:
+          type: integer
+          description: "PPN percentage, e.g. 11"
+        subtotal: { type: integer }
+        ppnAmount: { type: integer }
+        total: { type: integer }
+        note: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [draft, sent]
+        syncedToSheetAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesOrderItem"
+
+    SalesOrderItemInput:
+      type: object
+      required: [name, qty, price]
+      properties:
+        productId: { type: ["integer", "null"] }
+        code: { type: ["string", "null"] }
+        name: { type: string, minLength: 1 }
+        qty: { type: integer, minimum: 1 }
+        price: { type: integer, minimum: 0 }
+
+    SalesOrderInput:
+      type: object
+      required: [items]
+      properties:
+        chatId: { type: ["integer", "null"] }
+        customerName: { type: ["string", "null"] }
+        customerPhone: { type: ["string", "null"] }
+        ppnEnabled: { type: boolean, default: false }
+        ppnIncluded: { type: boolean, default: true }
+        ppnRate: { type: integer, minimum: 0, maximum: 100, default: 11 }
+        note: { type: ["string", "null"] }
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/SalesOrderItemInput"
+
+    SalesOrderSyncConfig:
+      type: object
+      required:
+        [id, credentialId, spreadsheetId, sheetName, lastSyncStatus, updatedAt]
+      properties:
+        id: { type: integer }
+        credentialId: { type: integer }
+        spreadsheetId: { type: string }
+        sheetName: { type: string }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+        lastSyncStatus: { type: string, enum: [idle, ok, error] }
+        lastSyncError: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time }
+
+    SalesOrderSyncConfigInput:
+      type: object
+      required: [credentialId, spreadsheetId, sheetName]
+      properties:
+        credentialId: { type: integer }
+        spreadsheetId: { type: string }
+        sheetName: { type: string, default: "sales order" }
 
     FlowSummary:
       type: object

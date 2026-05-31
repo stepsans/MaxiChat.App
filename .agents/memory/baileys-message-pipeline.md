@@ -41,3 +41,10 @@ Two coupled traps when ingesting `messaging-history.set`:
 
 ## Rule 4 — JID suffix allowlist
 `parseWaMessage` allows `@s.whatsapp.net`, `@lid`, and group JIDs. Drops `@broadcast`, `@newsletter`, `status@broadcast`. If WhatsApp introduces a new suffix (e.g. `@bot`), messages from those JIDs will be silently dropped here — revisit the allowlist if users report missing chats from new contact types.
+
+## Rule 5 — Outbound sends must capture the WA message id for echo-dedupe
+Any handler that sends a WA message itself (manual reply, quotation, sales-order summary, etc.) AND then inserts an `outbound` row into `chat_messages` must set `waMessageId = sock.sendMessage(...)?.key?.id` and insert with `onConflictDoNothing({ target: waMessageId })`. Baileys echoes every send back through `messages.upsert`, which also inserts the row — if your manual insert has a `null` waMessageId, the echo can't dedupe against it and the message appears twice in the dashboard.
+
+**Why:** the echo and the manual insert are two independent write paths for the same message; the WA message id is the only shared key that lets `onConflictDoNothing` collapse them.
+
+**How to apply:** Telegram has no echo, so its branch sets a synthetic `tg:<chatId>:<messageId>` key explicitly. For WA, capture the real `.key.id` from the send result (mirror `sendMediaToJid`, which returns it). Never leave the WA dedupe key null when you also insert the outbound row yourself.

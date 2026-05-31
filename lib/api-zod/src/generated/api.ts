@@ -1670,6 +1670,255 @@ export const RunProductSyncResponse = zod.object({
 
 
 /**
+ * @summary Get the Google Sheet export config for sales orders
+ */
+export const GetSalesOrderSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary Create or update the sales-order export config (pass null to clear).
+ */
+export const upsertSalesOrderSyncConfigBodyOneSheetNameDefault = `sales order`;
+
+export const UpsertSalesOrderSyncConfigBody = zod.union([zod.object({
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string().default(upsertSalesOrderSyncConfigBodyOneSheetNameDefault)
+}),zod.null()])
+
+export const UpsertSalesOrderSyncConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.number(),
+  "credentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "sheetName": zod.string(),
+  "lastSyncedAt": zod.coerce.date().nullish(),
+  "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastSyncError": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}).nullish()
+})
+
+
+/**
+ * @summary List saved sales orders, optionally filtered by chat
+ */
+export const ListSalesOrdersQueryParams = zod.object({
+  "chatId": zod.coerce.number().optional()
+})
+
+export const ListSalesOrdersResponseItem = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number().nullable(),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
+  "ppnEnabled": zod.boolean(),
+  "ppnIncluded": zod.boolean().describe('true = prices already include PPN; false = PPN added on top'),
+  "ppnRate": zod.number().describe('PPN percentage, e.g. 11'),
+  "subtotal": zod.number(),
+  "ppnAmount": zod.number(),
+  "total": zod.number(),
+  "note": zod.string().nullable(),
+  "status": zod.enum(['draft', 'sent']),
+  "syncedToSheetAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number().nullable().describe('Source catalog product id, or null for a custom line item'),
+  "code": zod.string().nullable(),
+  "name": zod.string(),
+  "qty": zod.number(),
+  "price": zod.number().describe('Unit price in integer Rupiah'),
+  "lineTotal": zod.number().describe('qty \* price, in integer Rupiah')
+}))
+})
+export const ListSalesOrdersResponse = zod.array(ListSalesOrdersResponseItem)
+
+
+/**
+ * @summary Create (save) a sales order. Totals are computed server-side.
+ */
+export const createSalesOrderBodyPpnEnabledDefault = false;
+export const createSalesOrderBodyPpnIncludedDefault = true;
+export const createSalesOrderBodyPpnRateDefault = 11;
+export const createSalesOrderBodyPpnRateMin = 0;
+export const createSalesOrderBodyPpnRateMax = 100;
+
+
+
+export const createSalesOrderBodyItemsItemPriceMin = 0;
+
+
+
+
+export const CreateSalesOrderBody = zod.object({
+  "chatId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "customerPhone": zod.string().nullish(),
+  "ppnEnabled": zod.boolean().default(createSalesOrderBodyPpnEnabledDefault),
+  "ppnIncluded": zod.boolean().default(createSalesOrderBodyPpnIncludedDefault),
+  "ppnRate": zod.number().min(createSalesOrderBodyPpnRateMin).max(createSalesOrderBodyPpnRateMax).default(createSalesOrderBodyPpnRateDefault),
+  "note": zod.string().nullish(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().nullish(),
+  "code": zod.string().nullish(),
+  "name": zod.string().min(1),
+  "qty": zod.number().min(1),
+  "price": zod.number().min(createSalesOrderBodyItemsItemPriceMin)
+})).min(1)
+})
+
+
+/**
+ * @summary Get one sales order with its line items
+ */
+export const GetSalesOrderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSalesOrderResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number().nullable(),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
+  "ppnEnabled": zod.boolean(),
+  "ppnIncluded": zod.boolean().describe('true = prices already include PPN; false = PPN added on top'),
+  "ppnRate": zod.number().describe('PPN percentage, e.g. 11'),
+  "subtotal": zod.number(),
+  "ppnAmount": zod.number(),
+  "total": zod.number(),
+  "note": zod.string().nullable(),
+  "status": zod.enum(['draft', 'sent']),
+  "syncedToSheetAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number().nullable().describe('Source catalog product id, or null for a custom line item'),
+  "code": zod.string().nullable(),
+  "name": zod.string(),
+  "qty": zod.number(),
+  "price": zod.number().describe('Unit price in integer Rupiah'),
+  "lineTotal": zod.number().describe('qty \* price, in integer Rupiah')
+}))
+})
+
+
+/**
+ * @summary Update a sales order (replaces line items). Totals recomputed.
+ */
+export const UpdateSalesOrderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateSalesOrderBodyPpnEnabledDefault = false;
+export const updateSalesOrderBodyPpnIncludedDefault = true;
+export const updateSalesOrderBodyPpnRateDefault = 11;
+export const updateSalesOrderBodyPpnRateMin = 0;
+export const updateSalesOrderBodyPpnRateMax = 100;
+
+
+
+export const updateSalesOrderBodyItemsItemPriceMin = 0;
+
+
+
+
+export const UpdateSalesOrderBody = zod.object({
+  "chatId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "customerPhone": zod.string().nullish(),
+  "ppnEnabled": zod.boolean().default(updateSalesOrderBodyPpnEnabledDefault),
+  "ppnIncluded": zod.boolean().default(updateSalesOrderBodyPpnIncludedDefault),
+  "ppnRate": zod.number().min(updateSalesOrderBodyPpnRateMin).max(updateSalesOrderBodyPpnRateMax).default(updateSalesOrderBodyPpnRateDefault),
+  "note": zod.string().nullish(),
+  "items": zod.array(zod.object({
+  "productId": zod.number().nullish(),
+  "code": zod.string().nullish(),
+  "name": zod.string().min(1),
+  "qty": zod.number().min(1),
+  "price": zod.number().min(updateSalesOrderBodyItemsItemPriceMin)
+})).min(1)
+})
+
+export const UpdateSalesOrderResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number().nullable(),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
+  "ppnEnabled": zod.boolean(),
+  "ppnIncluded": zod.boolean().describe('true = prices already include PPN; false = PPN added on top'),
+  "ppnRate": zod.number().describe('PPN percentage, e.g. 11'),
+  "subtotal": zod.number(),
+  "ppnAmount": zod.number(),
+  "total": zod.number(),
+  "note": zod.string().nullable(),
+  "status": zod.enum(['draft', 'sent']),
+  "syncedToSheetAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "productId": zod.number().nullable().describe('Source catalog product id, or null for a custom line item'),
+  "code": zod.string().nullable(),
+  "name": zod.string(),
+  "qty": zod.number(),
+  "price": zod.number().describe('Unit price in integer Rupiah'),
+  "lineTotal": zod.number().describe('qty \* price, in integer Rupiah')
+}))
+})
+
+
+/**
+ * @summary Delete a sales order
+ */
+export const DeleteSalesOrderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteSalesOrderResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Send an order summary to the customer's chat (WhatsApp/Telegram)
+ */
+export const SendSalesOrderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendSalesOrderResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Append this sales order as a row to the configured Google Sheet
+ */
+export const SyncSalesOrderToSheetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SyncSalesOrderToSheetResponse = zod.object({
+  "ok": zod.boolean(),
+  "syncedAt": zod.coerce.date().optional()
+})
+
+
+/**
  * @summary Get the connected WhatsApp account's bio (about / status text)
  */
 export const GetWhatsappBioResponse = zod.object({

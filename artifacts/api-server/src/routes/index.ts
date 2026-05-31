@@ -14,6 +14,7 @@ import flowsRouter from "./flows";
 import adminRouter from "./admin";
 import credentialsRouter from "./credentials";
 import productsSyncRouter from "./products-sync";
+import salesOrdersRouter from "./sales-orders";
 import knowledgeSyncRouter from "./knowledge-sync";
 import shortcutsSyncRouter from "./shortcuts-sync";
 import agentsRouter from "./agents";
@@ -51,6 +52,7 @@ router.use("/analytics", analyticsRouter);
 // fallthrough that might otherwise treat "sync-config" as an id.
 router.use("/products", productsSyncRouter);
 router.use("/products", productsRouter);
+router.use("/sales-orders", salesOrdersRouter);
 router.use("/credentials", credentialsRouter);
 router.use("/agents", agentsRouter);
 router.use("/permissions", permissionsRouter);

@@ -1450,6 +1450,116 @@ export interface ProductSyncConfigInput {
   intervalMinutes?: ProductSyncConfigInputIntervalMinutes;
 }
 
+export interface SalesOrderItem {
+  id: number;
+  /**
+     * Source catalog product id, or null for a custom line item
+     * @nullable
+     */
+  productId: number | null;
+  /** @nullable */
+  code: string | null;
+  name: string;
+  qty: number;
+  /** Unit price in integer Rupiah */
+  price: number;
+  /** qty * price, in integer Rupiah */
+  lineTotal: number;
+}
+
+export type SalesOrderStatus = typeof SalesOrderStatus[keyof typeof SalesOrderStatus];
+
+
+export const SalesOrderStatus = {
+  draft: 'draft',
+  sent: 'sent',
+} as const;
+
+export interface SalesOrder {
+  id: number;
+  /** @nullable */
+  chatId: number | null;
+  /** @nullable */
+  customerName: string | null;
+  /** @nullable */
+  customerPhone: string | null;
+  ppnEnabled: boolean;
+  /** true = prices already include PPN; false = PPN added on top */
+  ppnIncluded: boolean;
+  /** PPN percentage, e.g. 11 */
+  ppnRate: number;
+  subtotal: number;
+  ppnAmount: number;
+  total: number;
+  /** @nullable */
+  note: string | null;
+  status: SalesOrderStatus;
+  /** @nullable */
+  syncedToSheetAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: SalesOrderItem[];
+}
+
+export interface SalesOrderItemInput {
+  /** @nullable */
+  productId?: number | null;
+  /** @nullable */
+  code?: string | null;
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 1 */
+  qty: number;
+  /** @minimum 0 */
+  price: number;
+}
+
+export interface SalesOrderInput {
+  /** @nullable */
+  chatId?: number | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerPhone?: string | null;
+  ppnEnabled?: boolean;
+  ppnIncluded?: boolean;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  ppnRate?: number;
+  /** @nullable */
+  note?: string | null;
+  /** @minItems 1 */
+  items: SalesOrderItemInput[];
+}
+
+export type SalesOrderSyncConfigLastSyncStatus = typeof SalesOrderSyncConfigLastSyncStatus[keyof typeof SalesOrderSyncConfigLastSyncStatus];
+
+
+export const SalesOrderSyncConfigLastSyncStatus = {
+  idle: 'idle',
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export interface SalesOrderSyncConfig {
+  id: number;
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+  lastSyncedAt?: string | null;
+  lastSyncStatus: SalesOrderSyncConfigLastSyncStatus;
+  lastSyncError?: string | null;
+  updatedAt: string;
+}
+
+export interface SalesOrderSyncConfigInput {
+  credentialId: number;
+  spreadsheetId: string;
+  sheetName: string;
+}
+
 export interface FlowSummary {
   id: number;
   name: string;
@@ -1717,6 +1827,23 @@ export type RunProductSync200 = {
   inserted: number;
   updated: number;
   deleted: number;
+  syncedAt?: string;
+};
+
+export type GetSalesOrderSyncConfig200 = {
+  config?: SalesOrderSyncConfig | null;
+};
+
+export type UpsertSalesOrderSyncConfig200 = {
+  config?: SalesOrderSyncConfig | null;
+};
+
+export type ListSalesOrdersParams = {
+chatId?: number;
+};
+
+export type SyncSalesOrderToSheet200 = {
+  ok: boolean;
   syncedAt?: string;
 };
 

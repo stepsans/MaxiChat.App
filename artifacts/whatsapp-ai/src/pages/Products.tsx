@@ -70,6 +70,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { resolveImageSrc } from "@/lib/utils";
 import ProductSyncCard from "@/components/ProductSyncCard";
+import SalesOrderSyncCard from "@/components/SalesOrderSyncCard";
 import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 
 type Product = {
@@ -742,6 +743,7 @@ export default function Products() {
       </div>
 
       <ProductSyncCard />
+      <SalesOrderSyncCard />
 
       <div className="flex-1 overflow-auto">
         {isLoading ? (

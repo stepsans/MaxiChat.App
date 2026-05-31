@@ -7,13 +7,24 @@ import {
   useSendShortcutToChat,
   useListProducts,
   useSendProductToChat,
-  useSendQuotationToChat,
+  useListSalesOrders,
+  useCreateSalesOrder,
+  useUpdateSalesOrder,
+  useDeleteSalesOrder,
+  useSendSalesOrder,
+  useSyncSalesOrderToSheet,
   getListShortcutsQueryKey,
   getListProductsQueryKey,
+  getListSalesOrdersQueryKey,
   getGetChatQueryKey,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
-import type { TextShortcut, Product } from "@workspace/api-client-react";
+import type {
+  TextShortcut,
+  Product,
+  SalesOrder,
+  SalesOrderItemInput,
+} from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -31,6 +42,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
   PanelRightClose,
@@ -47,6 +60,10 @@ import {
   ImageIcon,
   FileText,
   Loader2,
+  Trash2,
+  Pencil,
+  X,
+  FileSpreadsheet,
 } from "lucide-react";
 
 export type ChatLabel = { id: number; name: string; color: string };
@@ -472,38 +489,183 @@ function ProductsTab({ chatId }: { chatId: number }) {
   );
 }
 
-// Order tab: pick several products, then generate a quotation PDF and send it
-// to the chat via the bottom "Buat Penawaran" button.
-function OrderTab({ chatId }: { chatId: number }) {
-  const { toast } = useToast();
+// A single editable line item in the POS draft. `key` is a client-only id so
+// React can track rows before they're persisted; `productId` is null for
+// custom free-text lines.
+type DraftLine = {
+  key: string;
+  productId: number | null;
+  code: string | null;
+  name: string;
+  qty: number;
+  price: number;
+};
+
+const PPN_RATE = 11;
+
+let draftLineSeq = 0;
+function newLineKey(): string {
+  draftLineSeq += 1;
+  return `line-${Date.now()}-${draftLineSeq}`;
+}
+
+// Mirror of the server-authoritative PPN math (see salesOrdersTable comment):
+// off → no tax; included → tax is carved out of the subtotal; excluded → tax
+// is added on top. Kept in sync so the live preview matches what gets saved.
+function computeTotals(
+  lines: DraftLine[],
+  ppnEnabled: boolean,
+  ppnIncluded: boolean
+): { subtotal: number; ppnAmount: number; total: number } {
+  const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
+  if (!ppnEnabled) return { subtotal, ppnAmount: 0, total: subtotal };
+  if (ppnIncluded) {
+    const base = Math.round(subtotal / (1 + PPN_RATE / 100));
+    return { subtotal, ppnAmount: subtotal - base, total: subtotal };
+  }
+  const ppnAmount = Math.round((subtotal * PPN_RATE) / 100);
+  return { subtotal, ppnAmount, total: subtotal + ppnAmount };
+}
+
+// Popover that lets the agent pick a catalog product to add as a line. Reuses
+// the same category-bucket + search filtering as the Products tab.
+function ProductPicker({
+  onPick,
+}: {
+  onPick: (p: Product) => void;
+}) {
+  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [bucket, setBucket] = useState<ProductBucket>("M");
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const { products, filtered, isLoading } = useFilteredProducts(search, bucket);
 
-  // Reset the selection whenever the active chat changes so products picked for
-  // one conversation can't end up in another's quotation after switching chats.
-  useEffect(() => {
-    setSelectedIds([]);
-  }, [chatId]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          data-testid="button-add-catalog-item"
+          className="h-9 flex-1 gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+        >
+          <Package className="w-3.5 h-3.5" /> Dari katalog
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-2">
+        <div className="flex flex-col gap-2">
+          <CategoryFilter
+            value={bucket}
+            onChange={setBucket}
+            testId="select-order-picker-category"
+          />
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
+            <Input
+              data-testid="input-order-picker-search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari produk…"
+              className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            />
+          </div>
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-xs text-[hsl(var(--wa-meta))] text-center py-4">
+              {products.length === 0
+                ? "Belum ada produk."
+                : "Tidak ada yang cocok."}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto">
+              {filtered.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    data-testid={`order-picker-item-${p.id}`}
+                    onClick={() => {
+                      onPick(p);
+                      setOpen(false);
+                    }}
+                    className="w-full text-left rounded-md border border-[hsl(var(--wa-divider))] p-2 hover:bg-white/5 transition-colors"
+                  >
+                    <p className="text-xs font-medium text-foreground truncate">
+                      {p.name}
+                    </p>
+                    <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
+                      {p.code} · {formatRupiah(p.price)}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
-  const send = useSendQuotationToChat();
-  const selectedSet = new Set(selectedIds);
+// Read-only summary card for an already-saved order, with actions to edit,
+// delete, send to the customer, and append to the configured Google Sheet.
+function SavedOrderCard({
+  order,
+  onEdit,
+  chatId,
+}: {
+  order: SalesOrder;
+  onEdit: (order: SalesOrder) => void;
+  chatId: number;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const del = useDeleteSalesOrder();
+  const send = useSendSalesOrder();
+  const sync = useSyncSalesOrderToSheet();
 
-  function toggle(id: number) {
-    setSelectedIds((cur) =>
-      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
-    );
+  function invalidate() {
+    qc.invalidateQueries({
+      queryKey: getListSalesOrdersQueryKey({ chatId }),
+    });
+  }
+
+  async function handleDelete() {
+    try {
+      await del.mutateAsync({ id: order.id });
+      invalidate();
+    } catch (err) {
+      toast({
+        title: "Gagal menghapus",
+        description: err instanceof Error ? err.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function handleSend() {
-    if (selectedIds.length === 0) return;
     try {
-      await send.mutateAsync({ id: chatId, data: { productIds: selectedIds } });
-      setSelectedIds([]);
+      await send.mutateAsync({ id: order.id });
+      invalidate();
+      toast({ title: "Ringkasan terkirim ke customer" });
     } catch (err) {
       toast({
-        title: "Gagal membuat penawaran",
+        title: "Gagal mengirim",
+        description: err instanceof Error ? err.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleSync() {
+    try {
+      await sync.mutateAsync({ id: order.id });
+      invalidate();
+      toast({ title: "Tersimpan ke Google Sheet" });
+    } catch (err) {
+      toast({
+        title: "Gagal simpan ke Sheet",
         description: err instanceof Error ? err.message : "Coba lagi.",
         variant: "destructive",
       });
@@ -511,94 +673,472 @@ function OrderTab({ chatId }: { chatId: number }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col p-3 gap-3 min-h-0">
-      <div className="flex-shrink-0 flex flex-col gap-2">
-        <CategoryFilter
-          value={bucket}
-          onChange={setBucket}
-          testId="select-order-category"
-        />
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--wa-meta))]" />
-          <Input
-            data-testid="input-order-search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari produk…"
-            className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
-          />
+    <div
+      data-testid={`saved-order-${order.id}`}
+      className="rounded-lg border border-[hsl(var(--wa-divider))] p-2.5 flex flex-col gap-2"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">
+            #{order.id} · {formatRupiah(order.total)}
+          </p>
+          <p className="text-[11px] text-[hsl(var(--wa-meta))]">
+            {order.items.length} item ·{" "}
+            {order.status === "sent" ? "Terkirim" : "Draft"}
+            {order.syncedToSheetAt ? " · di Sheet" : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            data-testid={`button-edit-order-${order.id}`}
+            onClick={() => onEdit(order)}
+            className="h-7 w-7"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            data-testid={`button-delete-order-${order.id}`}
+            onClick={handleDelete}
+            disabled={del.isPending}
+            className="h-7 w-7 text-red-400 hover:text-red-400"
+          >
+            {del.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="w-3.5 h-3.5" />
+            )}
+          </Button>
         </div>
       </div>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          data-testid={`button-send-order-${order.id}`}
+          onClick={handleSend}
+          disabled={send.isPending}
+          className="h-8 flex-1 gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+        >
+          {send.isPending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Send className="w-3.5 h-3.5" />
+          )}
+          Kirim ke customer
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          data-testid={`button-sync-order-${order.id}`}
+          onClick={handleSync}
+          disabled={sync.isPending}
+          className="h-8 flex-1 gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+        >
+          {sync.isPending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+          )}
+          Simpan ke Sheet
+        </Button>
+      </div>
+    </div>
+  );
+}
 
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] py-2">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
+// Order tab (POS-style): build a sales order from catalog + custom line items
+// with per-order PPN, save it as a draft, then send/sync it from the list below.
+function OrderTab({ chatId }: { chatId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [ppnEnabled, setPpnEnabled] = useState(false);
+  const [ppnIncluded, setPpnIncluded] = useState(true);
+  const [note, setNote] = useState("");
+
+  // Drop any in-progress draft when the active chat changes so line items can't
+  // bleed from one conversation's order into another.
+  useEffect(() => {
+    setEditingId(null);
+    setLines([]);
+    setPpnEnabled(false);
+    setPpnIncluded(true);
+    setNote("");
+  }, [chatId]);
+
+  const { data: ordersData, isLoading: ordersLoading } = useListSalesOrders(
+    { chatId },
+    { query: { queryKey: getListSalesOrdersQueryKey({ chatId }) } }
+  );
+  const orders = (ordersData ?? []) as SalesOrder[];
+
+  const create = useCreateSalesOrder();
+  const update = useUpdateSalesOrder();
+  const saving = create.isPending || update.isPending;
+
+  const { subtotal, ppnAmount, total } = computeTotals(
+    lines,
+    ppnEnabled,
+    ppnIncluded
+  );
+
+  function resetForm() {
+    setEditingId(null);
+    setLines([]);
+    setPpnEnabled(false);
+    setPpnIncluded(true);
+    setNote("");
+  }
+
+  function addCatalogLine(p: Product) {
+    setLines((cur) => [
+      ...cur,
+      {
+        key: newLineKey(),
+        productId: p.id,
+        code: p.code,
+        name: p.name,
+        qty: 1,
+        price: p.price,
+      },
+    ]);
+  }
+
+  function addCustomLine() {
+    setLines((cur) => [
+      ...cur,
+      { key: newLineKey(), productId: null, code: null, name: "", qty: 1, price: 0 },
+    ]);
+  }
+
+  function updateLine(key: string, patch: Partial<DraftLine>) {
+    setLines((cur) =>
+      cur.map((l) => (l.key === key ? { ...l, ...patch } : l))
+    );
+  }
+
+  function removeLine(key: string) {
+    setLines((cur) => cur.filter((l) => l.key !== key));
+  }
+
+  function startEdit(order: SalesOrder) {
+    setEditingId(order.id);
+    setLines(
+      order.items.map((it) => ({
+        key: newLineKey(),
+        productId: it.productId ?? null,
+        code: it.code ?? null,
+        name: it.name,
+        qty: it.qty,
+        price: it.price,
+      }))
+    );
+    setPpnEnabled(order.ppnEnabled);
+    setPpnIncluded(order.ppnIncluded);
+    setNote(order.note ?? "");
+  }
+
+  async function handleSave() {
+    const cleaned = lines
+      .map((l) => ({ ...l, name: l.name.trim() }))
+      .filter((l) => l.name.length > 0 && l.qty > 0);
+    if (cleaned.length === 0) {
+      toast({
+        title: "Tambahkan minimal satu item",
+        description: "Setiap item butuh nama dan jumlah.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const items: SalesOrderItemInput[] = cleaned.map((l) => ({
+      productId: l.productId,
+      code: l.code,
+      name: l.name,
+      qty: l.qty,
+      price: l.price,
+    }));
+    const data = {
+      chatId,
+      ppnEnabled,
+      ppnIncluded,
+      ppnRate: PPN_RATE,
+      note: note.trim() || null,
+      items,
+    };
+    try {
+      if (editingId != null) {
+        await update.mutateAsync({ id: editingId, data });
+      } else {
+        await create.mutateAsync({ data });
+      }
+      qc.invalidateQueries({
+        queryKey: getListSalesOrdersQueryKey({ chatId }),
+      });
+      resetForm();
+      toast({ title: "Sales order tersimpan" });
+    } catch (err) {
+      toast({
+        title: "Gagal menyimpan order",
+        description: err instanceof Error ? err.message : "Coba lagi.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col min-h-0 overflow-y-auto">
+      <div className="flex flex-col gap-3 p-3">
+        {/* Draft editor */}
+        <div className="flex items-center gap-2">
+          <ProductPicker onPick={addCatalogLine} />
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="button-add-custom-item"
+            onClick={addCustomLine}
+            className="h-9 flex-1 gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+          >
+            <Plus className="w-3.5 h-3.5" /> Item manual
+          </Button>
         </div>
-      ) : filtered.length === 0 ? (
-        <p className="text-xs text-[hsl(var(--wa-meta))] text-center py-6">
-          {products.length === 0
-            ? "Belum ada produk. Tambahkan di Pengaturan."
-            : "Tidak ada produk yang cocok."}
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
-          {filtered.map((p) => {
-            const isSelected = selectedSet.has(p.id);
-            return (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  data-testid={`order-item-${p.id}`}
-                  aria-pressed={isSelected}
-                  onClick={() => toggle(p.id)}
+
+        {lines.length === 0 ? (
+          <p className="text-xs text-[hsl(var(--wa-meta))] text-center py-4">
+            Belum ada item. Tambahkan dari katalog atau manual.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {lines.map((l) => (
+              <li
+                key={l.key}
+                data-testid={`draft-line-${l.key}`}
+                className="rounded-lg border border-[hsl(var(--wa-divider))] p-2 flex flex-col gap-2"
+              >
+                <div className="flex items-start gap-2">
+                  <Input
+                    data-testid={`input-line-name-${l.key}`}
+                    value={l.name}
+                    onChange={(e) => updateLine(l.key, { name: e.target.value })}
+                    placeholder="Nama item"
+                    className="h-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    data-testid={`button-remove-line-${l.key}`}
+                    onClick={() => removeLine(l.key)}
+                    className="h-8 w-8 flex-shrink-0 text-red-400 hover:text-red-400"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-0.5 w-16">
+                    <Label className="text-[10px] text-[hsl(var(--wa-meta))]">
+                      Qty
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      data-testid={`input-line-qty-${l.key}`}
+                      value={l.qty}
+                      onChange={(e) =>
+                        updateLine(l.key, {
+                          qty: Math.max(1, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                      className="h-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5 flex-1">
+                    <Label className="text-[10px] text-[hsl(var(--wa-meta))]">
+                      Harga satuan
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      data-testid={`input-line-price-${l.key}`}
+                      value={l.price}
+                      onChange={(e) =>
+                        updateLine(l.key, {
+                          price: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        })
+                      }
+                      className="h-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5 items-end w-24">
+                    <Label className="text-[10px] text-[hsl(var(--wa-meta))]">
+                      Subtotal
+                    </Label>
+                    <span className="text-xs font-medium text-foreground h-8 flex items-center">
+                      {formatRupiah(l.qty * l.price)}
+                    </span>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* PPN controls */}
+        <div className="rounded-lg border border-[hsl(var(--wa-divider))] p-2.5 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <Label
+              htmlFor="ppn-toggle"
+              className="text-xs font-medium text-foreground"
+            >
+              PPN {PPN_RATE}%
+            </Label>
+            <Switch
+              id="ppn-toggle"
+              data-testid="switch-ppn"
+              checked={ppnEnabled}
+              onCheckedChange={setPpnEnabled}
+            />
+          </div>
+          {ppnEnabled ? (
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                data-testid="radio-ppn-included"
+                onClick={() => setPpnIncluded(true)}
+                className="flex items-center gap-2 text-left"
+              >
+                <span
                   className={cn(
-                    "w-full text-left rounded-lg border p-2.5 flex items-center gap-2.5 transition-colors",
-                    isSelected
-                      ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))]/10"
-                      : "border-[hsl(var(--wa-divider))] hover:bg-white/5"
+                    "w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0",
+                    ppnIncluded
+                      ? "border-[hsl(var(--wa-accent))]"
+                      : "border-[hsl(var(--wa-divider))]"
                   )}
                 >
-                  <span
-                    className={cn(
-                      "w-4 h-4 rounded border flex items-center justify-center flex-shrink-0",
-                      isSelected
-                        ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))] text-white"
-                        : "border-[hsl(var(--wa-divider))]"
-                    )}
-                  >
-                    {isSelected ? <Check className="w-3 h-3" /> : null}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-foreground truncate">
-                      {p.name}
-                    </p>
-                    <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
-                      {p.code} · {formatRupiah(p.price)}
-                    </p>
-                    <StockLine product={p} />
-                  </div>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                  {ppnIncluded ? (
+                    <span className="w-2 h-2 rounded-full bg-[hsl(var(--wa-accent))]" />
+                  ) : null}
+                </span>
+                <span className="text-xs text-foreground">
+                  Harga sudah termasuk PPN
+                </span>
+              </button>
+              <button
+                type="button"
+                data-testid="radio-ppn-excluded"
+                onClick={() => setPpnIncluded(false)}
+                className="flex items-center gap-2 text-left"
+              >
+                <span
+                  className={cn(
+                    "w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0",
+                    !ppnIncluded
+                      ? "border-[hsl(var(--wa-accent))]"
+                      : "border-[hsl(var(--wa-divider))]"
+                  )}
+                >
+                  {!ppnIncluded ? (
+                    <span className="w-2 h-2 rounded-full bg-[hsl(var(--wa-accent))]" />
+                  ) : null}
+                </span>
+                <span className="text-xs text-foreground">
+                  Harga belum termasuk PPN
+                </span>
+              </button>
+            </div>
+          ) : null}
+        </div>
 
-      <Button
-        data-testid="button-send-quotation"
-        onClick={handleSend}
-        disabled={selectedIds.length === 0 || send.isPending}
-        className="h-9 w-full gap-1.5 text-xs flex-shrink-0"
-      >
-        {send.isPending ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        ) : (
-          <FileText className="w-3.5 h-3.5" />
-        )}
-        {selectedIds.length > 0
-          ? `Buat Penawaran (${selectedIds.length})`
-          : "Buat Penawaran"}
-      </Button>
+        <Textarea
+          data-testid="input-order-note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Catatan (opsional)…"
+          className="text-xs bg-transparent border-[hsl(var(--wa-divider))] min-h-[60px]"
+        />
+
+        {/* Totals */}
+        <div className="flex flex-col gap-1 text-xs">
+          <div className="flex items-center justify-between text-[hsl(var(--wa-meta))]">
+            <span>Subtotal</span>
+            <span data-testid="text-subtotal">{formatRupiah(subtotal)}</span>
+          </div>
+          {ppnEnabled ? (
+            <div className="flex items-center justify-between text-[hsl(var(--wa-meta))]">
+              <span>
+                PPN {PPN_RATE}%{ppnIncluded ? " (termasuk)" : ""}
+              </span>
+              <span data-testid="text-ppn">{formatRupiah(ppnAmount)}</span>
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between font-semibold text-foreground text-sm">
+            <span>Total</span>
+            <span data-testid="text-total">{formatRupiah(total)}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {editingId != null ? (
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="button-cancel-edit"
+              onClick={resetForm}
+              className="h-9 gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+            >
+              Batal
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            data-testid="button-save-order"
+            onClick={handleSave}
+            disabled={saving}
+            className="h-9 flex-1 gap-1.5 text-xs"
+          >
+            {saving ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Receipt className="w-3.5 h-3.5" />
+            )}
+            {editingId != null ? "Perbarui order" : "Simpan order"}
+          </Button>
+        </div>
+
+        <Separator className="bg-[hsl(var(--wa-divider))]" />
+
+        {/* Saved orders */}
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium text-[hsl(var(--wa-meta))]">
+            Order tersimpan
+          </p>
+          {ordersLoading ? (
+            <div className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
+            </div>
+          ) : orders.length === 0 ? (
+            <p className="text-xs text-[hsl(var(--wa-meta))] text-center py-3">
+              Belum ada order tersimpan.
+            </p>
+          ) : (
+            orders.map((o) => (
+              <SavedOrderCard
+                key={o.id}
+                order={o}
+                onEdit={startEdit}
+                chatId={chatId}
+              />
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

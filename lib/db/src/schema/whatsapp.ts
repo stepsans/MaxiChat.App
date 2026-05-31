@@ -408,3 +408,90 @@ export const insertProductSchema = createInsertSchema(productsTable).omit({
 
 export type Product = typeof productsTable.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
+
+// Point-of-sale sales orders created from the chat Info sidebar's Order tab.
+// An order belongs to the app user (super_admin tenant) and optionally to the
+// chat it was raised from. Line items snapshot name/code/price at the time of
+// sale so later catalog edits don't rewrite historical orders. All money is
+// stored as integer Rupiah (no decimals), matching products.price.
+//
+// PPN (Indonesian VAT, 11%) is per-order:
+//   - ppnEnabled=false → ppnAmount=0, total=subtotal
+//   - ppnEnabled=true, ppnIncluded=true  (prices already include PPN) →
+//       subtotal = sum(line totals); ppnAmount = subtotal - round(subtotal/1.11);
+//       total = subtotal
+//   - ppnEnabled=true, ppnIncluded=false (prices exclude PPN) →
+//       subtotal = sum(line totals); ppnAmount = round(subtotal*11/100);
+//       total = subtotal + ppnAmount
+// The server is authoritative for these figures (see routes/sales-orders.ts).
+export const salesOrdersTable = pgTable(
+  "sales_orders",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    // The chat this order was raised from. Nullable + set null so deleting a
+    // chat keeps the historical order. Used by the "send to customer" action.
+    chatId: integer("chat_id").references(() => chatsTable.id, {
+      onDelete: "set null",
+    }),
+    // Snapshots of the customer at order time, so the order and its Sheet row
+    // stay correct even if the chat is later renamed or removed.
+    customerName: text("customer_name"),
+    customerPhone: text("customer_phone"),
+    ppnEnabled: boolean("ppn_enabled").notNull().default(false),
+    ppnIncluded: boolean("ppn_included").notNull().default(true),
+    ppnRate: integer("ppn_rate").notNull().default(11),
+    subtotal: integer("subtotal").notNull().default(0),
+    ppnAmount: integer("ppn_amount").notNull().default(0),
+    total: integer("total").notNull().default(0),
+    note: text("note"),
+    // "draft" → saved/editable; "sent" → summary delivered to the customer.
+    status: text("status").notNull().default("draft"),
+    syncedToSheetAt: timestamp("synced_to_sheet_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    salesOrdersUserIdx: index("sales_orders_user_idx").on(t.userId),
+    salesOrdersChatIdx: index("sales_orders_chat_idx").on(t.chatId),
+  })
+);
+
+export const salesOrderItemsTable = pgTable(
+  "sales_order_items",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => salesOrdersTable.id, { onDelete: "cascade" }),
+    // Catalog product this line came from, or null for a free-text custom
+    // item. Plain integer (no FK): a product may be deleted after the sale
+    // without orphaning historical orders.
+    productId: integer("product_id"),
+    code: text("code"),
+    name: text("name").notNull(),
+    qty: integer("qty").notNull().default(1),
+    // Unit price (snapshot, editable at order time) and the computed line
+    // total (qty * price), both integer Rupiah.
+    price: integer("price").notNull().default(0),
+    lineTotal: integer("line_total").notNull().default(0),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    salesOrderItemsOrderIdx: index("sales_order_items_order_idx").on(
+      t.orderId
+    ),
+  })
+);
+
+export type SalesOrder = typeof salesOrdersTable.$inferSelect;
+export type SalesOrderItem = typeof salesOrderItemsTable.$inferSelect;
