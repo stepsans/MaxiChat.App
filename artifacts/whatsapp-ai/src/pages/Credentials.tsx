@@ -17,6 +17,9 @@ import {
   type AiProviderConfig,
   type AiProviderMode,
 } from "@workspace/api-client-react";
+import KnowledgeSyncCard from "@/components/KnowledgeSyncCard";
+import ProductSyncCard from "@/components/ProductSyncCard";
+import SalesOrderSyncCard from "@/components/SalesOrderSyncCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -251,6 +254,21 @@ export default function CredentialsPage() {
             </table>
           </div>
         )}
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <SiGoogle className="w-4 h-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Integrasi Google Sheets</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Atur semua sinkronisasi data ke Google Sheets di satu tempat.
+          </p>
+          <div className="border border-border rounded-md overflow-hidden [&>div:last-child]:border-b-0">
+            <KnowledgeSyncCard />
+            <ProductSyncCard />
+            <SalesOrderSyncCard />
+          </div>
+        </div>
       </div>
 
       <AppPickerDialog

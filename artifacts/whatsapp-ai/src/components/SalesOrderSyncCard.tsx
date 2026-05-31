@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetSalesOrderSyncConfig,
@@ -162,7 +161,7 @@ export default function SalesOrderSyncCard() {
       >
         <SiGoogle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium">Sales Order → Google Sheets</div>
+          <div className="text-xs font-medium">Sales Order to Google Sheet</div>
           <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5">
             {statusIcon}
             <span>{summary}</span>
@@ -186,11 +185,8 @@ export default function SalesOrderSyncCard() {
             <div className="text-xs text-muted-foreground">Memuat…</div>
           ) : credentials.length === 0 ? (
             <div className="text-xs text-muted-foreground md:col-span-2">
-              Belum ada Google credential.{" "}
-              <Link href="/credentials" className="text-primary underline">
-                Tambahkan di halaman Credentials
-              </Link>
-              .
+              Belum ada Google credential. Tambahkan lewat tombol{" "}
+              <strong className="text-foreground">Add credential</strong> di atas.
             </div>
           ) : (
             <>

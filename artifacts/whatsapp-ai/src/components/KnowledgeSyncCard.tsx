@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetKnowledgeSyncConfig,
@@ -222,7 +221,7 @@ export default function KnowledgeSyncCard({
         <SiGoogle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="text-xs font-medium flex items-center gap-2">
-            Google Sheets Sync
+            Knowledge Base to Google Sheet
             {cfg?.autoSyncEnabled && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500">
                 AUTO
@@ -250,11 +249,8 @@ export default function KnowledgeSyncCard({
             <div className="text-xs text-muted-foreground">Memuat…</div>
           ) : credentials.length === 0 ? (
             <div className="text-xs text-muted-foreground md:col-span-2">
-              Belum ada Google credential.{" "}
-              <Link href="/credentials" className="text-primary underline">
-                Tambahkan di halaman Credentials
-              </Link>
-              .
+              Belum ada Google credential. Tambahkan lewat tombol{" "}
+              <strong className="text-foreground">Add credential</strong> di atas.
             </div>
           ) : (
             <>

@@ -56,7 +56,6 @@ import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import KnowledgeSyncCard from "@/components/KnowledgeSyncCard";
 import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 
 const TYPE_COLOR_PALETTE = [
@@ -366,8 +365,6 @@ export default function Knowledge() {
           )}
         </div>
       </div>
-
-      <KnowledgeSyncCard />
 
       <div className="flex-1 p-6">
         {isLoading ? (
