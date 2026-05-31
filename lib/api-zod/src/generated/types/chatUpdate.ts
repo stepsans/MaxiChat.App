@@ -21,4 +21,9 @@ export interface ChatUpdate {
      * @nullable
      */
   company?: string | null;
+  /**
+     * Customer code (kode customer), entered manually in the chat Info tab.
+     * @nullable
+     */
+  customerCode?: string | null;
 }

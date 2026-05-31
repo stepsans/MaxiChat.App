@@ -23,6 +23,11 @@ export interface ChatWithMessages {
      * @nullable
      */
   company?: string | null;
+  /**
+     * Customer code (kode customer), entered manually in the chat Info tab.
+     * @nullable
+     */
+  customerCode?: string | null;
   /** Customer labels currently attached to this chat. */
   labels: CustomerLabel[];
   status: ChatWithMessagesStatus;

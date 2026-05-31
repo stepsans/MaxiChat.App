@@ -83,6 +83,7 @@ type ChatLike = {
   contactName: string;
   phoneNumber: string;
   company?: string | null;
+  customerCode?: string | null;
   labels: ChatLabel[];
   tag: string;
   status: string;
@@ -99,6 +100,7 @@ interface Props {
   onUpdate: (data: {
     nickname?: string | null;
     company?: string | null;
+    customerCode?: string | null;
     tag?: string;
     status?: string;
   }) => void;
@@ -1320,12 +1322,16 @@ export function ChatInfoSidebar({
   // doesn't fire a PATCH. Re-sync whenever the chat row changes underneath.
   const [name, setName] = useState(chat.nickname ?? "");
   const [company, setCompany] = useState(chat.company ?? "");
+  const [customerCode, setCustomerCode] = useState(chat.customerCode ?? "");
   useEffect(() => {
     setName(chat.nickname ?? "");
   }, [chat.id, chat.nickname]);
   useEffect(() => {
     setCompany(chat.company ?? "");
   }, [chat.id, chat.company]);
+  useEffect(() => {
+    setCustomerCode(chat.customerCode ?? "");
+  }, [chat.id, chat.customerCode]);
 
   const { data: allLabels } = useListCustomerLabels({
     query: { queryKey: ["/api/customer-labels"] },
@@ -1361,6 +1367,14 @@ export function ChatInfoSidebar({
     const normalized = trimmed.length === 0 ? null : trimmed;
     if (normalized !== (chat.company ?? null)) {
       onUpdate({ company: normalized });
+    }
+  }
+
+  function commitCustomerCode() {
+    const trimmed = customerCode.trim();
+    const normalized = trimmed.length === 0 ? null : trimmed;
+    if (normalized !== (chat.customerCode ?? null)) {
+      onUpdate({ customerCode: normalized });
     }
   }
 
@@ -1429,6 +1443,23 @@ export function ChatInfoSidebar({
       <div className="flex-1 overflow-y-auto flex flex-col">
         {tab === "info" ? (
           <div className="p-4 space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+                Kode Customer
+              </Label>
+              <Input
+                data-testid="input-chat-customer-code"
+                value={customerCode}
+                onChange={(e) => setCustomerCode(e.target.value)}
+                onBlur={commitCustomerCode}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+                placeholder="Kode customer…"
+                className="h-9 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+              />
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
                 Nama

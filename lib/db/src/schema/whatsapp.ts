@@ -31,6 +31,9 @@ export const chatsTable = pgTable(
     // Free-text company/organisation the contact belongs to. Shown and
     // editable in the chat Info sidebar (Tab 1). Null = not set.
     company: text("company"),
+    // Customer code (kode customer), typed manually in the chat Info tab and
+    // exported onto the sales-order Google Sheet rows. Null = not set.
+    customerCode: text("customer_code"),
     status: text("status").notNull().default("ai_handled"),
     tag: text("tag").notNull().default("none"),
     isHumanTakeover: boolean("is_human_takeover").notNull().default(false),

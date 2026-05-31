@@ -2807,6 +2807,9 @@ components:
         company:
           type: ["string", "null"]
           description: Free-text company/organisation the contact belongs to.
+        customerCode:
+          type: ["string", "null"]
+          description: Customer code (kode customer), entered manually in the chat Info tab.
         labels:
           type: array
           items:
@@ -2886,6 +2889,9 @@ components:
         company:
           type: ["string", "null"]
           description: Free-text company/organisation the contact belongs to.
+        customerCode:
+          type: ["string", "null"]
+          description: Customer code (kode customer), entered manually in the chat Info tab.
         labels:
           type: array
           items:
@@ -2961,6 +2967,9 @@ components:
         company:
           type: ["string", "null"]
           description: Free-text company/organisation the contact belongs to.
+        customerCode:
+          type: ["string", "null"]
+          description: Customer code (kode customer), entered manually in the chat Info tab.
 
     CustomerLabel:
       type: object

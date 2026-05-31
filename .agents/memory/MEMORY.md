@@ -9,6 +9,7 @@
 - [Per-channel channel access scope](per-channel-chat-access.md) — `user_channel_access` scopes the WHOLE switcher for supervisor/agent (super_admin sees all); funnel every channel resolver through `getAllowedChannelIds`.
 - [Frontend permission gating](frontend-permission-gating.md) — hiding a nav item ≠ gating the page; routes are unguarded so each page must self-guard on canView + disable controls on canEdit; default teamRole to "agent" not "super_admin".
 - [drizzle sql tag spreads JS arrays](drizzle-sql-array-tuple.md) — `sql\`COALESCE(col, ${jsArr})\`` produces `($1,$2,…)` not `ARRAY[…]::T[]`; fatal for array columns, use `sql.join` + explicit cast.
+- [Sales-order Sheet export](sales-order-sheet-export.md) — one row per item, order fields repeated; kode barang live-lookup+snapshot fallback; any column-layout change must keep the row-1 header compare/rewrite in lockstep.
 - [Sales-order discount math](sales-order-discount-math.md) — per-item on gross then global on subtotal then PPN; server+client mirror in lockstep; clamp isn't enough, zod must reject percent>100.
 - [Product catalog field conventions](product-catalog-fields.md) — category buckets come from CODE first letter (not category col); stock + tier prices are internal-only, never in customer payloads.
 - [Product send/quotation scope](product-send-scope.md) — product + quotation send endpoints are USER-scoped (ignore channelIds); never channel-filter products client-side, unlike the channel-scoped shortcut send.

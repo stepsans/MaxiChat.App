@@ -7,6 +7,7 @@ import {
   salesOrdersTable,
   salesOrderItemsTable,
   salesOrderSyncConfigTable,
+  productsTable,
   chatsTable,
   channelsTable,
   chatMessagesTable,
@@ -830,15 +831,61 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
     const sorted = items
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
-    const itemsSummary = sorted
-      .map((it) => `${it.qty}x ${it.name} @${it.price}`)
-      .join("; ");
+
+    // Kode barang (product code) is looked up live from the catalog so the
+    // Sheet reflects the current SKU; fall back to the per-line snapshot if the
+    // product was since deleted. Manual lines (no productId) stay blank.
+    const productIds = sorted
+      .map((it) => it.productId)
+      .filter((x): x is number => x != null);
+    const codeByProductId = new Map<number, string>();
+    if (productIds.length > 0) {
+      const prods = await db
+        .select({ id: productsTable.id, code: productsTable.code })
+        .from(productsTable)
+        .where(
+          and(
+            eq(productsTable.userId, ownerUserId),
+            inArray(productsTable.id, productIds)
+          )
+        );
+      for (const p of prods) codeByProductId.set(p.id, p.code);
+    }
+    const kodeBarang = (it: SalesOrderItem): string =>
+      it.productId != null
+        ? codeByProductId.get(it.productId) ?? it.code ?? ""
+        : "";
+
+    // Kode customer is a chat-level attribute (typed manually in the Info tab),
+    // read live from the linked chat. Joined through channels so the lookup is
+    // owner-scoped (defense-in-depth). Blank if the chat was since deleted.
+    let customerCode = "";
+    if (order.chatId != null) {
+      const [chatRow] = await db
+        .select({ customerCode: chatsTable.customerCode })
+        .from(chatsTable)
+        .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
+        .where(
+          and(
+            eq(chatsTable.id, order.chatId),
+            eq(channelsTable.userId, ownerUserId)
+          )
+        )
+        .limit(1);
+      customerCode = chatRow?.customerCode ?? "";
+    }
+
     const HEADER = [
       "Tanggal",
       "No Order",
       "Customer",
+      "Kode Barang",
+      "Nama Barang",
+      "Qty",
+      "Harga",
+      "Subtotal Item",
+      "Kode Customer",
       "No HP",
-      "Items",
       "Subtotal",
       "Diskon",
       "PPN",
@@ -846,19 +893,31 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       "Status",
       "Catatan",
     ];
-    const row = [
-      new Date().toISOString(),
+    const dateIso = new Date().toISOString();
+    const orderPpn = order.ppnEnabled ? order.ppnAmount : 0;
+    // One row per line item; order-level fields repeat on each row per the
+    // agreed Sheet layout. A blank-item fallback keeps order totals on the
+    // sheet if an order somehow has no items.
+    const buildRow = (it: SalesOrderItem | null): (string | number)[] => [
+      dateIso,
       String(order.id),
       order.customerName ?? "",
+      it ? kodeBarang(it) : "",
+      it ? it.name : "",
+      it ? it.qty : "",
+      it ? it.price : "",
+      it ? it.lineTotal : "",
+      customerCode,
       order.customerPhone ?? "",
-      itemsSummary,
       order.subtotal,
       order.discountAmount,
-      order.ppnEnabled ? order.ppnAmount : 0,
+      orderPpn,
       order.total,
       order.status,
       order.note ?? "",
     ];
+    const rows =
+      sorted.length > 0 ? sorted.map((it) => buildRow(it)) : [buildRow(null)];
 
     try {
       const auth = await getAuthorizedOAuthClient(cred);
@@ -866,10 +925,26 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       // Seed a header row if the tab is currently empty.
       const existing = await sheets.spreadsheets.values.get({
         spreadsheetId: cfg.spreadsheetId,
-        range: `${cfg.sheetName}!A1:A1`,
+        range: `${cfg.sheetName}!A1:P1`,
       });
-      const isEmpty = (existing.data.values ?? []).length === 0;
-      const values = isEmpty ? [HEADER, row] : [row];
+      const firstRow = existing.data.values?.[0] ?? [];
+      const isEmpty = firstRow.length === 0;
+      const headerMatches =
+        firstRow.length === HEADER.length &&
+        HEADER.every((h, i) => firstRow[i] === h);
+      // Legacy tabs carry the old 11-column header; rewrite row 1 in place to
+      // the new 16-column per-item layout before appending so header and data
+      // never drift apart. (Old data rows below stay as-is; only the header is
+      // migrated.)
+      if (!isEmpty && !headerMatches) {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: cfg.spreadsheetId,
+          range: `${cfg.sheetName}!A1:P1`,
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: [HEADER] },
+        });
+      }
+      const values = isEmpty ? [HEADER, ...rows] : rows;
       await sheets.spreadsheets.values.append({
         spreadsheetId: cfg.spreadsheetId,
         range: cfg.sheetName,

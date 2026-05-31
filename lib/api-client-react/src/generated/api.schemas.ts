@@ -280,6 +280,11 @@ export interface Chat {
      * @nullable
      */
   company?: string | null;
+  /**
+     * Customer code (kode customer), entered manually in the chat Info tab.
+     * @nullable
+     */
+  customerCode?: string | null;
   /** Customer labels currently attached to this chat. */
   labels: CustomerLabel[];
   status: ChatStatus;
@@ -362,6 +367,11 @@ export interface ChatWithMessages {
      * @nullable
      */
   company?: string | null;
+  /**
+     * Customer code (kode customer), entered manually in the chat Info tab.
+     * @nullable
+     */
+  customerCode?: string | null;
   /** Customer labels currently attached to this chat. */
   labels: CustomerLabel[];
   status: ChatWithMessagesStatus;
@@ -431,6 +441,11 @@ export interface ChatUpdate {
      * @nullable
      */
   company?: string | null;
+  /**
+     * Customer code (kode customer), entered manually in the chat Info tab.
+     * @nullable
+     */
+  customerCode?: string | null;
 }
 
 export interface CreateCustomerLabelInput {

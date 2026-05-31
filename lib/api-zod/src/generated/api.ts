@@ -229,6 +229,7 @@ export const ListChatsResponseItem = zod.object({
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
   "labels": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -296,6 +297,7 @@ export const GetChatResponse = zod.object({
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
   "labels": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -339,7 +341,8 @@ export const UpdateChatBody = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']).optional(),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']).optional(),
   "nickname": zod.string().nullish().describe('Editable display name for the contact (overrides contactName in the header).'),
-  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.')
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.')
 })
 
 export const UpdateChatResponse = zod.object({
@@ -349,6 +352,7 @@ export const UpdateChatResponse = zod.object({
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
   "labels": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -500,6 +504,7 @@ export const AssignChatResponse = zod.object({
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
   "labels": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -539,6 +544,7 @@ export const TakeoverChatResponse = zod.object({
   "contactName": zod.string(),
   "nickname": zod.string().nullable(),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
   "labels": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
