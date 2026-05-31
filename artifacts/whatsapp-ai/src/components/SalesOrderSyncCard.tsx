@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2,
@@ -227,57 +228,38 @@ export default function SalesOrderSyncCard() {
                 <Label className="text-[11px] uppercase text-muted-foreground">
                   Spreadsheet
                 </Label>
-                <Select
+                <SearchableSelect
                   value={spreadsheetId}
-                  onValueChange={(v) => {
+                  onChange={(v) => {
                     setSpreadsheetId(v);
                     setSheetName("");
                   }}
+                  options={(sheets ?? []).map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                  }))}
                   disabled={!credReady}
-                >
-                  <SelectTrigger
-                    data-testid="select-salesorder-spreadsheet"
-                    className="h-8 text-xs"
-                  >
-                    <SelectValue
-                      placeholder={sheetsLoading ? "Memuat…" : "Pilih spreadsheet…"}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(sheets ?? []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder={sheetsLoading ? "Memuat…" : "Pilih spreadsheet…"}
+                  searchPlaceholder="Cari spreadsheet…"
+                  emptyText="Spreadsheet tidak ditemukan."
+                  testId="select-salesorder-spreadsheet"
+                />
               </div>
 
               <div className="space-y-1.5">
                 <Label className="text-[11px] uppercase text-muted-foreground">
                   Tab
                 </Label>
-                <Select
+                <SearchableSelect
                   value={sheetName}
-                  onValueChange={setSheetName}
+                  onChange={setSheetName}
+                  options={(tabs ?? []).map((t) => ({ value: t, label: t }))}
                   disabled={!spreadsheetId}
-                >
-                  <SelectTrigger
-                    data-testid="select-salesorder-tab"
-                    className="h-8 text-xs"
-                  >
-                    <SelectValue
-                      placeholder={tabsLoading ? "Memuat…" : "Pilih tab…"}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(tabs ?? []).map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder={tabsLoading ? "Memuat…" : "Pilih tab…"}
+                  searchPlaceholder="Cari tab…"
+                  emptyText="Tab tidak ditemukan."
+                  testId="select-salesorder-tab"
+                />
               </div>
 
               <div className="md:col-span-2 flex items-center justify-end gap-2 border-t border-border pt-3">
