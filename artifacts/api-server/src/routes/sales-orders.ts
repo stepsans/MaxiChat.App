@@ -878,19 +878,60 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
         requestBody: { values },
       });
     } catch (err: unknown) {
-      const e = err as { message?: string };
+      const e = err as {
+        message?: string;
+        code?: number;
+        status?: number;
+        response?: { status?: number; data?: { error?: { message?: string } } };
+      };
       req.log.error({ err, orderId: id }, "sales-order sheet append failed");
+      const httpStatus = e.code ?? e.status ?? e.response?.status;
+      const apiMessage = e.response?.data?.error?.message ?? e.message ?? "";
+      // Only a genuine token/scope failure is fixed by reconnecting. The most
+      // common one: the connected token was granted only the old read-only
+      // scope, so reads work but the write (append) is rejected with
+      // "insufficient authentication scopes". Detect these explicitly (not just
+      // any 401/403) so a spreadsheet-sharing 403 doesn't wrongly flag a
+      // healthy credential — upgrading the DB scope list never expands an
+      // already-granted token; the user must Reconnect to re-consent.
+      const isAuthScopeError =
+        httpStatus === 401 ||
+        /insufficient.*scope|insufficient authentication|access_token_scope_insufficient|invalid_grant|invalid_token|invalid authentication credentials|unauthorized/i.test(
+          apiMessage
+        );
+      // A 403/permission failure without an auth signal means the spreadsheet
+      // simply isn't shared with the connected Google account.
+      const isAclError =
+        !isAuthScopeError &&
+        (httpStatus === 403 ||
+          /permission|forbidden|does not have access/i.test(apiMessage));
+      let userError: string;
+      if (isAuthScopeError) {
+        userError =
+          "Izin tulis ke Google Sheet belum diberikan. Buka halaman Credentials, klik Reconnect pada credential Google untuk memberi akses tulis (write), lalu coba simpan lagi.";
+      } else if (isAclError) {
+        userError =
+          "Akun Google tidak punya akses ke spreadsheet ini. Bagikan (share) spreadsheet ke akun Google yang terhubung dengan izin Editor, lalu coba lagi.";
+      } else {
+        userError = "Gagal menulis ke Google Sheet. Cek koneksi/izin.";
+      }
       await db
         .update(salesOrderSyncConfigTable)
         .set({
           lastSyncStatus: "error",
-          lastSyncError: e.message ?? "Gagal menulis ke Sheet",
+          lastSyncError: apiMessage || "Gagal menulis ke Sheet",
           updatedAt: new Date(),
         })
         .where(eq(salesOrderSyncConfigTable.id, cfg.id));
-      res
-        .status(502)
-        .json({ error: "Gagal menulis ke Google Sheet. Cek koneksi/izin." });
+      // Flag the credential for reconnect ONLY on a real token/scope failure,
+      // so we never degrade a healthy credential over a sharing (ACL) error.
+      if (isAuthScopeError) {
+        await db
+          .update(credentialsTable)
+          .set({ status: "error", updatedAt: new Date() })
+          .where(eq(credentialsTable.id, cred.id));
+      }
+      res.status(502).json({ error: userError });
       return;
     }
 
