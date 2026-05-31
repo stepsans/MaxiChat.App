@@ -3898,7 +3898,9 @@ components:
 
     SalesOrderItem:
       type: object
-      required: [id, productId, code, name, qty, price, lineTotal]
+      required:
+        [id, productId, code, name, qty, price, discountType, discountValue,
+         lineTotal]
       properties:
         id: { type: integer }
         productId:
@@ -3910,15 +3912,23 @@ components:
         price:
           type: integer
           description: "Unit price in integer Rupiah"
+        discountType:
+          type: string
+          enum: [percent, amount]
+          description: "How discountValue is interpreted"
+        discountValue:
+          type: integer
+          description: "Per-line discount: 0-100 when percent, else Rupiah"
         lineTotal:
           type: integer
-          description: "qty * price, in integer Rupiah"
+          description: "Net line total after per-line discount, in integer Rupiah"
 
     SalesOrder:
       type: object
       required:
         [id, chatId, customerName, customerPhone, ppnEnabled, ppnIncluded,
-         ppnRate, subtotal, ppnAmount, total, note, status, syncedToSheetAt,
+         ppnRate, subtotal, discountType, discountValue, discountAmount,
+         ppnAmount, total, note, status, syncedToSheetAt,
          createdAt, updatedAt, items]
       properties:
         id: { type: integer }
@@ -3932,7 +3942,19 @@ components:
         ppnRate:
           type: integer
           description: "PPN percentage, e.g. 11"
-        subtotal: { type: integer }
+        subtotal:
+          type: integer
+          description: "Sum of net line totals (after per-line discounts)"
+        discountType:
+          type: string
+          enum: [percent, amount]
+          description: "How discountValue is interpreted for the global discount"
+        discountValue:
+          type: integer
+          description: "Global discount: 0-100 when percent, else Rupiah"
+        discountAmount:
+          type: integer
+          description: "Computed global discount in Rupiah, subtracted before PPN"
         ppnAmount: { type: integer }
         total: { type: integer }
         note: { type: ["string", "null"] }
@@ -3956,6 +3978,11 @@ components:
         name: { type: string, minLength: 1 }
         qty: { type: integer, minimum: 1 }
         price: { type: integer, minimum: 0 }
+        discountType:
+          type: string
+          enum: [percent, amount]
+          default: amount
+        discountValue: { type: integer, minimum: 0, default: 0 }
 
     SalesOrderInput:
       type: object
@@ -3967,6 +3994,11 @@ components:
         ppnEnabled: { type: boolean, default: false }
         ppnIncluded: { type: boolean, default: true }
         ppnRate: { type: integer, minimum: 0, maximum: 100, default: 11 }
+        discountType:
+          type: string
+          enum: [percent, amount]
+          default: amount
+        discountValue: { type: integer, minimum: 0, default: 0 }
         note: { type: ["string", "null"] }
         items:
           type: array

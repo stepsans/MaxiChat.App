@@ -1726,7 +1726,10 @@ export const ListSalesOrdersResponseItem = zod.object({
   "ppnEnabled": zod.boolean(),
   "ppnIncluded": zod.boolean().describe('true = prices already include PPN; false = PPN added on top'),
   "ppnRate": zod.number().describe('PPN percentage, e.g. 11'),
-  "subtotal": zod.number(),
+  "subtotal": zod.number().describe('Sum of net line totals (after per-line discounts)'),
+  "discountType": zod.enum(['percent', 'amount']).describe('How discountValue is interpreted for the global discount'),
+  "discountValue": zod.number().describe('Global discount: 0-100 when percent, else Rupiah'),
+  "discountAmount": zod.number().describe('Computed global discount in Rupiah, subtracted before PPN'),
   "ppnAmount": zod.number(),
   "total": zod.number(),
   "note": zod.string().nullable(),
@@ -1741,7 +1744,9 @@ export const ListSalesOrdersResponseItem = zod.object({
   "name": zod.string(),
   "qty": zod.number(),
   "price": zod.number().describe('Unit price in integer Rupiah'),
-  "lineTotal": zod.number().describe('qty \* price, in integer Rupiah')
+  "discountType": zod.enum(['percent', 'amount']).describe('How discountValue is interpreted'),
+  "discountValue": zod.number().describe('Per-line discount: 0-100 when percent, else Rupiah'),
+  "lineTotal": zod.number().describe('Net line total after per-line discount, in integer Rupiah')
 }))
 })
 export const ListSalesOrdersResponse = zod.array(ListSalesOrdersResponseItem)
@@ -1756,9 +1761,17 @@ export const createSalesOrderBodyPpnRateDefault = 11;
 export const createSalesOrderBodyPpnRateMin = 0;
 export const createSalesOrderBodyPpnRateMax = 100;
 
+export const createSalesOrderBodyDiscountTypeDefault = `amount`;
+export const createSalesOrderBodyDiscountValueDefault = 0;
+export const createSalesOrderBodyDiscountValueMin = 0;
+
 
 
 export const createSalesOrderBodyItemsItemPriceMin = 0;
+
+export const createSalesOrderBodyItemsItemDiscountTypeDefault = `amount`;
+export const createSalesOrderBodyItemsItemDiscountValueDefault = 0;
+export const createSalesOrderBodyItemsItemDiscountValueMin = 0;
 
 
 
@@ -1770,13 +1783,17 @@ export const CreateSalesOrderBody = zod.object({
   "ppnEnabled": zod.boolean().default(createSalesOrderBodyPpnEnabledDefault),
   "ppnIncluded": zod.boolean().default(createSalesOrderBodyPpnIncludedDefault),
   "ppnRate": zod.number().min(createSalesOrderBodyPpnRateMin).max(createSalesOrderBodyPpnRateMax).default(createSalesOrderBodyPpnRateDefault),
+  "discountType": zod.enum(['percent', 'amount']).default(createSalesOrderBodyDiscountTypeDefault),
+  "discountValue": zod.number().min(createSalesOrderBodyDiscountValueMin).default(createSalesOrderBodyDiscountValueDefault),
   "note": zod.string().nullish(),
   "items": zod.array(zod.object({
   "productId": zod.number().nullish(),
   "code": zod.string().nullish(),
   "name": zod.string().min(1),
   "qty": zod.number().min(1),
-  "price": zod.number().min(createSalesOrderBodyItemsItemPriceMin)
+  "price": zod.number().min(createSalesOrderBodyItemsItemPriceMin),
+  "discountType": zod.enum(['percent', 'amount']).default(createSalesOrderBodyItemsItemDiscountTypeDefault),
+  "discountValue": zod.number().min(createSalesOrderBodyItemsItemDiscountValueMin).default(createSalesOrderBodyItemsItemDiscountValueDefault)
 })).min(1)
 })
 
@@ -1796,7 +1813,10 @@ export const GetSalesOrderResponse = zod.object({
   "ppnEnabled": zod.boolean(),
   "ppnIncluded": zod.boolean().describe('true = prices already include PPN; false = PPN added on top'),
   "ppnRate": zod.number().describe('PPN percentage, e.g. 11'),
-  "subtotal": zod.number(),
+  "subtotal": zod.number().describe('Sum of net line totals (after per-line discounts)'),
+  "discountType": zod.enum(['percent', 'amount']).describe('How discountValue is interpreted for the global discount'),
+  "discountValue": zod.number().describe('Global discount: 0-100 when percent, else Rupiah'),
+  "discountAmount": zod.number().describe('Computed global discount in Rupiah, subtracted before PPN'),
   "ppnAmount": zod.number(),
   "total": zod.number(),
   "note": zod.string().nullable(),
@@ -1811,7 +1831,9 @@ export const GetSalesOrderResponse = zod.object({
   "name": zod.string(),
   "qty": zod.number(),
   "price": zod.number().describe('Unit price in integer Rupiah'),
-  "lineTotal": zod.number().describe('qty \* price, in integer Rupiah')
+  "discountType": zod.enum(['percent', 'amount']).describe('How discountValue is interpreted'),
+  "discountValue": zod.number().describe('Per-line discount: 0-100 when percent, else Rupiah'),
+  "lineTotal": zod.number().describe('Net line total after per-line discount, in integer Rupiah')
 }))
 })
 
@@ -1829,9 +1851,17 @@ export const updateSalesOrderBodyPpnRateDefault = 11;
 export const updateSalesOrderBodyPpnRateMin = 0;
 export const updateSalesOrderBodyPpnRateMax = 100;
 
+export const updateSalesOrderBodyDiscountTypeDefault = `amount`;
+export const updateSalesOrderBodyDiscountValueDefault = 0;
+export const updateSalesOrderBodyDiscountValueMin = 0;
+
 
 
 export const updateSalesOrderBodyItemsItemPriceMin = 0;
+
+export const updateSalesOrderBodyItemsItemDiscountTypeDefault = `amount`;
+export const updateSalesOrderBodyItemsItemDiscountValueDefault = 0;
+export const updateSalesOrderBodyItemsItemDiscountValueMin = 0;
 
 
 
@@ -1843,13 +1873,17 @@ export const UpdateSalesOrderBody = zod.object({
   "ppnEnabled": zod.boolean().default(updateSalesOrderBodyPpnEnabledDefault),
   "ppnIncluded": zod.boolean().default(updateSalesOrderBodyPpnIncludedDefault),
   "ppnRate": zod.number().min(updateSalesOrderBodyPpnRateMin).max(updateSalesOrderBodyPpnRateMax).default(updateSalesOrderBodyPpnRateDefault),
+  "discountType": zod.enum(['percent', 'amount']).default(updateSalesOrderBodyDiscountTypeDefault),
+  "discountValue": zod.number().min(updateSalesOrderBodyDiscountValueMin).default(updateSalesOrderBodyDiscountValueDefault),
   "note": zod.string().nullish(),
   "items": zod.array(zod.object({
   "productId": zod.number().nullish(),
   "code": zod.string().nullish(),
   "name": zod.string().min(1),
   "qty": zod.number().min(1),
-  "price": zod.number().min(updateSalesOrderBodyItemsItemPriceMin)
+  "price": zod.number().min(updateSalesOrderBodyItemsItemPriceMin),
+  "discountType": zod.enum(['percent', 'amount']).default(updateSalesOrderBodyItemsItemDiscountTypeDefault),
+  "discountValue": zod.number().min(updateSalesOrderBodyItemsItemDiscountValueMin).default(updateSalesOrderBodyItemsItemDiscountValueDefault)
 })).min(1)
 })
 
@@ -1861,7 +1895,10 @@ export const UpdateSalesOrderResponse = zod.object({
   "ppnEnabled": zod.boolean(),
   "ppnIncluded": zod.boolean().describe('true = prices already include PPN; false = PPN added on top'),
   "ppnRate": zod.number().describe('PPN percentage, e.g. 11'),
-  "subtotal": zod.number(),
+  "subtotal": zod.number().describe('Sum of net line totals (after per-line discounts)'),
+  "discountType": zod.enum(['percent', 'amount']).describe('How discountValue is interpreted for the global discount'),
+  "discountValue": zod.number().describe('Global discount: 0-100 when percent, else Rupiah'),
+  "discountAmount": zod.number().describe('Computed global discount in Rupiah, subtracted before PPN'),
   "ppnAmount": zod.number(),
   "total": zod.number(),
   "note": zod.string().nullable(),
@@ -1876,7 +1913,9 @@ export const UpdateSalesOrderResponse = zod.object({
   "name": zod.string(),
   "qty": zod.number(),
   "price": zod.number().describe('Unit price in integer Rupiah'),
-  "lineTotal": zod.number().describe('qty \* price, in integer Rupiah')
+  "discountType": zod.enum(['percent', 'amount']).describe('How discountValue is interpreted'),
+  "discountValue": zod.number().describe('Per-line discount: 0-100 when percent, else Rupiah'),
+  "lineTotal": zod.number().describe('Net line total after per-line discount, in integer Rupiah')
 }))
 })
 

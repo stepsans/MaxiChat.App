@@ -1202,9 +1202,23 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
     const storedName = `${randomUUID()}.pdf`;
     const filepath = path.join(MEDIA_DIR, storedName);
     await fs.writeFile(filepath, Buffer.from(pdf));
-    const displayName = `Penawaran-Harga-${new Date()
-      .toISOString()
-      .slice(0, 10)}.pdf`;
+    // File name format: YYMMDD-HHMM-Nama.pdf (Nama = customer name, sanitized).
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp =
+      `${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+      `-${pad(now.getHours())}${pad(now.getMinutes())}`;
+    const rawName =
+      chat.nickname?.trim() ||
+      chat.contactName?.trim() ||
+      (chat.phoneNumber.startsWith("tg:") ? "" : chat.phoneNumber) ||
+      "Customer";
+    const safeName =
+      rawName
+        .replace(/[^\p{L}\p{N}]+/gu, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "Customer";
+    const displayName = `${stamp}-${safeName}.pdf`;
     const mimeType = "application/pdf";
 
     const agentTag = await resolveAgentTag(req.session.userId!);

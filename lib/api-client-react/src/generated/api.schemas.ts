@@ -1450,6 +1450,17 @@ export interface ProductSyncConfigInput {
   intervalMinutes?: ProductSyncConfigInputIntervalMinutes;
 }
 
+/**
+ * How discountValue is interpreted
+ */
+export type SalesOrderItemDiscountType = typeof SalesOrderItemDiscountType[keyof typeof SalesOrderItemDiscountType];
+
+
+export const SalesOrderItemDiscountType = {
+  percent: 'percent',
+  amount: 'amount',
+} as const;
+
 export interface SalesOrderItem {
   id: number;
   /**
@@ -1463,9 +1474,24 @@ export interface SalesOrderItem {
   qty: number;
   /** Unit price in integer Rupiah */
   price: number;
-  /** qty * price, in integer Rupiah */
+  /** How discountValue is interpreted */
+  discountType: SalesOrderItemDiscountType;
+  /** Per-line discount: 0-100 when percent, else Rupiah */
+  discountValue: number;
+  /** Net line total after per-line discount, in integer Rupiah */
   lineTotal: number;
 }
+
+/**
+ * How discountValue is interpreted for the global discount
+ */
+export type SalesOrderDiscountType = typeof SalesOrderDiscountType[keyof typeof SalesOrderDiscountType];
+
+
+export const SalesOrderDiscountType = {
+  percent: 'percent',
+  amount: 'amount',
+} as const;
 
 export type SalesOrderStatus = typeof SalesOrderStatus[keyof typeof SalesOrderStatus];
 
@@ -1488,7 +1514,14 @@ export interface SalesOrder {
   ppnIncluded: boolean;
   /** PPN percentage, e.g. 11 */
   ppnRate: number;
+  /** Sum of net line totals (after per-line discounts) */
   subtotal: number;
+  /** How discountValue is interpreted for the global discount */
+  discountType: SalesOrderDiscountType;
+  /** Global discount: 0-100 when percent, else Rupiah */
+  discountValue: number;
+  /** Computed global discount in Rupiah, subtracted before PPN */
+  discountAmount: number;
   ppnAmount: number;
   total: number;
   /** @nullable */
@@ -1501,6 +1534,14 @@ export interface SalesOrder {
   items: SalesOrderItem[];
 }
 
+export type SalesOrderItemInputDiscountType = typeof SalesOrderItemInputDiscountType[keyof typeof SalesOrderItemInputDiscountType];
+
+
+export const SalesOrderItemInputDiscountType = {
+  percent: 'percent',
+  amount: 'amount',
+} as const;
+
 export interface SalesOrderItemInput {
   /** @nullable */
   productId?: number | null;
@@ -1512,7 +1553,18 @@ export interface SalesOrderItemInput {
   qty: number;
   /** @minimum 0 */
   price: number;
+  discountType?: SalesOrderItemInputDiscountType;
+  /** @minimum 0 */
+  discountValue?: number;
 }
+
+export type SalesOrderInputDiscountType = typeof SalesOrderInputDiscountType[keyof typeof SalesOrderInputDiscountType];
+
+
+export const SalesOrderInputDiscountType = {
+  percent: 'percent',
+  amount: 'amount',
+} as const;
 
 export interface SalesOrderInput {
   /** @nullable */
@@ -1528,6 +1580,9 @@ export interface SalesOrderInput {
      * @maximum 100
      */
   ppnRate?: number;
+  discountType?: SalesOrderInputDiscountType;
+  /** @minimum 0 */
+  discountValue?: number;
   /** @nullable */
   note?: string | null;
   /** @minItems 1 */

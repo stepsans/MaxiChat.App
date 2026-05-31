@@ -5,6 +5,7 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { SalesOrderDiscountType } from './salesOrderDiscountType';
 import type { SalesOrderItem } from './salesOrderItem';
 import type { SalesOrderStatus } from './salesOrderStatus';
 
@@ -21,7 +22,14 @@ export interface SalesOrder {
   ppnIncluded: boolean;
   /** PPN percentage, e.g. 11 */
   ppnRate: number;
+  /** Sum of net line totals (after per-line discounts) */
   subtotal: number;
+  /** How discountValue is interpreted for the global discount */
+  discountType: SalesOrderDiscountType;
+  /** Global discount: 0-100 when percent, else Rupiah */
+  discountValue: number;
+  /** Computed global discount in Rupiah, subtracted before PPN */
+  discountAmount: number;
   ppnAmount: number;
   total: number;
   /** @nullable */

@@ -444,6 +444,13 @@ export const salesOrdersTable = pgTable(
     ppnIncluded: boolean("ppn_included").notNull().default(true),
     ppnRate: integer("ppn_rate").notNull().default(11),
     subtotal: integer("subtotal").notNull().default(0),
+    // Order-level (global) discount applied to the subtotal before PPN.
+    // discountType: "percent" → discountValue is 0-100; "amount" → discountValue
+    // is integer Rupiah. discountAmount is the server-computed nominal Rupiah
+    // actually subtracted (clamped to subtotal), snapshotted for the Sheet row.
+    discountType: text("discount_type").notNull().default("amount"),
+    discountValue: integer("discount_value").notNull().default(0),
+    discountAmount: integer("discount_amount").notNull().default(0),
     ppnAmount: integer("ppn_amount").notNull().default(0),
     total: integer("total").notNull().default(0),
     note: text("note"),
@@ -480,6 +487,11 @@ export const salesOrderItemsTable = pgTable(
     // Unit price (snapshot, editable at order time) and the computed line
     // total (qty * price), both integer Rupiah.
     price: integer("price").notNull().default(0),
+    // Per-line discount applied to the line gross (qty * price). discountType:
+    // "percent" → discountValue is 0-100; "amount" → discountValue is integer
+    // Rupiah. lineTotal is the net (after discount) qty*price, integer Rupiah.
+    discountType: text("discount_type").notNull().default("amount"),
+    discountValue: integer("discount_value").notNull().default(0),
     lineTotal: integer("line_total").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })

@@ -5,6 +5,7 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { SalesOrderItemDiscountType } from './salesOrderItemDiscountType';
 
 export interface SalesOrderItem {
   id: number;
@@ -19,6 +20,10 @@ export interface SalesOrderItem {
   qty: number;
   /** Unit price in integer Rupiah */
   price: number;
-  /** qty * price, in integer Rupiah */
+  /** How discountValue is interpreted */
+  discountType: SalesOrderItemDiscountType;
+  /** Per-line discount: 0-100 when percent, else Rupiah */
+  discountValue: number;
+  /** Net line total after per-line discount, in integer Rupiah */
   lineTotal: number;
 }

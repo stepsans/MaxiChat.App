@@ -492,6 +492,8 @@ function ProductsTab({ chatId }: { chatId: number }) {
 // A single editable line item in the POS draft. `key` is a client-only id so
 // React can track rows before they're persisted; `productId` is null for
 // custom free-text lines.
+type DiscountType = "percent" | "amount";
+
 type DraftLine = {
   key: string;
   productId: number | null;
@@ -499,9 +501,29 @@ type DraftLine = {
   name: string;
   qty: number;
   price: number;
+  discountType: DiscountType;
+  discountValue: number;
 };
 
 const PPN_RATE = 11;
+
+// Resolve a discount (percent or nominal Rupiah) to a clamped Rupiah amount.
+// Mirrors the server's discountFor (see routes/sales-orders.ts).
+function discountAmountFor(
+  type: DiscountType,
+  value: number,
+  base: number
+): number {
+  if (!value || value <= 0 || base <= 0) return 0;
+  const amount = type === "percent" ? Math.round((base * value) / 100) : value;
+  return Math.min(Math.max(0, amount), base);
+}
+
+// Net line total after the per-line discount (qty * price - discount).
+function lineNetTotal(l: DraftLine): number {
+  const gross = l.qty * l.price;
+  return Math.max(0, gross - discountAmountFor(l.discountType, l.discountValue, gross));
+}
 
 let draftLineSeq = 0;
 function newLineKey(): string {
@@ -515,16 +537,29 @@ function newLineKey(): string {
 function computeTotals(
   lines: DraftLine[],
   ppnEnabled: boolean,
-  ppnIncluded: boolean
-): { subtotal: number; ppnAmount: number; total: number } {
-  const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
-  if (!ppnEnabled) return { subtotal, ppnAmount: 0, total: subtotal };
+  ppnIncluded: boolean,
+  globalDiscountType: DiscountType,
+  globalDiscountValue: number
+): {
+  subtotal: number;
+  discountAmount: number;
+  ppnAmount: number;
+  total: number;
+} {
+  const subtotal = lines.reduce((s, l) => s + lineNetTotal(l), 0);
+  const discountAmount = discountAmountFor(
+    globalDiscountType,
+    globalDiscountValue,
+    subtotal
+  );
+  const base = Math.max(0, subtotal - discountAmount);
+  if (!ppnEnabled) return { subtotal, discountAmount, ppnAmount: 0, total: base };
   if (ppnIncluded) {
-    const base = Math.round(subtotal / (1 + PPN_RATE / 100));
-    return { subtotal, ppnAmount: subtotal - base, total: subtotal };
+    const net = Math.round(base / (1 + PPN_RATE / 100));
+    return { subtotal, discountAmount, ppnAmount: base - net, total: base };
   }
-  const ppnAmount = Math.round((subtotal * PPN_RATE) / 100);
-  return { subtotal, ppnAmount, total: subtotal + ppnAmount };
+  const ppnAmount = Math.round((base * PPN_RATE) / 100);
+  return { subtotal, discountAmount, ppnAmount, total: base + ppnAmount };
 }
 
 // Popover that lets the agent pick a catalog product to add as a line. Reuses
@@ -716,14 +751,14 @@ function SavedOrderCard({
           </Button>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2">
         <Button
           type="button"
           variant="outline"
           data-testid={`button-send-order-${order.id}`}
           onClick={handleSend}
           disabled={send.isPending}
-          className="h-8 flex-1 gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+          className="h-8 w-full justify-center gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
         >
           {send.isPending ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -738,7 +773,7 @@ function SavedOrderCard({
           data-testid={`button-sync-order-${order.id}`}
           onClick={handleSync}
           disabled={sync.isPending}
-          className="h-8 flex-1 gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+          className="h-8 w-full justify-center gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
         >
           {sync.isPending ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -762,6 +797,8 @@ function OrderTab({ chatId }: { chatId: number }) {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [ppnEnabled, setPpnEnabled] = useState(false);
   const [ppnIncluded, setPpnIncluded] = useState(true);
+  const [discountType, setDiscountType] = useState<DiscountType>("amount");
+  const [discountValue, setDiscountValue] = useState(0);
   const [note, setNote] = useState("");
 
   // Drop any in-progress draft when the active chat changes so line items can't
@@ -771,6 +808,8 @@ function OrderTab({ chatId }: { chatId: number }) {
     setLines([]);
     setPpnEnabled(false);
     setPpnIncluded(true);
+    setDiscountType("amount");
+    setDiscountValue(0);
     setNote("");
   }, [chatId]);
 
@@ -784,10 +823,12 @@ function OrderTab({ chatId }: { chatId: number }) {
   const update = useUpdateSalesOrder();
   const saving = create.isPending || update.isPending;
 
-  const { subtotal, ppnAmount, total } = computeTotals(
+  const { subtotal, discountAmount, ppnAmount, total } = computeTotals(
     lines,
     ppnEnabled,
-    ppnIncluded
+    ppnIncluded,
+    discountType,
+    discountValue
   );
 
   function resetForm() {
@@ -795,6 +836,8 @@ function OrderTab({ chatId }: { chatId: number }) {
     setLines([]);
     setPpnEnabled(false);
     setPpnIncluded(true);
+    setDiscountType("amount");
+    setDiscountValue(0);
     setNote("");
   }
 
@@ -808,6 +851,8 @@ function OrderTab({ chatId }: { chatId: number }) {
         name: p.name,
         qty: 1,
         price: p.price,
+        discountType: "amount",
+        discountValue: 0,
       },
     ]);
   }
@@ -815,7 +860,16 @@ function OrderTab({ chatId }: { chatId: number }) {
   function addCustomLine() {
     setLines((cur) => [
       ...cur,
-      { key: newLineKey(), productId: null, code: null, name: "", qty: 1, price: 0 },
+      {
+        key: newLineKey(),
+        productId: null,
+        code: null,
+        name: "",
+        qty: 1,
+        price: 0,
+        discountType: "amount",
+        discountValue: 0,
+      },
     ]);
   }
 
@@ -839,10 +893,14 @@ function OrderTab({ chatId }: { chatId: number }) {
         name: it.name,
         qty: it.qty,
         price: it.price,
+        discountType: it.discountType,
+        discountValue: it.discountValue,
       }))
     );
     setPpnEnabled(order.ppnEnabled);
     setPpnIncluded(order.ppnIncluded);
+    setDiscountType(order.discountType);
+    setDiscountValue(order.discountValue);
     setNote(order.note ?? "");
   }
 
@@ -864,12 +922,16 @@ function OrderTab({ chatId }: { chatId: number }) {
       name: l.name,
       qty: l.qty,
       price: l.price,
+      discountType: l.discountType,
+      discountValue: l.discountValue,
     }));
     const data = {
       chatId,
       ppnEnabled,
       ppnIncluded,
       ppnRate: PPN_RATE,
+      discountType,
+      discountValue,
       note: note.trim() || null,
       items,
     };
@@ -941,8 +1003,8 @@ function OrderTab({ chatId }: { chatId: number }) {
                     <X className="w-3.5 h-3.5" />
                   </Button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-col gap-0.5 w-16">
+                <div className="flex items-end gap-2">
+                  <div className="flex flex-col gap-0.5 w-14 flex-shrink-0">
                     <Label className="text-[10px] text-[hsl(var(--wa-meta))]">
                       Qty
                     </Label>
@@ -959,7 +1021,7 @@ function OrderTab({ chatId }: { chatId: number }) {
                       className="h-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
                     />
                   </div>
-                  <div className="flex flex-col gap-0.5 flex-1">
+                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                     <Label className="text-[10px] text-[hsl(var(--wa-meta))]">
                       Harga satuan
                     </Label>
@@ -976,12 +1038,58 @@ function OrderTab({ chatId }: { chatId: number }) {
                       className="h-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
                     />
                   </div>
-                  <div className="flex flex-col gap-0.5 items-end w-24">
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                    <Label className="text-[10px] text-[hsl(var(--wa-meta))]">
+                      Diskon item
+                    </Label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        data-testid={`toggle-line-discount-type-${l.key}`}
+                        onClick={() =>
+                          updateLine(l.key, {
+                            discountType:
+                              l.discountType === "percent" ? "amount" : "percent",
+                            discountValue:
+                              l.discountType === "percent"
+                                ? l.discountValue
+                                : Math.min(100, l.discountValue),
+                          })
+                        }
+                        className="h-8 w-10 flex-shrink-0 rounded-md border border-[hsl(var(--wa-divider))] text-xs font-medium text-foreground hover:bg-white/5 transition-colors"
+                      >
+                        {l.discountType === "percent" ? "%" : "Rp"}
+                      </button>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={l.discountType === "percent" ? 100 : undefined}
+                        data-testid={`input-line-discount-${l.key}`}
+                        value={l.discountValue}
+                        onChange={(e) => {
+                          const raw = Math.max(
+                            0,
+                            Math.floor(Number(e.target.value) || 0)
+                          );
+                          updateLine(l.key, {
+                            discountValue:
+                              l.discountType === "percent"
+                                ? Math.min(100, raw)
+                                : raw,
+                          });
+                        }}
+                        className="h-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-0.5 items-end w-24 flex-shrink-0">
                     <Label className="text-[10px] text-[hsl(var(--wa-meta))]">
                       Subtotal
                     </Label>
                     <span className="text-xs font-medium text-foreground h-8 flex items-center">
-                      {formatRupiah(l.qty * l.price)}
+                      {formatRupiah(lineNetTotal(l))}
                     </span>
                   </div>
                 </div>
@@ -1056,6 +1164,45 @@ function OrderTab({ chatId }: { chatId: number }) {
           ) : null}
         </div>
 
+        {/* Global discount */}
+        <div className="rounded-lg border border-[hsl(var(--wa-divider))] p-2.5 flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-foreground">
+            Diskon keseluruhan
+          </Label>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              data-testid="toggle-global-discount-type"
+              onClick={() =>
+                setDiscountType((prev) => {
+                  const next = prev === "percent" ? "amount" : "percent";
+                  if (next === "percent")
+                    setDiscountValue((v) => Math.min(100, v));
+                  return next;
+                })
+              }
+              className="h-8 w-10 flex-shrink-0 rounded-md border border-[hsl(var(--wa-divider))] text-xs font-medium text-foreground hover:bg-white/5 transition-colors"
+            >
+              {discountType === "percent" ? "%" : "Rp"}
+            </button>
+            <Input
+              type="number"
+              min={0}
+              max={discountType === "percent" ? 100 : undefined}
+              data-testid="input-global-discount"
+              value={discountValue}
+              onChange={(e) => {
+                const raw = Math.max(0, Math.floor(Number(e.target.value) || 0));
+                setDiscountValue(
+                  discountType === "percent" ? Math.min(100, raw) : raw
+                );
+              }}
+              placeholder="0"
+              className="h-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            />
+          </div>
+        </div>
+
         <Textarea
           data-testid="input-order-note"
           value={note}
@@ -1070,6 +1217,16 @@ function OrderTab({ chatId }: { chatId: number }) {
             <span>Subtotal</span>
             <span data-testid="text-subtotal">{formatRupiah(subtotal)}</span>
           </div>
+          {discountAmount > 0 ? (
+            <div className="flex items-center justify-between text-[hsl(var(--wa-meta))]">
+              <span>
+                Diskon{discountType === "percent" ? ` ${discountValue}%` : ""}
+              </span>
+              <span data-testid="text-discount">
+                -{formatRupiah(discountAmount)}
+              </span>
+            </div>
+          ) : null}
           {ppnEnabled ? (
             <div className="flex items-center justify-between text-[hsl(var(--wa-meta))]">
               <span>

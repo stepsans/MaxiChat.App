@@ -33,51 +33,115 @@ function formatRupiah(value: number): string {
 
 // ---- Input validation ------------------------------------------------------
 
-const ItemInput = z.object({
-  productId: z.number().int().positive().nullable().optional(),
-  code: z.string().nullable().optional(),
-  name: z.string().min(1).max(500),
-  qty: z.number().int().min(1).max(1_000_000),
-  price: z.number().int().min(0).max(1_000_000_000),
-});
+const DiscountType = z.enum(["percent", "amount"]);
 
-const OrderInput = z.object({
-  chatId: z.number().int().positive().nullable().optional(),
-  customerName: z.string().max(500).nullable().optional(),
-  customerPhone: z.string().max(100).nullable().optional(),
-  ppnEnabled: z.boolean().optional(),
-  ppnIncluded: z.boolean().optional(),
-  ppnRate: z.number().int().min(0).max(100).optional(),
-  note: z.string().max(2000).nullable().optional(),
-  items: z.array(ItemInput).min(1).max(200),
-});
+// A percent discount can never exceed 100%; a nominal discount is bounded only
+// by the sane price ceiling. The compute path also clamps to the base, but we
+// reject nonsensical values up front so persisted data stays meaningful.
+function percentBounded<
+  T extends { discountType?: "percent" | "amount"; discountValue?: number },
+>(obj: T, ctx: z.RefinementCtx) {
+  if (obj.discountType === "percent" && (obj.discountValue ?? 0) > 100) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["discountValue"],
+      message: "Diskon persen tidak boleh lebih dari 100",
+    });
+  }
+}
+
+const ItemInput = z
+  .object({
+    productId: z.number().int().positive().nullable().optional(),
+    code: z.string().nullable().optional(),
+    name: z.string().min(1).max(500),
+    qty: z.number().int().min(1).max(1_000_000),
+    price: z.number().int().min(0).max(1_000_000_000),
+    discountType: DiscountType.optional(),
+    discountValue: z.number().int().min(0).max(1_000_000_000).optional(),
+  })
+  .superRefine(percentBounded);
+
+const OrderInput = z
+  .object({
+    chatId: z.number().int().positive().nullable().optional(),
+    customerName: z.string().max(500).nullable().optional(),
+    customerPhone: z.string().max(100).nullable().optional(),
+    ppnEnabled: z.boolean().optional(),
+    ppnIncluded: z.boolean().optional(),
+    ppnRate: z.number().int().min(0).max(100).optional(),
+    discountType: DiscountType.optional(),
+    discountValue: z.number().int().min(0).max(1_000_000_000).optional(),
+    note: z.string().max(2000).nullable().optional(),
+    items: z.array(ItemInput).min(1).max(200),
+  })
+  .superRefine(percentBounded);
 
 type ParsedOrder = z.infer<typeof OrderInput>;
 
 // ---- Money / PPN math (server-authoritative) -------------------------------
 
-// See the schema comment on salesOrdersTable for the three PPN cases.
+// Resolve a discount (percent or nominal) to a Rupiah amount, clamped so it can
+// never exceed the base it applies to nor go negative.
+function discountFor(
+  type: string | null | undefined,
+  value: number | null | undefined,
+  base: number
+): number {
+  if (!value || value <= 0 || base <= 0) return 0;
+  const amount = type === "percent" ? Math.round((base * value) / 100) : value;
+  return Math.min(Math.max(0, amount), base);
+}
+
+// See the schema comment on salesOrdersTable for the PPN cases. Discounts apply
+// before PPN: each line's discount comes off its gross (qty*price), and the
+// global discount comes off the resulting subtotal.
 function computeTotals(
-  items: { qty: number; price: number }[],
+  items: {
+    qty: number;
+    price: number;
+    discountType?: string | null;
+    discountValue?: number | null;
+  }[],
   ppnEnabled: boolean,
   ppnIncluded: boolean,
-  ppnRate: number
-): { lineTotals: number[]; subtotal: number; ppnAmount: number; total: number } {
-  const lineTotals = items.map((it) => it.qty * it.price);
+  ppnRate: number,
+  globalDiscountType: string,
+  globalDiscountValue: number
+): {
+  lineTotals: number[];
+  subtotal: number;
+  discountAmount: number;
+  ppnAmount: number;
+  total: number;
+} {
+  const lineTotals = items.map((it) => {
+    const gross = it.qty * it.price;
+    return Math.max(
+      0,
+      gross - discountFor(it.discountType, it.discountValue, gross)
+    );
+  });
   const subtotal = lineTotals.reduce((s, n) => s + n, 0);
+  const discountAmount = discountFor(
+    globalDiscountType,
+    globalDiscountValue,
+    subtotal
+  );
+  const base = Math.max(0, subtotal - discountAmount);
   let ppnAmount = 0;
-  let total = subtotal;
+  let total = base;
   if (ppnEnabled && ppnRate > 0) {
     if (ppnIncluded) {
-      const base = Math.round(subtotal / (1 + ppnRate / 100));
-      ppnAmount = subtotal - base;
-      total = subtotal;
+      const net = Math.round(base / (1 + ppnRate / 100));
+      ppnAmount = base - net;
+      total = base;
     } else {
-      ppnAmount = Math.round((subtotal * ppnRate) / 100);
-      total = subtotal + ppnAmount;
+      ppnAmount = Math.round((base * ppnRate) / 100);
+      total = base + ppnAmount;
     }
   }
-  return { lineTotals, subtotal, ppnAmount, total };
+  return { lineTotals, subtotal, discountAmount, ppnAmount, total };
 }
 
 // ---- Serialization ---------------------------------------------------------
@@ -90,6 +154,8 @@ function serializeItem(row: SalesOrderItem) {
     name: row.name,
     qty: row.qty,
     price: row.price,
+    discountType: row.discountType as "percent" | "amount",
+    discountValue: row.discountValue,
     lineTotal: row.lineTotal,
   };
 }
@@ -104,6 +170,9 @@ function serializeOrder(order: SalesOrder, items: SalesOrderItem[]) {
     ppnIncluded: order.ppnIncluded,
     ppnRate: order.ppnRate,
     subtotal: order.subtotal,
+    discountType: order.discountType as "percent" | "amount",
+    discountValue: order.discountValue,
+    discountAmount: order.discountAmount,
     ppnAmount: order.ppnAmount,
     total: order.total,
     note: order.note ?? null,
@@ -162,7 +231,9 @@ async function insertItems(orderId: number, parsed: ParsedOrder) {
     parsed.items,
     parsed.ppnEnabled ?? false,
     parsed.ppnIncluded ?? true,
-    parsed.ppnRate ?? 11
+    parsed.ppnRate ?? 11,
+    parsed.discountType ?? "amount",
+    parsed.discountValue ?? 0
   );
   await db.insert(salesOrderItemsTable).values(
     parsed.items.map((it, idx) => ({
@@ -172,6 +243,8 @@ async function insertItems(orderId: number, parsed: ParsedOrder) {
       name: it.name,
       qty: it.qty,
       price: it.price,
+      discountType: it.discountType ?? "amount",
+      discountValue: it.discountValue ?? 0,
       lineTotal: lineTotals[idx]!,
       sortOrder: idx,
     }))
@@ -376,11 +449,15 @@ router.post("/", async (req, res): Promise<void> => {
     const ppnEnabled = data.ppnEnabled ?? false;
     const ppnIncluded = data.ppnIncluded ?? true;
     const ppnRate = data.ppnRate ?? 11;
-    const { subtotal, ppnAmount, total } = computeTotals(
+    const discountType = data.discountType ?? "amount";
+    const discountValue = data.discountValue ?? 0;
+    const { subtotal, discountAmount, ppnAmount, total } = computeTotals(
       data.items,
       ppnEnabled,
       ppnIncluded,
-      ppnRate
+      ppnRate,
+      discountType,
+      discountValue
     );
 
     const [order] = await db
@@ -394,6 +471,9 @@ router.post("/", async (req, res): Promise<void> => {
         ppnIncluded,
         ppnRate,
         subtotal,
+        discountType,
+        discountValue,
+        discountAmount,
         ppnAmount,
         total,
         note: data.note ?? null,
@@ -468,11 +548,15 @@ router.patch("/:id", async (req, res): Promise<void> => {
     const ppnEnabled = data.ppnEnabled ?? false;
     const ppnIncluded = data.ppnIncluded ?? true;
     const ppnRate = data.ppnRate ?? 11;
-    const { subtotal, ppnAmount, total } = computeTotals(
+    const discountType = data.discountType ?? "amount";
+    const discountValue = data.discountValue ?? 0;
+    const { subtotal, discountAmount, ppnAmount, total } = computeTotals(
       data.items,
       ppnEnabled,
       ppnIncluded,
-      ppnRate
+      ppnRate,
+      discountType,
+      discountValue
     );
 
     await db
@@ -485,6 +569,9 @@ router.patch("/:id", async (req, res): Promise<void> => {
         ppnIncluded,
         ppnRate,
         subtotal,
+        discountType,
+        discountValue,
+        discountAmount,
         ppnAmount,
         total,
         note: data.note ?? null,
@@ -558,6 +645,13 @@ function buildOrderSummaryText(
     );
   });
   lines.push("", `Subtotal: ${formatRupiah(order.subtotal)}`);
+  if (order.discountAmount > 0) {
+    const label =
+      order.discountType === "percent"
+        ? `Diskon ${order.discountValue}%`
+        : "Diskon";
+    lines.push(`${label}: -${formatRupiah(order.discountAmount)}`);
+  }
   if (order.ppnEnabled) {
     lines.push(
       `PPN ${order.ppnRate}%${order.ppnIncluded ? " (termasuk)" : ""}: ${formatRupiah(order.ppnAmount)}`
@@ -746,6 +840,7 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       "No HP",
       "Items",
       "Subtotal",
+      "Diskon",
       "PPN",
       "Total",
       "Status",
@@ -758,6 +853,7 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       order.customerPhone ?? "",
       itemsSummary,
       order.subtotal,
+      order.discountAmount,
       order.ppnEnabled ? order.ppnAmount : 0,
       order.total,
       order.status,

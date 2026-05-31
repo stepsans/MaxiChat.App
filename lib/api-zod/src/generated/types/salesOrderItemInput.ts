@@ -5,6 +5,7 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { SalesOrderItemInputDiscountType } from './salesOrderItemInputDiscountType';
 
 export interface SalesOrderItemInput {
   /** @nullable */
@@ -17,4 +18,7 @@ export interface SalesOrderItemInput {
   qty: number;
   /** @minimum 0 */
   price: number;
+  discountType?: SalesOrderItemInputDiscountType;
+  /** @minimum 0 */
+  discountValue?: number;
 }
