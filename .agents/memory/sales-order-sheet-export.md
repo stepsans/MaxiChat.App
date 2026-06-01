@@ -21,6 +21,15 @@ this was an explicit user request, so don't "normalize" it back to one row.
   the order — so editing it in the Info tab after the order exists still flows
   to the sheet.
 
+- **Served By (last column)**: the connected WhatsApp account's OWN profile
+  name for the channel the chat is bound to — NOT the customer and NOT the
+  channel `label`. Source: `channels.owner_name`, captured from
+  `sock.user.name`/`verifiedName` on the Baileys `connection.open` event. Since
+  that only fires on (re)connect, the export falls back to the live socket via
+  `getLiveOwnerNameForChannel(channelId, userId)` for channels that haven't
+  reconnected since the column was added. `owner_name` is deliberately NOT
+  exposed through the channels API (`serialize()` maps fields explicitly).
+
 **Why header migration matters:** the header is only auto-seeded when the tab is
 empty. When the column layout changes, legacy tabs keep the OLD header while new
 rows use the new shape → header/data drift. The fix: before appending, read row

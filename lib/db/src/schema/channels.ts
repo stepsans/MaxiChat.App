@@ -53,6 +53,11 @@ export const channelsTable = pgTable(
     // non-WA channels don't have one. Globally unique (partial index below)
     // so the same WhatsApp number can't be paired to two channel rows.
     ownerPhone: text("owner_phone"),
+    // WA-specific: the connected account's own WhatsApp profile/display name
+    // (e.g. "SS"), captured from the socket on connect. Used to attribute who
+    // "served" a chat (e.g. the Served By column on the sales-order Sheet
+    // export). Nullable until the channel connects at least once.
+    ownerName: text("owner_name"),
     // Kind-specific extras (e.g. Instagram page id, Shopee shop id,
     // last connection error). Schema enforced at the app layer per kind.
     metadata: jsonb("metadata"),

@@ -17,7 +17,11 @@ import {
   type SalesOrderSyncConfig,
 } from "@workspace/db";
 import { requireOwnerUserId } from "../lib/channel-context";
-import { getCurrentOwnerPhone, getActiveSocket } from "./whatsapp";
+import {
+  getCurrentOwnerPhone,
+  getActiveSocket,
+  getLiveOwnerNameForChannel,
+} from "./whatsapp";
 import { getAuthorizedOAuthClient } from "./credentials";
 import { sendMessage as tgSendMessage } from "../lib/telegram";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
@@ -860,9 +864,17 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
     // read live from the linked chat. Joined through channels so the lookup is
     // owner-scoped (defense-in-depth). Blank if the chat was since deleted.
     let customerCode = "";
+    // "Served By": the WhatsApp profile name of the channel this chat is bound
+    // to. Prefer the persisted channels.owner_name; fall back to the live
+    // socket for channels that haven't reconnected since the column was added.
+    let servedBy = "";
     if (order.chatId != null) {
       const [chatRow] = await db
-        .select({ customerCode: chatsTable.customerCode })
+        .select({
+          customerCode: chatsTable.customerCode,
+          channelId: channelsTable.id,
+          ownerName: channelsTable.ownerName,
+        })
         .from(chatsTable)
         .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
         .where(
@@ -873,25 +885,32 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
         )
         .limit(1);
       customerCode = chatRow?.customerCode ?? "";
+      if (chatRow) {
+        servedBy =
+          chatRow.ownerName ??
+          getLiveOwnerNameForChannel(chatRow.channelId, ownerUserId) ??
+          "";
+      }
     }
 
     const HEADER = [
       "Tanggal",
       "No Order",
       "Kode Customer",
-      "Customer",
+      "Nama Customer",
+      "No HP",
       "Kode Barang",
       "Nama Barang",
       "Qty",
       "Harga",
       "Subtotal Item",
-      "No HP",
       "Subtotal",
       "Diskon",
       "PPN",
       "Total",
       "Status",
       "Catatan",
+      "Served By",
     ];
     const dateIso = new Date().toISOString().slice(0, 10);
     const orderPpn = order.ppnEnabled ? order.ppnAmount : 0;
@@ -903,18 +922,19 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       String(order.id),
       customerCode,
       order.customerName ?? "",
+      order.customerPhone ?? "",
       it ? kodeBarang(it) : "",
       it ? it.name : "",
       it ? it.qty : "",
       it ? it.price : "",
       it ? it.lineTotal : "",
-      order.customerPhone ?? "",
       order.subtotal,
       order.discountAmount,
       orderPpn,
       order.total,
       order.status,
       order.note ?? "",
+      servedBy,
     ];
     const rows =
       sorted.length > 0 ? sorted.map((it) => buildRow(it)) : [buildRow(null)];
@@ -925,7 +945,7 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       // Seed a header row if the tab is currently empty.
       const existing = await sheets.spreadsheets.values.get({
         spreadsheetId: cfg.spreadsheetId,
-        range: `${cfg.sheetName}!A1:P1`,
+        range: `${cfg.sheetName}!A1:Q1`,
       });
       const firstRow = existing.data.values?.[0] ?? [];
       const isEmpty = firstRow.length === 0;
@@ -939,7 +959,7 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       if (!isEmpty && !headerMatches) {
         await sheets.spreadsheets.values.update({
           spreadsheetId: cfg.spreadsheetId,
-          range: `${cfg.sheetName}!A1:P1`,
+          range: `${cfg.sheetName}!A1:Q1`,
           valueInputOption: "USER_ENTERED",
           requestBody: { values: [HEADER] },
         });

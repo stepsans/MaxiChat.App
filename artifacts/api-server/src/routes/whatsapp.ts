@@ -128,6 +128,9 @@ async function syncChannelStatus(
   patch: {
     status: string;
     ownerPhone?: string | null;
+    // WA-specific: the connected account's own profile/display name. Persisted
+    // as a direct column. Pass `undefined` to leave untouched.
+    ownerName?: string | null;
     // Optional pairing-QR data url. Persisted into channels.metadata.qrCode
     // so the per-channel pair flow (POST /api/channels/:id/pair → GET
     // /api/channels/:id/qr) can surface it even for non-primary channels.
@@ -286,6 +289,20 @@ export async function getCurrentOwnerPhone(
   const phone = await getOwnerPhoneForUser(ownerUserId);
   if (phone && ctx) ctx.ownerPhone = phone;
   return phone;
+}
+
+// Best-effort: the display name of the WhatsApp account currently linked to a
+// specific channel, read live from the open socket. Returns null when the
+// channel has no live socket (not yet connected / dropped). Used to fill the
+// "Served By" column on the sales-order Sheet export for channels that haven't
+// re-connected since owner_name was introduced (the persisted column wins when
+// present).
+export function getLiveOwnerNameForChannel(
+  channelId: number,
+  userId: number
+): string | null {
+  const ctx = getCtxByChannel(channelId, userId);
+  return ctx.sock?.user?.name ?? ctx.sock?.user?.verifiedName ?? null;
 }
 
 // Fetch a contact's WhatsApp profile picture URL via Baileys and cache it on
@@ -2029,9 +2046,12 @@ async function startBaileys(userId: number, channelId: number) {
         // live ctx. The frontend switcher reads these to render per-channel
         // connectivity dots. connectedAt is persisted so the legacy
         // /whatsapp/status response shape stays accurate after E1.
+        const ownerName =
+          sock.user?.name ?? sock.user?.verifiedName ?? null;
         void syncChannelStatus(channelId, {
           status: "connected",
           ownerPhone: normalised,
+          ownerName,
           qrCode: null,
           connectedAt: new Date().toISOString(),
         });
