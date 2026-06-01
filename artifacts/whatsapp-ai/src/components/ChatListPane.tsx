@@ -16,7 +16,7 @@ import {
   useCreateGroup,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
-import { Textarea } from "@/components/ui/textarea";
+import { ContactPicker } from "@/components/ContactPicker";
 import { Loader2 } from "lucide-react";
 import type {} from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -539,16 +539,12 @@ function NewChatButton() {
 function NewGroupButton() {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
-  const [phones, setPhones] = useState("");
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const parsedPhones = phones
-    .split(/[\s,;\n]+/)
-    .map((p) => p.replace(/[^0-9]/g, ""))
-    .filter(Boolean);
-  const isValid = subject.trim().length > 0 && parsedPhones.length > 0;
+  const isValid = subject.trim().length > 0 && selectedPhones.length > 0;
 
   const createGroup = useCreateGroup({
     mutation: {
@@ -556,7 +552,7 @@ function NewGroupButton() {
         qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
         setOpen(false);
         setSubject("");
-        setPhones("");
+        setSelectedPhones([]);
         toast({ title: "Grup dibuat", description: result.subject });
         if (result.chatId != null) navigate(`/chats/${result.chatId}`);
       },
@@ -575,7 +571,7 @@ function NewGroupButton() {
     e.preventDefault();
     if (!isValid || createGroup.isPending) return;
     createGroup.mutate({
-      data: { subject: subject.trim(), phones: parsedPhones },
+      data: { subject: subject.trim(), phones: selectedPhones },
     });
   }
 
@@ -586,7 +582,7 @@ function NewGroupButton() {
         setOpen(v);
         if (!v) {
           setSubject("");
-          setPhones("");
+          setSelectedPhones([]);
         }
       }}
     >
@@ -625,22 +621,11 @@ function NewGroupButton() {
             />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="new-group-phones" className="text-xs font-medium">
-              Nomor anggota
-            </label>
-            <Textarea
-              id="new-group-phones"
-              data-testid="input-new-group-phones"
-              placeholder="cth. 628123456789, 628987654321 (pisah dengan koma/baris baru)"
-              value={phones}
-              onChange={(e) => setPhones(e.target.value)}
-              className="min-h-[70px] text-sm"
+            <label className="text-xs font-medium">Pilih anggota</label>
+            <ContactPicker
+              selected={selectedPhones}
+              onChange={setSelectedPhones}
             />
-            {parsedPhones.length > 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                {parsedPhones.length} nomor terdeteksi.
-              </p>
-            )}
           </div>
           <DialogFooter>
             <Button

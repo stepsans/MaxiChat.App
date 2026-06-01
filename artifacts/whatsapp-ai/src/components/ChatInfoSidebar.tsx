@@ -84,6 +84,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { ChatAvatar } from "@/components/ChatAvatar";
+import { ContactPicker } from "@/components/ContactPicker";
 
 export type ChatLabel = { id: number; name: string; color: string };
 
@@ -1336,7 +1337,7 @@ function GroupTab({
   });
   const [showQr, setShowQr] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [phones, setPhones] = useState("");
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
 
   const addMut = useAddGroupParticipants({
     mutation: {
@@ -1349,7 +1350,7 @@ function GroupTab({
           description: `${ok} berhasil${failed > 0 ? `, ${failed} gagal (mungkin perlu undangan)` : ""}.`,
           variant: failed > 0 ? "destructive" : undefined,
         });
-        setPhones("");
+        setSelectedPhones([]);
         setAddOpen(false);
         qc.invalidateQueries({ queryKey: getGetGroupInfoQueryKey(chatId) });
       },
@@ -1363,15 +1364,11 @@ function GroupTab({
   });
 
   function handleAdd() {
-    const list = phones
-      .split(/[\s,;\n]+/)
-      .map((p) => p.replace(/[^0-9]/g, ""))
-      .filter(Boolean);
-    if (list.length === 0) {
-      toast({ title: "Masukkan minimal satu nomor.", variant: "destructive" });
+    if (selectedPhones.length === 0) {
+      toast({ title: "Pilih minimal satu kontak.", variant: "destructive" });
       return;
     }
-    addMut.mutate({ id: chatId, data: { phones: list } });
+    addMut.mutate({ id: chatId, data: { phones: selectedPhones } });
   }
 
   function copyLink(link: string) {
@@ -1479,19 +1476,21 @@ function GroupTab({
             <p className="text-[11px] text-amber-500">
               ⚠️ Anggota akan ditambahkan langsung ke grup WhatsApp asli.
             </p>
-            <Textarea
-              value={phones}
-              data-testid="input-add-member-phones"
-              onChange={(e) => setPhones(e.target.value)}
-              placeholder="Nomor (mis. 628123456789), pisah dengan koma/baris baru"
-              className="min-h-[60px] text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            <ContactPicker
+              selected={selectedPhones}
+              onChange={setSelectedPhones}
+              excludePhones={(data.participants ?? [])
+                .map((p) => p.phone ?? "")
+                .filter(Boolean)}
+              height="h-44"
+              emptyHint="Tidak ada kontak untuk ditambahkan."
             />
             <Button
               type="button"
               size="sm"
               data-testid="button-confirm-add-member"
               onClick={handleAdd}
-              disabled={addMut.isPending}
+              disabled={addMut.isPending || selectedPhones.length === 0}
               className="w-full h-8 text-xs"
             >
               {addMut.isPending ? (
