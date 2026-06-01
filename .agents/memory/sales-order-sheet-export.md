@@ -35,4 +35,9 @@ empty. When the column layout changes, legacy tabs keep the OLD header while new
 rows use the new shape → header/data drift. The fix: before appending, read row
 1, and if it doesn't match the current HEADER, rewrite row 1 in place. Any future
 column change to this export must keep that row-1 compare/rewrite in lockstep
-(and update the `A1:P1` range if the column count changes).
+(and update the header range if the column count changes). The export is
+currently **18 columns (A..R)**: Tanggal, No Order, Kode Customer, Nama
+Customer, No HP, Kode Barang, Nama Barang, Qty, Harga, Subtotal Item (gross =
+qty*price), Diskon Item (= qty*price - lineTotal), Subtotal, Diskon
+Keseluruhan, PPN, Total, Status, Catatan, Served By — so the header-migration
+range is `A1:R1`.

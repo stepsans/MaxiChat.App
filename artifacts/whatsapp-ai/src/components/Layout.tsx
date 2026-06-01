@@ -40,6 +40,7 @@ import {
 
 import { usePermissions, type PermissionMenu } from "@/hooks/use-permissions";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
+import { useChatNotificationSound } from "@/hooks/use-notification-sound";
 
 type TeamRole = "super_admin" | "supervisor" | "agent";
 
@@ -167,6 +168,7 @@ export default function Layout({
 }) {
   const [location] = useLocation();
   const totalUnread = useUnreadCount();
+  useChatNotificationSound();
   const queryClient = useQueryClient();
   const { menus: permMenus } = usePermissions();
   const logoutMut = useLogout({

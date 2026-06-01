@@ -23,8 +23,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Tag } from "lucide-react";
+import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Tag, Bell, BellOff, Volume2 } from "lucide-react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
+import { useNotificationSound } from "@/hooks/use-notification-sound";
+import { NOTIFICATION_SOUND_OPTIONS } from "@/lib/notification-sounds";
 import * as XLSX from "xlsx";
 import { useRef } from "react";
 import {
@@ -51,6 +53,7 @@ export default function Settings() {
         {/* Cards di luar form — punya tombol save sendiri */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <ThemeCard />
+          <NotificationCard />
           <BioCard />
         </div>
         <ShortcutsCard />
@@ -340,6 +343,60 @@ function ThemeCard() {
               >
                 <Icon className="w-4 h-4" />
                 <span className="font-medium">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NotificationCard() {
+  const { sound, setSound, preview } = useNotificationSound();
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Bell className="w-4 h-4 text-primary" />
+          Notifikasi Chat Masuk
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Pilih nada dering saat ada chat baru masuk — klik untuk
+          mendengarkan. Pilih "Mute" untuk menonaktifkan suara.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div
+          role="radiogroup"
+          aria-label="Nada notifikasi"
+          className="grid grid-cols-2 gap-2"
+        >
+          {NOTIFICATION_SOUND_OPTIONS.map(({ id, label }) => {
+            const active = sound === id;
+            const isMute = id === "off";
+            const Icon = isMute ? BellOff : Volume2;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                data-testid={`notif-sound-${id}`}
+                onClick={() => {
+                  setSound(id);
+                  if (!isMute) preview(id);
+                }}
+                className={
+                  "flex items-center gap-2 rounded-md border px-3 py-2.5 text-xs transition-colors " +
+                  (active
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border bg-background hover:bg-accent text-muted-foreground hover:text-foreground")
+                }
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span className="font-medium">{label}</span>
+                {active && <Check className="w-3.5 h-3.5 ml-auto" />}
               </button>
             );
           })}

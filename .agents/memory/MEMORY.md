@@ -23,3 +23,4 @@
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.
 - [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).
+- [Chat query key not channel-scoped](chat-query-key-not-channel-scoped.md) — channel is a request header, not a cache key; client diffing of chats across channel switches needs a pending-baseline guard or it false-fires on the new channel's old unreads.

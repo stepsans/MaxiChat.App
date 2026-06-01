@@ -644,10 +644,17 @@ function buildOrderSummaryText(
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   sorted.forEach((it, idx) => {
+    const gross = it.qty * it.price;
+    const itemDiscount = gross - it.lineTotal;
     lines.push(
       `${idx + 1}. ${it.name}`,
-      `   ${it.qty} x ${formatRupiah(it.price)} = ${formatRupiah(it.lineTotal)}`
+      `   ${it.qty} x ${formatRupiah(it.price)} = ${formatRupiah(gross)}`
     );
+    if (itemDiscount > 0) {
+      lines.push(
+        `   Diskon Item -${formatRupiah(itemDiscount)} = ${formatRupiah(it.lineTotal)}`
+      );
+    }
   });
   lines.push("", `Subtotal: ${formatRupiah(order.subtotal)}`);
   if (order.discountAmount > 0) {
