@@ -893,7 +893,7 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       "Status",
       "Catatan",
     ];
-    const dateIso = new Date().toISOString();
+    const dateIso = new Date().toISOString().slice(0, 10);
     const orderPpn = order.ppnEnabled ? order.ppnAmount : 0;
     // One row per line item; order-level fields repeat on each row per the
     // agreed Sheet layout. A blank-item fallback keeps order totals on the
