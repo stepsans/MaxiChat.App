@@ -16,6 +16,7 @@ import Status from "@/pages/Status";
 import Knowledge from "@/pages/Knowledge";
 import Settings from "@/pages/Settings";
 import AIStudio from "@/pages/AIStudio";
+import Usage from "@/pages/Usage";
 import Analytics from "@/pages/Analytics";
 import Products from "@/pages/Products";
 import Flows from "@/pages/Flows";
@@ -112,6 +113,7 @@ function AuthGate() {
         <Route path="/channels" component={Channels} />
         <Route path="/settings" component={Settings} />
         <Route path="/ai-studio" component={AIStudio} />
+        <Route path="/usage" component={Usage} />
         <Route path="/profile" component={Profile} />
         <Route path="/analytics" component={Analytics} />
           <Route component={NotFound} />

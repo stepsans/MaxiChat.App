@@ -112,15 +112,32 @@ export async function getAiProviderConfig(
   return row ?? null;
 }
 
+// What `resolveAiClient` hands back. `provider`/`ownerUserId` are returned
+// (not just `client`/`model`) so the call site can attribute token usage to the
+// tenant owner without re-resolving — "replit" is the managed default, else the
+// BYOK provider key.
+export interface ResolvedAiClient {
+  client: AiClient;
+  model: string;
+  provider: "replit" | AiProvider;
+  ownerUserId: number;
+}
+
 // Resolve the AI client + model to use for a tenant. Defaults to the managed
 // Replit integration (no key required). Only when the tenant has explicitly
 // chosen "byok" with a stored key do we build a client from their own key.
 export async function resolveAiClient(
   userId: number
-): Promise<{ client: AiClient; model: string }> {
-  const cfg = await getAiProviderConfig(userId);
+): Promise<ResolvedAiClient> {
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const cfg = await getAiProviderConfig(ownerUserId);
   if (!cfg || cfg.mode !== "byok" || !cfg.apiKeyEnc) {
-    return { client: openai, model: DEFAULT_REPLIT_MODEL };
+    return {
+      client: openai,
+      model: DEFAULT_REPLIT_MODEL,
+      provider: "replit",
+      ownerUserId,
+    };
   }
   const provider = asProvider(cfg.provider);
   const defaults = PROVIDER_DEFAULTS[provider];
@@ -135,7 +152,7 @@ export async function resolveAiClient(
   }
   const client = createOpenAiClient({ apiKey, baseURL });
   const model = cfg.model?.trim() || defaults.defaultModel;
-  return { client, model };
+  return { client, model, provider, ownerUserId };
 }
 
 // Live connectivity check: a tiny chat completion against the given provider.

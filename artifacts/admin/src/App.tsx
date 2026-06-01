@@ -1,15 +1,19 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
-import { Loader2, ShieldAlert, LogOut } from "lucide-react";
+import { Loader2, ShieldAlert, LogOut, Users as UsersIcon, Cpu } from "lucide-react";
 import Login from "./pages/Login";
 import Users from "./pages/Users";
+import TokenUsage from "./pages/TokenUsage";
 import { useLogoutMutation } from "./lib/useLogoutMutation";
 
 const queryClient = new QueryClient();
 
+type AdminTab = "users" | "usage";
+
 function Shell() {
   const queryClientCtx = useQueryClient();
+  const [tab, setTab] = useState<AdminTab>("users");
   const { data, isLoading, isFetching, refetch } = useGetMe({
     query: {
       queryKey: getGetMeQueryKey(),
@@ -106,8 +110,30 @@ function Shell() {
           </button>
         </div>
       </header>
+      <nav className="px-4 sm:px-6 border-b border-border bg-card flex items-center gap-1">
+        {(
+          [
+            { key: "users", label: "Manajemen User", Icon: UsersIcon },
+            { key: "usage", label: "Pemakaian Token", Icon: Cpu },
+          ] as const
+        ).map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            data-testid={`tab-${key}`}
+            className={`h-10 px-3 -mb-px flex items-center gap-1.5 text-sm font-medium border-b-2 transition-colors ${
+              tab === key
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </nav>
       <main className="flex-1 p-4 sm:p-6">
-        <Users currentUserId={user.id} />
+        {tab === "users" ? <Users currentUserId={user.id} /> : <TokenUsage />}
       </main>
     </div>
   );

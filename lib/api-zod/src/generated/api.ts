@@ -173,6 +173,41 @@ export const AdminDeleteUserResponse = zod.object({
 
 
 /**
+ * @summary AI token usage per super admin for the current billing period (admin only)
+ */
+export const AdminListAiUsageResponseItem = zod.object({
+  "userId": zod.number(),
+  "email": zod.string().email(),
+  "name": zod.string().nullish().describe('Display name of the super admin, if set.'),
+  "joinedAt": zod.coerce.date().describe('The super admin\'s join date — anchors the billing period day-of-month.'),
+  "periodStart": zod.coerce.date().describe('Inclusive start of the current billing period.'),
+  "periodEnd": zod.coerce.date().describe('Exclusive end of the current billing period (start of the next).'),
+  "promptTokens": zod.number(),
+  "completionTokens": zod.number(),
+  "totalTokens": zod.number(),
+  "requestCount": zod.number().describe('Number of AI completion calls in the period.')
+})
+export const AdminListAiUsageResponse = zod.array(AdminListAiUsageResponseItem)
+
+
+/**
+ * @summary The signed-in super admin's own AI token usage for the current billing period
+ */
+export const GetMyAiUsageResponse = zod.object({
+  "userId": zod.number(),
+  "email": zod.string().email(),
+  "name": zod.string().nullish().describe('Display name of the super admin, if set.'),
+  "joinedAt": zod.coerce.date().describe('The super admin\'s join date — anchors the billing period day-of-month.'),
+  "periodStart": zod.coerce.date().describe('Inclusive start of the current billing period.'),
+  "periodEnd": zod.coerce.date().describe('Exclusive end of the current billing period (start of the next).'),
+  "promptTokens": zod.number(),
+  "completionTokens": zod.number(),
+  "totalTokens": zod.number(),
+  "requestCount": zod.number().describe('Number of AI completion calls in the period.')
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

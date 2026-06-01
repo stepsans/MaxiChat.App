@@ -1,7 +1,13 @@
 import { Router } from "express";
-import { and, eq, ne, sql } from "drizzle-orm";
-import { db, usersTable, userWhatsappTable } from "@workspace/db";
+import { and, eq, ne, sql, isNull, gte, lt } from "drizzle-orm";
+import {
+  db,
+  usersTable,
+  userWhatsappTable,
+  aiUsageEventsTable,
+} from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
+import { computeBillingPeriod } from "../lib/billing-period";
 
 // Serialize all role/status mutations through a single Postgres advisory
 // lock so the "must keep one active admin" invariant can't be violated by
@@ -250,6 +256,64 @@ router.delete("/users/:id", async (req, res): Promise<void> => {
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "adminDeleteUser failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /admin/ai-usage — per super admin (tenant owner) AI token usage for that
+// owner's CURRENT billing period. The period is anchored on each owner's join
+// date (createdAt day-of-month), so two owners reported here can be on
+// different windows. Owners = users with parent_user_id IS NULL.
+router.get("/ai-usage", async (req, res): Promise<void> => {
+  try {
+    const owners = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        createdAt: usersTable.createdAt,
+      })
+      .from(usersTable)
+      .where(isNull(usersTable.parentUserId))
+      .orderBy(usersTable.id);
+
+    const now = new Date();
+    const rows = await Promise.all(
+      owners.map(async (o) => {
+        const { start, end } = computeBillingPeriod(o.createdAt, now);
+        const [agg] = await db
+          .select({
+            promptTokens: sql<number>`COALESCE(SUM(${aiUsageEventsTable.promptTokens}),0)::int`,
+            completionTokens: sql<number>`COALESCE(SUM(${aiUsageEventsTable.completionTokens}),0)::int`,
+            totalTokens: sql<number>`COALESCE(SUM(${aiUsageEventsTable.totalTokens}),0)::int`,
+            requestCount: sql<number>`COUNT(*)::int`,
+          })
+          .from(aiUsageEventsTable)
+          .where(
+            and(
+              eq(aiUsageEventsTable.userId, o.id),
+              gte(aiUsageEventsTable.createdAt, start),
+              lt(aiUsageEventsTable.createdAt, end)
+            )
+          );
+        return {
+          userId: o.id,
+          email: o.email,
+          name: o.name ?? null,
+          joinedAt: o.createdAt.toISOString(),
+          periodStart: start.toISOString(),
+          periodEnd: end.toISOString(),
+          promptTokens: agg?.promptTokens ?? 0,
+          completionTokens: agg?.completionTokens ?? 0,
+          totalTokens: agg?.totalTokens ?? 0,
+          requestCount: agg?.requestCount ?? 0,
+        };
+      })
+    );
+
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "adminAiUsage failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

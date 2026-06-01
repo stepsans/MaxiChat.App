@@ -1101,6 +1101,27 @@ export interface AdminUpdateUserInput {
   role?: AdminUpdateUserInputRole;
 }
 
+export interface AiUsageSummary {
+  userId: number;
+  email: string;
+  /**
+     * Display name of the super admin, if set.
+     * @nullable
+     */
+  name?: string | null;
+  /** The super admin's join date — anchors the billing period day-of-month. */
+  joinedAt: string;
+  /** Inclusive start of the current billing period. */
+  periodStart: string;
+  /** Exclusive end of the current billing period (start of the next). */
+  periodEnd: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** Number of AI completion calls in the period. */
+  requestCount: number;
+}
+
 export interface AuthMeResponse {
   user: AuthUser | null;
 }

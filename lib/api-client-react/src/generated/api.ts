@@ -26,6 +26,7 @@ import type {
   AiProviderInput,
   AiProviderTestInput,
   AiProviderTestResult,
+  AiUsageSummary,
   AnalyticsSummary,
   AssignChatInput,
   AuthMeResponse,
@@ -869,6 +870,160 @@ export const useAdminDeleteUser = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getAdminDeleteUserMutationOptions(options));
     }
+
+export const getAdminListAiUsageUrl = () => {
+
+
+
+
+  return `/api/admin/ai-usage`
+}
+
+/**
+ * @summary AI token usage per super admin for the current billing period (admin only)
+ */
+export const adminListAiUsage = async ( options?: RequestInit): Promise<AiUsageSummary[]> => {
+
+  return customFetch<AiUsageSummary[]>(getAdminListAiUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminListAiUsageQueryKey = () => {
+    return [
+    `/api/admin/ai-usage`
+    ] as const;
+    }
+
+
+export const getAdminListAiUsageQueryOptions = <TData = Awaited<ReturnType<typeof adminListAiUsage>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminListAiUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminListAiUsageQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminListAiUsage>>> = ({ signal }) => adminListAiUsage({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminListAiUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminListAiUsageQueryResult = NonNullable<Awaited<ReturnType<typeof adminListAiUsage>>>
+export type AdminListAiUsageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary AI token usage per super admin for the current billing period (admin only)
+ */
+
+export function useAdminListAiUsage<TData = Awaited<ReturnType<typeof adminListAiUsage>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminListAiUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminListAiUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyAiUsageUrl = () => {
+
+
+
+
+  return `/api/ai-usage/me`
+}
+
+/**
+ * @summary The signed-in super admin's own AI token usage for the current billing period
+ */
+export const getMyAiUsage = async ( options?: RequestInit): Promise<AiUsageSummary> => {
+
+  return customFetch<AiUsageSummary>(getGetMyAiUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyAiUsageQueryKey = () => {
+    return [
+    `/api/ai-usage/me`
+    ] as const;
+    }
+
+
+export const getGetMyAiUsageQueryOptions = <TData = Awaited<ReturnType<typeof getMyAiUsage>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyAiUsageQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyAiUsage>>> = ({ signal }) => getMyAiUsage({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyAiUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getMyAiUsage>>>
+export type GetMyAiUsageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The signed-in super admin's own AI token usage for the current billing period
+ */
+
+export function useGetMyAiUsage<TData = Awaited<ReturnType<typeof getMyAiUsage>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyAiUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 

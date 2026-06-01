@@ -293,6 +293,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/ai-usage:
+    get:
+      operationId: adminListAiUsage
+      tags: [admin]
+      summary: AI token usage per super admin for the current billing period (admin only)
+      responses:
+        "200":
+          description: Per-tenant token usage
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiUsageSummary"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-usage/me:
+    get:
+      operationId: getMyAiUsage
+      tags: [ai-usage]
+      summary: The signed-in super admin's own AI token usage for the current billing period
+      responses:
+        "200":
+          description: Token usage for the current period
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiUsageSummary"
+        "403":
+          description: Not a tenant owner (super admin)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -3615,6 +3661,51 @@ components:
         role:
           type: string
           enum: [user, admin]
+
+    AiUsageSummary:
+      type: object
+      required:
+        [
+          userId,
+          email,
+          joinedAt,
+          periodStart,
+          periodEnd,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          requestCount,
+        ]
+      properties:
+        userId:
+          type: integer
+        email:
+          type: string
+          format: email
+        name:
+          type: ["string", "null"]
+          description: Display name of the super admin, if set.
+        joinedAt:
+          type: string
+          format: date-time
+          description: The super admin's join date — anchors the billing period day-of-month.
+        periodStart:
+          type: string
+          format: date-time
+          description: Inclusive start of the current billing period.
+        periodEnd:
+          type: string
+          format: date-time
+          description: Exclusive end of the current billing period (start of the next).
+        promptTokens:
+          type: integer
+        completionTokens:
+          type: integer
+        totalTokens:
+          type: integer
+        requestCount:
+          type: integer
+          description: Number of AI completion calls in the period.
 
     AuthMeResponse:
       type: object

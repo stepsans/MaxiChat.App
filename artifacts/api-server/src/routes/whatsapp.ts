@@ -22,6 +22,7 @@ import { and, asc, eq, sql, inArray } from "drizzle-orm";
 import { withTag, stripTrailingTag, CHATBOT_TAG, AI_TAG } from "../lib/sender-tag.js";
 import { logger } from "../lib/logger";
 import { resolveAiClient } from "../lib/ai-provider";
+import { recordAiUsage } from "../lib/ai-usage";
 import {
   getOwnerPhoneForUser,
   setOwnerPhoneForUser,
@@ -834,7 +835,7 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
 
     // Resolve the tenant's AI client + model. Defaults to the managed Replit
     // integration (gpt-4o-mini) when the tenant hasn't opted into BYOK.
-    const { client, model } = await resolveAiClient(userId);
+    const { client, model, provider, ownerUserId } = await resolveAiClient(userId);
     const response = await client.chat.completions.create({
       model,
       messages: [
@@ -844,6 +845,17 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
       ],
       max_tokens: 300,
       temperature: 0.7,
+    });
+
+    // Attribute token usage to the tenant owner (best-effort; never blocks the
+    // reply). Telegram routes through this same function, so both channels are
+    // covered here.
+    void recordAiUsage({
+      ownerUserId,
+      channelId,
+      provider,
+      model,
+      usage: response.usage,
     });
 
     return response.choices[0]?.message?.content ?? null;

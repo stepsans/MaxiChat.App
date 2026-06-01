@@ -18,6 +18,7 @@ export * from './aiProviderMode';
 export * from './aiProviderName';
 export * from './aiProviderTestInput';
 export * from './aiProviderTestResult';
+export * from './aiUsageSummary';
 export * from './analyticsSummary';
 export * from './assignChatInput';
 export * from './authMeResponse';
