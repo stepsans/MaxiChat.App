@@ -1516,7 +1516,7 @@ function GroupTab({
               />
               <div className="min-w-0 flex-1">
                 <p className="text-xs truncate">
-                  {p.name ?? (p.phone ? `+${p.phone}` : p.jid)}
+                  {p.name ?? (p.phone ? `+${p.phone}` : "Anggota grup")}
                 </p>
               </div>
               {(p.isAdmin || p.isSuperAdmin) && (
