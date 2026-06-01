@@ -41,6 +41,7 @@ import {
   OpenChatByPhoneBody,
   SetChatLabelsBody,
   SetMessageStarBody,
+  ForwardMessageBody,
   AddGroupParticipantsBody,
 } from "@workspace/api-zod";
 import { resolveOwnerUserId } from "../lib/seed";
@@ -52,6 +53,7 @@ import {
   getSockForChannel,
   getOrCreateChat,
   refreshChatProfilePic,
+  loadImageBuffer,
 } from "./whatsapp";
 import {
   resolveChannelScope,
@@ -975,6 +977,219 @@ router.post("/:id/messages/:messageId/revoke", async (req, res): Promise<void> =
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to revoke message");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /:id/messages/:messageId/forward — forward a message (text + full media)
+// to one or more other chats. Mirrors the proven active-send pattern used by
+// /media and /revoke: we push on the underlying channel (WhatsApp primary
+// socket or Telegram bot) and persist an outbound row marked as forwarded with
+// an incremented forwarding score, deduped on wa_message_id so the WhatsApp
+// echo from messages.upsert doesn't create a second row.
+const MEDIA_PREVIEW_LABELS: Record<string, string> = {
+  image: "📷 Gambar",
+  sticker: "📷 Stiker",
+  video: "🎥 Video",
+  audio: "🎤 Audio",
+  document: "📄 Dokumen",
+};
+router.post("/:id/messages/:messageId/forward", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(chatId) || !Number.isInteger(messageId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const bodyParsed = ForwardMessageBody.safeParse(req.body);
+    if (!bodyParsed.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+    // De-dupe and drop the source chat itself — forwarding a message back into
+    // its own conversation is never intended.
+    const targetChatIds = Array.from(new Set(bodyParsed.data.targetChatIds)).filter(
+      (tid) => tid !== chatId
+    );
+    if (targetChatIds.length === 0) {
+      res.status(400).json({ error: "Tidak ada chat tujuan yang valid." });
+      return;
+    }
+
+    const sourceChat = await loadOwnedChat(req, res, chatId);
+    if (!sourceChat) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+
+    const [message] = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(
+        and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, sourceChat.id))
+      )
+      .limit(1);
+    if (!message) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+
+    // WhatsApp's forwardingScore increments on every hop; >=4 renders as
+    // "forwarded many times". Telegram has no counter so the badge still shows
+    // (isForwarded=true) but the score is informational only.
+    const newScore = Math.max(message.forwardingScore ?? 0, 0) + 1;
+    const baseText = message.content ?? "";
+    const hasMedia = !!message.mediaType && !!message.mediaUrl;
+    const mediaPreview =
+      MEDIA_PREVIEW_LABELS[message.mediaType ?? ""] ?? "📎 Lampiran";
+    const preview = baseText || (hasMedia ? mediaPreview : "");
+
+    const results: { chatId: number; ok: boolean; error?: string }[] = [];
+    for (const targetId of targetChatIds) {
+      try {
+        const targetChat = await loadOwnedChat(req, res, targetId);
+        if (!targetChat) {
+          results.push({ chatId: targetId, ok: false, error: "Chat tidak ditemukan" });
+          continue;
+        }
+
+        const [targetChannel] = await db
+          .select()
+          .from(channelsTable)
+          .where(eq(channelsTable.id, targetChat.channelId))
+          .limit(1);
+
+        let newWaMessageId: string | null = null;
+
+        if (targetChannel?.kind === "telegram") {
+          const meta =
+            (targetChannel.metadata as Record<string, unknown> | null)?.["telegram"] as
+              | { botToken?: string }
+              | undefined;
+          const tgChatId = targetChat.phoneNumber.startsWith("tg:")
+            ? Number.parseInt(targetChat.phoneNumber.slice(3), 10)
+            : NaN;
+          if (!meta?.botToken || !Number.isFinite(tgChatId)) {
+            results.push({ chatId: targetId, ok: false, error: "Telegram belum terhubung" });
+            continue;
+          }
+          let sent: { messageId: number };
+          if (hasMedia) {
+            const buffer = await loadImageBuffer(message.mediaUrl!);
+            const filename = message.mediaFilename ?? "file";
+            if (message.mediaType === "image" || message.mediaType === "sticker") {
+              sent = await tgSendPhoto(
+                meta.botToken,
+                tgChatId,
+                buffer,
+                filename,
+                baseText || undefined,
+                message.mediaMimeType ?? "image/jpeg"
+              );
+            } else {
+              sent = await tgSendDocument(
+                meta.botToken,
+                tgChatId,
+                buffer,
+                filename,
+                baseText || undefined,
+                message.mediaMimeType ?? "application/octet-stream"
+              );
+            }
+          } else {
+            sent = await tgSendMessage(meta.botToken, tgChatId, baseText);
+          }
+          newWaMessageId = `tg:${tgChatId}:${sent.messageId}`;
+        } else {
+          // WhatsApp: all outbound sends go through the owner's PRIMARY socket
+          // (see sendMediaToJid / dual-channel-send), regardless of which WA
+          // channel owns the target chat.
+          const sock = await getActiveSocket(req.session.userId!);
+          if (!sock) {
+            results.push({ chatId: targetId, ok: false, error: "WhatsApp tidak terhubung" });
+            continue;
+          }
+          const jid = targetChat.phoneNumber.includes("@")
+            ? targetChat.phoneNumber
+            : `${targetChat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+          const contextInfo = { isForwarded: true, forwardingScore: newScore };
+          let sent: Awaited<ReturnType<typeof sock.sendMessage>>;
+          if (hasMedia) {
+            const buffer = await loadImageBuffer(message.mediaUrl!);
+            const mimetype = message.mediaMimeType ?? undefined;
+            if (message.mediaType === "image" || message.mediaType === "sticker") {
+              sent = await sock.sendMessage(jid, {
+                image: buffer,
+                caption: baseText || undefined,
+                mimetype,
+                contextInfo,
+              });
+            } else if (message.mediaType === "video") {
+              sent = await sock.sendMessage(jid, {
+                video: buffer,
+                caption: baseText || undefined,
+                mimetype,
+                contextInfo,
+              });
+            } else if (message.mediaType === "audio") {
+              sent = await sock.sendMessage(jid, {
+                audio: buffer,
+                mimetype,
+                ptt: false,
+                contextInfo,
+              });
+            } else {
+              sent = await sock.sendMessage(jid, {
+                document: buffer,
+                mimetype: message.mediaMimeType ?? "application/octet-stream",
+                fileName: message.mediaFilename ?? "file",
+                caption: baseText || undefined,
+                contextInfo,
+              });
+            }
+          } else {
+            sent = await sock.sendMessage(jid, { text: baseText, contextInfo });
+          }
+          newWaMessageId = sent?.key?.id ?? null;
+        }
+
+        await db
+          .insert(chatMessagesTable)
+          .values({
+            chatId: targetId,
+            direction: "outbound",
+            content: baseText,
+            isAiGenerated: false,
+            mediaType: message.mediaType ?? null,
+            mediaUrl: message.mediaUrl ?? null,
+            mediaMimeType: message.mediaMimeType ?? null,
+            mediaFilename: message.mediaFilename ?? null,
+            waMessageId: newWaMessageId,
+            isForwarded: true,
+            forwardingScore: newScore,
+          })
+          .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+
+        await db
+          .update(chatsTable)
+          .set({ lastMessage: preview, lastMessageAt: new Date() })
+          .where(
+            sql`${chatsTable.id} = ${targetId} AND ${chatsTable.channelId} = ${targetChat.channelId}`
+          );
+
+        results.push({ chatId: targetId, ok: true });
+      } catch (err) {
+        req.log.error({ err, targetId, messageId }, "Failed to forward to target");
+        results.push({ chatId: targetId, ok: false, error: "Gagal meneruskan pesan" });
+      }
+    }
+
+    const sent = results.filter((r) => r.ok).length;
+    const failed = results.length - sent;
+    res.json({ success: failed === 0, sent, failed, results });
+  } catch (err) {
+    req.log.error({ err }, "Failed to forward message");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -188,6 +188,15 @@ export type TelegramMessage = {
     username?: string;
   };
   text?: string;
+  // Forward markers. Bot API 7.0+ sends a structured `forward_origin`; older
+  // clients send the legacy `forward_date` / `forward_from*` fields. We only
+  // need to know whether the message was forwarded — Telegram exposes no
+  // forward count, unlike WhatsApp's forwardingScore.
+  forward_origin?: unknown;
+  forward_date?: number;
+  forward_from?: unknown;
+  forward_from_chat?: unknown;
+  forward_sender_name?: string;
 };
 
 export type ParsedTelegramMessage = {
@@ -203,6 +212,7 @@ export type ParsedTelegramMessage = {
   text: string;
   messageId: number;
   fromBot: boolean;
+  isForwarded: boolean;
 };
 
 export function parseTelegramMessage(
@@ -210,6 +220,13 @@ export function parseTelegramMessage(
 ): ParsedTelegramMessage | null {
   if (!msg.text) return null; // MVP: text only.
   const isPrivate = msg.chat.type === "private";
+  const isForwarded = !!(
+    msg.forward_origin ||
+    msg.forward_date ||
+    msg.forward_from ||
+    msg.forward_from_chat ||
+    msg.forward_sender_name
+  );
   const chatKey = `tg:${msg.chat.id}`;
   const contactName = isPrivate
     ? [msg.chat.first_name, msg.chat.last_name].filter(Boolean).join(" ") ||
@@ -224,6 +241,7 @@ export function parseTelegramMessage(
     text: msg.text,
     messageId: msg.message_id,
     fromBot: msg.from?.is_bot ?? false,
+    isForwarded,
   };
 }
 

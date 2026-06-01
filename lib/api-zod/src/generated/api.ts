@@ -361,7 +361,9 @@ export const GetChatResponse = zod.object({
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
-  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
 }))
 })
 
@@ -443,7 +445,9 @@ export const SendProductToChatResponse = zod.object({
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
-  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
 })
 
 
@@ -468,7 +472,9 @@ export const SendShortcutToChatResponse = zod.object({
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
-  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
 })
 
 
@@ -497,7 +503,9 @@ export const SendQuotationToChatResponse = zod.object({
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
-  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
 })
 
 
@@ -522,7 +530,9 @@ export const SendManualReplyResponse = zod.object({
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
-  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
 })
 
 
@@ -3017,7 +3027,9 @@ export const GetStarredMessagesResponse = zod.object({
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
-  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
 }))
 })
 
@@ -3066,6 +3078,35 @@ export const RevokeMessageParams = zod.object({
 
 export const RevokeMessageResponse = zod.object({
   "success": zod.boolean()
+})
+
+
+/**
+ * Forwards the given message to each target chat, sending text and full media on the underlying channel (WhatsApp or Telegram) and recording an outbound row marked as forwarded with an incremented forwarding score.
+
+ * @summary Forward a message (text + media) to one or more other chats
+ */
+export const ForwardMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+
+
+
+export const ForwardMessageBody = zod.object({
+  "targetChatIds": zod.array(zod.number()).min(1)
+})
+
+export const ForwardMessageResponse = zod.object({
+  "success": zod.boolean(),
+  "sent": zod.number(),
+  "failed": zod.number(),
+  "results": zod.array(zod.object({
+  "chatId": zod.number(),
+  "ok": zod.boolean(),
+  "error": zod.string().optional()
+}))
 })
 
 

@@ -81,6 +81,11 @@ export interface StarMessageBody {
   starred: boolean;
 }
 
+export interface ForwardTargetsBody {
+  /** @minItems 1 */
+  targetChatIds: number[];
+}
+
 export interface CommonGroup {
   groupJid: string;
   subject: string;
@@ -459,6 +464,10 @@ export interface ChatMessage {
   mentionedPhoneDigits?: string[];
   /** MaxiChat-internal star flag (not synced from the phone). */
   isStarred?: boolean;
+  /** Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat). */
+  isForwarded?: boolean;
+  /** WhatsApp forward count. >=1 shows "Diteruskan", >=4 shows "Diteruskan berkali-kali". Telegram forwards are 0. */
+  forwardingScore?: number;
 }
 
 export type ChatWithMessagesStatus = typeof ChatWithMessagesStatus[keyof typeof ChatWithMessagesStatus];
@@ -2199,5 +2208,18 @@ export type DeleteMessageForMe200 = {
 
 export type RevokeMessage200 = {
   success: boolean;
+};
+
+export type ForwardMessage200ResultsItem = {
+  chatId: number;
+  ok: boolean;
+  error?: string;
+};
+
+export type ForwardMessage200 = {
+  success: boolean;
+  sent: number;
+  failed: number;
+  results: ForwardMessage200ResultsItem[];
 };
 

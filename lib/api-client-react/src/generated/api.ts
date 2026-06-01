@@ -75,6 +75,8 @@ import type {
   FlowCreateInput,
   FlowSummary,
   FlowUpdateInput,
+  ForwardMessage200,
+  ForwardTargetsBody,
   GeneralSettingsUpdate,
   GetKnowledgeSyncConfig200,
   GetProductSyncConfig200,
@@ -10298,6 +10300,82 @@ export const useRevokeMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRevokeMessageMutationOptions(options));
+    }
+
+export const getForwardMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/chats/${id}/messages/${messageId}/forward`
+}
+
+/**
+ * Forwards the given message to each target chat, sending text and full media on the underlying channel (WhatsApp or Telegram) and recording an outbound row marked as forwarded with an incremented forwarding score.
+
+ * @summary Forward a message (text + media) to one or more other chats
+ */
+export const forwardMessage = async (id: number,
+    messageId: number,
+    forwardTargetsBody: ForwardTargetsBody, options?: RequestInit): Promise<ForwardMessage200> => {
+
+  return customFetch<ForwardMessage200>(getForwardMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      forwardTargetsBody,)
+  }
+);}
+
+
+
+
+export const getForwardMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof forwardMessage>>, TError,{id: number;messageId: number;data: BodyType<ForwardTargetsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof forwardMessage>>, TError,{id: number;messageId: number;data: BodyType<ForwardTargetsBody>}, TContext> => {
+
+const mutationKey = ['forwardMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof forwardMessage>>, {id: number;messageId: number;data: BodyType<ForwardTargetsBody>}> = (props) => {
+          const {id,messageId,data} = props ?? {};
+
+          return  forwardMessage(id,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ForwardMessageMutationResult = NonNullable<Awaited<ReturnType<typeof forwardMessage>>>
+    export type ForwardMessageMutationBody = BodyType<ForwardTargetsBody>
+    export type ForwardMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Forward a message (text + media) to one or more other chats
+ */
+export const useForwardMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof forwardMessage>>, TError,{id: number;messageId: number;data: BodyType<ForwardTargetsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof forwardMessage>>,
+        TError,
+        {id: number;messageId: number;data: BodyType<ForwardTargetsBody>},
+        TContext
+      > => {
+      return useMutation(getForwardMessageMutationOptions(options));
     }
 
 export const getGetCommonGroupsUrl = (id: number,) => {

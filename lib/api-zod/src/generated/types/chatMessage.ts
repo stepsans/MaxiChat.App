@@ -28,4 +28,8 @@ export interface ChatMessage {
   mentionedPhoneDigits?: string[];
   /** MaxiChat-internal star flag (not synced from the phone). */
   isStarred?: boolean;
+  /** Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat). */
+  isForwarded?: boolean;
+  /** WhatsApp forward count. >=1 shows "Diteruskan", >=4 shows "Diteruskan berkali-kali". Telegram forwards are 0. */
+  forwardingScore?: number;
 }

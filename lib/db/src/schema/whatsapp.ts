@@ -173,6 +173,13 @@ export const chatMessagesTable = pgTable(
     // the phone and don't sync over Baileys, so this is dashboard-local: an
     // operator can star a message inside MaxiChat to bookmark it.
     isStarred: boolean("is_starred").notNull().default(false),
+    // Forwarding metadata, mirroring WhatsApp's contextInfo. isForwarded marks
+    // a message as forwarded (inbound: detected from the channel; outbound: set
+    // when an operator forwards via MaxiChat). forwardingScore is WhatsApp's
+    // forward count — >=1 shows the "Diteruskan" tag, >=4 shows "Diteruskan
+    // berkali-kali". Telegram has no count so forwards land with score 0.
+    isForwarded: boolean("is_forwarded").notNull().default(false),
+    forwardingScore: integer("forwarding_score").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

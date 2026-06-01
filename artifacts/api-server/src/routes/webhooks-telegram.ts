@@ -148,6 +148,7 @@ async function processUpdate(
       direction: "inbound",
       content: parsed.text,
       waMessageId: dedupeId,
+      isForwarded: parsed.isForwarded,
     })
     .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
     .returning();

@@ -920,6 +920,10 @@ interface ParsedWaMessage {
   // Digits of contextInfo.mentionedJid (mentions in the message body),
   // in source order. Empty when the message has no mentions.
   mentionedPhoneDigits: string[];
+  // Forwarding metadata from contextInfo. isForwarded marks the message as
+  // forwarded; forwardingScore is WhatsApp's forward count (>=4 == "many times").
+  isForwarded: boolean;
+  forwardingScore: number;
 }
 
 function toEpochMs(ts: unknown): number {
@@ -1161,6 +1165,21 @@ async function parseWaMessage(
         .filter((d): d is string => !!d)
     : [];
 
+  // Forwarding markers live on the same per-type contextInfo as mentions.
+  // WhatsApp sets forwardingScore (a count) and isForwarded; we treat any
+  // positive score as forwarded too.
+  const fwdContextInfo: any =
+    inner.extendedTextMessage?.contextInfo ||
+    inner.imageMessage?.contextInfo ||
+    inner.videoMessage?.contextInfo ||
+    inner.audioMessage?.contextInfo ||
+    inner.documentMessage?.contextInfo ||
+    inner.stickerMessage?.contextInfo ||
+    inner.conversation?.contextInfo ||
+    null;
+  const forwardingScore = Number(fwdContextInfo?.forwardingScore ?? 0) || 0;
+  const isForwarded = !!fwdContextInfo?.isForwarded || forwardingScore > 0;
+
   return {
     jid,
     isGroup,
@@ -1176,6 +1195,8 @@ async function parseWaMessage(
     senderPhoneDigits,
     senderName,
     mentionedPhoneDigits,
+    isForwarded,
+    forwardingScore,
   };
 }
 
@@ -1276,6 +1297,8 @@ async function persistWaMessage(
         mediaMimeType: parsed.media?.mediaMimeType ?? null,
         mediaFilename: parsed.media?.mediaFilename ?? null,
         waMessageId: parsed.waMessageId,
+        isForwarded: parsed.isForwarded,
+        forwardingScore: parsed.forwardingScore,
         createdAt: parsed.timestamp,
         ...senderColumns,
       })

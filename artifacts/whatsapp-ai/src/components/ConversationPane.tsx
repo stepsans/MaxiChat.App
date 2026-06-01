@@ -20,6 +20,8 @@ import {
   getGetStarredMessagesQueryKey,
   useDeleteMessageForMe,
   useRevokeMessage,
+  useListChats,
+  useForwardMessage,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -81,6 +83,7 @@ import {
   Copy,
   Star,
   Trash2,
+  Share2,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -168,6 +171,11 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const [sendingContact, setSendingContact] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<number | null>(null);
+  const [forwardSource, setForwardSource] = useState<number | null>(null);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [forwardSelected, setForwardSelected] = useState<Set<number>>(
+    () => new Set()
+  );
   const [productPanelOpen, setProductPanelOpen] = useState(false);
   const [sendingProductId, setSendingProductId] = useState<number | null>(null);
   const [productSearch, setProductSearch] = useState("");
@@ -287,6 +295,61 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
 
   function deleteForMe(messageId: number) {
     deleteForMeMut.mutate({ id: chatId, messageId });
+  }
+
+  // Chat list for the forward picker. Only fetched while the dialog is open
+  // to avoid an extra request on every conversation open.
+  const { data: forwardChats, isLoading: forwardChatsLoading } = useListChats(
+    undefined,
+    {
+      query: {
+        queryKey: getListChatsQueryKey(),
+        enabled: forwardSource != null,
+      },
+    }
+  );
+
+  const forwardMut = useForwardMessage({
+    mutation: {
+      onSuccess: (data) => {
+        if (data.failed > 0) {
+          toast({
+            title: `Diteruskan ke ${data.sent} chat`,
+            description: `${data.failed} gagal diteruskan.`,
+            variant: data.sent > 0 ? "default" : "destructive",
+          });
+        } else {
+          toast({ title: `Pesan diteruskan ke ${data.sent} chat.` });
+        }
+        setForwardSource(null);
+        setForwardSelected(new Set());
+        setForwardSearch("");
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal meneruskan pesan",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  function toggleForwardTarget(targetId: number) {
+    setForwardSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(targetId)) next.delete(targetId);
+      else next.add(targetId);
+      return next;
+    });
+  }
+
+  function submitForward() {
+    if (forwardSource == null || forwardSelected.size === 0) return;
+    forwardMut.mutate({
+      id: chatId,
+      messageId: forwardSource,
+      data: { targetChatIds: Array.from(forwardSelected) },
+    });
   }
 
   const acceptFor = (k: MediaKind) =>
@@ -980,6 +1043,19 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                             </span>
                           </div>
                         )}
+                        {msg.isForwarded && (
+                          <div
+                            className="flex items-center gap-1 mb-0.5 text-[12px] italic text-[hsl(var(--wa-meta))]"
+                            data-testid={`forwarded-badge-${msg.id}`}
+                          >
+                            <Share2 className="w-3 h-3" />
+                            <span>
+                              {(msg.forwardingScore ?? 0) >= 4
+                                ? "Diteruskan berkali-kali"
+                                : "Diteruskan"}
+                            </span>
+                          </div>
+                        )}
                         {mediaType === "image" && mediaUrl && (
                           <button
                             type="button"
@@ -1084,6 +1160,17 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" side="top">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setForwardSelected(new Set());
+                                  setForwardSearch("");
+                                  setForwardSource(msg.id);
+                                }}
+                                data-testid={`menu-forward-${msg.id}`}
+                              >
+                                <Share2 className="w-3.5 h-3.5 mr-2" />
+                                Teruskan
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => deleteForMe(msg.id)}
                                 data-testid={`menu-delete-for-me-${msg.id}`}
@@ -1409,6 +1496,112 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
               Hapus untuk semua
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={forwardSource != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setForwardSource(null);
+            setForwardSelected(new Set());
+            setForwardSearch("");
+          }
+        }}
+      >
+        <DialogContent data-testid="dialog-forward">
+          <DialogHeader>
+            <DialogTitle>Teruskan pesan</DialogTitle>
+          </DialogHeader>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={forwardSearch}
+              onChange={(e) => setForwardSearch(e.target.value)}
+              placeholder="Cari chat…"
+              className="w-full pl-8 pr-3 py-2 text-sm rounded-md border bg-background"
+              data-testid="input-forward-search"
+            />
+          </div>
+          <div className="max-h-72 overflow-y-auto -mx-1 px-1">
+            {forwardChatsLoading ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Memuat chat…
+              </p>
+            ) : (
+              (() => {
+                const q = forwardSearch.trim().toLowerCase();
+                const candidates = (forwardChats ?? [])
+                  .filter((c) => c.id !== chatId)
+                  .filter((c) => {
+                    if (!q) return true;
+                    return (
+                      c.contactName.toLowerCase().includes(q) ||
+                      (c.nickname ?? "").toLowerCase().includes(q) ||
+                      c.phoneNumber.toLowerCase().includes(q)
+                    );
+                  });
+                if (candidates.length === 0) {
+                  return (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      Tidak ada chat ditemukan.
+                    </p>
+                  );
+                }
+                return candidates.map((c) => {
+                  const selected = forwardSelected.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleForwardTarget(c.id)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-2 py-2 rounded-md text-left hover:bg-accent transition-colors",
+                        selected && "bg-accent"
+                      )}
+                      data-testid={`forward-target-${c.id}`}
+                    >
+                      <ChatAvatar
+                        name={c.nickname || c.contactName}
+                        profilePicUrl={c.profilePicUrl ?? null}
+                        size={32}
+                      />
+                      <span className="flex-1 min-w-0 truncate text-sm">
+                        {c.nickname || c.contactName}
+                      </span>
+                      {selected && (
+                        <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                      )}
+                    </button>
+                  );
+                });
+              })()
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setForwardSource(null)}
+              disabled={forwardMut.isPending}
+              data-testid="button-forward-cancel"
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={submitForward}
+              disabled={forwardSelected.size === 0 || forwardMut.isPending}
+              data-testid="button-forward-confirm"
+            >
+              {forwardMut.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Share2 className="w-4 h-4 mr-2" />
+              )}
+              Teruskan
+              {forwardSelected.size > 0 ? ` (${forwardSelected.size})` : ""}
             </Button>
           </DialogFooter>
         </DialogContent>

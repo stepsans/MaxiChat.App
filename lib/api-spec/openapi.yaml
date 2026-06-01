@@ -2965,6 +2965,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /chats/{id}/messages/{messageId}/forward:
+    post:
+      operationId: forwardMessage
+      tags: [chats]
+      summary: Forward a message (text + media) to one or more other chats
+      description: >
+        Forwards the given message to each target chat, sending text and full
+        media on the underlying channel (WhatsApp or Telegram) and recording an
+        outbound row marked as forwarded with an incremented forwarding score.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForwardTargetsBody"
+      responses:
+        "200":
+          description: Forward attempted for each target
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, sent, failed, results]
+                properties:
+                  success:
+                    type: boolean
+                  sent:
+                    type: integer
+                  failed:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [chatId, ok]
+                      properties:
+                        chatId:
+                          type: integer
+                        ok:
+                          type: boolean
+                        error:
+                          type: string
+        "400":
+          description: Invalid request (no targets, or message cannot be forwarded)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Source chat or message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}/common-groups:
     get:
       operationId: getCommonGroups
@@ -3173,6 +3237,14 @@ components:
       properties:
         starred:
           type: boolean
+    ForwardTargetsBody:
+      type: object
+      required: [targetChatIds]
+      properties:
+        targetChatIds:
+          type: array
+          items: { type: integer }
+          minItems: 1
     CommonGroup:
       type: object
       required: [groupJid, subject]
@@ -3547,6 +3619,12 @@ components:
         isStarred:
           type: boolean
           description: MaxiChat-internal star flag (not synced from the phone).
+        isForwarded:
+          type: boolean
+          description: Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).
+        forwardingScore:
+          type: integer
+          description: WhatsApp forward count. >=1 shows "Diteruskan", >=4 shows "Diteruskan berkali-kali". Telegram forwards are 0.
 
     ChatWithMessages:
       type: object
