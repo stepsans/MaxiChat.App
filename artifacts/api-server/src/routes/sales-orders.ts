@@ -4,6 +4,7 @@ import { google } from "googleapis";
 import { z } from "zod";
 import {
   db,
+  pool,
   salesOrdersTable,
   salesOrderItemsTable,
   salesOrderSyncConfigTable,
@@ -951,36 +952,124 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
     try {
       const auth = await getAuthorizedOAuthClient(cred);
       const sheets = google.sheets({ version: "v4", auth });
-      // Seed a header row if the tab is currently empty.
-      const existing = await sheets.spreadsheets.values.get({
-        spreadsheetId: cfg.spreadsheetId,
-        range: `${cfg.sheetName}!A1:R1`,
-      });
-      const firstRow = existing.data.values?.[0] ?? [];
-      const isEmpty = firstRow.length === 0;
-      const headerMatches =
-        firstRow.length === HEADER.length &&
-        HEADER.every((h, i) => firstRow[i] === h);
-      // Legacy tabs carry the old 11-column header; rewrite row 1 in place to
-      // the new 16-column per-item layout before appending so header and data
-      // never drift apart. (Old data rows below stay as-is; only the header is
-      // migrated.)
-      if (!isEmpty && !headerMatches) {
-        await sheets.spreadsheets.values.update({
+      // Serialize concurrent syncs targeting the SAME spreadsheet tab. The
+      // dedupe below computes absolute grid-row indices from a snapshot and then
+      // deletes by those indices; without a lock, a concurrent sync could shift
+      // rows between snapshot and delete and clobber another order's rows. A
+      // Postgres session advisory lock (held on a dedicated pooled client)
+      // serializes across all server instances, not just within one process.
+      const lockKey = `sales-order-sheet:${cfg.spreadsheetId}:${cfg.sheetName}`;
+      const lockClient = await pool.connect();
+      try {
+        await lockClient.query(
+          "SELECT pg_advisory_lock(hashtextextended($1, 0))",
+          [lockKey]
+        );
+        // Seed a header row if the tab is currently empty.
+        const existing = await sheets.spreadsheets.values.get({
           spreadsheetId: cfg.spreadsheetId,
           range: `${cfg.sheetName}!A1:R1`,
-          valueInputOption: "USER_ENTERED",
-          requestBody: { values: [HEADER] },
         });
+        const firstRow = existing.data.values?.[0] ?? [];
+        const isEmpty = firstRow.length === 0;
+        const headerMatches =
+          firstRow.length === HEADER.length &&
+          HEADER.every((h, i) => firstRow[i] === h);
+        // Legacy tabs carry the old 11-column header; rewrite row 1 in place to
+        // the new 16-column per-item layout before appending so header and data
+        // never drift apart. (Old data rows below stay as-is; only the header is
+        // migrated.)
+        if (!isEmpty && !headerMatches) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: cfg.spreadsheetId,
+            range: `${cfg.sheetName}!A1:R1`,
+            valueInputOption: "USER_ENTERED",
+            requestBody: { values: [HEADER] },
+          });
+        }
+
+        // De-duplicate by "No Order" (column B = order id). If rows for this
+        // order already exist in the tab, delete them first so a re-save UPDATES
+        // the order in place instead of appending a duplicate block. If the user
+        // manually deleted the rows from the Sheet, nothing matches and we simply
+        // append a fresh block. (One order spans multiple rows — one per item —
+        // so we remove every row carrying this No Order, not just the first.)
+        if (!isEmpty) {
+          const noOrder = String(order.id);
+          // Read only the "No Order" column; rows start at sheet row 2 (after the
+          // header), so bVals index i maps to 0-based grid row index i + 1.
+          const colB = await sheets.spreadsheets.values.get({
+            spreadsheetId: cfg.spreadsheetId,
+            range: `${cfg.sheetName}!B2:B`,
+          });
+          const bVals = colB.data.values ?? [];
+          const matchIdx: number[] = [];
+          for (let i = 0; i < bVals.length; i++) {
+            if ((bVals[i]?.[0] ?? "") === noOrder) matchIdx.push(i + 1);
+          }
+          if (matchIdx.length > 0) {
+            // deleteDimension needs the tab's numeric sheetId, not its title.
+            const meta = await sheets.spreadsheets.get({
+              spreadsheetId: cfg.spreadsheetId,
+              fields: "sheets.properties(sheetId,title)",
+            });
+            const sheetId = meta.data.sheets?.find(
+              (s) => s.properties?.title === cfg.sheetName
+            )?.properties?.sheetId;
+            // A missing sheetId means we cannot safely delete the stale rows;
+            // fail loudly instead of appending and leaving duplicates behind.
+            if (sheetId == null) {
+              throw new Error(
+                `Tab "${cfg.sheetName}" tidak ditemukan di spreadsheet`
+              );
+            }
+            // Collapse matching indices into contiguous [start,end) ranges and
+            // delete bottom-up so earlier indices stay valid as rows shift up.
+            const sortedIdx = matchIdx.slice().sort((a, b) => a - b);
+            const ranges: { start: number; end: number }[] = [];
+            for (const idx of sortedIdx) {
+              const last = ranges[ranges.length - 1];
+              if (last && idx === last.end) last.end = idx + 1;
+              else ranges.push({ start: idx, end: idx + 1 });
+            }
+            const requests = ranges
+              .slice()
+              .reverse()
+              .map((r) => ({
+                deleteDimension: {
+                  range: {
+                    sheetId,
+                    dimension: "ROWS" as const,
+                    startIndex: r.start,
+                    endIndex: r.end,
+                  },
+                },
+              }));
+            await sheets.spreadsheets.batchUpdate({
+              spreadsheetId: cfg.spreadsheetId,
+              requestBody: { requests },
+            });
+          }
+        }
+
+        const values = isEmpty ? [HEADER, ...rows] : rows;
+        await sheets.spreadsheets.values.append({
+          spreadsheetId: cfg.spreadsheetId,
+          range: cfg.sheetName,
+          valueInputOption: "USER_ENTERED",
+          insertDataOption: "INSERT_ROWS",
+          requestBody: { values },
+        });
+      } finally {
+        try {
+          await lockClient.query(
+            "SELECT pg_advisory_unlock(hashtextextended($1, 0))",
+            [lockKey]
+          );
+        } finally {
+          lockClient.release();
+        }
       }
-      const values = isEmpty ? [HEADER, ...rows] : rows;
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: cfg.spreadsheetId,
-        range: cfg.sheetName,
-        valueInputOption: "USER_ENTERED",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: { values },
-      });
     } catch (err: unknown) {
       const e = err as {
         message?: string;

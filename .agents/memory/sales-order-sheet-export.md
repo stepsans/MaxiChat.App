@@ -41,3 +41,24 @@ Customer, No HP, Kode Barang, Nama Barang, Qty, Harga, Subtotal Item (gross =
 qty*price), Diskon Item (= qty*price - lineTotal), Subtotal, Diskon
 Keseluruhan, PPN, Total, Status, Catatan, Served By — so the header-migration
 range is `A1:R1`.
+
+**Re-save is idempotent (upsert by No Order):** a sales order spans multiple
+rows (one per item), and "No Order" (column B) = `order.id`, which is the DB
+primary key — the Sheet itself has NO primary key or uniqueness. On sync we read
+column B, delete every grid row whose No Order matches, then append the fresh
+block. So re-saving UPDATES in place instead of duplicating; if the user
+manually deleted the rows, nothing matches and it just appends.
+**Why:** old behavior was append-only → re-saving created duplicate blocks.
+**How to apply:** grid indices are 0-based, header at index 0, so a `B2:B` read
+maps result index i → grid index i+1; `deleteDimension` needs the tab's numeric
+`sheetId` (resolve via `spreadsheets.get` fields `sheets.properties`, treat a
+missing one as a hard error, never append-and-leave-duplicates); collapse
+matches into contiguous `[start,end)` ranges and delete bottom-up so earlier
+indices stay valid.
+**Concurrency:** the delete-by-absolute-index is only safe if syncs to the same
+tab are serialized — a concurrent sync shifting rows between the snapshot read
+and the delete would clobber another order's rows. Hold a Postgres SESSION
+advisory lock keyed on `spreadsheetId:sheetName` on a dedicated `pool.connect()`
+client (`pg_advisory_lock(hashtextextended($1,0))`), unlock + release in a
+`finally`. Session lock (not `_xact_`) avoids holding a transaction open across
+the external Sheets HTTP calls; it still works across server instances.
