@@ -904,8 +904,9 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       "Qty",
       "Harga",
       "Subtotal Item",
+      "Diskon Item",
       "Subtotal",
-      "Diskon",
+      "Diskon Keseluruhan",
       "PPN",
       "Total",
       "Status",
@@ -927,7 +928,8 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       it ? it.name : "",
       it ? it.qty : "",
       it ? it.price : "",
-      it ? it.lineTotal : "",
+      it ? it.qty * it.price : "",
+      it ? it.qty * it.price - it.lineTotal : "",
       order.subtotal,
       order.discountAmount,
       orderPpn,
@@ -945,7 +947,7 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       // Seed a header row if the tab is currently empty.
       const existing = await sheets.spreadsheets.values.get({
         spreadsheetId: cfg.spreadsheetId,
-        range: `${cfg.sheetName}!A1:Q1`,
+        range: `${cfg.sheetName}!A1:R1`,
       });
       const firstRow = existing.data.values?.[0] ?? [];
       const isEmpty = firstRow.length === 0;
@@ -959,7 +961,7 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       if (!isEmpty && !headerMatches) {
         await sheets.spreadsheets.values.update({
           spreadsheetId: cfg.spreadsheetId,
-          range: `${cfg.sheetName}!A1:Q1`,
+          range: `${cfg.sheetName}!A1:R1`,
           valueInputOption: "USER_ENTERED",
           requestBody: { values: [HEADER] },
         });
