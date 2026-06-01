@@ -24,6 +24,7 @@ import {
   sendMessage as tgSendMessage,
   sendDocument as tgSendDocument,
   sendPhoto as tgSendPhoto,
+  deleteMessage as tgDeleteMessage,
 } from "../lib/telegram";
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
@@ -848,6 +849,132 @@ router.post("/:id/messages/:messageId/star", async (req, res): Promise<void> => 
     res.json({ isStarred: updated.isStarred ?? false });
   } catch (err) {
     req.log.error({ err }, "Failed to set message star");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// DELETE /:id/messages/:messageId — "delete for me": remove the message row
+// from MaxiChat only. The message stays on the contact's device / WhatsApp.
+router.delete("/:id/messages/:messageId", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(chatId) || !Number.isInteger(messageId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [deleted] = await db
+      .delete(chatMessagesTable)
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .returning({ id: chatMessagesTable.id });
+    if (!deleted) { res.status(404).json({ error: "Message not found" }); return; }
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete message for me");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /:id/messages/:messageId/revoke — "delete for everyone": recall the
+// message on the underlying channel, then drop the local row. WhatsApp and
+// Telegram only allow recalling our OWN (outbound) messages, within a time
+// window, so inbound messages are rejected with 400.
+router.post("/:id/messages/:messageId/revoke", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(chatId) || !Number.isInteger(messageId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [message] = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .limit(1);
+    if (!message) { res.status(404).json({ error: "Message not found" }); return; }
+
+    if (message.direction !== "outbound") {
+      res.status(400).json({
+        error: "Hanya pesan yang Anda kirim yang bisa dihapus untuk semua orang.",
+      });
+      return;
+    }
+    if (!message.waMessageId) {
+      res.status(400).json({
+        error: "Pesan ini tidak punya ID dari WhatsApp/Telegram, tidak bisa ditarik.",
+      });
+      return;
+    }
+
+    const [channel] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, chat.channelId))
+      .limit(1);
+
+    if (channel?.kind === "telegram") {
+      const meta =
+        (channel.metadata as Record<string, unknown> | null)?.["telegram"] as
+          | { botToken?: string }
+          | undefined;
+      // Outbound telegram rows store waMessageId as `tg:<chatId>:<messageId>`.
+      const parts = message.waMessageId.split(":");
+      const tgChatId = Number.parseInt(parts[1] ?? "", 10);
+      const tgMessageId = Number.parseInt(parts[2] ?? "", 10);
+      if (!meta?.botToken || !Number.isFinite(tgChatId) || !Number.isFinite(tgMessageId)) {
+        res.status(400).json({ error: "Channel Telegram tidak valid untuk hapus pesan." });
+        return;
+      }
+      try {
+        await tgDeleteMessage(meta.botToken, tgChatId, tgMessageId);
+      } catch (err) {
+        req.log.error({ err, chatId, messageId }, "Telegram revoke failed");
+        res.status(400).json({
+          error: "Gagal menarik pesan di Telegram (mungkin sudah terlalu lama).",
+        });
+        return;
+      }
+    } else {
+      const sock = getSockForChannel(chat.channelId);
+      if (!sock) { res.status(409).json({ error: "WhatsApp tidak terhubung" }); return; }
+      const jid = chat.phoneNumber.includes("@")
+        ? chat.phoneNumber
+        : `${chat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+      try {
+        await sock.sendMessage(jid, {
+          delete: {
+            remoteJid: jid,
+            fromMe: true,
+            id: message.waMessageId,
+            // Groups need the original sender's JID; for our own message that
+            // is the connected account. Omitted for 1:1 chats.
+            ...(jid.endsWith("@g.us") && sock.user?.id
+              ? { participant: sock.user.id }
+              : {}),
+          },
+        });
+      } catch (err) {
+        req.log.error({ err, chatId, messageId }, "WhatsApp revoke failed");
+        res.status(400).json({
+          error: "Gagal menarik pesan di WhatsApp (mungkin sudah terlalu lama).",
+        });
+        return;
+      }
+    }
+
+    await db
+      .delete(chatMessagesTable)
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)));
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to revoke message");
     res.status(500).json({ error: "Internal server error" });
   }
 });

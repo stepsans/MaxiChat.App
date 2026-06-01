@@ -66,6 +66,7 @@ import type {
   DeleteKnowledgeType400,
   DeleteKnowledgeType404,
   DeleteKnowledgeType409,
+  DeleteMessageForMe200,
   DriveFolderRef,
   EffectivePermissions,
   EmailVerificationResult,
@@ -108,6 +109,7 @@ import type {
   ResendVerificationInput,
   ResendVerificationResult,
   ResetFlowCooldown200,
+  RevokeMessage200,
   RunKnowledgeSync200,
   RunProductSync200,
   RunShortcutSync200,
@@ -10148,6 +10150,154 @@ export const useSetMessageStar = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getSetMessageStarMutationOptions(options));
+    }
+
+export const getDeleteMessageForMeUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/chats/${id}/messages/${messageId}`
+}
+
+/**
+ * Removes the message row from MaxiChat's database. Does NOT touch WhatsApp/Telegram — the message remains on the contact's device. Works for any message (inbound or outbound).
+
+ * @summary Delete a message from MaxiChat only (delete for me)
+ */
+export const deleteMessageForMe = async (id: number,
+    messageId: number, options?: RequestInit): Promise<DeleteMessageForMe200> => {
+
+  return customFetch<DeleteMessageForMe200>(getDeleteMessageForMeUrl(id,messageId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteMessageForMeMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMessageForMe>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMessageForMe>>, TError,{id: number;messageId: number}, TContext> => {
+
+const mutationKey = ['deleteMessageForMe'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMessageForMe>>, {id: number;messageId: number}> = (props) => {
+          const {id,messageId} = props ?? {};
+
+          return  deleteMessageForMe(id,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMessageForMeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMessageForMe>>>
+
+    export type DeleteMessageForMeMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a message from MaxiChat only (delete for me)
+ */
+export const useDeleteMessageForMe = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMessageForMe>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMessageForMe>>,
+        TError,
+        {id: number;messageId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteMessageForMeMutationOptions(options));
+    }
+
+export const getRevokeMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/chats/${id}/messages/${messageId}/revoke`
+}
+
+/**
+ * Recalls the message on the underlying channel so the contact also sees it removed. WhatsApp/Telegram only allow recalling your own (outbound) messages, and within a time window. After a successful revoke the local row is also removed.
+
+ * @summary Delete a message for everyone (revoke on the channel)
+ */
+export const revokeMessage = async (id: number,
+    messageId: number, options?: RequestInit): Promise<RevokeMessage200> => {
+
+  return customFetch<RevokeMessage200>(getRevokeMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRevokeMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeMessage>>, TError,{id: number;messageId: number}, TContext> => {
+
+const mutationKey = ['revokeMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeMessage>>, {id: number;messageId: number}> = (props) => {
+          const {id,messageId} = props ?? {};
+
+          return  revokeMessage(id,messageId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeMessageMutationResult = NonNullable<Awaited<ReturnType<typeof revokeMessage>>>
+
+    export type RevokeMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a message for everyone (revoke on the channel)
+ */
+export const useRevokeMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeMessage>>, TError,{id: number;messageId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeMessage>>,
+        TError,
+        {id: number;messageId: number},
+        TContext
+      > => {
+      return useMutation(getRevokeMessageMutationOptions(options));
     }
 
 export const getGetCommonGroupsUrl = (id: number,) => {

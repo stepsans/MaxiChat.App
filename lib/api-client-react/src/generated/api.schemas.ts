@@ -2193,3 +2193,11 @@ export type SetMessageStar200 = {
   isStarred: boolean;
 };
 
+export type DeleteMessageForMe200 = {
+  success: boolean;
+};
+
+export type RevokeMessage200 = {
+  success: boolean;
+};
+

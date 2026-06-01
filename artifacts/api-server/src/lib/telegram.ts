@@ -82,6 +82,20 @@ export async function sendMessage(
   return { messageId: r.message_id };
 }
 
+// Delete a message for everyone. Telegram bots may delete their own outgoing
+// messages (and, in groups where the bot is admin, others') within a 48h
+// window. Throws on failure (e.g. message too old) so callers can surface it.
+export async function deleteMessage(
+  token: string,
+  chatId: number | string,
+  messageId: number
+): Promise<void> {
+  await call(token, "deleteMessage", {
+    chat_id: chatId,
+    message_id: messageId,
+  });
+}
+
 // Send a file as a document. Telegram's sendDocument requires
 // multipart/form-data (the JSON `call` helper above can't carry the binary),
 // so we build a FormData with the file as a Blob and POST it directly.

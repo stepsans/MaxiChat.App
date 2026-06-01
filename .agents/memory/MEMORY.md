@@ -23,6 +23,7 @@
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.
 - [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).
+- [Message delete/revoke constraints](message-revoke-constraints.md) — delete-for-me is local-row-only (any msg); revoke is outbound-only, channel recall THEN delete, dual-channel key derivation, failed recall must not delete row.
 - [AI Review run-window watermark](ai-review-run-window.md) — daily recap window = since-last-success (lastRunAt, gt), advance on success only; scheduler dedup on cut-off instant not date-string.
 - [AI usage + join-anchored billing](ai-usage-billing-period.md) — token usage attributed to OWNER not member; monthly period anchored on join day-of-month (clamped), not the 1st; instrument every new AI call site.
 - [Chat query key not channel-scoped](chat-query-key-not-channel-scoped.md) — channel is a request header, not a cache key; client diffing of chats across channel switches needs a pending-baseline guard or it false-fires on the new channel's old unreads.

@@ -3040,6 +3040,36 @@ export const SetMessageStarResponse = zod.object({
 
 
 /**
+ * Removes the message row from MaxiChat's database. Does NOT touch WhatsApp/Telegram — the message remains on the contact's device. Works for any message (inbound or outbound).
+
+ * @summary Delete a message from MaxiChat only (delete for me)
+ */
+export const DeleteMessageForMeParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const DeleteMessageForMeResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * Recalls the message on the underlying channel so the contact also sees it removed. WhatsApp/Telegram only allow recalling your own (outbound) messages, and within a time window. After a successful revoke the local row is also removed.
+
+ * @summary Delete a message for everyone (revoke on the channel)
+ */
+export const RevokeMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const RevokeMessageResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * For a direct (non-group) chat, lists the WhatsApp groups that both the connected account and this contact belong to. Returns 400 for group chats.
 
  * @summary Groups shared in common with a 1:1 contact

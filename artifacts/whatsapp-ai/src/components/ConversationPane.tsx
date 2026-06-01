@@ -18,6 +18,8 @@ import {
   useSendProductToChat,
   useSetMessageStar,
   getGetStarredMessagesQueryKey,
+  useDeleteMessageForMe,
+  useRevokeMessage,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -78,6 +80,7 @@ import {
   PanelRightClose,
   Copy,
   Star,
+  Trash2,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -164,6 +167,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const [contactPhone, setContactPhone] = useState("");
   const [sendingContact, setSendingContact] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<number | null>(null);
   const [productPanelOpen, setProductPanelOpen] = useState(false);
   const [sendingProductId, setSendingProductId] = useState<number | null>(null);
   const [productSearch, setProductSearch] = useState("");
@@ -242,6 +246,47 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       messageId,
       data: { starred: !current },
     });
+  }
+
+  function invalidateAfterDelete() {
+    qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+    qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetStarredMessagesQueryKey(chatId) });
+  }
+
+  const deleteForMeMut = useDeleteMessageForMe({
+    mutation: {
+      onSuccess: () => {
+        invalidateAfterDelete();
+        toast({ title: "Pesan dihapus untuk Anda." });
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal menghapus pesan",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  const revokeMut = useRevokeMessage({
+    mutation: {
+      onSuccess: () => {
+        invalidateAfterDelete();
+        toast({ title: "Pesan dihapus untuk semua orang." });
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal menghapus untuk semua orang",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+      onSettled: () => setRevokeTarget(null),
+    },
+  });
+
+  function deleteForMe(messageId: number) {
+    deleteForMeMut.mutate({ id: chatId, messageId });
   }
 
   const acceptFor = (k: MediaKind) =>
@@ -1027,6 +1072,37 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                               fill={msg.isStarred ? "currentColor" : "none"}
                             />
                           </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                data-testid={`button-msg-menu-${msg.id}`}
+                                title="Opsi pesan"
+                                className="p-0.5 rounded-full hover:bg-black/10 transition-colors text-[hsl(var(--wa-meta))] opacity-0 group-hover:opacity-100"
+                              >
+                                <MoreVertical className="w-3 h-3" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" side="top">
+                              <DropdownMenuItem
+                                onClick={() => deleteForMe(msg.id)}
+                                data-testid={`menu-delete-for-me-${msg.id}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                Hapus untuk saya
+                              </DropdownMenuItem>
+                              {isOutbound && (
+                                <DropdownMenuItem
+                                  onClick={() => setRevokeTarget(msg.id)}
+                                  className="text-red-600 focus:text-red-600"
+                                  data-testid={`menu-delete-for-everyone-${msg.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                  Hapus untuk semua orang
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                           {isOutbound && msg.isAiGenerated && (
                             <Bot
                               className="w-3 h-3 text-[hsl(var(--wa-meta))]"
@@ -1293,6 +1369,48 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               className="max-h-[90vh] max-w-[95vw] w-auto h-auto object-contain rounded-md"
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={revokeTarget != null}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+      >
+        <DialogContent data-testid="dialog-revoke-confirm">
+          <DialogHeader>
+            <DialogTitle>Hapus untuk semua orang?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Pesan ini akan ditarik dari WhatsApp/Telegram sehingga penerima juga
+            tidak bisa melihatnya lagi. Tindakan ini tidak bisa dibatalkan, dan
+            hanya berhasil jika pesan belum terlalu lama.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRevokeTarget(null)}
+              disabled={revokeMut.isPending}
+              data-testid="button-revoke-cancel"
+            >
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() =>
+                revokeTarget != null &&
+                revokeMut.mutate({ id: chatId, messageId: revokeTarget })
+              }
+              disabled={revokeMut.isPending}
+              data-testid="button-revoke-confirm"
+            >
+              {revokeMut.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              Hapus untuk semua
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
