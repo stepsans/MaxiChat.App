@@ -48,4 +48,7 @@ export interface ChatWithMessages {
   /** @nullable */
   assignedUserId: number | null;
   messages: ChatMessage[];
+  /** True when older messages exist beyond the returned window. The conversation loads only the most recent page; pass the oldest returned message id as `before` to fetch the previous page.
+   */
+  hasMoreMessages?: boolean;
 }

@@ -44,6 +44,7 @@ import type {
   ChannelUpdate,
   Chat,
   ChatAttachments,
+  ChatHistoryPage,
   ChatLabelsResult,
   ChatMessage,
   ChatUpdate,
@@ -78,6 +79,7 @@ import type {
   ForwardMessage200,
   ForwardTargetsBody,
   GeneralSettingsUpdate,
+  GetChatHistoryParams,
   GetKnowledgeSyncConfig200,
   GetProductSyncConfig200,
   GetSalesOrderSyncConfig200,
@@ -1498,6 +1500,92 @@ export const useOpenChatByPhone = <TError = ErrorType<ErrorResponse>,
       return useMutation(getOpenChatByPhoneMutationOptions(options));
     }
 
+export const getGetChatHistoryUrl = (params: GetChatHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/chats/history?${stringifiedParams}` : `/api/chats/history`
+}
+
+/**
+ * Returns a page of messages older than `before` for the given chat, ordered oldest-first. Used by the conversation view to lazily load history above the initial recent window without bloating the polled GET /chats/{id} response. Query-only (no path param) by design so the generated client/types don't collide with the path-param schema.
+
+ * @summary Page back through a chat's older messages
+ */
+export const getChatHistory = async (params: GetChatHistoryParams, options?: RequestInit): Promise<ChatHistoryPage> => {
+
+  return customFetch<ChatHistoryPage>(getGetChatHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChatHistoryQueryKey = (params?: GetChatHistoryParams,) => {
+    return [
+    `/api/chats/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetChatHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getChatHistory>>, TError = ErrorType<ErrorResponse>>(params: GetChatHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChatHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChatHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChatHistory>>> = ({ signal }) => getChatHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChatHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChatHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getChatHistory>>>
+export type GetChatHistoryQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Page back through a chat's older messages
+ */
+
+export function useGetChatHistory<TData = Awaited<ReturnType<typeof getChatHistory>>, TError = ErrorType<ErrorResponse>>(
+ params: GetChatHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChatHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChatHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getRefreshChatAvatarUrl = (id: number,) => {
 
 
@@ -1579,6 +1667,8 @@ export const getGetChatUrl = (id: number,) => {
 }
 
 /**
+ * Returns the chat plus the most recent window of messages (newest 200). Older history is paged separately via GET /chats/history to keep this response — which the client polls every few seconds — small even for large group chats.
+
  * @summary Get a specific chat with messages
  */
 export const getChat = async (id: number, options?: RequestInit): Promise<ChatWithMessages> => {

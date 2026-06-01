@@ -184,6 +184,15 @@ export const chatMessagesTable = pgTable(
   },
   (t) => ({
     waMessageIdUnique: uniqueIndex("chat_messages_wa_message_id_unique").on(t.waMessageId),
+    // Conversation loads filter by chat_id and page by (created_at, id) — this
+    // composite index turns that from a full table scan into an index range
+    // scan, which matters a lot for large group chats (tens of thousands of
+    // messages).
+    chatIdCreatedAtIdx: index("chat_messages_chat_id_created_at_id_idx").on(
+      t.chatId,
+      t.createdAt,
+      t.id,
+    ),
   })
 );
 

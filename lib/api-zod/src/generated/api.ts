@@ -305,6 +305,40 @@ export const OpenChatByPhoneResponse = zod.object({
 
 
 /**
+ * Returns a page of messages older than `before` for the given chat, ordered oldest-first. Used by the conversation view to lazily load history above the initial recent window without bloating the polled GET /chats/{id} response. Query-only (no path param) by design so the generated client/types don't collide with the path-param schema.
+
+ * @summary Page back through a chat's older messages
+ */
+export const getChatHistoryQueryLimitMax = 500;
+
+
+
+export const GetChatHistoryQueryParams = zod.object({
+  "chatId": zod.coerce.number(),
+  "before": zod.coerce.number().describe('Return messages older than this message id.'),
+  "limit": zod.coerce.number().min(1).max(getChatHistoryQueryLimitMax).optional().describe('Max number of messages to return. Defaults to 200.')
+})
+
+export const GetChatHistoryResponse = zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+})).describe('Older messages, ordered oldest-first.'),
+  "hasMore": zod.boolean().describe('True when still older messages exist before this page.')
+})
+
+
+/**
  * Bypasses the TTL cache and asks Baileys for the latest profile picture URL for this chat. Returns the new URL (or null if WhatsApp didn't return one — typical for contacts with strict privacy settings or no photo set).
 
  * @summary Force-refresh a chat's profile picture from WhatsApp
@@ -319,6 +353,8 @@ export const RefreshChatAvatarResponse = zod.object({
 
 
 /**
+ * Returns the chat plus the most recent window of messages (newest 200). Older history is paged separately via GET /chats/history to keep this response — which the client polls every few seconds — small even for large group chats.
+
  * @summary Get a specific chat with messages
  */
 export const GetChatParams = zod.object({
@@ -364,7 +400,8 @@ export const GetChatResponse = zod.object({
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
   "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
-}))
+})),
+  "hasMoreMessages": zod.boolean().optional().describe('True when older messages exist beyond the returned window. The conversation loads only the most recent page; pass the oldest returned message id as `before` to fetch the previous page.\n')
 })
 
 

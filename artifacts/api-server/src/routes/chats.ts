@@ -35,6 +35,7 @@ import {
   SendManualReplyBody,
   TakeoverChatBody,
   GetChatParams,
+  GetChatHistoryQueryParams,
   UpdateChatParams,
   SendManualReplyParams,
   TakeoverChatParams,
@@ -1285,6 +1286,65 @@ router.post("/:id/participants", async (req, res): Promise<void> => {
   }
 });
 
+// How many of the most-recent messages GET /chats/:id returns. Older history
+// is paged via GET /chats/history. Keeping this window small matters because
+// the client polls GET /chats/:id every few seconds — a large group chat has
+// tens of thousands of messages and shipping all of them on every poll is what
+// made opening such chats feel unresponsive.
+const RECENT_MESSAGE_WINDOW = 200;
+
+// Page back through a chat's older messages (query-only; registered before the
+// `/:id` route so the literal "history" segment isn't swallowed by `/:id`).
+router.get("/history", async (req, res): Promise<void> => {
+  try {
+    const parsed = GetChatHistoryQueryParams.safeParse(req.query);
+    if (!parsed.success) { res.status(400).json({ error: "Invalid query" }); return; }
+
+    const { chatId, before } = parsed.data;
+    const limit = parsed.data.limit ?? RECENT_MESSAGE_WINDOW;
+
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    // Resolve the cursor message's (createdAt, id) within this chat so we can
+    // keyset-page strictly older rows. Scoping the lookup to the chat prevents
+    // using another tenant's message id as a cursor.
+    const [cursor] = await db
+      .select({ createdAt: chatMessagesTable.createdAt, id: chatMessagesTable.id })
+      .from(chatMessagesTable)
+      .where(and(eq(chatMessagesTable.chatId, chat.id), eq(chatMessagesTable.id, before)))
+      .limit(1);
+    if (!cursor) { res.json({ messages: [], hasMore: false }); return; }
+
+    const older = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(
+        and(
+          eq(chatMessagesTable.chatId, chat.id),
+          sql`(${chatMessagesTable.createdAt}, ${chatMessagesTable.id}) < (${cursor.createdAt}, ${cursor.id})`,
+        ),
+      )
+      .orderBy(desc(chatMessagesTable.createdAt), desc(chatMessagesTable.id))
+      .limit(limit + 1);
+    const hasMore = older.length > limit;
+    const page = older.slice(0, limit).reverse();
+
+    res.json({
+      hasMore,
+      messages: page.map((m) => ({
+        ...m,
+        createdAt: m.createdAt.toISOString(),
+        mentionedPhoneDigits: m.mentionedPhoneDigits ?? [],
+        isStarred: m.isStarred ?? false,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get chat history");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/:id", async (req, res): Promise<void> => {
   try {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
@@ -1293,11 +1353,17 @@ router.get("/:id", async (req, res): Promise<void> => {
     const chat = await loadOwnedChat(req, res, parsed.data.id);
     if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
-    const messages = await db
+    // Fetch one extra row so we can tell the client whether older history
+    // exists without a separate COUNT. Pull newest-first (cheap via the
+    // (chat_id, created_at, id) index) then reverse to chronological order.
+    const recent = await db
       .select()
       .from(chatMessagesTable)
       .where(eq(chatMessagesTable.chatId, chat.id))
-      .orderBy(chatMessagesTable.createdAt);
+      .orderBy(desc(chatMessagesTable.createdAt), desc(chatMessagesTable.id))
+      .limit(RECENT_MESSAGE_WINDOW + 1);
+    const hasMoreMessages = recent.length > RECENT_MESSAGE_WINDOW;
+    const messages = recent.slice(0, RECENT_MESSAGE_WINDOW).reverse();
 
     if ((chat.unreadCount ?? 0) > 0) {
       db.update(chatsTable)
@@ -1317,6 +1383,7 @@ router.get("/:id", async (req, res): Promise<void> => {
       lastMessageAt: chat.lastMessageAt?.toISOString() ?? null,
       createdAt: chat.createdAt.toISOString(),
       labels: labelMap.get(chat.id) ?? [],
+      hasMoreMessages,
       messages: messages.map((m) => ({
         ...m,
         createdAt: m.createdAt.toISOString(),

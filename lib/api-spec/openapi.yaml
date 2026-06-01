@@ -457,6 +457,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /chats/history:
+    get:
+      operationId: getChatHistory
+      tags: [chats]
+      summary: Page back through a chat's older messages
+      description: >
+        Returns a page of messages older than `before` for the given chat,
+        ordered oldest-first. Used by the conversation view to lazily load
+        history above the initial recent window without bloating the polled
+        GET /chats/{id} response. Query-only (no path param) by design so the
+        generated client/types don't collide with the path-param schema.
+      parameters:
+        - name: chatId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: before
+          in: query
+          required: true
+          description: Return messages older than this message id.
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          description: Max number of messages to return. Defaults to 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: A page of older messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatHistoryPage"
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}/refresh-avatar:
     post:
       operationId: refreshChatAvatar
@@ -496,6 +547,11 @@ paths:
       operationId: getChat
       tags: [chats]
       summary: Get a specific chat with messages
+      description: >
+        Returns the chat plus the most recent window of messages (newest 200).
+        Older history is paged separately via GET /chats/history to keep this
+        response — which the client polls every few seconds — small even for
+        large group chats.
       parameters:
         - name: id
           in: path
@@ -3682,6 +3738,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ChatMessage"
+        hasMoreMessages:
+          type: boolean
+          description: >
+            True when older messages exist beyond the returned window. The
+            conversation loads only the most recent page; pass the oldest
+            returned message id as `before` to fetch the previous page.
+
+    ChatHistoryPage:
+      type: object
+      required: [messages, hasMore]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+          description: Older messages, ordered oldest-first.
+        hasMore:
+          type: boolean
+          description: True when still older messages exist before this page.
 
     OpenChatByPhoneInput:
       type: object

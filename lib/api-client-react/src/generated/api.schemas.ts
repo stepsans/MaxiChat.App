@@ -527,6 +527,16 @@ export interface ChatWithMessages {
   /** @nullable */
   assignedUserId: number | null;
   messages: ChatMessage[];
+  /** True when older messages exist beyond the returned window. The conversation loads only the most recent page; pass the oldest returned message id as `before` to fetch the previous page.
+   */
+  hasMoreMessages?: boolean;
+}
+
+export interface ChatHistoryPage {
+  /** Older messages, ordered oldest-first. */
+  messages: ChatMessage[];
+  /** True when still older messages exist before this page. */
+  hasMore: boolean;
 }
 
 export interface OpenChatByPhoneInput {
@@ -2063,6 +2073,20 @@ export const ListChatsTag = {
   cold: 'cold',
   closing: 'closing',
 } as const;
+
+export type GetChatHistoryParams = {
+chatId: number;
+/**
+ * Return messages older than this message id.
+ */
+before: number;
+/**
+ * Max number of messages to return. Defaults to 200.
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
+};
 
 export type RefreshChatAvatar200 = {
   profilePicUrl: string | null;

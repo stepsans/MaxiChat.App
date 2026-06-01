@@ -22,6 +22,7 @@ import {
   useRevokeMessage,
   useListChats,
   useForwardMessage,
+  getChatHistory,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -136,6 +137,15 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const shortcutMap = useShortcutMap();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  // Scroll container — used to restore scroll position when we prepend older
+  // history so the viewport doesn't jump after a "load older" fetch.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Older messages paged in above the recent window served by useGetChat.
+  // Kept oldest-first; merged with chat.messages and de-duped before render.
+  const [olderMessages, setOlderMessages] = useState<any[]>([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  // True once a history page reports there's nothing older left to fetch.
+  const [historyExhausted, setHistoryExhausted] = useState(false);
   const [pendingFileKind, setPendingFileKind] = useState<MediaKind>("document");
   const [uploading, setUploading] = useState(false);
   // Image pasted (Ctrl/Cmd+V) or picked into a staging area. Held so the user
@@ -536,11 +546,58 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     }
   }, [chat?.id]);
 
-  // Autoscroll to the most recent message whenever new messages arrive — the
-  // canonical WhatsApp UX (you always land at the bottom of the thread).
+  // Switching chats discards any history we paged in for the previous one —
+  // the recent window from useGetChat is the fresh baseline for the new chat.
+  useEffect(() => {
+    setOlderMessages([]);
+    setLoadingOlder(false);
+    setHistoryExhausted(false);
+  }, [chatId]);
+
+  // Fetch the next page of older messages above the current oldest one and
+  // prepend it, restoring scroll position so the viewport stays put instead of
+  // jumping to the top after the DOM grows.
+  async function loadOlderMessages() {
+    if (!chatId || loadingOlder || historyExhausted) return;
+    const oldest = combinedMessages[0];
+    if (!oldest) return;
+    setLoadingOlder(true);
+    const container = scrollContainerRef.current;
+    const prevHeight = container?.scrollHeight ?? 0;
+    const prevTop = container?.scrollTop ?? 0;
+    try {
+      const page = await getChatHistory({ chatId, before: oldest.id });
+      setOlderMessages((prev) => [...page.messages, ...prev]);
+      if (!page.hasMore) setHistoryExhausted(true);
+      // Restore scroll so the first previously-visible message stays in place.
+      requestAnimationFrame(() => {
+        const el = scrollContainerRef.current;
+        if (el) el.scrollTop = el.scrollHeight - prevHeight + prevTop;
+      });
+    } catch (err: any) {
+      toast({
+        title: "Gagal memuat pesan lama",
+        description: err?.message ?? "",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
+  // Autoscroll to the most recent message whenever a NEW message arrives — the
+  // canonical WhatsApp UX (you always land at the bottom of the thread). Keyed
+  // on the newest message's id (not the count): the recent window is capped at
+  // 200, so once a busy chat hits the cap the length stops changing even as new
+  // messages stream in. Paging in older history doesn't change this id, so it
+  // correctly does NOT yank the viewport to the bottom.
+  const newestMessageId =
+    chat?.messages && chat.messages.length > 0
+      ? chat.messages[chat.messages.length - 1].id
+      : undefined;
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
-  }, [chat?.messages.length, chat?.id]);
+  }, [newestMessageId, chat?.id]);
 
   if (isLoading) {
     return (
@@ -564,6 +621,21 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     );
   }
 
+  // The recent window from useGetChat plus any older history we've paged in.
+  // De-dupe by id (the recent window can overlap a freshly-fetched page) and
+  // sort chronologically by (createdAt, id) — the same total order the server
+  // pages by — so bubbles render in a stable sequence.
+  const combinedMessages = (() => {
+    const byId = new Map<number, any>();
+    for (const m of olderMessages) byId.set(m.id, m);
+    for (const m of chat.messages as any[]) byId.set(m.id, m);
+    return Array.from(byId.values()).sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime();
+      const tb = new Date(b.createdAt).getTime();
+      return ta === tb ? a.id - b.id : ta - tb;
+    });
+  })();
+
   const isGroup = chat.phoneNumber.endsWith("@g.us");
   // Prefer pushName (stored in contactName) over the raw JID — even for LID
   // chats — so the header shows "Efendi" instead of a bare LID number when
@@ -580,7 +652,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   //   (a) the per-bubble "sender name + avatar" header, and
   //   (b) resolving @mention tokens in the message body.
   const participantsByPhone = new Map<string, string>();
-  for (const m of chat.messages as any[]) {
+  for (const m of combinedMessages as any[]) {
     const digits = typeof m.senderPhoneDigits === "string" ? m.senderPhoneDigits : null;
     const name = typeof m.senderName === "string" ? m.senderName.trim() : "";
     if (digits && name && !participantsByPhone.has(digits)) {
@@ -649,11 +721,11 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   // hidden while a query is active — they have nothing to match against.
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const visibleMessages = trimmedQuery
-    ? chat.messages.filter((m: any) =>
+    ? combinedMessages.filter((m: any) =>
         typeof m.content === "string" &&
         m.content.toLowerCase().includes(trimmedQuery)
       )
-    : chat.messages;
+    : combinedMessages;
 
   // Group messages by day so we can drop a "Hari ini / Kemarin / d MMMM"
   // pill between them — same UX as WhatsApp.
@@ -945,14 +1017,17 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       )}
 
       {/* Messages on doodle background */}
-      <div className="flex-1 overflow-y-auto wa-scroll wa-doodle-bg px-[8%] py-4">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto wa-scroll wa-doodle-bg px-[8%] py-4"
+      >
         {trimmedQuery && visibleMessages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-[hsl(var(--wa-meta))]">
               <p className="text-sm">Tidak ada pesan yang cocok</p>
             </div>
           </div>
-        ) : chat.messages.length === 0 ? (
+        ) : combinedMessages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-[hsl(var(--wa-meta))]">
               <p className="text-sm">Belum ada pesan</p>
@@ -960,6 +1035,27 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
           </div>
         ) : (
           <>
+            {/* Lazy-load older history above the recent window. Hidden while an
+                in-chat search is active (search only scans loaded messages) and
+                once we've reached the start of the conversation. */}
+            {!trimmedQuery && chat.hasMoreMessages && !historyExhausted && (
+              <div className="flex justify-center my-3">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={loadOlderMessages}
+                  disabled={loadingOlder}
+                  data-testid="button-load-older"
+                  className="text-[12px]"
+                >
+                  {loadingOlder ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    "Muat pesan lama"
+                  )}
+                </Button>
+              </div>
+            )}
             {messagesByDay.map((group) => (
               <div key={group.day}>
                 <div className="flex justify-center my-3">
