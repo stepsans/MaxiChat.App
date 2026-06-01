@@ -737,12 +737,39 @@ router.get("/:id/group-info", async (req, res): Promise<void> => {
     } catch {
       // Only group admins can read the invite code — leave null otherwise.
     }
+    // Baileys' groupMetadata rarely carries display names for participants —
+    // and in LID-addressed groups the participant id is a long LID number, not
+    // a real phone, so showing it raw is useless to the operator. Back-fill
+    // names from the pushNames we've stored on this group's inbound messages,
+    // keyed by the sender's digits (which match jidDigits(participant id)).
+    const nameRes = await db.execute<{ digits: string; name: string }>(sql`
+      SELECT DISTINCT ON (sender_phone_digits)
+        sender_phone_digits AS digits, sender_name AS name
+      FROM chat_messages
+      WHERE chat_id = ${chat.id}
+        AND sender_phone_digits IS NOT NULL
+        AND sender_name IS NOT NULL
+        AND sender_name <> ''
+      ORDER BY sender_phone_digits, created_at DESC
+    `);
+    const nameRows: { digits: string; name: string }[] =
+      (nameRes as any).rows ?? (nameRes as any) ?? [];
+    const nameByDigits = new Map<string, string>();
+    for (const r of nameRows) {
+      if (r.digits && r.name) nameByDigits.set(r.digits, r.name);
+    }
+
     const participants = (meta.participants ?? []).map((p) => {
       const pp = p as { id: string; admin?: string | null; name?: string | null; notify?: string | null };
+      const digits = jidDigits(pp.id);
+      const name =
+        pp.name ??
+        pp.notify ??
+        (digits ? nameByDigits.get(digits) ?? null : null);
       return {
         jid: pp.id,
-        phone: jidDigits(pp.id),
-        name: pp.name ?? pp.notify ?? null,
+        phone: digits,
+        name,
         isAdmin: pp.admin === "admin" || pp.admin === "superadmin",
         isSuperAdmin: pp.admin === "superadmin",
       };
