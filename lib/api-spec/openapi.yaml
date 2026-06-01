@@ -1849,6 +1849,34 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/DriveFolderRef" }
 
+  /credentials/{id}/contacts/status:
+    get:
+      operationId: getCredentialContactsStatus
+      tags: [credentials]
+      summary: Count of Google Contacts stored for the signed-in user
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Contacts status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContactsStatus" }
+
+  /credentials/{id}/contacts/sync:
+    post:
+      operationId: syncCredentialContacts
+      tags: [credentials]
+      summary: Pull the latest Google Contacts snapshot via the People API
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Contacts synced
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContactsStatus" }
+
   /ai-review/groups:
     get:
       operationId: listAiReviewGroups
@@ -4660,7 +4688,7 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api, googleDriveOAuth2Api] }
+        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api, googleDriveOAuth2Api, googleContactsApi] }
         clientId: { type: string }
         scopes: { type: array, items: { type: string } }
         accountEmail: { type: string, nullable: true }
@@ -4669,12 +4697,18 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
+    ContactsStatus:
+      type: object
+      required: [count]
+      properties:
+        count: { type: integer }
+
     CredentialCreateInput:
       type: object
       required: [name, type, clientId, clientSecret]
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
-        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api, googleDriveOAuth2Api] }
+        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api, googleDriveOAuth2Api, googleContactsApi] }
         clientId: { type: string, minLength: 1 }
         clientSecret: { type: string, minLength: 1 }
 

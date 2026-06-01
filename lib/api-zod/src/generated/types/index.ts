@@ -63,6 +63,7 @@ export * from './chatWithMessagesTag';
 export * from './commonGroup';
 export * from './commonGroups';
 export * from './commonQuestion';
+export * from './contactsStatus';
 export * from './createAgentInput';
 export * from './createAgentInputTeamRole';
 export * from './createCustomerLabelInput';

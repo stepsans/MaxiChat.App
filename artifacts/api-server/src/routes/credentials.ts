@@ -11,6 +11,10 @@ import {
 } from "@workspace/db";
 import { encryptString, decryptString } from "../lib/crypto";
 import { requirePermission } from "../lib/role-permissions";
+import {
+  syncGoogleContacts,
+  countGoogleContacts,
+} from "../lib/contacts";
 
 const router = Router();
 
@@ -26,6 +30,8 @@ router.get("/:id/spreadsheets", requirePermission("credentials", "view"));
 router.post("/:id/spreadsheets", requirePermission("credentials", "create"));
 router.get("/:id/spreadsheets/:spreadsheetId/tabs", requirePermission("credentials", "view"));
 router.get("/:id/drive/folders", requirePermission("credentials", "view"));
+router.get("/:id/contacts/status", requirePermission("credentials", "view"));
+router.post("/:id/contacts/sync", requirePermission("credentials", "edit"));
 
 // Re-declare the session shape we touch so TS knows about our OAuth state
 // bag. We can't widen the type globally without colliding with auth.ts.
@@ -60,6 +66,13 @@ const SCOPES_BY_TYPE: Record<string, string[]> = {
   // drive.file alone can't enumerate pre-existing folders the app didn't create.
   googleDriveOAuth2Api: [
     "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/userinfo.email",
+  ],
+  // Read-only Contacts (People API) so we can look up the saved name for a
+  // phone number and back-fill display names for group participants / chats
+  // that WhatsApp only gives us a number (or LID) for.
+  googleContactsApi: [
+    "https://www.googleapis.com/auth/contacts.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
   ],
 };
@@ -384,6 +397,17 @@ a{color:#60a5fa}</style></head>
         updatedAt: new Date(),
       })
       .where(eq(credentialsTable.id, row.id));
+    // For a freshly-connected Contacts credential, pull an initial snapshot
+    // right away so name resolution works without a manual sync. Best-effort:
+    // a failure here doesn't undo the successful connection.
+    if (row.type === "googleContactsApi") {
+      try {
+        oauth2.setCredentials(tokens);
+        await syncGoogleContacts(userId, oauth2);
+      } catch (syncErr) {
+        req.log.warn({ err: syncErr }, "initial contacts sync failed");
+      }
+    }
     respondHtml(
       "Akun terhubung",
       accountEmail ? `Tersambung sebagai <b>${esc(accountEmail)}</b>.` : "Tersambung.",
@@ -594,6 +618,67 @@ router.get("/:id/drive/folders", async (req, res): Promise<void> => {
     }
     req.log.error({ err }, "list drive folders failed");
     res.status(500).json({ error: "Gagal memuat daftar folder Drive" });
+  }
+});
+
+// How many Google Contacts we currently have stored for this tenant (shown in
+// the Contacts integration card). Contacts are stored per tenant owner; the
+// credential id in the path is validated for ownership + type for consistency
+// with the sync route.
+router.get("/:id/contacts/status", async (req, res): Promise<void> => {
+  try {
+    const userId = req.session.userId!;
+    const id = Number(req.params.id);
+    const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
+    if (!row) {
+      res.status(404).json({ error: "Credential tidak ditemukan" });
+      return;
+    }
+    if (row.type !== "googleContactsApi") {
+      res.status(400).json({ error: "Credential ini bukan Google Contacts" });
+      return;
+    }
+    const count = await countGoogleContacts(userId);
+    res.json({ count });
+  } catch (err) {
+    req.log.error({ err }, "contacts status failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Pull the latest Google Contacts snapshot via the People API. Requires a
+// connected googleContactsApi credential. Returns the number of contacts saved.
+router.post("/:id/contacts/sync", async (req, res): Promise<void> => {
+  try {
+    const userId = req.session.userId!;
+    const id = Number(req.params.id);
+    const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
+    if (!row) {
+      res.status(404).json({ error: "Credential tidak ditemukan" });
+      return;
+    }
+    if (row.type !== "googleContactsApi") {
+      res.status(400).json({ error: "Credential ini bukan Google Contacts" });
+      return;
+    }
+    if (row.status !== "connected") {
+      res.status(400).json({ error: "Credential belum terhubung. Sign in with Google dulu." });
+      return;
+    }
+    const auth = await getAuthorizedOAuthClient(row);
+    const count = await syncGoogleContacts(userId, auth);
+    res.json({ count });
+  } catch (err: unknown) {
+    const e = err as { code?: number; response?: { status?: number } };
+    const status = e?.response?.status ?? e?.code;
+    if (status === 401 || status === 403) {
+      const id = Number(req.params.id);
+      if (Number.isInteger(id)) await markCredentialErrored(id);
+      res.status(400).json({ error: "Sesi Google kadaluarsa. Reconnect credential." });
+      return;
+    }
+    req.log.error({ err }, "contacts sync failed");
+    res.status(500).json({ error: "Gagal sync Google Contacts" });
   }
 });
 

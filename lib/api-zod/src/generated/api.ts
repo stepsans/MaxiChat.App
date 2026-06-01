@@ -1449,7 +1449,7 @@ export const DeleteProductResponse = zod.object({
 export const ListCredentialsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api']),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api', 'googleContactsApi']),
   "clientId": zod.string(),
   "scopes": zod.array(zod.string()),
   "accountEmail": zod.string().nullish(),
@@ -1472,7 +1472,7 @@ export const createCredentialBodyNameMax = 120;
 
 export const CreateCredentialBody = zod.object({
   "name": zod.string().min(1).max(createCredentialBodyNameMax),
-  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api']),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api', 'googleContactsApi']),
   "clientId": zod.string().min(1),
   "clientSecret": zod.string().min(1)
 })
@@ -1500,7 +1500,7 @@ export const UpdateCredentialBody = zod.object({
 export const UpdateCredentialResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api']),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api', 'googleContactsApi']),
   "clientId": zod.string(),
   "scopes": zod.array(zod.string()),
   "accountEmail": zod.string().nullish(),
@@ -1591,6 +1591,30 @@ export const ListCredentialDriveFoldersResponseItem = zod.object({
   "name": zod.string()
 })
 export const ListCredentialDriveFoldersResponse = zod.array(ListCredentialDriveFoldersResponseItem)
+
+
+/**
+ * @summary Count of Google Contacts stored for the signed-in user
+ */
+export const GetCredentialContactsStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCredentialContactsStatusResponse = zod.object({
+  "count": zod.number()
+})
+
+
+/**
+ * @summary Pull the latest Google Contacts snapshot via the People API
+ */
+export const SyncCredentialContactsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SyncCredentialContactsResponse = zod.object({
+  "count": zod.number()
+})
 
 
 /**

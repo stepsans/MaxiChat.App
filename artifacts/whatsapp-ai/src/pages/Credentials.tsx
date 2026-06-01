@@ -7,6 +7,9 @@ import {
   useDeleteCredential,
   useStartCredentialOauth,
   getListCredentialsQueryKey,
+  useGetCredentialContactsStatus,
+  useSyncCredentialContacts,
+  getGetCredentialContactsStatusQueryKey,
   useGetAiProvider,
   useUpdateAiProvider,
   useTestAiProvider,
@@ -20,6 +23,7 @@ import {
 import KnowledgeSyncCard from "@/components/KnowledgeSyncCard";
 import ProductSyncCard from "@/components/ProductSyncCard";
 import SalesOrderSyncCard from "@/components/SalesOrderSyncCard";
+import ContactSyncCard from "@/components/ContactSyncCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +97,12 @@ const CRED_APPS: { type: CredentialType; label: string; description: string }[] 
     label: "Google Drive OAuth2 API",
     description:
       "Use OAuth2 to upload receipt photos to a Google Drive folder (AI Review).",
+  },
+  {
+    type: "googleContactsApi",
+    label: "Google Contacts API",
+    description:
+      "Use OAuth2 (People API) to read saved contact names so nomor tanpa nama bisa otomatis dikenali.",
   },
 ];
 
@@ -273,6 +283,19 @@ export default function CredentialsPage() {
             <KnowledgeSyncCard />
             <ProductSyncCard />
             <SalesOrderSyncCard />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <SiGoogle className="w-4 h-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Integrasi Google Contacts</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Ambil nama dari Google Contacts untuk nomor yang belum punya nama (mis. anggota grup).
+          </p>
+          <div className="border border-border rounded-md overflow-hidden">
+            <ContactSyncCard credentials={credentials} />
           </div>
         </div>
       </div>
@@ -1058,6 +1081,19 @@ const CRED_GUIDES: Record<CredentialType, CredGuide> = {
       "Kasir mengirim foto nota belanja ke grup WhatsApp 'Pengeluaran Toko A'. Saat jam cut-off (mis. 18:00), AI Review membaca tiap nota, menulis barisnya ke Google Sheets, dan menyimpan foto aslinya ke folder Drive 'Nota Toko A' lewat credential ini.",
     steps: SHARED_OAUTH_STEPS,
     docsUrl: "https://developers.google.com/drive/api/quickstart/js",
+  },
+  googleContactsApi: {
+    purpose:
+      "Credential ini menghubungkan MaxiChat ke Google Contacts akun Anda (lewat People API, read-only) agar nomor yang belum punya nama — misalnya anggota grup yang muncul sebagai nomor panjang — bisa otomatis ditampilkan dengan nama yang sudah Anda simpan di kontak. Token disimpan terenkripsi (AES-256-GCM) di server.",
+    useCases: [
+      "Menampilkan nama anggota grup dari Google Contacts, bukan nomor mentah.",
+      "Mengenali nomor customer yang belum tersimpan namanya di MaxiChat tapi ada di kontak Google Anda.",
+      "Sekali sync, nama dipakai di seluruh app tanpa input manual.",
+    ],
+    example:
+      "Di tab Grup, anggota muncul sebagai +91323923185743. Setelah credential ini terhubung dan kontak ter-sync, MaxiChat mencocokkan nomor asli anggota dengan Google Contacts Anda dan menampilkan nama tersimpan (mis. 'Budi Sales') alih-alih nomor.",
+    steps: SHARED_OAUTH_STEPS,
+    docsUrl: "https://developers.google.com/people/quickstart/js",
   },
 };
 

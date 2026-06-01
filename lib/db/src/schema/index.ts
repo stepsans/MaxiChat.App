@@ -4,6 +4,7 @@ export * from "./channels";
 export * from "./channel-joins";
 export * from "./chatbot";
 export * from "./credentials";
+export * from "./google-contacts";
 export * from "./ai-review";
 export * from "./ai-provider";
 export * from "./ai-usage";

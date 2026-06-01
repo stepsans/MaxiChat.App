@@ -13,4 +13,5 @@ export const CredentialCreateInputType = {
   googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
   googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
   googleDriveOAuth2Api: 'googleDriveOAuth2Api',
+  googleContactsApi: 'googleContactsApi',
 } as const;

@@ -51,6 +51,7 @@ import type {
   ChatWithMessages,
   CommonGroups,
   CommonQuestion,
+  ContactsStatus,
   CreateAgentInput,
   CreateCustomerLabelInput,
   CreateGroupInput,
@@ -5908,6 +5909,153 @@ export function useListCredentialDriveFolders<TData = Awaited<ReturnType<typeof 
 
 
 
+
+export const getGetCredentialContactsStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}/contacts/status`
+}
+
+/**
+ * @summary Count of Google Contacts stored for the signed-in user
+ */
+export const getCredentialContactsStatus = async (id: number, options?: RequestInit): Promise<ContactsStatus> => {
+
+  return customFetch<ContactsStatus>(getGetCredentialContactsStatusUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCredentialContactsStatusQueryKey = (id: number,) => {
+    return [
+    `/api/credentials/${id}/contacts/status`
+    ] as const;
+    }
+
+
+export const getGetCredentialContactsStatusQueryOptions = <TData = Awaited<ReturnType<typeof getCredentialContactsStatus>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCredentialContactsStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCredentialContactsStatusQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCredentialContactsStatus>>> = ({ signal }) => getCredentialContactsStatus(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCredentialContactsStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCredentialContactsStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getCredentialContactsStatus>>>
+export type GetCredentialContactsStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Count of Google Contacts stored for the signed-in user
+ */
+
+export function useGetCredentialContactsStatus<TData = Awaited<ReturnType<typeof getCredentialContactsStatus>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCredentialContactsStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCredentialContactsStatusQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSyncCredentialContactsUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}/contacts/sync`
+}
+
+/**
+ * @summary Pull the latest Google Contacts snapshot via the People API
+ */
+export const syncCredentialContacts = async (id: number, options?: RequestInit): Promise<ContactsStatus> => {
+
+  return customFetch<ContactsStatus>(getSyncCredentialContactsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSyncCredentialContactsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncCredentialContacts>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncCredentialContacts>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['syncCredentialContacts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncCredentialContacts>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  syncCredentialContacts(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncCredentialContactsMutationResult = NonNullable<Awaited<ReturnType<typeof syncCredentialContacts>>>
+
+    export type SyncCredentialContactsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Pull the latest Google Contacts snapshot via the People API
+ */
+export const useSyncCredentialContacts = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncCredentialContacts>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncCredentialContacts>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getSyncCredentialContactsMutationOptions(options));
+    }
 
 export const getListAiReviewGroupsUrl = () => {
 

@@ -1407,6 +1407,7 @@ export const CredentialType = {
   googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
   googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
   googleDriveOAuth2Api: 'googleDriveOAuth2Api',
+  googleContactsApi: 'googleContactsApi',
 } as const;
 
 export type CredentialStatus = typeof CredentialStatus[keyof typeof CredentialStatus];
@@ -1431,6 +1432,10 @@ export interface Credential {
   updatedAt: string;
 }
 
+export interface ContactsStatus {
+  count: number;
+}
+
 export type CredentialCreateInputType = typeof CredentialCreateInputType[keyof typeof CredentialCreateInputType];
 
 
@@ -1438,6 +1443,7 @@ export const CredentialCreateInputType = {
   googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
   googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
   googleDriveOAuth2Api: 'googleDriveOAuth2Api',
+  googleContactsApi: 'googleContactsApi',
 } as const;
 
 export interface CredentialCreateInput {

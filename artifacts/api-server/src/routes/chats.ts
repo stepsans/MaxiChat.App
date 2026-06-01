@@ -46,6 +46,7 @@ import {
   AddGroupParticipantsBody,
 } from "@workspace/api-zod";
 import { resolveOwnerUserId } from "../lib/seed";
+import { resolveContactNames } from "../lib/contacts";
 import {
   MEDIA_DIR,
   sendMediaToJid,
@@ -759,16 +760,59 @@ router.get("/:id/group-info", async (req, res): Promise<void> => {
       if (r.digits && r.name) nameByDigits.set(r.digits, r.name);
     }
 
-    const participants = (meta.participants ?? []).map((p) => {
-      const pp = p as { id: string; admin?: string | null; name?: string | null; notify?: string | null };
-      const digits = jidDigits(pp.id);
+    // Baileys participants extend Contact, so each may carry the real phone
+    // (`phoneNumber`, a @s.whatsapp.net jid) alongside the LID `id`. Prefer the
+    // real phone for both display AND Google Contacts lookup — the LID is a
+    // synthetic number that matches nothing in the user's address book.
+    type BaileysParticipant = {
+      id: string;
+      admin?: string | null;
+      name?: string | null;
+      notify?: string | null;
+      phoneNumber?: string | null;
+      lid?: string | null;
+    };
+    const interim = (meta.participants ?? []).map((p) => {
+      const pp = p as BaileysParticipant;
+      const lidDigits = jidDigits(pp.id) ?? jidDigits(pp.lid ?? "");
+      // Real phone: explicit phoneNumber field, or the id itself when it's
+      // already a PN jid rather than a @lid.
+      const realDigits =
+        jidDigits(pp.phoneNumber ?? "") ??
+        (pp.id.endsWith("@s.whatsapp.net") ? jidDigits(pp.id) : null);
+      const historyName =
+        (lidDigits ? nameByDigits.get(lidDigits) : undefined) ??
+        (realDigits ? nameByDigits.get(realDigits) : undefined) ??
+        null;
+      return { pp, lidDigits, realDigits, historyName };
+    });
+
+    // Resolve saved Google Contacts names by real phone, scoped to the tenant
+    // owner (so team members benefit from the owner's connected contacts).
+    let contactNames = new Map<string, string>();
+    try {
+      const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+      const phones = interim
+        .map((i) => i.realDigits)
+        .filter((d): d is string => !!d);
+      if (phones.length) {
+        contactNames = await resolveContactNames(ownerUserId, phones);
+      }
+    } catch (err) {
+      req.log.warn({ err }, "group contacts name resolution failed");
+    }
+
+    const participants = interim.map(({ pp, lidDigits, realDigits, historyName }) => {
       const name =
         pp.name ??
         pp.notify ??
-        (digits ? nameByDigits.get(digits) ?? null : null);
+        historyName ??
+        (realDigits ? contactNames.get(realDigits) ?? null : null);
       return {
         jid: pp.id,
-        phone: digits,
+        // Show the real phone when we have it; otherwise fall back to the LID
+        // digits so the row still renders something stable.
+        phone: realDigits ?? lidDigits,
         name,
         isAdmin: pp.admin === "admin" || pp.admin === "superadmin",
         isSuperAdmin: pp.admin === "superadmin",
