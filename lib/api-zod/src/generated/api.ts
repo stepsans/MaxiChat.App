@@ -1397,7 +1397,7 @@ export const DeleteProductResponse = zod.object({
 export const ListCredentialsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api']),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api']),
   "clientId": zod.string(),
   "scopes": zod.array(zod.string()),
   "accountEmail": zod.string().nullish(),
@@ -1420,7 +1420,7 @@ export const createCredentialBodyNameMax = 120;
 
 export const CreateCredentialBody = zod.object({
   "name": zod.string().min(1).max(createCredentialBodyNameMax),
-  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api']),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api']),
   "clientId": zod.string().min(1),
   "clientSecret": zod.string().min(1)
 })
@@ -1448,7 +1448,7 @@ export const UpdateCredentialBody = zod.object({
 export const UpdateCredentialResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api']),
+  "type": zod.enum(['googleSheetsOAuth2Api', 'googleSheetsTriggerOAuth2Api', 'googleDriveOAuth2Api']),
   "clientId": zod.string(),
   "scopes": zod.array(zod.string()),
   "accountEmail": zod.string().nullish(),
@@ -1493,9 +1493,26 @@ export const ListCredentialSpreadsheetsParams = zod.object({
 export const ListCredentialSpreadsheetsResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "url": zod.string().nullish(),
   "modifiedTime": zod.coerce.date().nullish()
 })
 export const ListCredentialSpreadsheetsResponse = zod.array(ListCredentialSpreadsheetsResponseItem)
+
+
+/**
+ * @summary Create a new spreadsheet in the connected Google account
+ */
+export const CreateCredentialSpreadsheetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const createCredentialSpreadsheetBodyTitleMax = 200;
+
+
+
+export const CreateCredentialSpreadsheetBody = zod.object({
+  "title": zod.string().min(1).max(createCredentialSpreadsheetBodyTitleMax)
+})
 
 
 /**
@@ -1508,6 +1525,227 @@ export const ListCredentialSpreadsheetTabsParams = zod.object({
 
 export const ListCredentialSpreadsheetTabsResponseItem = zod.string()
 export const ListCredentialSpreadsheetTabsResponse = zod.array(ListCredentialSpreadsheetTabsResponseItem)
+
+
+/**
+ * @summary List Google Drive folders the connected account can access
+ */
+export const ListCredentialDriveFoldersParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListCredentialDriveFoldersResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})
+export const ListCredentialDriveFoldersResponse = zod.array(ListCredentialDriveFoldersResponseItem)
+
+
+/**
+ * @summary List WhatsApp groups across the owner's channels
+ */
+export const ListAiReviewGroupsResponseItem = zod.object({
+  "channelId": zod.number(),
+  "channelName": zod.string(),
+  "groupJid": zod.string(),
+  "name": zod.string().nullish(),
+  "lastMessageAt": zod.coerce.date().nullish()
+})
+export const ListAiReviewGroupsResponse = zod.array(ListAiReviewGroupsResponseItem)
+
+
+/**
+ * @summary List AI Review configs for the owner
+ */
+export const listAiReviewConfigsResponseColumnsItemNameMax = 100;
+
+export const listAiReviewConfigsResponseColumnsItemHintMax = 300;
+
+
+
+export const ListAiReviewConfigsResponseItem = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "groupJid": zod.string(),
+  "groupName": zod.string(),
+  "sheetCredentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "spreadsheetUrl": zod.string().nullish(),
+  "sheetTab": zod.string(),
+  "columns": zod.array(zod.object({
+  "name": zod.string().min(1).max(listAiReviewConfigsResponseColumnsItemNameMax),
+  "hint": zod.string().max(listAiReviewConfigsResponseColumnsItemHintMax).optional()
+})),
+  "driveCredentialId": zod.number().nullish(),
+  "driveFolderId": zod.string().nullish(),
+  "driveFolderName": zod.string().nullish(),
+  "scheduleTime": zod.string(),
+  "timezone": zod.string(),
+  "enabled": zod.boolean(),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "lastRunStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastRunError": zod.string().nullish(),
+  "lastRunCount": zod.number(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListAiReviewConfigsResponse = zod.array(ListAiReviewConfigsResponseItem)
+
+
+/**
+ * @summary Create an AI Review config for a group
+ */
+
+export const createAiReviewConfigBodyGroupNameMax = 200;
+
+
+export const createAiReviewConfigBodySpreadsheetUrlMax = 2000;
+
+export const createAiReviewConfigBodySheetTabMax = 200;
+
+export const createAiReviewConfigBodyColumnsItemNameMax = 100;
+
+export const createAiReviewConfigBodyColumnsItemHintMax = 300;
+
+export const createAiReviewConfigBodyColumnsMax = 50;
+
+export const createAiReviewConfigBodyDriveFolderIdMax = 200;
+
+export const createAiReviewConfigBodyDriveFolderNameMax = 300;
+
+export const createAiReviewConfigBodyScheduleTimeRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+export const createAiReviewConfigBodyTimezoneMax = 64;
+
+
+
+export const CreateAiReviewConfigBody = zod.object({
+  "channelId": zod.number(),
+  "groupJid": zod.string().min(1),
+  "groupName": zod.string().max(createAiReviewConfigBodyGroupNameMax).optional(),
+  "sheetCredentialId": zod.number(),
+  "spreadsheetId": zod.string().min(1),
+  "spreadsheetUrl": zod.string().max(createAiReviewConfigBodySpreadsheetUrlMax).nullish(),
+  "sheetTab": zod.string().min(1).max(createAiReviewConfigBodySheetTabMax),
+  "columns": zod.array(zod.object({
+  "name": zod.string().min(1).max(createAiReviewConfigBodyColumnsItemNameMax),
+  "hint": zod.string().max(createAiReviewConfigBodyColumnsItemHintMax).optional()
+})).min(1).max(createAiReviewConfigBodyColumnsMax),
+  "driveCredentialId": zod.number().nullish(),
+  "driveFolderId": zod.string().max(createAiReviewConfigBodyDriveFolderIdMax).nullish(),
+  "driveFolderName": zod.string().max(createAiReviewConfigBodyDriveFolderNameMax).nullish(),
+  "scheduleTime": zod.string().regex(createAiReviewConfigBodyScheduleTimeRegExp),
+  "timezone": zod.string().min(1).max(createAiReviewConfigBodyTimezoneMax).optional(),
+  "enabled": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Update an AI Review config
+ */
+export const UpdateAiReviewConfigParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const updateAiReviewConfigBodyGroupNameMax = 200;
+
+
+export const updateAiReviewConfigBodySpreadsheetUrlMax = 2000;
+
+export const updateAiReviewConfigBodySheetTabMax = 200;
+
+export const updateAiReviewConfigBodyColumnsItemNameMax = 100;
+
+export const updateAiReviewConfigBodyColumnsItemHintMax = 300;
+
+export const updateAiReviewConfigBodyColumnsMax = 50;
+
+export const updateAiReviewConfigBodyDriveFolderIdMax = 200;
+
+export const updateAiReviewConfigBodyDriveFolderNameMax = 300;
+
+export const updateAiReviewConfigBodyScheduleTimeRegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+export const updateAiReviewConfigBodyTimezoneMax = 64;
+
+
+
+export const UpdateAiReviewConfigBody = zod.object({
+  "channelId": zod.number(),
+  "groupJid": zod.string().min(1),
+  "groupName": zod.string().max(updateAiReviewConfigBodyGroupNameMax).optional(),
+  "sheetCredentialId": zod.number(),
+  "spreadsheetId": zod.string().min(1),
+  "spreadsheetUrl": zod.string().max(updateAiReviewConfigBodySpreadsheetUrlMax).nullish(),
+  "sheetTab": zod.string().min(1).max(updateAiReviewConfigBodySheetTabMax),
+  "columns": zod.array(zod.object({
+  "name": zod.string().min(1).max(updateAiReviewConfigBodyColumnsItemNameMax),
+  "hint": zod.string().max(updateAiReviewConfigBodyColumnsItemHintMax).optional()
+})).min(1).max(updateAiReviewConfigBodyColumnsMax),
+  "driveCredentialId": zod.number().nullish(),
+  "driveFolderId": zod.string().max(updateAiReviewConfigBodyDriveFolderIdMax).nullish(),
+  "driveFolderName": zod.string().max(updateAiReviewConfigBodyDriveFolderNameMax).nullish(),
+  "scheduleTime": zod.string().regex(updateAiReviewConfigBodyScheduleTimeRegExp),
+  "timezone": zod.string().min(1).max(updateAiReviewConfigBodyTimezoneMax).optional(),
+  "enabled": zod.boolean().optional()
+})
+
+export const updateAiReviewConfigResponseColumnsItemNameMax = 100;
+
+export const updateAiReviewConfigResponseColumnsItemHintMax = 300;
+
+
+
+export const UpdateAiReviewConfigResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "groupJid": zod.string(),
+  "groupName": zod.string(),
+  "sheetCredentialId": zod.number(),
+  "spreadsheetId": zod.string(),
+  "spreadsheetUrl": zod.string().nullish(),
+  "sheetTab": zod.string(),
+  "columns": zod.array(zod.object({
+  "name": zod.string().min(1).max(updateAiReviewConfigResponseColumnsItemNameMax),
+  "hint": zod.string().max(updateAiReviewConfigResponseColumnsItemHintMax).optional()
+})),
+  "driveCredentialId": zod.number().nullish(),
+  "driveFolderId": zod.string().nullish(),
+  "driveFolderName": zod.string().nullish(),
+  "scheduleTime": zod.string(),
+  "timezone": zod.string(),
+  "enabled": zod.boolean(),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "lastRunStatus": zod.enum(['idle', 'ok', 'error']),
+  "lastRunError": zod.string().nullish(),
+  "lastRunCount": zod.number(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete an AI Review config
+ */
+export const DeleteAiReviewConfigParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAiReviewConfigResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Run the receipt recap for a config immediately
+ */
+export const RunAiReviewConfigParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RunAiReviewConfigResponse = zod.object({
+  "processed": zod.number(),
+  "appended": zod.number(),
+  "uploaded": zod.number(),
+  "errors": zod.number()
+})
 
 
 /**

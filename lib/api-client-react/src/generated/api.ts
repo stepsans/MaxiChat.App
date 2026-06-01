@@ -26,6 +26,10 @@ import type {
   AiProviderInput,
   AiProviderTestInput,
   AiProviderTestResult,
+  AiReviewConfig,
+  AiReviewConfigInput,
+  AiReviewGroup,
+  AiReviewRunResult,
   AiUsageSummary,
   AnalyticsSummary,
   AssignChatInput,
@@ -46,14 +50,17 @@ import type {
   CreateCustomerLabelInput,
   CreateKnowledgeType400,
   CreateKnowledgeType409,
+  CreateSpreadsheetInput,
   Credential,
   CredentialCreateInput,
   CredentialUpdateInput,
   CustomerLabel,
+  DeleteAiReviewConfig200,
   DeleteKnowledgeType200,
   DeleteKnowledgeType400,
   DeleteKnowledgeType404,
   DeleteKnowledgeType409,
+  DriveFolderRef,
   EffectivePermissions,
   EmailVerificationResult,
   ErrorResponse,
@@ -5567,6 +5574,78 @@ export function useListCredentialSpreadsheets<TData = Awaited<ReturnType<typeof 
 
 
 
+export const getCreateCredentialSpreadsheetUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}/spreadsheets`
+}
+
+/**
+ * @summary Create a new spreadsheet in the connected Google account
+ */
+export const createCredentialSpreadsheet = async (id: number,
+    createSpreadsheetInput: CreateSpreadsheetInput, options?: RequestInit): Promise<SpreadsheetRef> => {
+
+  return customFetch<SpreadsheetRef>(getCreateCredentialSpreadsheetUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSpreadsheetInput,)
+  }
+);}
+
+
+
+
+export const getCreateCredentialSpreadsheetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCredentialSpreadsheet>>, TError,{id: number;data: BodyType<CreateSpreadsheetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCredentialSpreadsheet>>, TError,{id: number;data: BodyType<CreateSpreadsheetInput>}, TContext> => {
+
+const mutationKey = ['createCredentialSpreadsheet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCredentialSpreadsheet>>, {id: number;data: BodyType<CreateSpreadsheetInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createCredentialSpreadsheet(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCredentialSpreadsheetMutationResult = NonNullable<Awaited<ReturnType<typeof createCredentialSpreadsheet>>>
+    export type CreateCredentialSpreadsheetMutationBody = BodyType<CreateSpreadsheetInput>
+    export type CreateCredentialSpreadsheetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a new spreadsheet in the connected Google account
+ */
+export const useCreateCredentialSpreadsheet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCredentialSpreadsheet>>, TError,{id: number;data: BodyType<CreateSpreadsheetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCredentialSpreadsheet>>,
+        TError,
+        {id: number;data: BodyType<CreateSpreadsheetInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCredentialSpreadsheetMutationOptions(options));
+    }
+
 export const getListCredentialSpreadsheetTabsUrl = (id: number,
     spreadsheetId: string,) => {
 
@@ -5648,6 +5727,520 @@ export function useListCredentialSpreadsheetTabs<TData = Awaited<ReturnType<type
 
 
 
+
+export const getListCredentialDriveFoldersUrl = (id: number,) => {
+
+
+
+
+  return `/api/credentials/${id}/drive/folders`
+}
+
+/**
+ * @summary List Google Drive folders the connected account can access
+ */
+export const listCredentialDriveFolders = async (id: number, options?: RequestInit): Promise<DriveFolderRef[]> => {
+
+  return customFetch<DriveFolderRef[]>(getListCredentialDriveFoldersUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCredentialDriveFoldersQueryKey = (id: number,) => {
+    return [
+    `/api/credentials/${id}/drive/folders`
+    ] as const;
+    }
+
+
+export const getListCredentialDriveFoldersQueryOptions = <TData = Awaited<ReturnType<typeof listCredentialDriveFolders>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentialDriveFolders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCredentialDriveFoldersQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCredentialDriveFolders>>> = ({ signal }) => listCredentialDriveFolders(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCredentialDriveFolders>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCredentialDriveFoldersQueryResult = NonNullable<Awaited<ReturnType<typeof listCredentialDriveFolders>>>
+export type ListCredentialDriveFoldersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List Google Drive folders the connected account can access
+ */
+
+export function useListCredentialDriveFolders<TData = Awaited<ReturnType<typeof listCredentialDriveFolders>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCredentialDriveFolders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCredentialDriveFoldersQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAiReviewGroupsUrl = () => {
+
+
+
+
+  return `/api/ai-review/groups`
+}
+
+/**
+ * @summary List WhatsApp groups across the owner's channels
+ */
+export const listAiReviewGroups = async ( options?: RequestInit): Promise<AiReviewGroup[]> => {
+
+  return customFetch<AiReviewGroup[]>(getListAiReviewGroupsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAiReviewGroupsQueryKey = () => {
+    return [
+    `/api/ai-review/groups`
+    ] as const;
+    }
+
+
+export const getListAiReviewGroupsQueryOptions = <TData = Awaited<ReturnType<typeof listAiReviewGroups>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiReviewGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAiReviewGroupsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAiReviewGroups>>> = ({ signal }) => listAiReviewGroups({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAiReviewGroups>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAiReviewGroupsQueryResult = NonNullable<Awaited<ReturnType<typeof listAiReviewGroups>>>
+export type ListAiReviewGroupsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List WhatsApp groups across the owner's channels
+ */
+
+export function useListAiReviewGroups<TData = Awaited<ReturnType<typeof listAiReviewGroups>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiReviewGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAiReviewGroupsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAiReviewConfigsUrl = () => {
+
+
+
+
+  return `/api/ai-review/configs`
+}
+
+/**
+ * @summary List AI Review configs for the owner
+ */
+export const listAiReviewConfigs = async ( options?: RequestInit): Promise<AiReviewConfig[]> => {
+
+  return customFetch<AiReviewConfig[]>(getListAiReviewConfigsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAiReviewConfigsQueryKey = () => {
+    return [
+    `/api/ai-review/configs`
+    ] as const;
+    }
+
+
+export const getListAiReviewConfigsQueryOptions = <TData = Awaited<ReturnType<typeof listAiReviewConfigs>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiReviewConfigs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAiReviewConfigsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAiReviewConfigs>>> = ({ signal }) => listAiReviewConfigs({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAiReviewConfigs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAiReviewConfigsQueryResult = NonNullable<Awaited<ReturnType<typeof listAiReviewConfigs>>>
+export type ListAiReviewConfigsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List AI Review configs for the owner
+ */
+
+export function useListAiReviewConfigs<TData = Awaited<ReturnType<typeof listAiReviewConfigs>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiReviewConfigs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAiReviewConfigsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAiReviewConfigUrl = () => {
+
+
+
+
+  return `/api/ai-review/configs`
+}
+
+/**
+ * @summary Create an AI Review config for a group
+ */
+export const createAiReviewConfig = async (aiReviewConfigInput: AiReviewConfigInput, options?: RequestInit): Promise<AiReviewConfig> => {
+
+  return customFetch<AiReviewConfig>(getCreateAiReviewConfigUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiReviewConfigInput,)
+  }
+);}
+
+
+
+
+export const getCreateAiReviewConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAiReviewConfig>>, TError,{data: BodyType<AiReviewConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAiReviewConfig>>, TError,{data: BodyType<AiReviewConfigInput>}, TContext> => {
+
+const mutationKey = ['createAiReviewConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAiReviewConfig>>, {data: BodyType<AiReviewConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAiReviewConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAiReviewConfigMutationResult = NonNullable<Awaited<ReturnType<typeof createAiReviewConfig>>>
+    export type CreateAiReviewConfigMutationBody = BodyType<AiReviewConfigInput>
+    export type CreateAiReviewConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create an AI Review config for a group
+ */
+export const useCreateAiReviewConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAiReviewConfig>>, TError,{data: BodyType<AiReviewConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAiReviewConfig>>,
+        TError,
+        {data: BodyType<AiReviewConfigInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAiReviewConfigMutationOptions(options));
+    }
+
+export const getUpdateAiReviewConfigUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-review/configs/${id}`
+}
+
+/**
+ * @summary Update an AI Review config
+ */
+export const updateAiReviewConfig = async (id: number,
+    aiReviewConfigInput: AiReviewConfigInput, options?: RequestInit): Promise<AiReviewConfig> => {
+
+  return customFetch<AiReviewConfig>(getUpdateAiReviewConfigUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiReviewConfigInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAiReviewConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAiReviewConfig>>, TError,{id: number;data: BodyType<AiReviewConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAiReviewConfig>>, TError,{id: number;data: BodyType<AiReviewConfigInput>}, TContext> => {
+
+const mutationKey = ['updateAiReviewConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAiReviewConfig>>, {id: number;data: BodyType<AiReviewConfigInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAiReviewConfig(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAiReviewConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateAiReviewConfig>>>
+    export type UpdateAiReviewConfigMutationBody = BodyType<AiReviewConfigInput>
+    export type UpdateAiReviewConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update an AI Review config
+ */
+export const useUpdateAiReviewConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAiReviewConfig>>, TError,{id: number;data: BodyType<AiReviewConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAiReviewConfig>>,
+        TError,
+        {id: number;data: BodyType<AiReviewConfigInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAiReviewConfigMutationOptions(options));
+    }
+
+export const getDeleteAiReviewConfigUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-review/configs/${id}`
+}
+
+/**
+ * @summary Delete an AI Review config
+ */
+export const deleteAiReviewConfig = async (id: number, options?: RequestInit): Promise<DeleteAiReviewConfig200> => {
+
+  return customFetch<DeleteAiReviewConfig200>(getDeleteAiReviewConfigUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAiReviewConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAiReviewConfig>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAiReviewConfig>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAiReviewConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAiReviewConfig>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAiReviewConfig(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAiReviewConfigMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAiReviewConfig>>>
+
+    export type DeleteAiReviewConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete an AI Review config
+ */
+export const useDeleteAiReviewConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAiReviewConfig>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAiReviewConfig>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAiReviewConfigMutationOptions(options));
+    }
+
+export const getRunAiReviewConfigUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-review/configs/${id}/run`
+}
+
+/**
+ * @summary Run the receipt recap for a config immediately
+ */
+export const runAiReviewConfig = async (id: number, options?: RequestInit): Promise<AiReviewRunResult> => {
+
+  return customFetch<AiReviewRunResult>(getRunAiReviewConfigUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunAiReviewConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAiReviewConfig>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runAiReviewConfig>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['runAiReviewConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAiReviewConfig>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  runAiReviewConfig(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunAiReviewConfigMutationResult = NonNullable<Awaited<ReturnType<typeof runAiReviewConfig>>>
+
+    export type RunAiReviewConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Run the receipt recap for a config immediately
+ */
+export const useRunAiReviewConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAiReviewConfig>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runAiReviewConfig>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRunAiReviewConfigMutationOptions(options));
+    }
 
 export const getListAgentsUrl = () => {
 

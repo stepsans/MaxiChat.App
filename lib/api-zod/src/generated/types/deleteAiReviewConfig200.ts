@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SpreadsheetRef {
-  id: string;
-  name: string;
-  url?: string | null;
-  modifiedTime?: Date | null;
-}
+export type DeleteAiReviewConfig200 = {
+  ok: boolean;
+};

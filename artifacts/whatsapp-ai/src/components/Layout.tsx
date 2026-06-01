@@ -20,6 +20,7 @@ import {
   LogOut,
   Camera,
   Cpu,
+  ReceiptText,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { useQueryClient } from "@tanstack/react-query";
@@ -62,6 +63,7 @@ const navItems: Array<{
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["super_admin", "supervisor"] },
   { href: "/ai-studio", label: "AI Studio", icon: Sparkles },
   { href: "/usage", label: "Pemakaian Token", icon: Cpu, roles: ["super_admin"] },
+  { href: "/ai-review", label: "AI Review", icon: ReceiptText, roles: ["super_admin"] },
   { href: "/chats", label: "Chats", icon: MessageSquare, menu: "chats" },
   { href: "/status", label: "Status", icon: CircleDashed, menu: "statuses" },
   { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },

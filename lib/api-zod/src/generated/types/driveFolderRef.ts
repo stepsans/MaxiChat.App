@@ -6,9 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SpreadsheetRef {
+export interface DriveFolderRef {
   id: string;
   name: string;
-  url?: string | null;
-  modifiedTime?: Date | null;
 }

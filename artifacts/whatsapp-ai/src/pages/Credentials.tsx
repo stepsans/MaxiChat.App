@@ -88,6 +88,12 @@ const CRED_APPS: { type: CredentialType; label: string; description: string }[] 
     description:
       "OAuth2 credential dedicated to Sheets Trigger workflows (separate token store).",
   },
+  {
+    type: "googleDriveOAuth2Api",
+    label: "Google Drive OAuth2 API",
+    description:
+      "Use OAuth2 to upload receipt photos to a Google Drive folder (AI Review).",
+  },
 ];
 
 function appLabel(t: string): string {
@@ -1039,6 +1045,19 @@ const CRED_GUIDES: Record<CredentialType, CredGuide> = {
       "Tim ops punya sheet 'Order Masuk' yang dipakai sebagai trigger membalas customer otomatis. Tim marketing punya sheet 'Katalog Produk' yang dipakai untuk sync. Pakai credential Trigger untuk akun ops, dan credential biasa untuk akun marketing — masing-masing punya scope dan riwayat login sendiri.",
     steps: SHARED_OAUTH_STEPS,
     docsUrl: "https://developers.google.com/sheets/api/quickstart/js",
+  },
+  googleDriveOAuth2Api: {
+    purpose:
+      "Credential ini menghubungkan MaxiChat ke Google Drive akun Anda agar foto nota/struk yang direkap fitur AI Review bisa diunggah otomatis ke folder Drive per grup. Token disimpan terenkripsi (AES-256-GCM) di server.",
+    useCases: [
+      "Mengarsipkan foto nota dari grup WhatsApp ke folder Google Drive otomatis.",
+      "Memisahkan arsip foto per grup kasir ke folder masing-masing.",
+      "Backup bukti pengeluaran berdampingan dengan rekap di Google Sheets.",
+    ],
+    example:
+      "Kasir mengirim foto nota belanja ke grup WhatsApp 'Pengeluaran Toko A'. Saat jam cut-off (mis. 18:00), AI Review membaca tiap nota, menulis barisnya ke Google Sheets, dan menyimpan foto aslinya ke folder Drive 'Nota Toko A' lewat credential ini.",
+    steps: SHARED_OAUTH_STEPS,
+    docsUrl: "https://developers.google.com/drive/api/quickstart/js",
   },
 };
 

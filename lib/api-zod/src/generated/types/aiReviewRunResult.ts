@@ -6,9 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SpreadsheetRef {
-  id: string;
-  name: string;
-  url?: string | null;
-  modifiedTime?: Date | null;
+export interface AiReviewRunResult {
+  processed: number;
+  appended: number;
+  uploaded: number;
+  errors: number;
 }

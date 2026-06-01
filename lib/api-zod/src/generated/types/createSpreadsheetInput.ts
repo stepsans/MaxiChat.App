@@ -6,9 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SpreadsheetRef {
-  id: string;
-  name: string;
-  url?: string | null;
-  modifiedTime?: Date | null;
+export interface CreateSpreadsheetInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  title: string;
 }

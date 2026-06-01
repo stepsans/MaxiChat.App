@@ -23,7 +23,9 @@ router.patch("/:id", requirePermission("credentials", "edit"));
 router.delete("/:id", requirePermission("credentials", "delete"));
 router.post("/:id/oauth/start", requirePermission("credentials", "edit"));
 router.get("/:id/spreadsheets", requirePermission("credentials", "view"));
+router.post("/:id/spreadsheets", requirePermission("credentials", "create"));
 router.get("/:id/spreadsheets/:spreadsheetId/tabs", requirePermission("credentials", "view"));
+router.get("/:id/drive/folders", requirePermission("credentials", "view"));
 
 // Re-declare the session shape we touch so TS knows about our OAuth state
 // bag. We can't widen the type globally without colliding with auth.ts.
@@ -51,6 +53,13 @@ const SCOPES_BY_TYPE: Record<string, string[]> = {
   googleSheetsTriggerOAuth2Api: [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
+  ],
+  // Full Drive scope: needed so AI Review can both LIST the user's existing
+  // folders (folder picker) AND upload receipt photos into the chosen folder.
+  // drive.file alone can't enumerate pre-existing folders the app didn't create.
+  googleDriveOAuth2Api: [
+    "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/userinfo.email",
   ],
 };
@@ -536,6 +545,110 @@ router.get("/:id/spreadsheets/:spreadsheetId/tabs", async (req, res): Promise<vo
     }
     req.log.error({ err }, "list tabs failed");
     res.status(500).json({ error: "Gagal memuat daftar tab" });
+  }
+});
+
+// List the user's Drive folders for the AI Review folder picker. Requires a
+// connected credential whose scopes include Drive (googleDriveOAuth2Api).
+router.get("/:id/drive/folders", async (req, res): Promise<void> => {
+  try {
+    const userId = req.session.userId!;
+    const id = Number(req.params.id);
+    const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
+    if (!row) {
+      res.status(404).json({ error: "Credential tidak ditemukan" });
+      return;
+    }
+    if (row.status !== "connected") {
+      res.status(400).json({ error: "Credential belum terhubung. Sign in with Google dulu." });
+      return;
+    }
+    const auth = await getAuthorizedOAuthClient(row);
+    const drive = google.drive({ version: "v3", auth });
+    const out: { id: string; name: string }[] = [];
+    let pageToken: string | undefined;
+    while (out.length < 300) {
+      const resp: { data: { files?: { id?: string | null; name?: string | null }[]; nextPageToken?: string | null } } =
+        await drive.files.list({
+          q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
+          fields: "nextPageToken, files(id,name)",
+          pageSize: 100,
+          orderBy: "modifiedTime desc",
+          pageToken,
+        });
+      for (const f of resp.data.files ?? []) {
+        if (f.id && f.name) out.push({ id: f.id, name: f.name });
+      }
+      pageToken = resp.data.nextPageToken ?? undefined;
+      if (!pageToken) break;
+    }
+    res.json(out);
+  } catch (err: unknown) {
+    const e = err as { code?: number; response?: { status?: number } };
+    const status = e?.response?.status ?? e?.code;
+    if (status === 401 || status === 403) {
+      const id = Number(req.params.id);
+      if (Number.isInteger(id)) await markCredentialErrored(id);
+      res.status(400).json({ error: "Sesi Google kadaluarsa. Reconnect credential." });
+      return;
+    }
+    req.log.error({ err }, "list drive folders failed");
+    res.status(500).json({ error: "Gagal memuat daftar folder Drive" });
+  }
+});
+
+const CreateSpreadsheetInput = z.object({
+  title: z.string().trim().min(1).max(200),
+});
+
+// Create a brand-new Google Sheets spreadsheet (used by AI Review when the user
+// wants a fresh file rather than picking an existing one). Returns the new
+// spreadsheet's id, title, and URL. Needs the spreadsheets (read-WRITE) scope.
+router.post("/:id/spreadsheets", async (req, res): Promise<void> => {
+  try {
+    const userId = req.session.userId!;
+    const id = Number(req.params.id);
+    const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
+    if (!row) {
+      res.status(404).json({ error: "Credential tidak ditemukan" });
+      return;
+    }
+    if (row.status !== "connected") {
+      res.status(400).json({ error: "Credential belum terhubung. Sign in with Google dulu." });
+      return;
+    }
+    const parsed = CreateSpreadsheetInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Judul spreadsheet tidak valid" });
+      return;
+    }
+    const auth = await getAuthorizedOAuthClient(row);
+    const sheets = google.sheets({ version: "v4", auth });
+    const created = await sheets.spreadsheets.create({
+      requestBody: { properties: { title: parsed.data.title } },
+      fields: "spreadsheetId,spreadsheetUrl,properties(title)",
+    });
+    const spreadsheetId = created.data.spreadsheetId;
+    if (!spreadsheetId) {
+      res.status(502).json({ error: "Google tidak mengembalikan spreadsheet id" });
+      return;
+    }
+    res.json({
+      id: spreadsheetId,
+      name: created.data.properties?.title ?? parsed.data.title,
+      url: created.data.spreadsheetUrl ?? null,
+    });
+  } catch (err: unknown) {
+    const e = err as { code?: number; response?: { status?: number } };
+    const status = e?.response?.status ?? e?.code;
+    if (status === 401 || status === 403) {
+      const id = Number(req.params.id);
+      if (Number.isInteger(id)) await markCredentialErrored(id);
+      res.status(400).json({ error: "Akses Google ditolak atau sesi kadaluarsa. Reconnect credential." });
+      return;
+    }
+    req.log.error({ err }, "create spreadsheet failed");
+    res.status(500).json({ error: "Gagal membuat spreadsheet baru" });
   }
 });
 

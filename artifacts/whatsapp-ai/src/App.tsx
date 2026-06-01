@@ -22,6 +22,7 @@ import Products from "@/pages/Products";
 import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
 import Credentials from "@/pages/Credentials";
+import AIReview from "@/pages/AIReview";
 import Agents from "@/pages/Agents";
 import Profile from "@/pages/Profile";
 import Login from "@/pages/Login";
@@ -109,6 +110,7 @@ function AuthGate() {
         <Route path="/flows" component={Flows} />
         <Route path="/flows/:id" component={FlowEditor} />
         <Route path="/credentials" component={Credentials} />
+        <Route path="/ai-review" component={AIReview} />
         <Route path="/agents" component={Agents} />
         <Route path="/channels" component={Channels} />
         <Route path="/settings" component={Settings} />

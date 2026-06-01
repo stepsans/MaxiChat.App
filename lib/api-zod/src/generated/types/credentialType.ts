@@ -12,4 +12,5 @@ export type CredentialType = typeof CredentialType[keyof typeof CredentialType];
 export const CredentialType = {
   googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
   googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
+  googleDriveOAuth2Api: 'googleDriveOAuth2Api',
 } as const;

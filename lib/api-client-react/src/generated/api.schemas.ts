@@ -1261,6 +1261,7 @@ export type CredentialType = typeof CredentialType[keyof typeof CredentialType];
 export const CredentialType = {
   googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
   googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
+  googleDriveOAuth2Api: 'googleDriveOAuth2Api',
 } as const;
 
 export type CredentialStatus = typeof CredentialStatus[keyof typeof CredentialStatus];
@@ -1291,6 +1292,7 @@ export type CredentialCreateInputType = typeof CredentialCreateInputType[keyof t
 export const CredentialCreateInputType = {
   googleSheetsOAuth2Api: 'googleSheetsOAuth2Api',
   googleSheetsTriggerOAuth2Api: 'googleSheetsTriggerOAuth2Api',
+  googleDriveOAuth2Api: 'googleDriveOAuth2Api',
 } as const;
 
 export interface CredentialCreateInput {
@@ -1318,10 +1320,117 @@ export interface CredentialUpdateInput {
   clientSecret?: string;
 }
 
+export interface CreateSpreadsheetInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  title: string;
+}
+
 export interface SpreadsheetRef {
   id: string;
   name: string;
+  url?: string | null;
   modifiedTime?: string | null;
+}
+
+export interface DriveFolderRef {
+  id: string;
+  name: string;
+}
+
+export interface AiReviewGroup {
+  channelId: number;
+  channelName: string;
+  groupJid: string;
+  name?: string | null;
+  lastMessageAt?: string | null;
+}
+
+export interface AiReviewColumn {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+  /** @maxLength 300 */
+  hint?: string;
+}
+
+export type AiReviewConfigLastRunStatus = typeof AiReviewConfigLastRunStatus[keyof typeof AiReviewConfigLastRunStatus];
+
+
+export const AiReviewConfigLastRunStatus = {
+  idle: 'idle',
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export interface AiReviewConfig {
+  id: number;
+  channelId: number;
+  groupJid: string;
+  groupName: string;
+  sheetCredentialId: number;
+  spreadsheetId: string;
+  spreadsheetUrl?: string | null;
+  sheetTab: string;
+  columns: AiReviewColumn[];
+  driveCredentialId?: number | null;
+  driveFolderId?: string | null;
+  driveFolderName?: string | null;
+  scheduleTime: string;
+  timezone: string;
+  enabled: boolean;
+  lastRunAt?: string | null;
+  lastRunStatus: AiReviewConfigLastRunStatus;
+  lastRunError?: string | null;
+  lastRunCount: number;
+  updatedAt: string;
+}
+
+export interface AiReviewConfigInput {
+  channelId: number;
+  /** @minLength 1 */
+  groupJid: string;
+  /** @maxLength 200 */
+  groupName?: string;
+  sheetCredentialId: number;
+  /** @minLength 1 */
+  spreadsheetId: string;
+  /** @maxLength 2000 */
+  spreadsheetUrl?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  sheetTab: string;
+  /**
+     * @minItems 1
+     * @maxItems 50
+     */
+  columns: AiReviewColumn[];
+  driveCredentialId?: number | null;
+  /** @maxLength 200 */
+  driveFolderId?: string | null;
+  /** @maxLength 300 */
+  driveFolderName?: string | null;
+  /** @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$ */
+  scheduleTime: string;
+  /**
+     * @minLength 1
+     * @maxLength 64
+     */
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export interface AiReviewRunResult {
+  processed: number;
+  appended: number;
+  uploaded: number;
+  errors: number;
 }
 
 export type ProductSyncConfigIntervalMinutes = typeof ProductSyncConfigIntervalMinutes[keyof typeof ProductSyncConfigIntervalMinutes];
@@ -1904,6 +2013,10 @@ export type ImportProducts200 = {
 
 export type StartCredentialOauth200 = {
   url: string;
+};
+
+export type DeleteAiReviewConfig200 = {
+  ok: boolean;
 };
 
 export type GetProductSyncConfig200 = {

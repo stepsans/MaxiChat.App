@@ -6,9 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SpreadsheetRef {
-  id: string;
+export interface AiReviewColumn {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
   name: string;
-  url?: string | null;
-  modifiedTime?: Date | null;
+  /** @maxLength 300 */
+  hint?: string;
 }

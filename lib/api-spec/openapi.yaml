@@ -1742,6 +1742,23 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/SpreadsheetRef" }
+    post:
+      operationId: createCredentialSpreadsheet
+      tags: [credentials]
+      summary: Create a new spreadsheet in the connected Google account
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSpreadsheetInput" }
+      responses:
+        "201":
+          description: Created spreadsheet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpreadsheetRef" }
 
   /credentials/{id}/spreadsheets/{spreadsheetId}/tabs:
     get:
@@ -1759,6 +1776,119 @@ paths:
               schema:
                 type: array
                 items: { type: string }
+
+  /credentials/{id}/drive/folders:
+    get:
+      operationId: listCredentialDriveFolders
+      tags: [credentials]
+      summary: List Google Drive folders the connected account can access
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Folders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DriveFolderRef" }
+
+  /ai-review/groups:
+    get:
+      operationId: listAiReviewGroups
+      tags: [ai-review]
+      summary: List WhatsApp groups across the owner's channels
+      responses:
+        "200":
+          description: Groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AiReviewGroup" }
+
+  /ai-review/configs:
+    get:
+      operationId: listAiReviewConfigs
+      tags: [ai-review]
+      summary: List AI Review configs for the owner
+      responses:
+        "200":
+          description: Configs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AiReviewConfig" }
+    post:
+      operationId: createAiReviewConfig
+      tags: [ai-review]
+      summary: Create an AI Review config for a group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiReviewConfigInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiReviewConfig" }
+        "409":
+          description: Group already configured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /ai-review/configs/{id}:
+    patch:
+      operationId: updateAiReviewConfig
+      tags: [ai-review]
+      summary: Update an AI Review config
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiReviewConfigInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiReviewConfig" }
+    delete:
+      operationId: deleteAiReviewConfig
+      tags: [ai-review]
+      summary: Delete an AI Review config
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+
+  /ai-review/configs/{id}/run:
+    post:
+      operationId: runAiReviewConfig
+      tags: [ai-review]
+      summary: Run the receipt recap for a config immediately
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Run result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiReviewRunResult" }
 
   /agents:
     get:
@@ -3876,7 +4006,7 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api] }
+        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api, googleDriveOAuth2Api] }
         clientId: { type: string }
         scopes: { type: array, items: { type: string } }
         accountEmail: { type: string, nullable: true }
@@ -3890,7 +4020,7 @@ components:
       required: [name, type, clientId, clientSecret]
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
-        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api] }
+        type: { type: string, enum: [googleSheetsOAuth2Api, googleSheetsTriggerOAuth2Api, googleDriveOAuth2Api] }
         clientId: { type: string, minLength: 1 }
         clientSecret: { type: string, minLength: 1 }
 
@@ -3901,13 +4031,104 @@ components:
         clientId: { type: string, minLength: 1 }
         clientSecret: { type: string, minLength: 1 }
 
+    CreateSpreadsheetInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+
     SpreadsheetRef:
       type: object
       required: [id, name]
       properties:
         id: { type: string }
         name: { type: string }
+        url: { type: string, nullable: true }
         modifiedTime: { type: string, format: date-time, nullable: true }
+
+    DriveFolderRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    AiReviewGroup:
+      type: object
+      required: [channelId, channelName, groupJid]
+      properties:
+        channelId: { type: integer }
+        channelName: { type: string }
+        groupJid: { type: string }
+        name: { type: string, nullable: true }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+
+    AiReviewColumn:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        hint: { type: string, maxLength: 300 }
+
+    AiReviewConfig:
+      type: object
+      required:
+        [id, channelId, groupJid, groupName, sheetCredentialId, spreadsheetId,
+         sheetTab, columns, scheduleTime, timezone, enabled, lastRunStatus,
+         lastRunCount, updatedAt]
+      properties:
+        id: { type: integer }
+        channelId: { type: integer }
+        groupJid: { type: string }
+        groupName: { type: string }
+        sheetCredentialId: { type: integer }
+        spreadsheetId: { type: string }
+        spreadsheetUrl: { type: string, nullable: true }
+        sheetTab: { type: string }
+        columns: { type: array, items: { $ref: "#/components/schemas/AiReviewColumn" } }
+        driveCredentialId: { type: integer, nullable: true }
+        driveFolderId: { type: string, nullable: true }
+        driveFolderName: { type: string, nullable: true }
+        scheduleTime: { type: string }
+        timezone: { type: string }
+        enabled: { type: boolean }
+        lastRunAt: { type: string, format: date-time, nullable: true }
+        lastRunStatus: { type: string, enum: [idle, ok, error] }
+        lastRunError: { type: string, nullable: true }
+        lastRunCount: { type: integer }
+        updatedAt: { type: string, format: date-time }
+
+    AiReviewConfigInput:
+      type: object
+      required: [channelId, groupJid, sheetCredentialId, spreadsheetId, sheetTab, columns, scheduleTime]
+      properties:
+        channelId: { type: integer }
+        groupJid: { type: string, minLength: 1 }
+        groupName: { type: string, maxLength: 200 }
+        sheetCredentialId: { type: integer }
+        spreadsheetId: { type: string, minLength: 1 }
+        spreadsheetUrl: { type: string, maxLength: 2000, nullable: true }
+        sheetTab: { type: string, minLength: 1, maxLength: 200 }
+        columns:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/AiReviewColumn" }
+        driveCredentialId: { type: integer, nullable: true }
+        driveFolderId: { type: string, maxLength: 200, nullable: true }
+        driveFolderName: { type: string, maxLength: 300, nullable: true }
+        scheduleTime: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+        timezone: { type: string, minLength: 1, maxLength: 64 }
+        enabled: { type: boolean }
+
+    AiReviewRunResult:
+      type: object
+      required: [processed, appended, uploaded, errors]
+      properties:
+        processed: { type: integer }
+        appended: { type: integer }
+        uploaded: { type: integer }
+        errors: { type: integer }
 
     ProductSyncConfig:
       type: object
