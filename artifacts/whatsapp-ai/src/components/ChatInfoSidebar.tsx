@@ -1684,8 +1684,13 @@ function MediaTab({ chatId }: { chatId: number }) {
 
 // Groups a 1:1 contact shares with the connected account.
 function CommonGroupsSection({ chatId }: { chatId: number }) {
+  const [enabled, setEnabled] = useState(false);
   const { data, isLoading, isError } = useGetCommonGroups(chatId, {
-    query: { queryKey: getGetCommonGroupsQueryKey(chatId) },
+    query: {
+      queryKey: getGetCommonGroupsQueryKey(chatId),
+      enabled,
+      staleTime: 60_000,
+    },
   });
   const groups = data?.groups ?? [];
 
@@ -1694,7 +1699,16 @@ function CommonGroupsSection({ chatId }: { chatId: number }) {
       <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide flex items-center gap-1">
         <Users className="w-3 h-3" /> Grup bersama
       </Label>
-      {isLoading ? (
+      {!enabled ? (
+        <button
+          type="button"
+          data-testid="button-load-common-groups"
+          onClick={() => setEnabled(true)}
+          className="text-[11px] text-[hsl(var(--wa-accent))] hover:underline"
+        >
+          Lihat grup bersama
+        </button>
+      ) : isLoading ? (
         <Loader2 className="w-4 h-4 animate-spin text-[hsl(var(--wa-meta))]" />
       ) : isError ? (
         <p className="text-[11px] text-[hsl(var(--wa-meta))]">
