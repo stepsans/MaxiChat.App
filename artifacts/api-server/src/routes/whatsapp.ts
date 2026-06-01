@@ -754,7 +754,16 @@ export async function getOrCreateChat(
     })
     .onConflictDoUpdate({
       target: [chatsTable.channelId, chatsTable.phoneNumber],
-      set: { phoneNumber: sql`${chatsTable.phoneNumber}` },
+      // For groups, keep the stored subject in sync with WhatsApp: overwrite
+      // contact_name when an incoming, real subject is provided. Guard against
+      // clobbering a good name with the numeric JID-prefix fallback (used when
+      // group metadata isn't available yet during history sync). For 1:1 chats
+      // we never touch contact_name here so user-set nicknames are preserved.
+      set: phoneNumber.endsWith("@g.us")
+        ? {
+            contactName: sql`CASE WHEN ${contactName} <> '' AND ${contactName} !~ '^[0-9]+$' THEN ${contactName} ELSE ${chatsTable.contactName} END`,
+          }
+        : { phoneNumber: sql`${chatsTable.phoneNumber}` },
     })
     .returning();
 
@@ -2332,6 +2341,35 @@ async function startBaileys(userId: number, channelId: number) {
     };
     sock.ev.on("chats.upsert", handleChatMeta);
     sock.ev.on("chats.update", handleChatMeta);
+
+    // Live group-subject sync. When a group is renamed on WhatsApp, Baileys
+    // emits groups.update with the new subject (and groups.upsert for groups
+    // that just became known). Without this, MaxiChat kept showing the old
+    // name until the socket session restarted. We refresh both the in-session
+    // name cache and the stored chat row so the new name shows immediately.
+    const handleGroupsMeta = async (
+      updates: Array<{ id?: string; subject?: string }>
+    ) => {
+      if (myEpoch !== ctx.epoch) return;
+      for (const g of updates) {
+        try {
+          if (!g?.id || !g.id.endsWith("@g.us")) continue;
+          const subject = typeof g.subject === "string" ? g.subject.trim() : "";
+          if (!subject) continue;
+          groupNameCache.set(g.id, subject);
+          await db
+            .update(chatsTable)
+            .set({ contactName: subject })
+            .where(
+              sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${g.id}`
+            );
+        } catch (err) {
+          logger.error({ err, id: g?.id }, "Failed to apply group subject update");
+        }
+      }
+    };
+    sock.ev.on("groups.update", handleGroupsMeta);
+    sock.ev.on("groups.upsert", handleGroupsMeta);
   } catch (err) {
     ctx.isConnecting = false;
     ctx.sock = null;
