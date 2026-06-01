@@ -16,6 +16,8 @@ import {
   useListProducts,
   getListProductsQueryKey,
   useSendProductToChat,
+  useSetMessageStar,
+  getGetStarredMessagesQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -75,6 +77,7 @@ import {
   PanelRightOpen,
   PanelRightClose,
   Copy,
+  Star,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -214,6 +217,31 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   function handleSendProduct(productId: number) {
     setSendingProductId(productId);
     sendProductMut.mutate({ id: chatId, data: { productId } });
+  }
+
+  const setStarMut = useSetMessageStar({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+        qc.invalidateQueries({
+          queryKey: getGetStarredMessagesQueryKey(chatId),
+        });
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal menandai pesan",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  function toggleStar(messageId: number, current: boolean) {
+    setStarMut.mutate({
+      id: chatId,
+      messageId,
+      data: { starred: !current },
+    });
   }
 
   const acceptFor = (k: MediaKind) =>
@@ -877,7 +905,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
                       className={cn(
-                        "flex mb-0.5",
+                        "group flex mb-0.5",
                         isOutbound ? "justify-end pl-12" : "justify-start pr-12",
                         isCont && sameSenderAsPrev ? "mt-0.5" : "mt-2"
                       )}
@@ -978,6 +1006,27 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                           </p>
                         )}
                         <div className="flex items-center justify-end gap-1 -mt-3 -mb-0.5 float-right pl-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleStar(msg.id, !!msg.isStarred)}
+                            data-testid={`button-star-${msg.id}`}
+                            className={cn(
+                              "p-0.5 rounded-full hover:bg-black/10 transition-colors",
+                              msg.isStarred
+                                ? "text-amber-400"
+                                : "text-[hsl(var(--wa-meta))] opacity-0 group-hover:opacity-100"
+                            )}
+                            title={
+                              msg.isStarred
+                                ? "Hapus dari berbintang"
+                                : "Tandai berbintang"
+                            }
+                          >
+                            <Star
+                              className="w-3 h-3"
+                              fill={msg.isStarred ? "currentColor" : "none"}
+                            />
+                          </button>
                           {isOutbound && msg.isAiGenerated && (
                             <Bot
                               className="w-3 h-3 text-[hsl(var(--wa-meta))]"

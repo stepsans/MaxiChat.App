@@ -267,6 +267,27 @@ export async function getActiveSocket(userId: number): Promise<WASocket | null> 
   return ctx?.sock ?? null;
 }
 
+// Live Baileys socket for a SPECIFIC channel id (not just the user's primary
+// channel). Group operations act on the channel that owns the chat, which may
+// be a non-primary paired number. Returns null when that channel has no open
+// socket. Synchronous: reads the in-memory ctx map directly.
+export function getSockForChannel(channelId: number): WASocket | null {
+  return channelCtxs.get(channelId)?.sock ?? null;
+}
+
+// Primary channel id + its live socket for any signed-in user. Needed when an
+// action (e.g. creating a brand-new group) has no existing chat to derive a
+// channel from, so we must persist the resulting chat against the owner's
+// primary channel. Returns null if the user has no WhatsApp channel yet.
+export async function getPrimaryChannelForUser(
+  userId: number
+): Promise<{ channelId: number; sock: WASocket | null } | null> {
+  const ownerUserId = await resolveOwnerUserId(userId);
+  const cid = await resolvePrimaryChannelId(ownerUserId);
+  if (cid == null) return null;
+  return { channelId: cid, sock: channelCtxs.get(cid)?.sock ?? null };
+}
+
 // Baileys' sock.user.id looks like "628111…:7@s.whatsapp.net" — strip every
 // non-digit to canonicalise. Returns null for empty / null input.
 function normalizeOwnerPhone(input: string | null | undefined): string | null {

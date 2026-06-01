@@ -360,7 +360,8 @@ export const GetChatResponse = zod.object({
   "createdAt": zod.string(),
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
-  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
 }))
 })
 
@@ -441,7 +442,8 @@ export const SendProductToChatResponse = zod.object({
   "createdAt": zod.string(),
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
-  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
 })
 
 
@@ -465,7 +467,8 @@ export const SendShortcutToChatResponse = zod.object({
   "createdAt": zod.string(),
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
-  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
 })
 
 
@@ -493,7 +496,8 @@ export const SendQuotationToChatResponse = zod.object({
   "createdAt": zod.string(),
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
-  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
 })
 
 
@@ -517,7 +521,8 @@ export const SendManualReplyResponse = zod.object({
   "createdAt": zod.string(),
   "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
   "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
-  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.')
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
 })
 
 
@@ -2924,6 +2929,173 @@ export const TestAiProviderBody = zod.object({
 export const TestAiProviderResponse = zod.object({
   "ok": zod.boolean(),
   "message": zod.string()
+})
+
+
+/**
+ * Fetches current group metadata from WhatsApp for a group chat: subject, description, owner, creation time, the full participant list, and a shareable invite link. Returns 400 if the chat is not a group, 409 if the owning channel has no live WhatsApp connection.
+
+ * @summary Live group metadata (subject, members, invite link) for a group chat
+ */
+export const GetGroupInfoParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetGroupInfoResponse = zod.object({
+  "subject": zod.string(),
+  "description": zod.string().nullish(),
+  "ownerJid": zod.string().nullish(),
+  "creationAt": zod.string().nullish().describe('ISO timestamp of when the group was created, if known.'),
+  "size": zod.number(),
+  "inviteLink": zod.string().nullish().describe('Shareable https:\/\/chat.whatsapp.com\/<code> link. Null if the account is not an admin.'),
+  "participants": zod.array(zod.object({
+  "jid": zod.string(),
+  "phone": zod.string().nullish().describe('Digits-only phone parsed from the JID, when it is a real phone number.'),
+  "name": zod.string().nullish(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean()
+}))
+})
+
+
+/**
+ * Returns shared content for a chat, grouped: media (images/videos), documents, and links (URLs parsed from message text). Each list is ordered newest-first and capped.
+
+ * @summary Media, documents and links shared in a chat
+ */
+export const GetChatAttachmentsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetChatAttachmentsResponse = zod.object({
+  "media": zod.array(zod.object({
+  "id": zod.number(),
+  "mediaType": zod.string().nullish(),
+  "mediaUrl": zod.string().nullish(),
+  "mediaMimeType": zod.string().nullish(),
+  "mediaFilename": zod.string().nullish(),
+  "content": zod.string().optional(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish()
+})),
+  "docs": zod.array(zod.object({
+  "id": zod.number(),
+  "mediaType": zod.string().nullish(),
+  "mediaUrl": zod.string().nullish(),
+  "mediaMimeType": zod.string().nullish(),
+  "mediaFilename": zod.string().nullish(),
+  "content": zod.string().optional(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish()
+})),
+  "links": zod.array(zod.object({
+  "messageId": zod.number(),
+  "url": zod.string(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish()
+}))
+})
+
+
+/**
+ * @summary List starred messages in a chat
+ */
+export const GetStarredMessagesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetStarredMessagesResponse = zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).')
+}))
+})
+
+
+/**
+ * @summary Star or unstar a message (MaxiChat-internal)
+ */
+export const SetMessageStarParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const SetMessageStarBody = zod.object({
+  "starred": zod.boolean()
+})
+
+export const SetMessageStarResponse = zod.object({
+  "isStarred": zod.boolean()
+})
+
+
+/**
+ * For a direct (non-group) chat, lists the WhatsApp groups that both the connected account and this contact belong to. Returns 400 for group chats.
+
+ * @summary Groups shared in common with a 1:1 contact
+ */
+export const GetCommonGroupsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCommonGroupsResponse = zod.object({
+  "groups": zod.array(zod.object({
+  "groupJid": zod.string(),
+  "subject": zod.string(),
+  "chatId": zod.number().nullish().describe('Our local chat id for this group, when it already exists in MaxiChat.')
+}))
+})
+
+
+/**
+ * @summary Add members to a group (modifies the real WhatsApp group)
+ */
+export const AddGroupParticipantsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const AddGroupParticipantsBody = zod.object({
+  "phones": zod.array(zod.string()).min(1)
+})
+
+export const AddGroupParticipantsResponse = zod.object({
+  "results": zod.array(zod.object({
+  "phone": zod.string(),
+  "jid": zod.string().nullish(),
+  "status": zod.string().describe('WhatsApp status code; \"200\" means added, others indicate failure (e.g. needs invite).')
+}))
+})
+
+
+/**
+ * @summary Create a new WhatsApp group (creates a real group on your account)
+ */
+
+
+
+
+export const CreateGroupBody = zod.object({
+  "subject": zod.string().min(1),
+  "phones": zod.array(zod.string()).min(1).describe('Member phone numbers in international format (digits, optional leading +).')
+})
+
+export const CreateGroupResponse = zod.object({
+  "chatId": zod.number().nullish(),
+  "groupJid": zod.string(),
+  "subject": zod.string()
 })
 
 

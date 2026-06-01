@@ -13,11 +13,20 @@ import {
   useDeleteSalesOrder,
   useSendSalesOrder,
   useSyncSalesOrderToSheet,
+  useGetGroupInfo,
+  useGetChatAttachments,
+  useGetStarredMessages,
+  useGetCommonGroups,
+  useAddGroupParticipants,
   getListShortcutsQueryKey,
   getListProductsQueryKey,
   getListSalesOrdersQueryKey,
   getGetChatQueryKey,
   getListChatsQueryKey,
+  getGetGroupInfoQueryKey,
+  getGetChatAttachmentsQueryKey,
+  getGetStarredMessagesQueryKey,
+  getGetCommonGroupsQueryKey,
 } from "@workspace/api-client-react";
 import type {
   TextShortcut,
@@ -64,7 +73,17 @@ import {
   Pencil,
   X,
   FileSpreadsheet,
+  Users,
+  Star,
+  LinkIcon,
+  Copy,
+  ShieldCheck,
+  UserPlus,
+  QrCode,
+  ExternalLink,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { ChatAvatar } from "@/components/ChatAvatar";
 
 export type ChatLabel = { id: number; name: string; color: string };
 
@@ -1302,6 +1321,423 @@ function OrderTab({ chatId }: { chatId: number }) {
   );
 }
 
+// Group info, members, invite link/QR + add-member (group chats only).
+function GroupTab({
+  chatId,
+  contactName,
+}: {
+  chatId: number;
+  contactName: string;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { data, isLoading, isError } = useGetGroupInfo(chatId, {
+    query: { queryKey: getGetGroupInfoQueryKey(chatId) },
+  });
+  const [showQr, setShowQr] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [phones, setPhones] = useState("");
+
+  const addMut = useAddGroupParticipants({
+    mutation: {
+      onSuccess: (res) => {
+        const results = res?.results ?? [];
+        const ok = results.filter((r) => r.status === "200").length;
+        const failed = results.length - ok;
+        toast({
+          title: "Tambah anggota selesai",
+          description: `${ok} berhasil${failed > 0 ? `, ${failed} gagal (mungkin perlu undangan)` : ""}.`,
+          variant: failed > 0 ? "destructive" : undefined,
+        });
+        setPhones("");
+        setAddOpen(false);
+        qc.invalidateQueries({ queryKey: getGetGroupInfoQueryKey(chatId) });
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal menambah anggota",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  function handleAdd() {
+    const list = phones
+      .split(/[\s,;\n]+/)
+      .map((p) => p.replace(/[^0-9]/g, ""))
+      .filter(Boolean);
+    if (list.length === 0) {
+      toast({ title: "Masukkan minimal satu nomor.", variant: "destructive" });
+      return;
+    }
+    addMut.mutate({ id: chatId, data: { phones: list } });
+  }
+
+  function copyLink(link: string) {
+    navigator.clipboard.writeText(link).then(
+      () => toast({ title: "Link undangan disalin." }),
+      () => toast({ title: "Gagal menyalin.", variant: "destructive" })
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="w-5 h-5 animate-spin text-[hsl(var(--wa-meta))]" />
+      </div>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <div className="p-4 text-xs text-[hsl(var(--wa-meta))]">
+        Tidak bisa memuat info grup. Pastikan WhatsApp terhubung.
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="space-y-1">
+        <p className="text-sm font-semibold break-words">
+          {data.subject || contactName}
+        </p>
+        {data.description && (
+          <p className="text-xs text-[hsl(var(--wa-meta))] whitespace-pre-wrap break-words">
+            {data.description}
+          </p>
+        )}
+        <p className="text-[11px] text-[hsl(var(--wa-meta))]">
+          {data.size} anggota
+        </p>
+      </div>
+
+      {data.inviteLink && (
+        <div className="space-y-2">
+          <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide flex items-center gap-1">
+            <LinkIcon className="w-3 h-3" /> Link undangan
+          </Label>
+          <div className="flex items-center gap-1.5">
+            <Input
+              readOnly
+              value={data.inviteLink}
+              data-testid="input-group-invite-link"
+              className="h-8 text-[11px] bg-transparent border-[hsl(var(--wa-divider))]"
+            />
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              data-testid="button-copy-invite-link"
+              onClick={() => copyLink(data.inviteLink!)}
+              className="h-8 w-8 flex-shrink-0"
+              title="Salin link"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              data-testid="button-toggle-invite-qr"
+              onClick={() => setShowQr((s) => !s)}
+              className="h-8 w-8 flex-shrink-0"
+              title="Tampilkan QR"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+          {showQr && (
+            <div className="flex justify-center rounded-md bg-white p-3">
+              <QRCodeSVG value={data.inviteLink} size={160} />
+            </div>
+          )}
+        </div>
+      )}
+
+      <Separator className="bg-[hsl(var(--wa-divider))]" />
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide flex items-center gap-1">
+            <Users className="w-3 h-3" /> Anggota
+          </Label>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            data-testid="button-toggle-add-member"
+            onClick={() => setAddOpen((s) => !s)}
+            className="h-7 px-2 text-[11px] gap-1"
+          >
+            <UserPlus className="w-3.5 h-3.5" /> Tambah
+          </Button>
+        </div>
+
+        {addOpen && (
+          <div className="space-y-2 rounded-md border border-[hsl(var(--wa-divider))] p-2.5">
+            <p className="text-[11px] text-amber-500">
+              ⚠️ Anggota akan ditambahkan langsung ke grup WhatsApp asli.
+            </p>
+            <Textarea
+              value={phones}
+              data-testid="input-add-member-phones"
+              onChange={(e) => setPhones(e.target.value)}
+              placeholder="Nomor (mis. 628123456789), pisah dengan koma/baris baru"
+              className="min-h-[60px] text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            />
+            <Button
+              type="button"
+              size="sm"
+              data-testid="button-confirm-add-member"
+              onClick={handleAdd}
+              disabled={addMut.isPending}
+              className="w-full h-8 text-xs"
+            >
+              {addMut.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                "Tambahkan ke grup"
+              )}
+            </Button>
+          </div>
+        )}
+
+        <div className="space-y-0.5">
+          {data.participants.map((p) => (
+            <div
+              key={p.jid}
+              data-testid={`group-member-${p.jid}`}
+              className="flex items-center gap-2 py-1"
+            >
+              <ChatAvatar
+                name={p.name ?? (p.phone ? `+${p.phone}` : "?")}
+                profilePicUrl={null}
+                size={28}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs truncate">
+                  {p.name ?? (p.phone ? `+${p.phone}` : p.jid)}
+                </p>
+              </div>
+              {(p.isAdmin || p.isSuperAdmin) && (
+                <span className="flex items-center gap-0.5 text-[10px] text-[hsl(var(--wa-accent))] flex-shrink-0">
+                  <ShieldCheck className="w-3 h-3" />
+                  {p.isSuperAdmin ? "Pemilik" : "Admin"}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Shared media / documents / links + MaxiChat starred messages for any chat.
+function MediaTab({ chatId }: { chatId: number }) {
+  const [sub, setSub] = useState<"media" | "docs" | "links" | "starred">(
+    "media"
+  );
+  const { data, isLoading } = useGetChatAttachments(chatId, {
+    query: { queryKey: getGetChatAttachmentsQueryKey(chatId) },
+  });
+  const { data: starred } = useGetStarredMessages(chatId, {
+    query: { queryKey: getGetStarredMessagesQueryKey(chatId) },
+  });
+
+  const media = data?.media ?? [];
+  const docs = data?.docs ?? [];
+  const links = data?.links ?? [];
+  const starredMsgs = starred?.messages ?? [];
+
+  return (
+    <div className="flex flex-1 flex-col min-h-0">
+      <div className="flex border-b border-[hsl(var(--wa-divider))] flex-shrink-0">
+        {([
+          { key: "media", label: "Media" },
+          { key: "docs", label: "Dokumen" },
+          { key: "links", label: "Link" },
+          { key: "starred", label: "Berbintang" },
+        ] as const).map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            data-testid={`tab-media-${s.key}`}
+            onClick={() => setSub(s.key)}
+            className={cn(
+              "flex-1 py-2 text-[11px] font-medium border-b-2 transition-colors",
+              sub === s.key
+                ? "border-[hsl(var(--wa-accent))] text-foreground"
+                : "border-transparent text-[hsl(var(--wa-meta))] hover:text-foreground"
+            )}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3">
+        {isLoading ? (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="w-5 h-5 animate-spin text-[hsl(var(--wa-meta))]" />
+          </div>
+        ) : sub === "media" ? (
+          media.length === 0 ? (
+            <EmptyHint text="Belum ada media." />
+          ) : (
+            <div className="grid grid-cols-3 gap-1">
+              {media.map((m) => (
+                <a
+                  key={m.id}
+                  href={m.mediaUrl ?? "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid={`attachment-media-${m.id}`}
+                  className="block aspect-square overflow-hidden rounded bg-black/20"
+                >
+                  {m.mediaType === "video" ? (
+                    <video
+                      src={m.mediaUrl ?? undefined}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={m.mediaUrl ?? undefined}
+                      alt={m.mediaFilename ?? "media"}
+                      className="h-full w-full object-cover"
+                    />
+                  )}
+                </a>
+              ))}
+            </div>
+          )
+        ) : sub === "docs" ? (
+          docs.length === 0 ? (
+            <EmptyHint text="Belum ada dokumen." />
+          ) : (
+            <div className="space-y-1">
+              {docs.map((d) => (
+                <a
+                  key={d.id}
+                  href={d.mediaUrl ?? "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  download={d.mediaFilename ?? undefined}
+                  data-testid={`attachment-doc-${d.id}`}
+                  className="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-white/5"
+                >
+                  <FileText className="w-4 h-4 flex-shrink-0 opacity-70" />
+                  <span className="truncate text-xs">
+                    {d.mediaFilename ?? "Dokumen"}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )
+        ) : sub === "links" ? (
+          links.length === 0 ? (
+            <EmptyHint text="Belum ada link." />
+          ) : (
+            <div className="space-y-1">
+              {links.map((l, i) => (
+                <a
+                  key={`${l.messageId}-${i}`}
+                  href={l.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid={`attachment-link-${l.messageId}-${i}`}
+                  className="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-white/5"
+                >
+                  <ExternalLink className="w-4 h-4 flex-shrink-0 opacity-70" />
+                  <span className="truncate text-xs text-[hsl(var(--wa-accent))]">
+                    {l.url}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )
+        ) : starredMsgs.length === 0 ? (
+          <EmptyHint text="Belum ada pesan berbintang." />
+        ) : (
+          <div className="space-y-2">
+            {starredMsgs.map((m) => (
+              <div
+                key={m.id}
+                data-testid={`starred-message-${m.id}`}
+                className="rounded-md border border-[hsl(var(--wa-divider))] p-2"
+              >
+                <div className="mb-1 flex items-center gap-1 text-[10px] text-[hsl(var(--wa-meta))]">
+                  <Star className="w-3 h-3 text-amber-400" fill="currentColor" />
+                  {m.senderName ?? (m.direction === "outbound" ? "Anda" : "Kontak")}
+                </div>
+                <p className="whitespace-pre-wrap break-words text-xs">
+                  {m.content || "[media]"}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Groups a 1:1 contact shares with the connected account.
+function CommonGroupsSection({ chatId }: { chatId: number }) {
+  const { data, isLoading, isError } = useGetCommonGroups(chatId, {
+    query: { queryKey: getGetCommonGroupsQueryKey(chatId) },
+  });
+  const groups = data?.groups ?? [];
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide flex items-center gap-1">
+        <Users className="w-3 h-3" /> Grup bersama
+      </Label>
+      {isLoading ? (
+        <Loader2 className="w-4 h-4 animate-spin text-[hsl(var(--wa-meta))]" />
+      ) : isError ? (
+        <p className="text-[11px] text-[hsl(var(--wa-meta))]">
+          Tidak bisa memuat (WhatsApp tidak terhubung).
+        </p>
+      ) : groups.length === 0 ? (
+        <p className="text-[11px] text-[hsl(var(--wa-meta))]">
+          Tidak ada grup bersama.
+        </p>
+      ) : (
+        <div className="space-y-0.5">
+          {groups.map((g) => (
+            <div
+              key={g.groupJid}
+              data-testid={`common-group-${g.groupJid}`}
+              className="flex items-center gap-2 py-1"
+            >
+              <Users className="w-3.5 h-3.5 flex-shrink-0 text-[hsl(var(--wa-meta))]" />
+              {g.chatId != null ? (
+                <a
+                  href={`/chats/${g.chatId}`}
+                  className="truncate text-xs text-[hsl(var(--wa-accent))] hover:underline"
+                >
+                  {g.subject || "Grup"}
+                </a>
+              ) : (
+                <span className="truncate text-xs">{g.subject || "Grup"}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return (
+    <p className="py-8 text-center text-xs text-[hsl(var(--wa-meta))]">{text}</p>
+  );
+}
+
 export function ChatInfoSidebar({
   chatId,
   chat,
@@ -1314,9 +1750,10 @@ export function ChatInfoSidebar({
 }: Props) {
   const qc = useQueryClient();
   const [maximized, setMaximized] = useState(false);
-  const [tab, setTab] = useState<"info" | "shortcut" | "products" | "order">(
-    "info"
-  );
+  const isGroup = chat.phoneNumber.endsWith("@g.us");
+  const [tab, setTab] = useState<
+    "info" | "grup" | "media" | "shortcut" | "products" | "order"
+  >("info");
 
   // Local, debounced-on-blur editing for free-text fields so each keystroke
   // doesn't fire a PATCH. Re-sync whenever the chat row changes underneath.
@@ -1418,6 +1855,10 @@ export function ChatInfoSidebar({
       <div className="flex border-b border-[hsl(var(--wa-divider))] flex-shrink-0">
         {([
           { key: "info", label: "Info", icon: TagIcon },
+          ...(isGroup
+            ? [{ key: "grup", label: "Grup", icon: Users } as const]
+            : []),
+          { key: "media", label: "Media", icon: ImageIcon },
           { key: "shortcut", label: "Shortcut", icon: Zap },
           { key: "products", label: "Produk", icon: Package },
           { key: "order", label: "Order", icon: Receipt },
@@ -1659,7 +2100,18 @@ export function ChatInfoSidebar({
                 </Select>
               </div>
             )}
+
+            {!isGroup && (
+              <>
+                <Separator className="bg-[hsl(var(--wa-divider))]" />
+                <CommonGroupsSection chatId={chatId} />
+              </>
+            )}
           </div>
+        ) : tab === "grup" ? (
+          <GroupTab chatId={chatId} contactName={chat.contactName} />
+        ) : tab === "media" ? (
+          <MediaTab chatId={chatId} />
         ) : tab === "shortcut" ? (
           <ShortcutTab chatId={chatId} channelId={chat.channelId} />
         ) : tab === "products" ? (

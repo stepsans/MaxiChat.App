@@ -26,4 +26,6 @@ export interface ChatMessage {
   senderPhoneDigits?: string | null;
   /** Digits of every JID mentioned in this message body, in the order they appear. Empty/omitted when no mentions. */
   mentionedPhoneDigits?: string[];
+  /** MaxiChat-internal star flag (not synced from the phone). */
+  isStarred?: boolean;
 }

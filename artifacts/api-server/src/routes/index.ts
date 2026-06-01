@@ -3,6 +3,7 @@ import healthRouter from "./health";
 import authRouter from "./auth";
 import whatsappRouter from "./whatsapp";
 import chatsRouter from "./chats";
+import groupsRouter from "./groups";
 import knowledgeRouter from "./knowledge";
 import knowledgeTypesRouter from "./knowledge-types";
 import settingsRouter from "./settings";
@@ -41,6 +42,7 @@ router.use(requireAuth);
 
 router.use("/whatsapp", whatsappRouter);
 router.use("/chats", chatsRouter);
+router.use("/groups", groupsRouter);
 router.use("/knowledge-types", knowledgeTypesRouter);
 // knowledge-sync mounted BEFORE knowledgeRouter so explicit /sync-* paths
 // take priority over the generic /:id CRUD route.

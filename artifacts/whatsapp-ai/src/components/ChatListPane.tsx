@@ -13,8 +13,10 @@ import {
   useListChats,
   useDeleteChat,
   useOpenChatByPhone,
+  useCreateGroup,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import type {} from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,6 +40,7 @@ import {
   User,
   Filter,
   MessageSquarePlus,
+  UsersRound,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -151,6 +154,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
           <span className="text-xs text-[hsl(var(--wa-meta))]">
             {allChats.length} total
           </span>
+          <NewGroupButton />
           <NewChatButton />
         </div>
       </div>
@@ -524,6 +528,139 @@ function NewChatButton() {
                 <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
               )}
               Buka chat
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NewGroupButton() {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [phones, setPhones] = useState("");
+  const [, navigate] = useLocation();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const parsedPhones = phones
+    .split(/[\s,;\n]+/)
+    .map((p) => p.replace(/[^0-9]/g, ""))
+    .filter(Boolean);
+  const isValid = subject.trim().length > 0 && parsedPhones.length > 0;
+
+  const createGroup = useCreateGroup({
+    mutation: {
+      onSuccess: (result) => {
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        setOpen(false);
+        setSubject("");
+        setPhones("");
+        toast({ title: "Grup dibuat", description: result.subject });
+        if (result.chatId != null) navigate(`/chats/${result.chatId}`);
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal membuat grup",
+          description:
+            err instanceof Error ? err.message : "Periksa koneksi WhatsApp Anda.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isValid || createGroup.isPending) return;
+    createGroup.mutate({
+      data: { subject: subject.trim(), phones: parsedPhones },
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) {
+          setSubject("");
+          setPhones("");
+        }
+      }}
+    >
+      <button
+        type="button"
+        data-testid="button-new-group"
+        onClick={() => setOpen(true)}
+        aria-label="Buat grup baru"
+        title="Buat grup baru"
+        className="h-9 w-9 rounded-lg flex items-center justify-center text-[hsl(var(--wa-meta))] hover:text-foreground hover:bg-[hsl(var(--wa-panel))] transition-colors"
+      >
+        <UsersRound className="w-4 h-4" />
+      </button>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Buat grup baru</DialogTitle>
+          <DialogDescription>
+            Ini akan membuat grup WhatsApp asli di akun yang terhubung dan
+            mengundang nomor-nomor di bawah.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="space-y-1.5">
+            <label htmlFor="new-group-subject" className="text-xs font-medium">
+              Nama grup
+            </label>
+            <input
+              id="new-group-subject"
+              data-testid="input-new-group-subject"
+              type="text"
+              autoFocus
+              placeholder="cth. Tim Penjualan"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="new-group-phones" className="text-xs font-medium">
+              Nomor anggota
+            </label>
+            <Textarea
+              id="new-group-phones"
+              data-testid="input-new-group-phones"
+              placeholder="cth. 628123456789, 628987654321 (pisah dengan koma/baris baru)"
+              value={phones}
+              onChange={(e) => setPhones(e.target.value)}
+              className="min-h-[70px] text-sm"
+            />
+            {parsedPhones.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                {parsedPhones.length} nomor terdeteksi.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              data-testid="button-create-group"
+              disabled={!isValid || createGroup.isPending}
+            >
+              {createGroup.isPending && (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              )}
+              Buat grup
             </Button>
           </DialogFooter>
         </form>

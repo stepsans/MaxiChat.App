@@ -5,6 +5,130 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+export interface GroupParticipant {
+  jid: string;
+  /**
+     * Digits-only phone parsed from the JID, when it is a real phone number.
+     * @nullable
+     */
+  phone?: string | null;
+  /** @nullable */
+  name?: string | null;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+}
+
+export interface GroupInfo {
+  subject: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  ownerJid?: string | null;
+  /**
+     * ISO timestamp of when the group was created, if known.
+     * @nullable
+     */
+  creationAt?: string | null;
+  size: number;
+  /**
+     * Shareable https://chat.whatsapp.com/<code> link. Null if the account is not an admin.
+     * @nullable
+     */
+  inviteLink?: string | null;
+  participants: GroupParticipant[];
+}
+
+export type ChatAttachmentItemDirection = typeof ChatAttachmentItemDirection[keyof typeof ChatAttachmentItemDirection];
+
+
+export const ChatAttachmentItemDirection = {
+  inbound: 'inbound',
+  outbound: 'outbound',
+} as const;
+
+export interface ChatAttachmentItem {
+  id: number;
+  /** @nullable */
+  mediaType?: string | null;
+  /** @nullable */
+  mediaUrl?: string | null;
+  /** @nullable */
+  mediaMimeType?: string | null;
+  /** @nullable */
+  mediaFilename?: string | null;
+  content?: string;
+  direction: ChatAttachmentItemDirection;
+  createdAt: string;
+  /** @nullable */
+  senderName?: string | null;
+}
+
+export interface ChatLinkItem {
+  messageId: number;
+  url: string;
+  createdAt: string;
+  /** @nullable */
+  senderName?: string | null;
+}
+
+export interface ChatAttachments {
+  media: ChatAttachmentItem[];
+  docs: ChatAttachmentItem[];
+  links: ChatLinkItem[];
+}
+
+export interface StarMessageBody {
+  starred: boolean;
+}
+
+export interface CommonGroup {
+  groupJid: string;
+  subject: string;
+  /**
+     * Our local chat id for this group, when it already exists in MaxiChat.
+     * @nullable
+     */
+  chatId?: number | null;
+}
+
+export interface CommonGroups {
+  groups: CommonGroup[];
+}
+
+export interface CreateGroupInput {
+  /** @minLength 1 */
+  subject: string;
+  /**
+     * Member phone numbers in international format (digits, optional leading +).
+     * @minItems 1
+     */
+  phones: string[];
+}
+
+export interface CreateGroupResult {
+  /** @nullable */
+  chatId?: number | null;
+  groupJid: string;
+  subject: string;
+}
+
+export interface AddParticipantsBody {
+  /** @minItems 1 */
+  phones: string[];
+}
+
+export interface ParticipantAddResult {
+  phone: string;
+  /** @nullable */
+  jid?: string | null;
+  /** WhatsApp status code; "200" means added, others indicate failure (e.g. needs invite). */
+  status: string;
+}
+
+export interface AddParticipantsResult {
+  results: ParticipantAddResult[];
+}
+
 /**
  * 'replit' uses the managed integration (default); 'byok' uses the tenant's own API key.
  */
@@ -333,6 +457,8 @@ export interface ChatMessage {
   senderPhoneDigits?: string | null;
   /** Digits of every JID mentioned in this message body, in the order they appear. Empty/omitted when no mentions. */
   mentionedPhoneDigits?: string[];
+  /** MaxiChat-internal star flag (not synced from the phone). */
+  isStarred?: boolean;
 }
 
 export type ChatWithMessagesStatus = typeof ChatWithMessagesStatus[keyof typeof ChatWithMessagesStatus];
@@ -2057,5 +2183,13 @@ export type ListTeamMemberPermissions200 = {
 
 export type ResetFlowCooldown200 = {
   cleared: number;
+};
+
+export type GetStarredMessages200 = {
+  messages: ChatMessage[];
+};
+
+export type SetMessageStar200 = {
+  isStarred: boolean;
 };
 

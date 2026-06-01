@@ -169,6 +169,10 @@ export const chatMessagesTable = pgTable(
     // raw "@628…" / "@<lid>" tokens in the body for the mentioned
     // contact's nickname.
     mentionedPhoneDigits: text("mentioned_phone_digits").array(),
+    // MaxiChat-internal "star" flag. WhatsApp's own starred messages live on
+    // the phone and don't sync over Baileys, so this is dashboard-local: an
+    // operator can star a message inside MaxiChat to bookmark it.
+    isStarred: boolean("is_starred").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

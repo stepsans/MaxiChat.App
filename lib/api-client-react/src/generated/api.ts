@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AddParticipantsBody,
+  AddParticipantsResult,
   AdminUpdateUserInput,
   AdminUser,
   AiProviderConfig,
@@ -41,13 +43,17 @@ import type {
   ChannelPairQr,
   ChannelUpdate,
   Chat,
+  ChatAttachments,
   ChatLabelsResult,
   ChatMessage,
   ChatUpdate,
   ChatWithMessages,
+  CommonGroups,
   CommonQuestion,
   CreateAgentInput,
   CreateCustomerLabelInput,
+  CreateGroupInput,
+  CreateGroupResult,
   CreateKnowledgeType400,
   CreateKnowledgeType409,
   CreateSpreadsheetInput,
@@ -73,6 +79,8 @@ import type {
   GetProductSyncConfig200,
   GetSalesOrderSyncConfig200,
   GetShortcutSyncConfig200,
+  GetStarredMessages200,
+  GroupInfo,
   HealthStatus,
   ImportKnowledge200,
   ImportKnowledge400,
@@ -110,11 +118,13 @@ import type {
   SendQuotationBody,
   SendShortcutBody,
   SetChatLabels,
+  SetMessageStar200,
   Settings,
   ShortcutSyncConfigInput,
   SignupInput,
   SignupResponse,
   SpreadsheetRef,
+  StarMessageBody,
   StartCredentialOauth200,
   SuccessResponse,
   SyncProductsToKnowledge200,
@@ -9829,5 +9839,536 @@ export const useTestAiProvider = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getTestAiProviderMutationOptions(options));
+    }
+
+export const getGetGroupInfoUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/group-info`
+}
+
+/**
+ * Fetches current group metadata from WhatsApp for a group chat: subject, description, owner, creation time, the full participant list, and a shareable invite link. Returns 400 if the chat is not a group, 409 if the owning channel has no live WhatsApp connection.
+
+ * @summary Live group metadata (subject, members, invite link) for a group chat
+ */
+export const getGroupInfo = async (id: number, options?: RequestInit): Promise<GroupInfo> => {
+
+  return customFetch<GroupInfo>(getGetGroupInfoUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGroupInfoQueryKey = (id: number,) => {
+    return [
+    `/api/chats/${id}/group-info`
+    ] as const;
+    }
+
+
+export const getGetGroupInfoQueryOptions = <TData = Awaited<ReturnType<typeof getGroupInfo>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGroupInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGroupInfoQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGroupInfo>>> = ({ signal }) => getGroupInfo(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGroupInfo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGroupInfoQueryResult = NonNullable<Awaited<ReturnType<typeof getGroupInfo>>>
+export type GetGroupInfoQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Live group metadata (subject, members, invite link) for a group chat
+ */
+
+export function useGetGroupInfo<TData = Awaited<ReturnType<typeof getGroupInfo>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGroupInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGroupInfoQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetChatAttachmentsUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/attachments`
+}
+
+/**
+ * Returns shared content for a chat, grouped: media (images/videos), documents, and links (URLs parsed from message text). Each list is ordered newest-first and capped.
+
+ * @summary Media, documents and links shared in a chat
+ */
+export const getChatAttachments = async (id: number, options?: RequestInit): Promise<ChatAttachments> => {
+
+  return customFetch<ChatAttachments>(getGetChatAttachmentsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChatAttachmentsQueryKey = (id: number,) => {
+    return [
+    `/api/chats/${id}/attachments`
+    ] as const;
+    }
+
+
+export const getGetChatAttachmentsQueryOptions = <TData = Awaited<ReturnType<typeof getChatAttachments>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChatAttachments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChatAttachmentsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChatAttachments>>> = ({ signal }) => getChatAttachments(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChatAttachments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChatAttachmentsQueryResult = NonNullable<Awaited<ReturnType<typeof getChatAttachments>>>
+export type GetChatAttachmentsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Media, documents and links shared in a chat
+ */
+
+export function useGetChatAttachments<TData = Awaited<ReturnType<typeof getChatAttachments>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChatAttachments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChatAttachmentsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetStarredMessagesUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/starred`
+}
+
+/**
+ * @summary List starred messages in a chat
+ */
+export const getStarredMessages = async (id: number, options?: RequestInit): Promise<GetStarredMessages200> => {
+
+  return customFetch<GetStarredMessages200>(getGetStarredMessagesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStarredMessagesQueryKey = (id: number,) => {
+    return [
+    `/api/chats/${id}/starred`
+    ] as const;
+    }
+
+
+export const getGetStarredMessagesQueryOptions = <TData = Awaited<ReturnType<typeof getStarredMessages>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStarredMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStarredMessagesQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStarredMessages>>> = ({ signal }) => getStarredMessages(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStarredMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStarredMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof getStarredMessages>>>
+export type GetStarredMessagesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List starred messages in a chat
+ */
+
+export function useGetStarredMessages<TData = Awaited<ReturnType<typeof getStarredMessages>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStarredMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStarredMessagesQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSetMessageStarUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/chats/${id}/messages/${messageId}/star`
+}
+
+/**
+ * @summary Star or unstar a message (MaxiChat-internal)
+ */
+export const setMessageStar = async (id: number,
+    messageId: number,
+    starMessageBody: StarMessageBody, options?: RequestInit): Promise<SetMessageStar200> => {
+
+  return customFetch<SetMessageStar200>(getSetMessageStarUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      starMessageBody,)
+  }
+);}
+
+
+
+
+export const getSetMessageStarMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMessageStar>>, TError,{id: number;messageId: number;data: BodyType<StarMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setMessageStar>>, TError,{id: number;messageId: number;data: BodyType<StarMessageBody>}, TContext> => {
+
+const mutationKey = ['setMessageStar'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setMessageStar>>, {id: number;messageId: number;data: BodyType<StarMessageBody>}> = (props) => {
+          const {id,messageId,data} = props ?? {};
+
+          return  setMessageStar(id,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetMessageStarMutationResult = NonNullable<Awaited<ReturnType<typeof setMessageStar>>>
+    export type SetMessageStarMutationBody = BodyType<StarMessageBody>
+    export type SetMessageStarMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Star or unstar a message (MaxiChat-internal)
+ */
+export const useSetMessageStar = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMessageStar>>, TError,{id: number;messageId: number;data: BodyType<StarMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setMessageStar>>,
+        TError,
+        {id: number;messageId: number;data: BodyType<StarMessageBody>},
+        TContext
+      > => {
+      return useMutation(getSetMessageStarMutationOptions(options));
+    }
+
+export const getGetCommonGroupsUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/common-groups`
+}
+
+/**
+ * For a direct (non-group) chat, lists the WhatsApp groups that both the connected account and this contact belong to. Returns 400 for group chats.
+
+ * @summary Groups shared in common with a 1:1 contact
+ */
+export const getCommonGroups = async (id: number, options?: RequestInit): Promise<CommonGroups> => {
+
+  return customFetch<CommonGroups>(getGetCommonGroupsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommonGroupsQueryKey = (id: number,) => {
+    return [
+    `/api/chats/${id}/common-groups`
+    ] as const;
+    }
+
+
+export const getGetCommonGroupsQueryOptions = <TData = Awaited<ReturnType<typeof getCommonGroups>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommonGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommonGroupsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommonGroups>>> = ({ signal }) => getCommonGroups(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommonGroups>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCommonGroupsQueryResult = NonNullable<Awaited<ReturnType<typeof getCommonGroups>>>
+export type GetCommonGroupsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Groups shared in common with a 1:1 contact
+ */
+
+export function useGetCommonGroups<TData = Awaited<ReturnType<typeof getCommonGroups>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommonGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCommonGroupsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAddGroupParticipantsUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/participants`
+}
+
+/**
+ * @summary Add members to a group (modifies the real WhatsApp group)
+ */
+export const addGroupParticipants = async (id: number,
+    addParticipantsBody: AddParticipantsBody, options?: RequestInit): Promise<AddParticipantsResult> => {
+
+  return customFetch<AddParticipantsResult>(getAddGroupParticipantsUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      addParticipantsBody,)
+  }
+);}
+
+
+
+
+export const getAddGroupParticipantsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addGroupParticipants>>, TError,{id: number;data: BodyType<AddParticipantsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addGroupParticipants>>, TError,{id: number;data: BodyType<AddParticipantsBody>}, TContext> => {
+
+const mutationKey = ['addGroupParticipants'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addGroupParticipants>>, {id: number;data: BodyType<AddParticipantsBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addGroupParticipants(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddGroupParticipantsMutationResult = NonNullable<Awaited<ReturnType<typeof addGroupParticipants>>>
+    export type AddGroupParticipantsMutationBody = BodyType<AddParticipantsBody>
+    export type AddGroupParticipantsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add members to a group (modifies the real WhatsApp group)
+ */
+export const useAddGroupParticipants = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addGroupParticipants>>, TError,{id: number;data: BodyType<AddParticipantsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addGroupParticipants>>,
+        TError,
+        {id: number;data: BodyType<AddParticipantsBody>},
+        TContext
+      > => {
+      return useMutation(getAddGroupParticipantsMutationOptions(options));
+    }
+
+export const getCreateGroupUrl = () => {
+
+
+
+
+  return `/api/groups`
+}
+
+/**
+ * @summary Create a new WhatsApp group (creates a real group on your account)
+ */
+export const createGroup = async (createGroupInput: CreateGroupInput, options?: RequestInit): Promise<CreateGroupResult> => {
+
+  return customFetch<CreateGroupResult>(getCreateGroupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createGroupInput,)
+  }
+);}
+
+
+
+
+export const getCreateGroupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGroup>>, TError,{data: BodyType<CreateGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createGroup>>, TError,{data: BodyType<CreateGroupInput>}, TContext> => {
+
+const mutationKey = ['createGroup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createGroup>>, {data: BodyType<CreateGroupInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createGroup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateGroupMutationResult = NonNullable<Awaited<ReturnType<typeof createGroup>>>
+    export type CreateGroupMutationBody = BodyType<CreateGroupInput>
+    export type CreateGroupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a new WhatsApp group (creates a real group on your account)
+ */
+export const useCreateGroup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGroup>>, TError,{data: BodyType<CreateGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createGroup>>,
+        TError,
+        {data: BodyType<CreateGroupInput>},
+        TContext
+      > => {
+      return useMutation(getCreateGroupMutationOptions(options));
     }
 

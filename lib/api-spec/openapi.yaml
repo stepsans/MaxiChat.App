@@ -2743,8 +2743,421 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /chats/{id}/group-info:
+    get:
+      operationId: getGroupInfo
+      tags: [chats]
+      summary: Live group metadata (subject, members, invite link) for a group chat
+      description: >
+        Fetches current group metadata from WhatsApp for a group chat: subject,
+        description, owner, creation time, the full participant list, and a
+        shareable invite link. Returns 400 if the chat is not a group, 409 if the
+        owning channel has no live WhatsApp connection.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Group metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupInfo"
+        "400":
+          description: Not a group chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: WhatsApp not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chats/{id}/attachments:
+    get:
+      operationId: getChatAttachments
+      tags: [chats]
+      summary: Media, documents and links shared in a chat
+      description: >
+        Returns shared content for a chat, grouped: media (images/videos),
+        documents, and links (URLs parsed from message text). Each list is
+        ordered newest-first and capped.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Grouped attachments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatAttachments"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chats/{id}/starred:
+    get:
+      operationId: getStarredMessages
+      tags: [chats]
+      summary: List starred messages in a chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Starred messages, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages]
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ChatMessage"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chats/{id}/messages/{messageId}/star:
+    post:
+      operationId: setMessageStar
+      tags: [chats]
+      summary: Star or unstar a message (MaxiChat-internal)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StarMessageBody"
+      responses:
+        "200":
+          description: New star state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [isStarred]
+                properties:
+                  isStarred:
+                    type: boolean
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chats/{id}/common-groups:
+    get:
+      operationId: getCommonGroups
+      tags: [chats]
+      summary: Groups shared in common with a 1:1 contact
+      description: >
+        For a direct (non-group) chat, lists the WhatsApp groups that both the
+        connected account and this contact belong to. Returns 400 for group chats.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Common groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommonGroups"
+        "400":
+          description: Chat is a group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: WhatsApp not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chats/{id}/participants:
+    post:
+      operationId: addGroupParticipants
+      tags: [chats]
+      summary: Add members to a group (modifies the real WhatsApp group)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddParticipantsBody"
+      responses:
+        "200":
+          description: Per-phone add result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddParticipantsResult"
+        "400":
+          description: Not a group chat / invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Chat not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: WhatsApp not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /groups:
+    post:
+      operationId: createGroup
+      tags: [chats]
+      summary: Create a new WhatsApp group (creates a real group on your account)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroupInput"
+      responses:
+        "200":
+          description: Created group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateGroupResult"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: WhatsApp not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    GroupParticipant:
+      type: object
+      required: [jid, isAdmin, isSuperAdmin]
+      properties:
+        jid:
+          type: string
+        phone:
+          type: ["string", "null"]
+          description: Digits-only phone parsed from the JID, when it is a real phone number.
+        name:
+          type: ["string", "null"]
+        isAdmin:
+          type: boolean
+        isSuperAdmin:
+          type: boolean
+    GroupInfo:
+      type: object
+      required: [subject, size, participants]
+      properties:
+        subject:
+          type: string
+        description:
+          type: ["string", "null"]
+        ownerJid:
+          type: ["string", "null"]
+        creationAt:
+          type: ["string", "null"]
+          description: ISO timestamp of when the group was created, if known.
+        size:
+          type: integer
+        inviteLink:
+          type: ["string", "null"]
+          description: Shareable https://chat.whatsapp.com/<code> link. Null if the account is not an admin.
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupParticipant"
+    ChatAttachmentItem:
+      type: object
+      required: [id, direction, createdAt]
+      properties:
+        id:
+          type: integer
+        mediaType:
+          type: ["string", "null"]
+        mediaUrl:
+          type: ["string", "null"]
+        mediaMimeType:
+          type: ["string", "null"]
+        mediaFilename:
+          type: ["string", "null"]
+        content:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        createdAt:
+          type: string
+        senderName:
+          type: ["string", "null"]
+    ChatLinkItem:
+      type: object
+      required: [messageId, url, createdAt]
+      properties:
+        messageId:
+          type: integer
+        url:
+          type: string
+        createdAt:
+          type: string
+        senderName:
+          type: ["string", "null"]
+    ChatAttachments:
+      type: object
+      required: [media, docs, links]
+      properties:
+        media:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatAttachmentItem"
+        docs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatAttachmentItem"
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatLinkItem"
+    StarMessageBody:
+      type: object
+      required: [starred]
+      properties:
+        starred:
+          type: boolean
+    CommonGroup:
+      type: object
+      required: [groupJid, subject]
+      properties:
+        groupJid:
+          type: string
+        subject:
+          type: string
+        chatId:
+          type: ["integer", "null"]
+          description: Our local chat id for this group, when it already exists in MaxiChat.
+    CommonGroups:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommonGroup"
+    CreateGroupInput:
+      type: object
+      required: [subject, phones]
+      properties:
+        subject:
+          type: string
+          minLength: 1
+        phones:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: Member phone numbers in international format (digits, optional leading +).
+    CreateGroupResult:
+      type: object
+      required: [groupJid, subject]
+      properties:
+        chatId:
+          type: ["integer", "null"]
+        groupJid:
+          type: string
+        subject:
+          type: string
+    AddParticipantsBody:
+      type: object
+      required: [phones]
+      properties:
+        phones:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    ParticipantAddResult:
+      type: object
+      required: [phone, status]
+      properties:
+        phone:
+          type: string
+        jid:
+          type: ["string", "null"]
+        status:
+          type: string
+          description: WhatsApp status code; "200" means added, others indicate failure (e.g. needs invite).
+    AddParticipantsResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParticipantAddResult"
     AiProviderMode:
       type: string
       enum: [replit, byok]
@@ -3046,6 +3459,9 @@ components:
           items:
             type: string
           description: Digits of every JID mentioned in this message body, in the order they appear. Empty/omitted when no mentions.
+        isStarred:
+          type: boolean
+          description: MaxiChat-internal star flag (not synced from the phone).
 
     ChatWithMessages:
       type: object

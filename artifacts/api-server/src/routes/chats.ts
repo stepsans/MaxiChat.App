@@ -39,6 +39,8 @@ import {
   TakeoverChatParams,
   OpenChatByPhoneBody,
   SetChatLabelsBody,
+  SetMessageStarBody,
+  AddGroupParticipantsBody,
 } from "@workspace/api-zod";
 import { resolveOwnerUserId } from "../lib/seed";
 import {
@@ -46,6 +48,8 @@ import {
   sendMediaToJid,
   sendContactToJid,
   getActiveSocket,
+  getSockForChannel,
+  getOrCreateChat,
   refreshChatProfilePic,
 } from "./whatsapp";
 import {
@@ -664,6 +668,281 @@ router.post("/:id/refresh-avatar", async (req, res): Promise<void> => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Group / attachment / star helpers (WhatsApp-mobile feature parity)
+// ---------------------------------------------------------------------------
+
+// Digits-only phone parsed from a JID, when it is a real phone number
+// (…@s.whatsapp.net). Returns null for LID JIDs and anything non-numeric.
+function jidDigits(jid: string | null | undefined): string | null {
+  if (!jid) return null;
+  const local = jid.split("@")[0].split(":")[0];
+  return /^[0-9]+$/.test(local) ? local : null;
+}
+
+function phoneToJid(phone: string): string {
+  return `${String(phone).replace(/[^0-9]/g, "")}@s.whatsapp.net`;
+}
+
+const ATTACHMENT_LINK_RE = /\bhttps?:\/\/[^\s<>()]+/gi;
+
+type ChatMessageRow = typeof chatMessagesTable.$inferSelect;
+
+function serializeChatMessage(m: ChatMessageRow) {
+  return {
+    ...m,
+    createdAt: m.createdAt.toISOString(),
+    mentionedPhoneDigits: m.mentionedPhoneDigits ?? [],
+    isStarred: m.isStarred ?? false,
+  };
+}
+
+function serializeAttachmentItem(m: ChatMessageRow) {
+  return {
+    id: m.id,
+    mediaType: m.mediaType ?? null,
+    mediaUrl: m.mediaUrl ?? null,
+    mediaMimeType: m.mediaMimeType ?? null,
+    mediaFilename: m.mediaFilename ?? null,
+    content: m.content ?? "",
+    direction: m.direction,
+    createdAt: m.createdAt.toISOString(),
+    senderName: m.senderName ?? null,
+  };
+}
+
+// GET /:id/group-info — live group metadata + members + invite link.
+router.get("/:id/group-info", async (req, res): Promise<void> => {
+  try {
+    const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+    const chat = await loadOwnedChat(req, res, parsed.data.id);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+    if (!chat.phoneNumber.endsWith("@g.us")) {
+      res.status(400).json({ error: "Not a group chat" });
+      return;
+    }
+    const sock = getSockForChannel(chat.channelId);
+    if (!sock) { res.status(409).json({ error: "WhatsApp not connected" }); return; }
+
+    const meta = await sock.groupMetadata(chat.phoneNumber);
+    let inviteLink: string | null = null;
+    try {
+      const code = await sock.groupInviteCode(chat.phoneNumber);
+      if (code) inviteLink = `https://chat.whatsapp.com/${code}`;
+    } catch {
+      // Only group admins can read the invite code — leave null otherwise.
+    }
+    const participants = (meta.participants ?? []).map((p) => {
+      const pp = p as { id: string; admin?: string | null; name?: string | null; notify?: string | null };
+      return {
+        jid: pp.id,
+        phone: jidDigits(pp.id),
+        name: pp.name ?? pp.notify ?? null,
+        isAdmin: pp.admin === "admin" || pp.admin === "superadmin",
+        isSuperAdmin: pp.admin === "superadmin",
+      };
+    });
+    res.json({
+      subject: meta.subject ?? chat.contactName ?? "",
+      description: meta.desc ?? null,
+      ownerJid: meta.owner ?? null,
+      creationAt: meta.creation ? new Date(meta.creation * 1000).toISOString() : null,
+      size: meta.size ?? participants.length,
+      inviteLink,
+      participants,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get group info");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /:id/attachments — shared media, documents and links for a chat.
+router.get("/:id/attachments", async (req, res): Promise<void> => {
+  try {
+    const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+    const chat = await loadOwnedChat(req, res, parsed.data.id);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const rows = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(eq(chatMessagesTable.chatId, chat.id))
+      .orderBy(desc(chatMessagesTable.createdAt));
+
+    const CAP = 300;
+    const media: ReturnType<typeof serializeAttachmentItem>[] = [];
+    const docs: ReturnType<typeof serializeAttachmentItem>[] = [];
+    const links: { messageId: number; url: string; createdAt: string; senderName: string | null }[] = [];
+    for (const m of rows) {
+      if (m.mediaType === "image" || m.mediaType === "video") {
+        if (media.length < CAP) media.push(serializeAttachmentItem(m));
+      } else if (m.mediaType === "document") {
+        if (docs.length < CAP) docs.push(serializeAttachmentItem(m));
+      }
+      if (m.content && links.length < CAP) {
+        const matches = m.content.match(ATTACHMENT_LINK_RE);
+        if (matches) {
+          for (const url of matches) {
+            if (links.length >= CAP) break;
+            links.push({
+              messageId: m.id,
+              url,
+              createdAt: m.createdAt.toISOString(),
+              senderName: m.senderName ?? null,
+            });
+          }
+        }
+      }
+    }
+    res.json({ media, docs, links });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get chat attachments");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /:id/starred — MaxiChat-internal starred messages for a chat.
+router.get("/:id/starred", async (req, res): Promise<void> => {
+  try {
+    const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+    const chat = await loadOwnedChat(req, res, parsed.data.id);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const rows = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(and(eq(chatMessagesTable.chatId, chat.id), eq(chatMessagesTable.isStarred, true)))
+      .orderBy(desc(chatMessagesTable.createdAt));
+    res.json({ messages: rows.map(serializeChatMessage) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get starred messages");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /:id/messages/:messageId/star — star/unstar a single message.
+router.post("/:id/messages/:messageId/star", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(chatId) || !Number.isInteger(messageId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const bodyParsed = SetMessageStarBody.safeParse(req.body);
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
+
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [updated] = await db
+      .update(chatMessagesTable)
+      .set({ isStarred: bodyParsed.data.starred })
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Message not found" }); return; }
+    res.json({ isStarred: updated.isStarred ?? false });
+  } catch (err) {
+    req.log.error({ err }, "Failed to set message star");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /:id/common-groups — groups shared with a 1:1 contact.
+router.get("/:id/common-groups", async (req, res): Promise<void> => {
+  try {
+    const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+    const chat = await loadOwnedChat(req, res, parsed.data.id);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+    if (chat.phoneNumber.endsWith("@g.us")) {
+      res.status(400).json({ error: "Chat is a group" });
+      return;
+    }
+    const sock = getSockForChannel(chat.channelId);
+    if (!sock) { res.status(409).json({ error: "WhatsApp not connected" }); return; }
+
+    const target = chat.phoneNumber.replace(/[^0-9]/g, "");
+    const all = await sock.groupFetchAllParticipating();
+    const found: { groupJid: string; subject: string }[] = [];
+    for (const g of Object.values(all)) {
+      const isMember = (g.participants ?? []).some((p) => jidDigits((p as { id: string }).id) === target);
+      if (isMember) found.push({ groupJid: g.id, subject: g.subject ?? "" });
+    }
+
+    // Resolve which of these groups already exist as local chats so the UI can
+    // deep-link into them.
+    const chatIdByJid = new Map<string, number>();
+    if (found.length > 0) {
+      const localRows = await db
+        .select({ id: chatsTable.id, phoneNumber: chatsTable.phoneNumber })
+        .from(chatsTable)
+        .where(
+          and(
+            eq(chatsTable.channelId, chat.channelId),
+            inArray(chatsTable.phoneNumber, found.map((f) => f.groupJid))
+          )
+        );
+      for (const r of localRows) chatIdByJid.set(r.phoneNumber, r.id);
+    }
+    res.json({
+      groups: found.map((f) => ({
+        groupJid: f.groupJid,
+        subject: f.subject,
+        chatId: chatIdByJid.get(f.groupJid) ?? null,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get common groups");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /:id/participants — add members to a group (mutates the real group).
+router.post("/:id/participants", async (req, res): Promise<void> => {
+  try {
+    const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
+    if (!parsed.success) { res.status(400).json({ error: "Invalid id" }); return; }
+    const bodyParsed = AddGroupParticipantsBody.safeParse(req.body);
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
+
+    const chat = await loadOwnedChat(req, res, parsed.data.id);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+    if (!chat.phoneNumber.endsWith("@g.us")) {
+      res.status(400).json({ error: "Not a group chat" });
+      return;
+    }
+    const sock = getSockForChannel(chat.channelId);
+    if (!sock) { res.status(409).json({ error: "WhatsApp not connected" }); return; }
+
+    const phones = bodyParsed.data.phones.map((p) => p.replace(/[^0-9]/g, "")).filter(Boolean);
+    if (phones.length === 0) {
+      res.status(400).json({ error: "No valid phone numbers" });
+      return;
+    }
+    const jids = phones.map(phoneToJid);
+    const raw = await sock.groupParticipantsUpdate(chat.phoneNumber, jids, "add");
+    const statusByJid = new Map<string, string>();
+    for (const r of raw) {
+      if (r.jid) statusByJid.set(r.jid, String(r.status));
+    }
+    res.json({
+      results: jids.map((jid) => ({
+        phone: jidDigits(jid) ?? jid,
+        jid,
+        status: statusByJid.get(jid) ?? "unknown",
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to add group participants");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/:id", async (req, res): Promise<void> => {
   try {
     const parsed = GetChatParams.safeParse({ id: Number(req.params.id) });
@@ -703,6 +982,7 @@ router.get("/:id", async (req, res): Promise<void> => {
         // OpenAPI contract (mentionedPhoneDigits: string[]) holds for
         // every row — clients never see a stray null here.
         mentionedPhoneDigits: m.mentionedPhoneDigits ?? [],
+        isStarred: m.isStarred ?? false,
       })),
     });
   } catch (err) {
