@@ -54,6 +54,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { useToast } from "@/hooks/use-toast";
 import {
   ReceiptText,
@@ -606,33 +607,22 @@ function ConfigEditor({
           {/* Group */}
           <div className="space-y-2">
             <Label>Grup WhatsApp</Label>
-            <Select
+            <SearchableSelect
               value={channelId != null && groupJid ? `${channelId}:${groupJid}` : ""}
-              onValueChange={pickGroup}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    groupsQuery.isLoading ? "Memuat grup…" : "Pilih grup…"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {groups.map((g) => (
-                  <SelectItem
-                    key={`${g.channelId}:${g.groupJid}`}
-                    value={`${g.channelId}:${g.groupJid}`}
-                  >
-                    {g.name || groupShortName(g.groupJid)} · {g.channelName}
-                  </SelectItem>
-                ))}
-                {groups.length === 0 && !groupsQuery.isLoading && (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">
-                    Belum ada grup. Pastikan WhatsApp terhubung & ada chat grup masuk.
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+              onChange={pickGroup}
+              options={groups.map((g) => ({
+                value: `${g.channelId}:${g.groupJid}`,
+                label: `${g.name || groupShortName(g.groupJid)} · ${g.channelName}`,
+              }))}
+              placeholder={groupsQuery.isLoading ? "Memuat grup…" : "Pilih grup…"}
+              searchPlaceholder="Cari grup…"
+              emptyText={
+                groupsQuery.isLoading
+                  ? "Memuat grup…"
+                  : "Belum ada grup. Pastikan WhatsApp terhubung & ada chat grup masuk."
+              }
+              className="h-9 text-sm"
+            />
             {groupJid && (
               <Input
                 value={groupName}
