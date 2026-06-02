@@ -4,10 +4,18 @@ import type { CompletionUsage } from "./ai-usage";
 
 // Scanner AI: turn a casually-taken receipt photo into a clean "scanned"
 // document — detect the document's four corners (via the AI vision model),
-// perspective-warp it to a deskewed rectangle, and enhance contrast/sharpness —
-// the way Adobe Scan / Microsoft Lens do. All image math is done in-process in
-// pure JS (homography warp on raw pixels) so there is no native/WASM dependency
-// to bundle; `sharp` handles decode, enhancement and re-encode.
+// perspective-warp it to a deskewed rectangle, and apply scanner-style
+// finishing (illumination flattening + contrast + sharpen) the way Adobe Scan /
+// Microsoft Lens do. All image math is done in-process in pure JS (homography
+// warp + pixel ops on raw buffers) so there is no native/WASM dependency to
+// bundle; `sharp` handles decode, blur, enhancement and re-encode.
+//
+// Straightness depends entirely on corner accuracy (the warp output is always a
+// perfect rectangle), and vision models are imprecise at absolute coordinates.
+// So detection runs COARSE-TO-FINE: a first pass locates the receipt roughly,
+// then we crop tightly around it and re-detect — in the zoomed crop the receipt
+// fills the frame, so the same relative model error maps to far fewer pixels and
+// the corners land much closer to the true paper edges.
 
 export interface ScanResult {
   buf: Buffer;
@@ -15,7 +23,7 @@ export interface ScanResult {
   // True when a document was detected and the image was perspective-corrected.
   // False when we fell back to a light enhancement of the original framing.
   detected: boolean;
-  // Token usage from the corner-detection vision call, for usage accounting.
+  // Combined token usage from the corner-detection vision call(s).
   usage?: CompletionUsage | null;
 }
 
@@ -28,15 +36,16 @@ interface Pt {
 // don't need more than this to stay legible. Output is bounded the same way.
 const MAX_DIM = 2000;
 
-const DETECT_PROMPT = `Anda adalah pendeteksi dokumen untuk aplikasi pemindai (scanner). Pada foto berikut terdapat sebuah nota/struk/dokumen kertas. Tentukan posisi KEEMPAT sudut lembar dokumen tersebut.
+const DETECT_PROMPT = `Anda adalah pendeteksi tepi dokumen untuk aplikasi pemindai (scanner) sekelas Adobe Scan. Pada foto berikut terdapat sebuah nota/struk/dokumen kertas. Tentukan posisi KEEMPAT sudut lembar dokumen tersebut SETEPAT mungkin, tepat di pojok kertas (titik pertemuan dua tepi), bukan di tepi objek lain.
 
 Balas HANYA dengan satu objek JSON, tanpa teks lain, dengan bentuk:
 {"found": true, "corners": [{"x":0.0,"y":0.0},{"x":1.0,"y":0.0},{"x":1.0,"y":1.0},{"x":0.0,"y":1.0}]}
 
 Aturan:
-- "x" dan "y" adalah pecahan posisi relatif terhadap ukuran gambar: x=0 kiri, x=1 kanan, y=0 atas, y=1 bawah.
-- Berikan tepat 4 titik sudut lembar dokumen (boleh urutan apa saja).
-- Jika tidak ada dokumen yang jelas, atau dokumen terpotong/tak terlihat keempat sudutnya, balas {"found": false}.`;
+- "x" dan "y" adalah pecahan posisi relatif terhadap ukuran gambar: x=0 kiri, x=1 kanan, y=0 atas, y=1 bawah. Gunakan desimal teliti (mis. 0.137).
+- Berikan tepat 4 titik, masing-masing pada satu sudut kertas (boleh urutan apa saja).
+- Letakkan titik PERSIS di pojok kertas walaupun sedikit miring/terangkat; ikuti garis tepi kertas.
+- Jika tidak ada dokumen yang jelas, atau keempat sudutnya tidak terlihat (terpotong), balas {"found": false}.`;
 
 // Extract the first {...} JSON object from a model reply and parse it.
 function parseJson(content: string): Record<string, unknown> | null {
@@ -86,11 +95,27 @@ function dist(a: Pt, b: Pt): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+// Sum token usage across the (up to two) detection calls.
+function addUsage(
+  a: CompletionUsage | null,
+  b: CompletionUsage | null
+): CompletionUsage | null {
+  if (!a) return b;
+  if (!b) return a;
+  const sum = (x?: number | null, y?: number | null) => (x ?? 0) + (y ?? 0);
+  return {
+    prompt_tokens: sum(a.prompt_tokens, b.prompt_tokens),
+    completion_tokens: sum(a.completion_tokens, b.completion_tokens),
+    total_tokens: sum(a.total_tokens, b.total_tokens),
+  };
+}
+
 // Validate an ordered quad [tl,tr,br,bl] before trusting it for a warp: corners
 // must be distinct and the polygon must enclose a meaningful area relative to
 // the image. Guards against the sum/diff ordering mis-assigning near-degenerate
 // or near-collinear corner sets (which would otherwise warp to garbage).
-function isValidQuad(q: Pt[], imgW: number, imgH: number): boolean {
+// `minAreaFrac` is the minimum share of the image the quad must cover.
+function isValidQuad(q: Pt[], imgW: number, imgH: number, minAreaFrac: number): boolean {
   for (let i = 0; i < q.length; i++) {
     for (let j = i + 1; j < q.length; j++) {
       if (dist(q[i]!, q[j]!) < Math.min(imgW, imgH) * 0.02) return false;
@@ -104,9 +129,7 @@ function isValidQuad(q: Pt[], imgW: number, imgH: number): boolean {
     area += a.x * b.y - b.x * a.y;
   }
   area = Math.abs(area) / 2;
-  // Require the quad to cover at least 10% of the image — anything smaller is
-  // almost certainly a bad detection rather than a real receipt.
-  return area >= imgW * imgH * 0.1;
+  return area >= imgW * imgH * minAreaFrac;
 }
 
 // Solve the 8 projective parameters (a..h) of the homography mapping the four
@@ -191,28 +214,88 @@ function warp(
   return out;
 }
 
-// Final pass shared by both the warped and the fallback path: contrast-stretch,
-// sharpen, and encode as JPEG so the result reads like a clean scan.
-async function enhanceJpeg(img: sharp.Sharp): Promise<Buffer> {
-  return img.normalize().sharpen().jpeg({ quality: 90 }).toBuffer();
+// Flatten uneven lighting / drop shadows: estimate the smooth background
+// illumination (heavy downscale → blur → upscale) and divide the image by it,
+// per channel. Paper (≈ its local illumination) goes to white; shadows and
+// gradients are removed; dark ink stays dark. This is the core of the "looks
+// like a real scan, background gone" effect.
+async function illuminationFlatten(rawBuf: Buffer, w: number, h: number): Promise<Buffer> {
+  const dw = Math.max(2, Math.round(w / 16));
+  const dh = Math.max(2, Math.round(h / 16));
+  const bg = await sharp(rawBuf, { raw: { width: w, height: h, channels: 3 } })
+    .resize(dw, dh, { fit: "fill" })
+    .blur(2)
+    .resize(w, h, { fit: "fill" })
+    .raw()
+    .toBuffer();
+  const out = Buffer.alloc(w * h * 3);
+  for (let i = 0; i < out.length; i++) {
+    const b = bg[i]!;
+    const s = rawBuf[i]!;
+    let v = b > 0 ? (s / b) * 255 : 255;
+    if (v > 255) v = 255;
+    out[i] = v;
+  }
+  return out;
+}
+
+// Scanner-style finishing for a warped raw RGB document: flatten illumination,
+// then a gentle contrast lift + sharpen + JPEG encode.
+async function scanFinish(rawBuf: Buffer, w: number, h: number): Promise<Buffer> {
+  const flat = await illuminationFlatten(rawBuf, w, h);
+  return sharp(flat, { raw: { width: w, height: h, channels: 3 } })
+    .linear(1.15, -12) // mild contrast: deepen ink, keep paper white
+    .normalize()
+    .sharpen()
+    .jpeg({ quality: 92 })
+    .toBuffer();
 }
 
 // Light-enhance the original image (no geometry change) — used when no document
 // could be detected, so we still upload something cleaner than the raw photo.
 async function lightEnhance(buf: Buffer): Promise<Buffer> {
-  return enhanceJpeg(
-    sharp(buf).rotate().resize({
-      width: MAX_DIM,
-      height: MAX_DIM,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
-  );
+  return sharp(buf)
+    .rotate()
+    .resize({ width: MAX_DIM, height: MAX_DIM, fit: "inside", withoutEnlargement: true })
+    .normalize()
+    .sharpen()
+    .jpeg({ quality: 92 })
+    .toBuffer();
 }
 
-// Run the full scan: detect corners with the vision model, deskew + enhance.
-// Never throws — any failure falls back to a lightly-enhanced original so the
-// archive step always gets a usable image.
+// Run one vision corner-detection call on a JPEG-encoded view of `imgBuf`.
+async function detectCorners(
+  imgBuf: Buffer,
+  client: ResolvedAiClient["client"],
+  model: string
+): Promise<{ corners: Pt[] | null; usage: CompletionUsage | null }> {
+  const dataUrl = `data:image/jpeg;base64,${(
+    await sharp(imgBuf).jpeg({ quality: 85 }).toBuffer()
+  ).toString("base64")}`;
+  const resp = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: "system", content: DETECT_PROMPT },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Deteksi sudut dokumen pada foto ini setepat mungkin." },
+          { type: "image_url", image_url: { url: dataUrl } },
+        ],
+      },
+    ],
+    max_tokens: 200,
+    temperature: 0,
+  });
+  return {
+    corners: readCorners(parseJson(resp.choices[0]?.message?.content ?? "")),
+    usage: resp.usage ?? null,
+  };
+}
+
+// Run the full scan: detect corners (coarse-to-fine) with the vision model,
+// deskew + enhance. Never throws — any failure falls back to a lightly-enhanced
+// original so the archive step always gets a usable image.
 export async function scanDocument(opts: {
   buf: Buffer;
   client: ResolvedAiClient["client"];
@@ -221,50 +304,74 @@ export async function scanDocument(opts: {
   const { buf, client, model } = opts;
   let usage: CompletionUsage | null = null;
   try {
-    // 1) Ask the vision model for the four document corners (normalized).
-    const meta = await sharp(buf).rotate().metadata();
-    const dataUrl = `data:image/jpeg;base64,${(
-      await sharp(buf).rotate().jpeg({ quality: 85 }).toBuffer()
-    ).toString("base64")}`;
-    const resp = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: "system", content: DETECT_PROMPT },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Deteksi sudut dokumen pada foto ini." },
-            { type: "image_url", image_url: { url: dataUrl } },
-          ],
-        },
-      ],
-      max_tokens: 200,
-      temperature: 0,
-    });
-    usage = resp.usage ?? null;
-    const corners = readCorners(parseJson(resp.choices[0]?.message?.content ?? ""));
+    // Bake EXIF orientation and bound the working resolution once, so every
+    // coordinate below is in the same (W x H) space.
+    const work = await sharp(buf)
+      .rotate()
+      .resize({ width: MAX_DIM, height: MAX_DIM, fit: "inside", withoutEnlargement: true })
+      .toBuffer();
+    const wm = await sharp(work).metadata();
+    const W = wm.width ?? 0;
+    const H = wm.height ?? 0;
+    if (W < 32 || H < 32) {
+      return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
+    }
+
+    // Pass 1 (coarse): locate the receipt on the full frame.
+    const pass1 = await detectCorners(work, client, model);
+    usage = pass1.usage;
+    let corners = pass1.corners; // normalized to work (W x H)
     if (!corners) {
       return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
     }
 
-    // 2) Decode to raw RGB at a bounded resolution.
+    // Pass 2 (fine): crop tightly around the coarse quad (with margin) and
+    // re-detect so the receipt fills the frame and corners land precisely.
+    try {
+      const xs = corners.map((c) => c.x);
+      const ys = corners.map((c) => c.y);
+      const m = 0.06; // margin around the coarse box
+      const minX = Math.max(0, Math.min(...xs) - m);
+      const minY = Math.max(0, Math.min(...ys) - m);
+      const maxX = Math.min(1, Math.max(...xs) + m);
+      const maxY = Math.min(1, Math.max(...ys) + m);
+      const left = Math.round(minX * W);
+      const top = Math.round(minY * H);
+      const cw = Math.round((maxX - minX) * W);
+      const ch = Math.round((maxY - minY) * H);
+      // Only worth a second pass if the crop is a real zoom-in.
+      if (cw >= 64 && ch >= 64 && cw < W * 0.95 && ch < H * 0.95) {
+        const crop = await sharp(work).extract({ left, top, width: cw, height: ch }).toBuffer();
+        const pass2 = await detectCorners(crop, client, model);
+        usage = addUsage(usage, pass2.usage);
+        if (pass2.corners) {
+          const refined = pass2.corners.map((c) => ({
+            x: (left + c.x * cw) / W,
+            y: (top + c.y * ch) / H,
+          }));
+          const ord = orderCorners(refined);
+          // Accept refined corners only if they form a sane quad within the crop.
+          if (isValidQuad([ord.tl, ord.tr, ord.br, ord.bl], W, H, 0.04)) {
+            corners = refined;
+          }
+        }
+      }
+    } catch {
+      // Pass 2 is best-effort; fall back to the coarse corners.
+    }
+
+    // Decode the working image to raw RGB for sampling.
     const {
       data,
       info: { width: sw, height: sh },
-    } = await sharp(buf)
-      .rotate()
-      .resize({ width: MAX_DIM, height: MAX_DIM, fit: "inside", withoutEnlargement: true })
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
+    } = await sharp(work).removeAlpha().raw().toBuffer({ resolveWithObject: true });
 
-    // 3) Map normalized corners to pixel coords and order them.
+    // Map normalized corners to pixel coords and order them.
     const px = corners.map((c) => ({ x: c.x * sw, y: c.y * sh }));
     const { tl, tr, br, bl } = orderCorners(px);
 
-    // Reject degenerate / mis-ordered quads (ties in the sum/diff heuristic,
-    // near-collinear corners, tiny areas) before warping to garbage.
-    if (!isValidQuad([tl, tr, br, bl], sw, sh)) {
+    // Reject degenerate / mis-ordered quads before warping to garbage.
+    if (!isValidQuad([tl, tr, br, bl], sw, sh, 0.1)) {
       return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
     }
 
@@ -275,8 +382,8 @@ export async function scanDocument(opts: {
       return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
     }
 
-    // 4) Homography mapping OUTPUT rect corners -> SOURCE corners (inverse map
-    // for the warp), then sample.
+    // Homography mapping OUTPUT rect corners -> SOURCE corners (inverse map for
+    // the warp), then sample.
     const dstRect: Pt[] = [
       { x: 0, y: 0 },
       { x: outW, y: 0 },
@@ -288,10 +395,7 @@ export async function scanDocument(opts: {
       return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
     }
     const warped = warp(data, sw, sh, outW, outH, h);
-    void meta;
-    const outBuf = await enhanceJpeg(
-      sharp(warped, { raw: { width: outW, height: outH, channels: 3 } })
-    );
+    const outBuf = await scanFinish(warped, outW, outH);
     return { buf: outBuf, mime: "image/jpeg", detected: true, usage };
   } catch {
     // Any decode/model/warp failure: fall back to the original framing.
