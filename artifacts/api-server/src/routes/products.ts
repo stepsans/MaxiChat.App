@@ -590,6 +590,8 @@ export const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
   "stock on hand": "stockOnHand",
   stockonhand: "stockOnHand",
   "stok on hand": "stockOnHand",
+  "qty on hand": "stockOnHand",
+  qtyonhand: "stockOnHand",
   "stok ready": "stockOnHand",
   ready: "stockOnHand",
   soh: "stockOnHand",

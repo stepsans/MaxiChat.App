@@ -307,19 +307,28 @@ function productBucket(code: string): ProductBucket {
   return "O";
 }
 
-// Internal-only stock display. The send-product and quotation flows never
-// include these figures, so they stay visible to agents but never reach the
-// customer. Returns null when both figures are absent.
-function StockLine({ product }: { product: Product }) {
-  const hasStock = product.stock != null;
+// Internal-only product detail lines for the picker. The send-product and
+// quotation flows never include the stock figures or tier prices, so they stay
+// visible to agents but never reach the customer. Layout (per request):
+//   line 1: Nama Barang (rendered by the caller)
+//   line 2: Kode Barang · Qty · Qty On Hand
+//   line 3: Harga · Price Silver
+function ProductMetaLines({ product }: { product: Product }) {
+  const hasQty = product.stock != null;
   const hasSoh = product.stockOnHand != null;
-  if (!hasStock && !hasSoh) return null;
+  const hasSilver = product.priceSilver != null;
   return (
-    <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
-      {hasStock ? `Stok: ${product.stock}` : null}
-      {hasStock && hasSoh ? " · " : null}
-      {hasSoh ? `Ready: ${product.stockOnHand}` : null}
-    </p>
+    <>
+      <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
+        <span className="font-mono">{product.code}</span>
+        {hasQty ? ` · Qty: ${product.stock}` : null}
+        {hasSoh ? ` · Qty On Hand: ${product.stockOnHand}` : null}
+      </p>
+      <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
+        {formatRupiah(product.price)}
+        {hasSilver ? ` · Price Silver: ${formatRupiah(product.priceSilver!)}` : null}
+      </p>
+    </>
   );
 }
 
@@ -479,10 +488,7 @@ function ProductsTab({ chatId }: { chatId: number }) {
                     <p className="text-xs font-medium text-foreground truncate">
                       {p.name}
                     </p>
-                    <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
-                      {p.code} · {formatRupiah(p.price)}
-                    </p>
-                    <StockLine product={p} />
+                    <ProductMetaLines product={p} />
                   </div>
                   {isSelected ? (
                     <Check className="w-3.5 h-3.5 text-[hsl(var(--wa-accent))] flex-shrink-0" />
