@@ -24,6 +24,11 @@ export const PERMISSION_MENUS = [
   "statuses",
   "settings",
   "channels",
+  // View-only menus: only canView is meaningful (no create/edit/delete routes).
+  "dashboard",
+  "aiStudio",
+  "usage",
+  "aiReview",
 ] as const;
 export type PermissionMenu = (typeof PERMISSION_MENUS)[number];
 
@@ -56,12 +61,22 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     flows: allow(true, true, true, true),
     analytics: allow(true, false, false, false),
     credentials: allow(true, true, true, false),
-    chats: allow(true, true, true, true),
-    statuses: allow(true, true, true, true),
-    settings: allow(true, false, true, false),
+    // Chats access is governed by per-channel access, not create/edit/delete.
+    chats: allow(true, false, false, false),
+    // Statuses has no edit route — view/create/delete only.
+    statuses: allow(true, true, false, true),
+    // Settings is view-only in the matrix; the general settings form is
+    // super_admin-only and enforced in code, not via create/edit/delete.
+    settings: allow(true, false, false, false),
     // Supervisor can add & connect their own channels; deletion stays with
     // the super_admin who centrally manages the tenant's channels.
     channels: allow(true, true, true, false),
+    // View-only menus — supervisors see Dashboard & AI Studio by default;
+    // Pemakaian Token & AI Review stay super_admin-only until granted.
+    dashboard: allow(true, false, false, false),
+    aiStudio: allow(true, false, false, false),
+    usage: allow(false, false, false, false),
+    aiReview: allow(false, false, false, false),
   } as const;
   const agt = {
     knowledge: allow(true, false, false, false),
@@ -69,13 +84,19 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     flows: allow(false, false, false, false),
     analytics: allow(false, false, false, false),
     credentials: allow(false, false, false, false),
-    chats: allow(true, true, true, false),
+    // Chats access is governed by per-channel access, not create/edit/delete.
+    chats: allow(true, false, false, false),
     statuses: allow(true, true, false, false),
     settings: allow(false, false, false, false),
     // Agent can add & connect their own channels (auto-granted access on
     // create); deletion stays super_admin-only — channels are centrally
     // managed by the tenant owner.
     channels: allow(true, true, true, false),
+    // View-only menus — agents see none of these by default.
+    dashboard: allow(false, false, false, false),
+    aiStudio: allow(false, false, false, false),
+    usage: allow(false, false, false, false),
+    aiReview: allow(false, false, false, false),
   } as const;
   return {
     super_admin: Object.fromEntries(

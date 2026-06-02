@@ -29,20 +29,21 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 export default function Usage() {
-  const { isSuperAdmin, isLoading: permLoading } = usePermissions();
+  const { menus, isLoading: permLoading } = usePermissions();
+  const canView = menus.usage.canView;
 
   const { data, isLoading } = useGetMyAiUsage({
     query: {
       queryKey: getGetMyAiUsageQueryKey(),
       refetchInterval: 30_000,
-      enabled: isSuperAdmin,
+      enabled: canView,
       retry: false,
     },
   });
 
-  // Route is unguarded — self-guard so a non-owner who navigates here directly
-  // gets a clear message instead of a 403-driven blank state.
-  if (!permLoading && !isSuperAdmin) {
+  // Route is unguarded — self-guard so a user without usage.view who navigates
+  // here directly gets a clear message instead of a 403-driven blank state.
+  if (!permLoading && !canView) {
     return (
       <div className="max-w-3xl mx-auto py-12">
         <Card>
@@ -52,7 +53,7 @@ export default function Usage() {
               <CardTitle>Akses ditolak</CardTitle>
             </div>
             <CardDescription>
-              Hanya super admin yang dapat melihat pemakaian token AI.
+              Anda tidak memiliki izin untuk melihat pemakaian token AI.
             </CardDescription>
           </CardHeader>
         </Card>

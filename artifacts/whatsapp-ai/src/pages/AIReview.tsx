@@ -103,7 +103,11 @@ function RunStatusPill({ config }: { config: AiReviewConfig }) {
 }
 
 export default function AIReviewPage() {
-  const { isSuperAdmin, isLoading: permsLoading } = usePermissions();
+  const { isSuperAdmin, menus, isLoading: permsLoading } = usePermissions();
+  // canView = may SEE recap configs/results; canManage = may create/edit/run/
+  // delete them (owner-only, mirrors the super-admin-only write routes).
+  const canView = menus.aiReview.canView;
+  const canManage = isSuperAdmin;
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -118,13 +122,13 @@ export default function AIReviewPage() {
   const configsQuery = useListAiReviewConfigs({
     query: {
       queryKey: getListAiReviewConfigsQueryKey(),
-      enabled: isSuperAdmin,
+      enabled: canView,
     },
   });
   const configs: AiReviewConfig[] = configsQuery.data ?? [];
 
   const credsQuery = useListCredentials({
-    query: { queryKey: getListCredentialsQueryKey(), enabled: isSuperAdmin },
+    query: { queryKey: getListCredentialsQueryKey(), enabled: canManage },
   });
   const credentials: Credential[] = credsQuery.data ?? [];
 
@@ -187,14 +191,14 @@ export default function AIReviewPage() {
     );
   }
 
-  if (!isSuperAdmin) {
+  if (!canView) {
     return (
       <div className="p-6">
         <div className="max-w-md mx-auto mt-20 text-center space-y-3">
           <ReceiptText className="w-10 h-10 mx-auto text-muted-foreground" />
           <h1 className="text-lg font-semibold">AI Review</h1>
           <p className="text-sm text-muted-foreground">
-            Hanya super admin yang dapat mengakses fitur AI Review.
+            Anda tidak memiliki izin untuk mengakses fitur AI Review.
           </p>
         </div>
       </div>
@@ -214,9 +218,11 @@ export default function AIReviewPage() {
             Sheet, dan (opsional) menyimpan fotonya ke folder Google Drive.
           </p>
         </div>
-        <Button onClick={() => setEditor({ mode: "create" })}>
-          <Plus className="w-4 h-4 mr-1.5" /> Tambah Grup
-        </Button>
+        {canManage && (
+          <Button onClick={() => setEditor({ mode: "create" })}>
+            <Plus className="w-4 h-4 mr-1.5" /> Tambah Grup
+          </Button>
+        )}
       </div>
 
       {configsQuery.isLoading ? (
@@ -258,35 +264,37 @@ export default function AIReviewPage() {
                     {groupShortName(cfg.groupJid)}
                   </p>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={runningId === cfg.id}
-                    onClick={() => handleRun(cfg)}
-                  >
-                    {runningId === cfg.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Play className="w-4 h-4" />
-                    )}
-                    <span className="ml-1.5">Jalankan</span>
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setEditor({ mode: "edit", config: cfg })}
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setDeleting(cfg)}
-                  >
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
+                {canManage && (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={runningId === cfg.id}
+                      onClick={() => handleRun(cfg)}
+                    >
+                      {runningId === cfg.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Play className="w-4 h-4" />
+                      )}
+                      <span className="ml-1.5">Jalankan</span>
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setEditor({ mode: "edit", config: cfg })}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setDeleting(cfg)}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">

@@ -12,11 +12,14 @@ import {
 } from "@workspace/db";
 import { resolveOwnerUserId } from "../lib/seed";
 import { runAndRecord } from "../lib/ai-review";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
 
-// AI Review is an owner-level feature (Google credentials + AI billing), so
-// every route is super-admin only: the signed-in user must BE the tenant owner.
+// AI Review reads are gated by the per-role matrix (aiReview.view); writes
+// (config create/update/delete/run) stay super-admin only because they touch
+// Google credentials + AI billing. requireSuperAdmin asserts the signed-in
+// user IS the tenant owner.
 async function requireSuperAdmin(
   req: Request,
   res: Response,
@@ -35,11 +38,20 @@ async function requireSuperAdmin(
   next();
 }
 
-router.use((req, res, next) => {
+// Read routes: gated by the matrix (super_admin always passes; others need
+// aiReview.view granted explicitly).
+const reviewView = requirePermission("aiReview", "view");
+
+// Write routes: super_admin (tenant owner) only.
+const reviewManage = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
   // Forward async rejections (e.g. a DB error inside resolveOwnerUserId) to
   // Express's error handler instead of swallowing them and hanging the request.
   requireSuperAdmin(req, res, next).catch(next);
-});
+};
 
 function isValidTimezone(tz: string): boolean {
   try {
@@ -78,7 +90,7 @@ function publicConfig(row: AiReviewConfig) {
 
 // List WhatsApp groups across the owner's channels so the user can pick which
 // group to recap. Groups are chats whose phone_number ends in @g.us.
-router.get("/groups", async (req, res): Promise<void> => {
+router.get("/groups", reviewView, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await resolveOwnerUserId(req.session.userId!);
     const rows = await db
@@ -113,7 +125,7 @@ router.get("/groups", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/configs", async (req, res): Promise<void> => {
+router.get("/configs", reviewView, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await resolveOwnerUserId(req.session.userId!);
     const rows = await db
@@ -173,7 +185,7 @@ async function ownsCredential(ownerUserId: number, credId: number): Promise<bool
   return !!row;
 }
 
-router.post("/configs", async (req, res): Promise<void> => {
+router.post("/configs", reviewManage, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await resolveOwnerUserId(req.session.userId!);
     const parsed = ConfigInput.safeParse(req.body);
@@ -248,7 +260,7 @@ router.post("/configs", async (req, res): Promise<void> => {
 
 const ConfigPatch = ConfigInput.partial();
 
-router.patch("/configs/:id", async (req, res): Promise<void> => {
+router.patch("/configs/:id", reviewManage, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await resolveOwnerUserId(req.session.userId!);
     const id = Number(req.params.id);
@@ -345,7 +357,7 @@ router.patch("/configs/:id", async (req, res): Promise<void> => {
   }
 });
 
-router.delete("/configs/:id", async (req, res): Promise<void> => {
+router.delete("/configs/:id", reviewManage, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await resolveOwnerUserId(req.session.userId!);
     const id = Number(req.params.id);
@@ -366,7 +378,7 @@ router.delete("/configs/:id", async (req, res): Promise<void> => {
 });
 
 // Manual "Run now" — runs the recap immediately and records the outcome.
-router.post("/configs/:id/run", async (req, res): Promise<void> => {
+router.post("/configs/:id/run", reviewManage, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await resolveOwnerUserId(req.session.userId!);
     const id = Number(req.params.id);

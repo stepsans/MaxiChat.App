@@ -7,7 +7,7 @@ import {
 
 export type TeamRole = "super_admin" | "supervisor" | "agent";
 
-// The 9 menus that participate in the matrix. Must stay in lock-step with
+// The menus that participate in the matrix. Must stay in lock-step with
 // PERMISSION_MENUS in artifacts/api-server/src/lib/role-permissions.ts and
 // the matrix editor on the Agents page.
 export const PERMISSION_MENUS = [
@@ -20,8 +20,47 @@ export const PERMISSION_MENUS = [
   "statuses",
   "settings",
   "channels",
+  // View-only menus: only canView is meaningful (no create/edit/delete routes).
+  "dashboard",
+  "aiStudio",
+  "usage",
+  "aiReview",
 ] as const;
 export type PermissionMenu = (typeof PERMISSION_MENUS)[number];
+
+// Which action columns are meaningful per menu. Menus not granting full CRUD
+// expose only the actions their backend actually enforces; the matrix editors
+// render "—" for the rest so admins aren't shown checkboxes that do nothing.
+// Must stay in lock-step with the backend route guards.
+const FULL_CRUD: Array<keyof PermissionCell> = [
+  "canView",
+  "canCreate",
+  "canEdit",
+  "canDelete",
+];
+export const MENU_ACTIONS: Record<PermissionMenu, Array<keyof PermissionCell>> = {
+  knowledge: FULL_CRUD,
+  products: FULL_CRUD,
+  flows: FULL_CRUD,
+  credentials: FULL_CRUD,
+  channels: FULL_CRUD,
+  statuses: ["canView", "canCreate", "canDelete"],
+  analytics: ["canView"],
+  settings: ["canView"],
+  chats: ["canView"],
+  dashboard: ["canView"],
+  aiStudio: ["canView"],
+  usage: ["canView"],
+  aiReview: ["canView"],
+};
+
+// Whether `action` is a meaningful column for `menu` (used to gate matrix cells).
+export function isMenuAction(
+  menu: PermissionMenu,
+  action: keyof PermissionCell
+): boolean {
+  return (MENU_ACTIONS[menu] ?? FULL_CRUD).includes(action);
+}
 
 const ALL_TRUE: PermissionCell = {
   canView: true,

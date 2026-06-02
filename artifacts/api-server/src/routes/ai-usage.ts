@@ -4,13 +4,18 @@ import { db, usersTable, aiUsageEventsTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import { computeBillingPeriod } from "../lib/billing-period";
+import { requirePermission } from "../lib/role-permissions";
 
 const router = Router();
 
-// GET /ai-usage/me — the signed-in user's OWN tenant AI token usage for the
-// current billing period (anchored on the owner's join date). Restricted to the
-// tenant owner (super_admin): an invited supervisor/agent would otherwise see
-// tenant-wide spend that isn't theirs to manage.
+// Pemakaian Token is a view-only matrix menu (usage.view). By default only the
+// tenant owner (super_admin) has it; a super_admin may grant supervisors/agents
+// read access. Either way the figures shown are the OWNER's tenant-wide spend.
+router.use(requirePermission("usage", "view"));
+
+// GET /ai-usage/me — the owner's tenant AI token usage for the current billing
+// period (anchored on the owner's join date). The aggregate is always the
+// tenant owner's spend, regardless of which permitted team member is viewing.
 router.get("/me", async (req, res): Promise<void> => {
   try {
     const userId = getSessionUserId(req);
@@ -19,12 +24,6 @@ router.get("/me", async (req, res): Promise<void> => {
       return;
     }
     const ownerUserId = await resolveOwnerUserId(userId);
-    if (ownerUserId !== userId) {
-      res
-        .status(403)
-        .json({ error: "Hanya super admin yang dapat melihat pemakaian token" });
-      return;
-    }
 
     const [owner] = await db
       .select({ createdAt: usersTable.createdAt, email: usersTable.email })

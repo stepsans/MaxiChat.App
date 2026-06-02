@@ -26,10 +26,15 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { usePermissions, PERMISSION_MENUS } from "@/hooks/use-permissions";
+import {
+  usePermissions,
+  PERMISSION_MENUS,
+  isMenuAction,
+  type PermissionMenu,
+} from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
-const MENUS: { key: string; label: string }[] = [
+const MENUS: { key: PermissionMenu; label: string }[] = [
   { key: "knowledge", label: "Knowledge Base" },
   { key: "products", label: "Products" },
   { key: "flows", label: "Chatbot Flow" },
@@ -39,6 +44,10 @@ const MENUS: { key: string; label: string }[] = [
   { key: "statuses", label: "Statuses" },
   { key: "settings", label: "Settings" },
   { key: "chats", label: "Chats" },
+  { key: "dashboard", label: "Dashboard" },
+  { key: "aiStudio", label: "AI Studio" },
+  { key: "usage", label: "Pemakaian Token" },
+  { key: "aiReview", label: "AI Review" },
 ];
 
 const ACTIONS: { key: keyof PermissionCell; label: string }[] = [
@@ -489,6 +498,16 @@ export function UserPermissionEditor() {
                         </div>
                       </td>
                       {ACTIONS.map((a) => {
+                        if (!isMenuAction(m.key, a.key)) {
+                          return (
+                            <td
+                              key={a.key}
+                              className="text-center px-4 py-2.5"
+                            >
+                              <span className="text-muted-foreground/40">—</span>
+                            </td>
+                          );
+                        }
                         const cellDiffers = cur[a.key] !== base[a.key];
                         return (
                           <td

@@ -12,11 +12,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { usePermissions } from "@/hooks/use-permissions";
+import {
+  usePermissions,
+  isMenuAction,
+  type PermissionMenu,
+} from "@/hooks/use-permissions";
 
 // Display order + Indonesian labels. Keys MUST match PERMISSION_MENUS in
 // the backend (lib/role-permissions.ts) and the frontend hook.
-const MENUS: { key: string; label: string }[] = [
+const MENUS: { key: PermissionMenu; label: string }[] = [
   { key: "knowledge", label: "Knowledge Base" },
   { key: "products", label: "Products" },
   { key: "flows", label: "Chatbot Flow" },
@@ -26,6 +30,10 @@ const MENUS: { key: string; label: string }[] = [
   { key: "statuses", label: "Statuses" },
   { key: "settings", label: "Settings" },
   { key: "chats", label: "Chats" },
+  { key: "dashboard", label: "Dashboard" },
+  { key: "aiStudio", label: "AI Studio" },
+  { key: "usage", label: "Pemakaian Token" },
+  { key: "aiReview", label: "AI Review" },
 ];
 
 const ACTIONS: { key: keyof PermissionCell; label: string }[] = [
@@ -195,14 +203,18 @@ export function PermissionMatrixEditor() {
                       <td className="px-4 py-2.5">{m.label}</td>
                       {ACTIONS.map((a) => (
                         <td key={a.key} className="text-center px-4 py-2.5">
-                          <Checkbox
-                            checked={cell[a.key]}
-                            disabled={!isSuperAdmin}
-                            onCheckedChange={(v) =>
-                              toggle(role.key, m.key, a.key, v === true)
-                            }
-                            data-testid={`perm-${role.key}-${m.key}-${a.key}`}
-                          />
+                          {isMenuAction(m.key, a.key) ? (
+                            <Checkbox
+                              checked={cell[a.key]}
+                              disabled={!isSuperAdmin}
+                              onCheckedChange={(v) =>
+                                toggle(role.key, m.key, a.key, v === true)
+                              }
+                              data-testid={`perm-${role.key}-${m.key}-${a.key}`}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )}
                         </td>
                       ))}
                     </tr>

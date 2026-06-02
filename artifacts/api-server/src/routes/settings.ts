@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { UpdateGeneralSettingsBody, UpdateAutoReplyBody } from "@workspace/api-zod";
 import { settingsTable } from "@workspace/db";
 import { requireSuperAdmin } from "../lib/team-permissions";
+import { requirePermission } from "../lib/role-permissions";
 import { requireOwnedChannelLoose } from "../lib/channel-context";
 import {
   getOrCreateChannelSettings,
@@ -14,11 +15,12 @@ import {
 
 const router = Router();
 
-// GET is reachable by every signed-in user (incl. agents) so they can view
-// the AI behaviour and edit their own per-channel auto-reply. The merged view
-// works for unpaired channels too — per-channel rows key on channel.id and the
-// tenant general row keys on channel.userId, neither needs ownerPhone.
-router.get("/", async (req, res): Promise<void> => {
+// GET returns the merged tenant+channel settings consumed only by the AI Studio
+// page, so it is gated on aiStudio.view (super_admin + supervisor by default;
+// agents are excluded). The merged view works for unpaired channels too —
+// per-channel rows key on channel.id and the tenant general row keys on
+// channel.userId, neither needs ownerPhone.
+router.get("/", requirePermission("aiStudio", "view"), async (req, res): Promise<void> => {
   try {
     const channel = await requireOwnedChannelLoose(req, res);
     if (!channel) return;
@@ -57,9 +59,10 @@ router.put("/general", requireSuperAdmin, async (req, res): Promise<void> => {
   }
 });
 
-// Per-channel AI auto-reply toggle — any signed-in user with access to the
-// active channel may flip this for their own number. No permission gate.
-router.put("/auto-reply", async (req, res): Promise<void> => {
+// Per-channel AI auto-reply toggle — lives on the AI Studio page, so it is
+// gated on aiStudio.view (matching GET): anyone who can see AI Studio for the
+// active channel may flip this for their own number.
+router.put("/auto-reply", requirePermission("aiStudio", "view"), async (req, res): Promise<void> => {
   try {
     const parsed = UpdateAutoReplyBody.safeParse(req.body);
     if (!parsed.success) {

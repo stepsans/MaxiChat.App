@@ -80,9 +80,9 @@ const navGroups: NavGroup[] = [
     id: "ai",
     label: "AI",
     items: [
-      { href: "/ai-studio", label: "AI Studio", icon: Sparkles },
-      { href: "/ai-review", label: "AI Review", icon: ReceiptText, roles: ["super_admin"] },
-      { href: "/usage", label: "Pemakaian Token", icon: Cpu, roles: ["super_admin"] },
+      { href: "/ai-studio", label: "AI Studio", icon: Sparkles, menu: "aiStudio" },
+      { href: "/ai-review", label: "AI Review", icon: ReceiptText, menu: "aiReview" },
+      { href: "/usage", label: "Pemakaian Token", icon: Cpu, menu: "usage" },
     ],
   },
   {
@@ -98,7 +98,7 @@ const navGroups: NavGroup[] = [
     id: "insights",
     label: "Laporan",
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["super_admin", "supervisor"] },
+      { href: "/", label: "Dashboard", icon: LayoutDashboard, menu: "dashboard" },
       { href: "/analytics", label: "Analytics", icon: BarChart3, menu: "analytics" },
     ],
   },
@@ -307,9 +307,9 @@ export default function Layout({
             const tr = (user?.teamRole ?? "agent") as TeamRole;
             const isVisible = (it: NavItem) => {
               // Settings is always visible: every role has personal items
-              // there (theme, bio, shortcuts). AI Studio (auto-reply + general
-              // AI settings) is also always visible, with the general settings
-              // form gated to super_admin within the page itself.
+              // there (theme, bio, shortcuts). Every other matrix-gated item
+              // (incl. AI Studio, Dashboard, AI Review, Pemakaian Token) goes
+              // through the canView check below.
               if (it.menu === "settings") return true;
               // Static-role items (Dashboard, Agen) are gated by `roles`.
               if (it.roles) return it.roles.includes(tr);

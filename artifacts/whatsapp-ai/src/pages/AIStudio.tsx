@@ -19,7 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare, Lock } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, Lock, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -55,11 +55,15 @@ type GeneralForm = z.infer<typeof generalSchema>;
 export default function AIStudio() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { isSuperAdmin, isLoading: permLoading } = usePermissions();
-  // Only super admins can edit the business-wide general settings; everyone
-  // else (supervisor, agent) sees them read-only.
+  const { isSuperAdmin, menus, isLoading: permLoading } = usePermissions();
+  // canView gates the whole page (matrix aiStudio.view). Only super admins can
+  // edit the business-wide general settings; permitted non-owners see them
+  // read-only.
+  const canView = menus.aiStudio.canView;
   const canEditGeneral = isSuperAdmin;
-  const { data: settings, isLoading } = useGetSettings();
+  const { data: settings, isLoading } = useGetSettings({
+    query: { queryKey: getGetSettingsQueryKey(), enabled: canView },
+  });
 
   const update = useUpdateGeneralSettings({
     mutation: {
@@ -127,6 +131,22 @@ export default function AIStudio() {
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-32 w-full" />
+      </div>
+    );
+  }
+
+  // Route is unguarded — self-guard so a user without aiStudio.view who
+  // navigates here directly gets a clear message instead of read-only blanks.
+  if (!canView) {
+    return (
+      <div className="p-6">
+        <div className="max-w-md mx-auto mt-20 text-center space-y-3">
+          <Sparkles className="w-10 h-10 mx-auto text-muted-foreground" />
+          <h1 className="text-lg font-semibold">AI Studio</h1>
+          <p className="text-sm text-muted-foreground">
+            Anda tidak memiliki izin untuk mengakses AI Studio.
+          </p>
+        </div>
       </div>
     );
   }

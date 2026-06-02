@@ -7,6 +7,7 @@ import {
   useDisconnectWhatsapp,
   getGetWhatsappStatusQueryKey,
   getGetAnalyticsSummaryQueryKey,
+  getListChatsQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,10 +25,12 @@ import {
   QrCode,
   Loader2,
   CheckCircle,
+  ShieldAlert,
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useEffect } from "react";
 
 function StatCard({
@@ -66,12 +69,22 @@ function StatCard({
 export default function Dashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { menus, isLoading: permLoading } = usePermissions();
+  const canView = menus.dashboard.canView;
 
   const { data: status, isLoading: statusLoading } = useGetWhatsappStatus({
-    query: { queryKey: getGetWhatsappStatusQueryKey(), refetchInterval: 3000 },
+    query: {
+      queryKey: getGetWhatsappStatusQueryKey(),
+      refetchInterval: 3000,
+      enabled: canView,
+    },
   });
-  const { data: summary, isLoading: summaryLoading } = useGetAnalyticsSummary();
-  const { data: chats } = useListChats();
+  const { data: summary, isLoading: summaryLoading } = useGetAnalyticsSummary({
+    query: { queryKey: getGetAnalyticsSummaryQueryKey(), enabled: canView },
+  });
+  const { data: chats } = useListChats(undefined, {
+    query: { queryKey: getListChatsQueryKey(), enabled: canView },
+  });
 
   const connect = useConnectWhatsapp({
     mutation: {
@@ -96,6 +109,28 @@ export default function Dashboard() {
   const isConnecting = status?.status === "connecting";
 
   const needsHumanChats = chats?.filter((c) => c.status === "needs_human") ?? [];
+
+  // Route is unguarded — self-guard so a user without dashboard.view who
+  // navigates here directly gets a clear message instead of 403-driven blanks.
+  if (!permLoading && !menus.dashboard.canView) {
+    return (
+      <div className="max-w-3xl mx-auto py-12 px-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-muted-foreground" />
+              <CardTitle>Akses ditolak</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Anda tidak memiliki izin untuk melihat Dashboard.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-auto">
