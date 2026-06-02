@@ -263,6 +263,141 @@ async function lightEnhance(buf: Buffer): Promise<Buffer> {
     .toBuffer();
 }
 
+// Otsu's method: pick the grayscale threshold that maximizes between-class
+// variance (separates bright paper from a darker background).
+function otsuThreshold(hist: number[], total: number): number {
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i]!;
+  let sumB = 0;
+  let wB = 0;
+  let max = 0;
+  let thr = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]!;
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t]!;
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > max) {
+      max = between;
+      thr = t;
+    }
+  }
+  return thr;
+}
+
+// Classical document detection: segment the bright page from a darker
+// background and take the four extreme corners of the largest bright blob. This
+// is deterministic and pixel-precise (no model imprecision) and is the ideal
+// path for the common "receipt on a table" shot. Returns normalized corners or
+// null when it can't cleanly segment a page (cluttered / low-contrast scenes).
+async function detectByEdges(
+  work: Buffer,
+  W: number,
+  H: number
+): Promise<Pt[] | null> {
+  const scale = Math.min(1, 480 / Math.max(W, H));
+  const dw = Math.max(16, Math.round(W * scale));
+  const dh = Math.max(16, Math.round(H * scale));
+  const gray = await sharp(work)
+    .resize(dw, dh, { fit: "fill" })
+    .grayscale()
+    .blur(1)
+    .raw()
+    .toBuffer();
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < gray.length; i++) hist[gray[i]!]++;
+  const thr = otsuThreshold(hist, gray.length);
+  // Require a real brightness gap between page and background; otherwise this is
+  // a low-contrast scene the threshold can't trust → let the AI handle it.
+  if (thr < 40) return null;
+  const fg = new Uint8Array(dw * dh);
+  for (let i = 0; i < gray.length; i++) fg[i] = gray[i]! > thr ? 1 : 0;
+
+  // Largest 4-connected bright component (flood fill).
+  const labels = new Int32Array(dw * dh);
+  const stack: number[] = [];
+  let cur = 0;
+  let best = 0;
+  let bestSize = 0;
+  for (let p = 0; p < fg.length; p++) {
+    if (!fg[p] || labels[p] !== 0) continue;
+    cur++;
+    let size = 0;
+    stack.length = 0;
+    stack.push(p);
+    labels[p] = cur;
+    while (stack.length) {
+      const q = stack.pop()!;
+      size++;
+      const x = q % dw;
+      const y = (q - x) / dw;
+      if (x > 0 && fg[q - 1] && labels[q - 1] === 0) {
+        labels[q - 1] = cur;
+        stack.push(q - 1);
+      }
+      if (x < dw - 1 && fg[q + 1] && labels[q + 1] === 0) {
+        labels[q + 1] = cur;
+        stack.push(q + 1);
+      }
+      if (y > 0 && fg[q - dw] && labels[q - dw] === 0) {
+        labels[q - dw] = cur;
+        stack.push(q - dw);
+      }
+      if (y < dh - 1 && fg[q + dw] && labels[q + dw] === 0) {
+        labels[q + dw] = cur;
+        stack.push(q + dw);
+      }
+    }
+    if (size > bestSize) {
+      bestSize = size;
+      best = cur;
+    }
+  }
+  if (best === 0) return null;
+  const frac = bestSize / (dw * dh);
+  // Too small = not the page; too large = the threshold caught the background.
+  if (frac < 0.08 || frac > 0.95) return null;
+
+  // Four extreme corners of the blob (TL=min x+y, BR=max x+y, TR=max x-y,
+  // BL=min x-y) — the corners of a (possibly perspective-skewed) quad.
+  let minS = Infinity;
+  let maxS = -Infinity;
+  let minD = Infinity;
+  let maxD = -Infinity;
+  let tl: Pt = { x: 0, y: 0 };
+  let br: Pt = { x: 0, y: 0 };
+  let tr: Pt = { x: 0, y: 0 };
+  let bl: Pt = { x: 0, y: 0 };
+  for (let p = 0; p < labels.length; p++) {
+    if (labels[p] !== best) continue;
+    const x = p % dw;
+    const y = (p - x) / dw;
+    const s = x + y;
+    const d = x - y;
+    if (s < minS) {
+      minS = s;
+      tl = { x, y };
+    }
+    if (s > maxS) {
+      maxS = s;
+      br = { x, y };
+    }
+    if (d > maxD) {
+      maxD = d;
+      tr = { x, y };
+    }
+    if (d < minD) {
+      minD = d;
+      bl = { x, y };
+    }
+  }
+  return [tl, tr, br, bl].map((c) => ({ x: c.x / dw, y: c.y / dh }));
+}
+
 // Run one vision corner-detection call on a JPEG-encoded view of `imgBuf`.
 async function detectCorners(
   imgBuf: Buffer,
@@ -317,47 +452,67 @@ export async function scanDocument(opts: {
       return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
     }
 
-    // Pass 1 (coarse): locate the receipt on the full frame.
-    const pass1 = await detectCorners(work, client, model);
-    usage = pass1.usage;
-    let corners = pass1.corners; // normalized to work (W x H)
-    if (!corners) {
-      return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
-    }
-
-    // Pass 2 (fine): crop tightly around the coarse quad (with margin) and
-    // re-detect so the receipt fills the frame and corners land precisely.
+    // Primary: classical edge/contrast segmentation — deterministic and
+    // pixel-precise on the common high-contrast "page on a table" shot, with no
+    // AI cost and no model coordinate imprecision.
+    let corners: Pt[] | null = null; // normalized to work (W x H)
     try {
-      const xs = corners.map((c) => c.x);
-      const ys = corners.map((c) => c.y);
-      const m = 0.06; // margin around the coarse box
-      const minX = Math.max(0, Math.min(...xs) - m);
-      const minY = Math.max(0, Math.min(...ys) - m);
-      const maxX = Math.min(1, Math.max(...xs) + m);
-      const maxY = Math.min(1, Math.max(...ys) + m);
-      const left = Math.round(minX * W);
-      const top = Math.round(minY * H);
-      const cw = Math.round((maxX - minX) * W);
-      const ch = Math.round((maxY - minY) * H);
-      // Only worth a second pass if the crop is a real zoom-in.
-      if (cw >= 64 && ch >= 64 && cw < W * 0.95 && ch < H * 0.95) {
-        const crop = await sharp(work).extract({ left, top, width: cw, height: ch }).toBuffer();
-        const pass2 = await detectCorners(crop, client, model);
-        usage = addUsage(usage, pass2.usage);
-        if (pass2.corners) {
-          const refined = pass2.corners.map((c) => ({
-            x: (left + c.x * cw) / W,
-            y: (top + c.y * ch) / H,
-          }));
-          const ord = orderCorners(refined);
-          // Accept refined corners only if they form a sane quad within the crop.
-          if (isValidQuad([ord.tl, ord.tr, ord.br, ord.bl], W, H, 0.04)) {
-            corners = refined;
-          }
-        }
+      const edged = await detectByEdges(work, W, H);
+      if (edged) {
+        // isValidQuad works in pixel space; edged is normalized.
+        const pxq = edged.map((c) => ({ x: c.x * W, y: c.y * H }));
+        const o = orderCorners(pxq);
+        if (isValidQuad([o.tl, o.tr, o.br, o.bl], W, H, 0.1)) corners = edged;
       }
     } catch {
-      // Pass 2 is best-effort; fall back to the coarse corners.
+      corners = null;
+    }
+
+    // Fallback: vision model (coarse-to-fine) when segmentation can't isolate
+    // the page (cluttered / low-contrast background).
+    if (!corners) {
+      const pass1 = await detectCorners(work, client, model);
+      usage = pass1.usage;
+      corners = pass1.corners;
+      if (!corners) {
+        return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
+      }
+      // Pass 2 (fine): crop tightly around the coarse quad (with margin) and
+      // re-detect so the receipt fills the frame and corners land precisely.
+      try {
+        const xs = corners.map((c) => c.x);
+        const ys = corners.map((c) => c.y);
+        const m = 0.06; // margin around the coarse box
+        const minX = Math.max(0, Math.min(...xs) - m);
+        const minY = Math.max(0, Math.min(...ys) - m);
+        const maxX = Math.min(1, Math.max(...xs) + m);
+        const maxY = Math.min(1, Math.max(...ys) + m);
+        const left = Math.round(minX * W);
+        const top = Math.round(minY * H);
+        const cw = Math.round((maxX - minX) * W);
+        const ch = Math.round((maxY - minY) * H);
+        // Only worth a second pass if the crop is a real zoom-in.
+        if (cw >= 64 && ch >= 64 && cw < W * 0.95 && ch < H * 0.95) {
+          const crop = await sharp(work)
+            .extract({ left, top, width: cw, height: ch })
+            .toBuffer();
+          const pass2 = await detectCorners(crop, client, model);
+          usage = addUsage(usage, pass2.usage);
+          if (pass2.corners) {
+            const refined = pass2.corners.map((c) => ({
+              x: (left + c.x * cw) / W,
+              y: (top + c.y * ch) / H,
+            }));
+            const ord = orderCorners(refined);
+            // Accept refined corners only if they form a sane quad.
+            if (isValidQuad([ord.tl, ord.tr, ord.br, ord.bl], W, H, 0.04)) {
+              corners = refined;
+            }
+          }
+        }
+      } catch {
+        // Pass 2 is best-effort; fall back to the coarse corners.
+      }
     }
 
     // Decode the working image to raw RGB for sampling.
