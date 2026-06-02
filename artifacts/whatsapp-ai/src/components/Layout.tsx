@@ -49,9 +49,9 @@ type TeamRole = "super_admin" | "supervisor" | "agent";
 // Nav menu definitions. The "menu" key maps to the per-role permission
 // matrix (see hooks/use-permissions.ts) — a link is shown when the caller
 // has canView=true for that menu. Super admin always sees everything (the
-// matrix gates set them all true). Items with menu=null are always-visible
-// (Dashboard + Agen are role-only).
-const navItems: Array<{
+// matrix gates set them all true). Items with no menu/roles are always
+// visible.
+type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
@@ -59,20 +59,58 @@ const navItems: Array<{
   // list (`roles`). Items with neither are visible to everyone.
   menu?: PermissionMenu;
   roles?: TeamRole[];
-}> = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["super_admin", "supervisor"] },
-  { href: "/ai-studio", label: "AI Studio", icon: Sparkles },
-  { href: "/usage", label: "Pemakaian Token", icon: Cpu, roles: ["super_admin"] },
-  { href: "/ai-review", label: "AI Review", icon: ReceiptText, roles: ["super_admin"] },
-  { href: "/chats", label: "Chats", icon: MessageSquare, menu: "chats" },
-  { href: "/status", label: "Status", icon: CircleDashed, menu: "statuses" },
-  { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },
-  { href: "/products", label: "Products", icon: Package, menu: "products" },
-  { href: "/flows", label: "Chatbot Flow", icon: GitBranch, menu: "flows" },
-  { href: "/analytics", label: "Analytics", icon: BarChart3, menu: "analytics" },
-  { href: "/agents", label: "Agen & Tim", icon: Users, roles: ["super_admin", "supervisor", "agent"] },
-  { href: "/credentials", label: "Credentials", icon: KeyRound, menu: "credentials" },
-  { href: "/settings", label: "Settings", icon: Settings, menu: "settings" },
+};
+
+// Sidebar is organised into sections rendered with a divider (and an
+// uppercase label when expanded) between each group. Daily conversation
+// work sits at the very top; AI tools are isolated in their own section.
+// A group whose items are all hidden for the current role is skipped
+// entirely (no stray divider/label).
+type NavGroup = { id: string; label?: string; items: NavItem[] };
+
+const navGroups: NavGroup[] = [
+  {
+    id: "main",
+    items: [
+      { href: "/chats", label: "Chats", icon: MessageSquare, menu: "chats" },
+      { href: "/status", label: "Status", icon: CircleDashed, menu: "statuses" },
+    ],
+  },
+  {
+    id: "ai",
+    label: "AI",
+    items: [
+      { href: "/ai-studio", label: "AI Studio", icon: Sparkles },
+      { href: "/ai-review", label: "AI Review", icon: ReceiptText, roles: ["super_admin"] },
+      { href: "/usage", label: "Pemakaian Token", icon: Cpu, roles: ["super_admin"] },
+    ],
+  },
+  {
+    id: "content",
+    label: "Konten & Otomasi",
+    items: [
+      { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },
+      { href: "/products", label: "Products", icon: Package, menu: "products" },
+      { href: "/flows", label: "Chatbot Flow", icon: GitBranch, menu: "flows" },
+    ],
+  },
+  {
+    id: "insights",
+    label: "Laporan",
+    items: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["super_admin", "supervisor"] },
+      { href: "/analytics", label: "Analytics", icon: BarChart3, menu: "analytics" },
+    ],
+  },
+  {
+    id: "admin",
+    label: "Pengaturan",
+    items: [
+      { href: "/agents", label: "Agen & Tim", icon: Users, roles: ["super_admin", "supervisor", "agent"] },
+      { href: "/credentials", label: "Credentials", icon: KeyRound, menu: "credentials" },
+      { href: "/settings", label: "Settings", icon: Settings, menu: "settings" },
+    ],
+  },
 ];
 
 function useUnreadCount() {
@@ -261,13 +299,13 @@ export default function Layout({
         {/* Nav */}
         <nav
           className={cn(
-            "flex-1 py-3 space-y-0.5 overflow-y-auto",
+            "flex-1 py-3 overflow-y-auto",
             collapsed ? "px-1.5" : "px-2"
           )}
         >
-          {navItems
-            .filter((it) => {
-              const tr = (user?.teamRole ?? "agent") as TeamRole;
+          {(() => {
+            const tr = (user?.teamRole ?? "agent") as TeamRole;
+            const isVisible = (it: NavItem) => {
               // Settings is always visible: every role has personal items
               // there (theme, bio, shortcuts). AI Studio (auto-reply + general
               // AI settings) is also always visible, with the general settings
@@ -283,58 +321,80 @@ export default function Layout({
                 return permMenus[it.menu]?.canView ?? false;
               }
               return true;
-            })
-            .map(({ href, label, icon: Icon }) => {
-            const isActive =
-              href === "/" ? location === "/" : location.startsWith(href);
-            const isChats = href === "/chats";
-            const showBadge = isChats && totalUnread > 0;
-            const link = (
-              <Link
-                key={href}
-                href={href}
-                data-testid={`nav-${label.toLowerCase().replace(/\s/g, "-")}`}
-                className={cn(
-                  "flex items-center rounded-md text-sm font-medium transition-colors relative",
-                  collapsed
-                    ? "justify-center h-10 w-full"
-                    : "gap-2.5 px-3 py-2",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                )}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {!collapsed && <span className="flex-1">{label}</span>}
-                {showBadge && !collapsed && (
-                  <span
-                    className={cn(
-                      "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold leading-none",
-                      isActive
-                        ? "bg-white text-primary"
-                        : "bg-primary text-white"
-                    )}
-                  >
-                    {totalUnread > 99 ? "99+" : totalUnread}
-                  </span>
-                )}
-                {showBadge && collapsed && (
-                  <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-white text-[9px] font-bold leading-none flex items-center justify-center">
-                    {totalUnread > 9 ? "9+" : totalUnread}
-                  </span>
-                )}
-              </Link>
-            );
-            if (collapsed) {
-              return (
-                <Tooltip key={href}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right">{label}</TooltipContent>
-                </Tooltip>
+            };
+
+            // Drop hidden items first, then drop any group left empty so a
+            // section's divider/label never renders without links under it.
+            const visibleGroups = navGroups
+              .map((g) => ({ ...g, items: g.items.filter(isVisible) }))
+              .filter((g) => g.items.length > 0);
+
+            const renderItem = ({ href, label, icon: Icon }: NavItem) => {
+              const isActive =
+                href === "/" ? location === "/" : location.startsWith(href);
+              const isChats = href === "/chats";
+              const showBadge = isChats && totalUnread > 0;
+              const link = (
+                <Link
+                  key={href}
+                  href={href}
+                  data-testid={`nav-${label.toLowerCase().replace(/\s/g, "-")}`}
+                  className={cn(
+                    "flex items-center rounded-md text-sm font-medium transition-colors relative",
+                    collapsed
+                      ? "justify-center h-10 w-full"
+                      : "gap-2.5 px-3 py-2",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                  )}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  {!collapsed && <span className="flex-1">{label}</span>}
+                  {showBadge && !collapsed && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold leading-none",
+                        isActive
+                          ? "bg-white text-primary"
+                          : "bg-primary text-white"
+                      )}
+                    >
+                      {totalUnread > 99 ? "99+" : totalUnread}
+                    </span>
+                  )}
+                  {showBadge && collapsed && (
+                    <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-white text-[9px] font-bold leading-none flex items-center justify-center">
+                      {totalUnread > 9 ? "9+" : totalUnread}
+                    </span>
+                  )}
+                </Link>
               );
-            }
-            return link;
-          })}
+              if (collapsed) {
+                return (
+                  <Tooltip key={href}>
+                    <TooltipTrigger asChild>{link}</TooltipTrigger>
+                    <TooltipContent side="right">{label}</TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return link;
+            };
+
+            return visibleGroups.map((group, gi) => (
+              <div
+                key={group.id}
+                className={cn(gi > 0 && "mt-2 pt-2 border-t border-border/60")}
+              >
+                {!collapsed && group.label && (
+                  <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                    {group.label}
+                  </p>
+                )}
+                <div className="space-y-0.5">{group.items.map(renderItem)}</div>
+              </div>
+            ));
+          })()}
         </nav>
 
         {/* Status */}
