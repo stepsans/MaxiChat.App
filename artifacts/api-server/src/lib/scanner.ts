@@ -1,0 +1,304 @@
+import sharp from "sharp";
+import type { ResolvedAiClient } from "./ai-provider";
+import type { CompletionUsage } from "./ai-usage";
+
+// Scanner AI: turn a casually-taken receipt photo into a clean "scanned"
+// document — detect the document's four corners (via the AI vision model),
+// perspective-warp it to a deskewed rectangle, and enhance contrast/sharpness —
+// the way Adobe Scan / Microsoft Lens do. All image math is done in-process in
+// pure JS (homography warp on raw pixels) so there is no native/WASM dependency
+// to bundle; `sharp` handles decode, enhancement and re-encode.
+
+export interface ScanResult {
+  buf: Buffer;
+  mime: string;
+  // True when a document was detected and the image was perspective-corrected.
+  // False when we fell back to a light enhancement of the original framing.
+  detected: boolean;
+  // Token usage from the corner-detection vision call, for usage accounting.
+  usage?: CompletionUsage | null;
+}
+
+interface Pt {
+  x: number;
+  y: number;
+}
+
+// Cap the working resolution: the warp is O(width*height) in JS, and receipts
+// don't need more than this to stay legible. Output is bounded the same way.
+const MAX_DIM = 2000;
+
+const DETECT_PROMPT = `Anda adalah pendeteksi dokumen untuk aplikasi pemindai (scanner). Pada foto berikut terdapat sebuah nota/struk/dokumen kertas. Tentukan posisi KEEMPAT sudut lembar dokumen tersebut.
+
+Balas HANYA dengan satu objek JSON, tanpa teks lain, dengan bentuk:
+{"found": true, "corners": [{"x":0.0,"y":0.0},{"x":1.0,"y":0.0},{"x":1.0,"y":1.0},{"x":0.0,"y":1.0}]}
+
+Aturan:
+- "x" dan "y" adalah pecahan posisi relatif terhadap ukuran gambar: x=0 kiri, x=1 kanan, y=0 atas, y=1 bawah.
+- Berikan tepat 4 titik sudut lembar dokumen (boleh urutan apa saja).
+- Jika tidak ada dokumen yang jelas, atau dokumen terpotong/tak terlihat keempat sudutnya, balas {"found": false}.`;
+
+// Extract the first {...} JSON object from a model reply and parse it.
+function parseJson(content: string): Record<string, unknown> | null {
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    const obj = JSON.parse(content.slice(start, end + 1));
+    return obj && typeof obj === "object" ? (obj as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Pull 4 normalized corner points from the model's parsed reply, or null when
+// it reported no document / gave an unusable shape.
+function readCorners(obj: Record<string, unknown> | null): Pt[] | null {
+  if (!obj) return null;
+  if (obj.found === false) return null;
+  const raw = obj.corners;
+  if (!Array.isArray(raw) || raw.length !== 4) return null;
+  const pts: Pt[] = [];
+  for (const c of raw) {
+    const x = Number((c as Pt)?.x);
+    const y = Number((c as Pt)?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    // Clamp into [0,1] — the model occasionally overshoots slightly.
+    pts.push({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) });
+  }
+  return pts;
+}
+
+// Order an unordered set of 4 points into [top-left, top-right, bottom-right,
+// bottom-left] using the classic sum/diff trick (robust to model ordering).
+function orderCorners(pts: Pt[]): { tl: Pt; tr: Pt; br: Pt; bl: Pt } {
+  const bySum = [...pts].sort((a, b) => a.x + a.y - (b.x + b.y));
+  const byDiff = [...pts].sort((a, b) => a.x - a.y - (b.x - b.y));
+  return {
+    tl: bySum[0]!, // smallest x+y
+    br: bySum[3]!, // largest x+y
+    tr: byDiff[3]!, // largest x-y
+    bl: byDiff[0]!, // smallest x-y
+  };
+}
+
+function dist(a: Pt, b: Pt): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+// Validate an ordered quad [tl,tr,br,bl] before trusting it for a warp: corners
+// must be distinct and the polygon must enclose a meaningful area relative to
+// the image. Guards against the sum/diff ordering mis-assigning near-degenerate
+// or near-collinear corner sets (which would otherwise warp to garbage).
+function isValidQuad(q: Pt[], imgW: number, imgH: number): boolean {
+  for (let i = 0; i < q.length; i++) {
+    for (let j = i + 1; j < q.length; j++) {
+      if (dist(q[i]!, q[j]!) < Math.min(imgW, imgH) * 0.02) return false;
+    }
+  }
+  // Shoelace area of the ordered polygon.
+  let area = 0;
+  for (let i = 0; i < q.length; i++) {
+    const a = q[i]!;
+    const b = q[(i + 1) % q.length]!;
+    area += a.x * b.y - b.x * a.y;
+  }
+  area = Math.abs(area) / 2;
+  // Require the quad to cover at least 10% of the image — anything smaller is
+  // almost certainly a bad detection rather than a real receipt.
+  return area >= imgW * imgH * 0.1;
+}
+
+// Solve the 8 projective parameters (a..h) of the homography mapping the four
+// `from` points to the four `to` points, via an 8x8 linear system + Gaussian
+// elimination with partial pivoting. Returns [a,b,c,d,e,f,g,h] or null if the
+// system is degenerate.
+function solveHomography(from: Pt[], to: Pt[]): number[] | null {
+  const A: number[][] = [];
+  const B: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = from[i]!;
+    const { x: X, y: Y } = to[i]!;
+    A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]);
+    B.push(X);
+    A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]);
+    B.push(Y);
+  }
+  const n = 8;
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(A[r]![col]!) > Math.abs(A[piv]![col]!)) piv = r;
+    }
+    if (Math.abs(A[piv]![col]!) < 1e-9) return null;
+    [A[col], A[piv]] = [A[piv]!, A[col]!];
+    [B[col], B[piv]] = [B[piv]!, B[col]!];
+    const pv = A[col]![col]!;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = A[r]![col]! / pv;
+      if (factor === 0) continue;
+      for (let c = col; c < n; c++) {
+        A[r]![c] = A[r]![c]! - factor * A[col]![c]!;
+      }
+      B[r] = B[r]! - factor * B[col]!;
+    }
+  }
+  const h: number[] = new Array(n);
+  for (let i = 0; i < n; i++) h[i] = B[i]! / A[i]![i]!;
+  return h;
+}
+
+// Perspective-warp a raw RGB image given an inverse-mapping homography (output
+// coords -> source coords). Bilinear sampling; out-of-bounds reads return white.
+function warp(
+  src: Buffer,
+  sw: number,
+  sh: number,
+  ow: number,
+  oh: number,
+  h: number[]
+): Buffer {
+  const [a, b, c, d, e, f, g, i] = h as [
+    number, number, number, number, number, number, number, number,
+  ];
+  const out = Buffer.alloc(ow * oh * 3, 255);
+  for (let y = 0; y < oh; y++) {
+    for (let x = 0; x < ow; x++) {
+      const denom = g * x + i * y + 1;
+      if (denom === 0) continue;
+      const u = (a * x + b * y + c) / denom;
+      const v = (d * x + e * y + f) / denom;
+      if (u < 0 || v < 0 || u > sw - 1 || v > sh - 1) continue;
+      const x0 = Math.floor(u);
+      const y0 = Math.floor(v);
+      const x1 = Math.min(x0 + 1, sw - 1);
+      const y1 = Math.min(y0 + 1, sh - 1);
+      const fx = u - x0;
+      const fy = v - y0;
+      const oIdx = (y * ow + x) * 3;
+      for (let ch = 0; ch < 3; ch++) {
+        const p00 = src[(y0 * sw + x0) * 3 + ch]!;
+        const p10 = src[(y0 * sw + x1) * 3 + ch]!;
+        const p01 = src[(y1 * sw + x0) * 3 + ch]!;
+        const p11 = src[(y1 * sw + x1) * 3 + ch]!;
+        const top = p00 + (p10 - p00) * fx;
+        const bot = p01 + (p11 - p01) * fx;
+        out[oIdx + ch] = Math.round(top + (bot - top) * fy);
+      }
+    }
+  }
+  return out;
+}
+
+// Final pass shared by both the warped and the fallback path: contrast-stretch,
+// sharpen, and encode as JPEG so the result reads like a clean scan.
+async function enhanceJpeg(img: sharp.Sharp): Promise<Buffer> {
+  return img.normalize().sharpen().jpeg({ quality: 90 }).toBuffer();
+}
+
+// Light-enhance the original image (no geometry change) — used when no document
+// could be detected, so we still upload something cleaner than the raw photo.
+async function lightEnhance(buf: Buffer): Promise<Buffer> {
+  return enhanceJpeg(
+    sharp(buf).rotate().resize({
+      width: MAX_DIM,
+      height: MAX_DIM,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+  );
+}
+
+// Run the full scan: detect corners with the vision model, deskew + enhance.
+// Never throws — any failure falls back to a lightly-enhanced original so the
+// archive step always gets a usable image.
+export async function scanDocument(opts: {
+  buf: Buffer;
+  client: ResolvedAiClient["client"];
+  model: string;
+}): Promise<ScanResult> {
+  const { buf, client, model } = opts;
+  let usage: CompletionUsage | null = null;
+  try {
+    // 1) Ask the vision model for the four document corners (normalized).
+    const meta = await sharp(buf).rotate().metadata();
+    const dataUrl = `data:image/jpeg;base64,${(
+      await sharp(buf).rotate().jpeg({ quality: 85 }).toBuffer()
+    ).toString("base64")}`;
+    const resp = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: DETECT_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Deteksi sudut dokumen pada foto ini." },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+      max_tokens: 200,
+      temperature: 0,
+    });
+    usage = resp.usage ?? null;
+    const corners = readCorners(parseJson(resp.choices[0]?.message?.content ?? ""));
+    if (!corners) {
+      return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
+    }
+
+    // 2) Decode to raw RGB at a bounded resolution.
+    const {
+      data,
+      info: { width: sw, height: sh },
+    } = await sharp(buf)
+      .rotate()
+      .resize({ width: MAX_DIM, height: MAX_DIM, fit: "inside", withoutEnlargement: true })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    // 3) Map normalized corners to pixel coords and order them.
+    const px = corners.map((c) => ({ x: c.x * sw, y: c.y * sh }));
+    const { tl, tr, br, bl } = orderCorners(px);
+
+    // Reject degenerate / mis-ordered quads (ties in the sum/diff heuristic,
+    // near-collinear corners, tiny areas) before warping to garbage.
+    if (!isValidQuad([tl, tr, br, bl], sw, sh)) {
+      return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
+    }
+
+    // Output rectangle sized to the longer of each opposing edge pair.
+    const outW = Math.round(Math.max(dist(tl, tr), dist(bl, br)));
+    const outH = Math.round(Math.max(dist(tl, bl), dist(tr, br)));
+    if (outW < 32 || outH < 32 || outW > MAX_DIM * 2 || outH > MAX_DIM * 2) {
+      return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
+    }
+
+    // 4) Homography mapping OUTPUT rect corners -> SOURCE corners (inverse map
+    // for the warp), then sample.
+    const dstRect: Pt[] = [
+      { x: 0, y: 0 },
+      { x: outW, y: 0 },
+      { x: outW, y: outH },
+      { x: 0, y: outH },
+    ];
+    const h = solveHomography(dstRect, [tl, tr, br, bl]);
+    if (!h) {
+      return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
+    }
+    const warped = warp(data, sw, sh, outW, outH, h);
+    void meta;
+    const outBuf = await enhanceJpeg(
+      sharp(warped, { raw: { width: outW, height: outH, channels: 3 } })
+    );
+    return { buf: outBuf, mime: "image/jpeg", detected: true, usage };
+  } catch {
+    // Any decode/model/warp failure: fall back to the original framing.
+    try {
+      return { buf: await lightEnhance(buf), mime: "image/jpeg", detected: false, usage };
+    } catch {
+      return { buf: opts.buf, mime: "image/jpeg", detected: false, usage };
+    }
+  }
+}

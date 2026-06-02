@@ -33,6 +33,7 @@ export interface AiReviewConfigInput {
   driveFolderId?: string | null;
   /** @maxLength 300 */
   driveFolderName?: string | null;
+  scannerAi?: boolean;
   /** @pattern ^([01][0-9]|2[0-3]):[0-5][0-9]$ */
   scheduleTime: string;
   /**

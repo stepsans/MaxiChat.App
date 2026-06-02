@@ -60,6 +60,10 @@ export const aiReviewConfigTable = pgTable(
     ),
     driveFolderId: text("drive_folder_id"),
     driveFolderName: text("drive_folder_name"),
+    // Scanner AI: when on, each archived receipt photo is run through document
+    // detection + perspective deskew + enhancement (like a phone scanner app)
+    // before upload to Drive. Off = archive the photo as-is. OCR is unaffected.
+    scannerAi: boolean("scanner_ai").notNull().default(false),
     // Daily cut-off, "HH:mm" in `timezone` (IANA, default Asia/Jakarta / WIB).
     scheduleTime: text("schedule_time").notNull().default("18:00"),
     timezone: text("timezone").notNull().default("Asia/Jakarta"),

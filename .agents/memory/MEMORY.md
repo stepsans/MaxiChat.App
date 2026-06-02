@@ -23,6 +23,7 @@
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.
 - [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).
+- [Scanner AI document pipeline](scanner-ai-pipeline.md) — receipt deskew is pure-JS homography (no OpenCV-WASM, breaks esbuild); must never throw + validate quad or it corrupts archived photos.
 - [Chat message pagination](chat-message-pagination.md) — polled GET /chats/:id is capped to recent window; older history is a separate query-only keyset endpoint; autoscroll keys on newest id not count.
 - [OpenAPI inline body codegen collision](openapi-inline-body-codegen-collision.md) — inline requestBody names both type+zod `<Op>Body` → TS2308; always `$ref` a named component instead.
 - [Message delete/revoke constraints](message-revoke-constraints.md) — delete-for-me is local-row-only (any msg); revoke is outbound-only, channel recall THEN delete, dual-channel key derivation, failed recall must not delete row.

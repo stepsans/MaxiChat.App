@@ -64,6 +64,7 @@ function publicConfig(row: AiReviewConfig) {
     driveCredentialId: row.driveCredentialId ?? null,
     driveFolderId: row.driveFolderId ?? null,
     driveFolderName: row.driveFolderName ?? null,
+    scannerAi: row.scannerAi,
     scheduleTime: row.scheduleTime,
     timezone: row.timezone,
     enabled: row.enabled,
@@ -144,6 +145,7 @@ const ConfigInput = z.object({
   driveCredentialId: z.number().int().positive().nullable().optional(),
   driveFolderId: z.string().max(200).nullable().optional(),
   driveFolderName: z.string().max(300).nullable().optional(),
+  scannerAi: z.boolean().optional(),
   scheduleTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   timezone: z.string().min(1).max(64).optional(),
   enabled: z.boolean().optional(),
@@ -222,6 +224,7 @@ router.post("/configs", async (req, res): Promise<void> => {
           driveCredentialId: d.driveCredentialId ?? null,
           driveFolderId: d.driveFolderId ?? null,
           driveFolderName: d.driveFolderName ?? null,
+          scannerAi: d.scannerAi ?? false,
           scheduleTime: d.scheduleTime,
           timezone: d.timezone ?? "Asia/Jakarta",
           enabled: d.enabled ?? false,
@@ -318,6 +321,7 @@ router.patch("/configs/:id", async (req, res): Promise<void> => {
     if (d.driveCredentialId !== undefined) patch.driveCredentialId = d.driveCredentialId;
     if (d.driveFolderId !== undefined) patch.driveFolderId = d.driveFolderId;
     if (d.driveFolderName !== undefined) patch.driveFolderName = d.driveFolderName;
+    if (d.scannerAi != null) patch.scannerAi = d.scannerAi;
     if (d.scheduleTime != null) patch.scheduleTime = d.scheduleTime;
     if (d.timezone != null) patch.timezone = d.timezone;
     if (d.enabled != null) patch.enabled = d.enabled;

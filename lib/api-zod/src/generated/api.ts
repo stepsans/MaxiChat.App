@@ -1655,6 +1655,7 @@ export const ListAiReviewConfigsResponseItem = zod.object({
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().nullish(),
   "driveFolderName": zod.string().nullish(),
+  "scannerAi": zod.boolean().optional(),
   "scheduleTime": zod.string(),
   "timezone": zod.string(),
   "enabled": zod.boolean(),
@@ -1708,6 +1709,7 @@ export const CreateAiReviewConfigBody = zod.object({
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().max(createAiReviewConfigBodyDriveFolderIdMax).nullish(),
   "driveFolderName": zod.string().max(createAiReviewConfigBodyDriveFolderNameMax).nullish(),
+  "scannerAi": zod.boolean().optional(),
   "scheduleTime": zod.string().regex(createAiReviewConfigBodyScheduleTimeRegExp),
   "timezone": zod.string().min(1).max(createAiReviewConfigBodyTimezoneMax).optional(),
   "enabled": zod.boolean().optional()
@@ -1759,6 +1761,7 @@ export const UpdateAiReviewConfigBody = zod.object({
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().max(updateAiReviewConfigBodyDriveFolderIdMax).nullish(),
   "driveFolderName": zod.string().max(updateAiReviewConfigBodyDriveFolderNameMax).nullish(),
+  "scannerAi": zod.boolean().optional(),
   "scheduleTime": zod.string().regex(updateAiReviewConfigBodyScheduleTimeRegExp),
   "timezone": zod.string().min(1).max(updateAiReviewConfigBodyTimezoneMax).optional(),
   "enabled": zod.boolean().optional()
@@ -1786,6 +1789,7 @@ export const UpdateAiReviewConfigResponse = zod.object({
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().nullish(),
   "driveFolderName": zod.string().nullish(),
+  "scannerAi": zod.boolean().optional(),
   "scheduleTime": zod.string(),
   "timezone": zod.string(),
   "enabled": zod.boolean(),

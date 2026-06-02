@@ -21,6 +21,7 @@ export interface AiReviewConfig {
   driveCredentialId?: number | null;
   driveFolderId?: string | null;
   driveFolderName?: string | null;
+  scannerAi?: boolean;
   scheduleTime: string;
   timezone: string;
   enabled: boolean;

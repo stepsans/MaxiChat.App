@@ -441,6 +441,9 @@ function ConfigEditor({
   const [driveFolderName, setDriveFolderName] = useState<string | null>(
     existing?.driveFolderName ?? null
   );
+  const [scannerAi, setScannerAi] = useState<boolean>(
+    existing?.scannerAi ?? false
+  );
   const [scheduleTime, setScheduleTime] = useState<string>(
     existing?.scheduleTime ?? "18:00"
   );
@@ -573,6 +576,7 @@ function ConfigEditor({
       driveCredentialId: driveFolderId ? driveCredentialId : null,
       driveFolderId: driveFolderId ?? null,
       driveFolderName: driveFolderId ? driveFolderName : null,
+      scannerAi,
       scheduleTime,
       enabled,
     };
@@ -822,6 +826,24 @@ function ConfigEditor({
                 disabled={foldersQuery.isLoading}
                 testId="drive-folder-select"
               />
+            )}
+            {driveCredentialId != null && (
+              <div className="flex items-start justify-between gap-4 rounded-md border border-border p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="scanner-ai-switch">Scanner AI</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {scannerAi
+                      ? "Aktif: setiap foto dideteksi notanya, dihilangkan background-nya, diluruskan & dipertajam sebelum disimpan ke Drive (seperti hasil scan)."
+                      : "Nonaktif: foto disimpan apa adanya ke Drive."}
+                  </p>
+                </div>
+                <Switch
+                  id="scanner-ai-switch"
+                  checked={scannerAi}
+                  onCheckedChange={setScannerAi}
+                  data-testid="scanner-ai-switch"
+                />
+              </div>
             )}
           </div>
 

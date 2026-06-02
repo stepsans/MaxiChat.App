@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
+import { scanDocument } from "./scanner";
 import { getAuthorizedOAuthClient } from "../routes/credentials";
 import { loadImageBuffer } from "../routes/whatsapp";
 import { logger } from "./logger";
@@ -348,9 +349,28 @@ ${colList}`;
       const drive = google.drive({ version: "v3", auth });
       for (const up of uploads) {
         try {
+          let body = up.buf;
+          let mimeType = up.mime;
+          let name = up.name;
+          // Scanner AI: clean up the photo (detect → deskew → enhance) before
+          // archiving. scanDocument never throws — on detection failure it
+          // returns a lightly-enhanced original — so uploads still proceed.
+          if (cfg.scannerAi) {
+            const scan = await scanDocument({ buf: up.buf, client, model });
+            void recordAiUsage({
+              ownerUserId,
+              channelId: cfg.channelId,
+              provider,
+              model,
+              usage: scan.usage,
+            });
+            body = scan.buf;
+            mimeType = scan.mime;
+            name = name.replace(/\.[^.]+$/, ".jpg");
+          }
           await drive.files.create({
-            requestBody: { name: up.name, parents: [cfg.driveFolderId] },
-            media: { mimeType: up.mime, body: Readable.from(up.buf) },
+            requestBody: { name, parents: [cfg.driveFolderId] },
+            media: { mimeType, body: Readable.from(body) },
             fields: "id",
           });
           uploaded++;
