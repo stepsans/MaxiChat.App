@@ -45,14 +45,11 @@ import {
   ForwardMessageBody,
   AddGroupParticipantsBody,
 } from "@workspace/api-zod";
-import { resolveOwnerUserId } from "../lib/seed";
-import { resolveContactNames } from "../lib/contacts";
 import {
   jidDigits,
-  participantRealDigits,
-  resolveGroupParticipant,
   type BaileysParticipant,
 } from "../lib/group-participants";
+import { resolveGroupParticipants } from "../lib/group-info";
 import {
   MEDIA_DIR,
   sendMediaToJid,
@@ -738,53 +735,18 @@ router.get("/:id/group-info", async (req, res): Promise<void> => {
     }
     // Baileys' groupMetadata rarely carries display names for participants —
     // and in LID-addressed groups the participant id is a long LID number, not
-    // a real phone, so showing it raw is useless to the operator. Back-fill
-    // names from the pushNames we've stored on this group's inbound messages,
-    // keyed by the sender's digits (which match jidDigits(participant id)).
-    const nameRes = await db.execute<{ digits: string; name: string }>(sql`
-      SELECT DISTINCT ON (sender_phone_digits)
-        sender_phone_digits AS digits, sender_name AS name
-      FROM chat_messages
-      WHERE chat_id = ${chat.id}
-        AND sender_phone_digits IS NOT NULL
-        AND sender_name IS NOT NULL
-        AND sender_name <> ''
-      ORDER BY sender_phone_digits, created_at DESC
-    `);
-    const nameRows: { digits: string; name: string }[] =
-      (nameRes as any).rows ?? (nameRes as any) ?? [];
-    const nameByDigits = new Map<string, string>();
-    for (const r of nameRows) {
-      if (r.digits && r.name) nameByDigits.set(r.digits, r.name);
-    }
-
-    // Baileys participants extend Contact, so each may carry the real phone
-    // (`phoneNumber`, a @s.whatsapp.net jid) alongside the LID `id`. Prefer the
-    // real phone for both display AND Google Contacts lookup — the LID is a
-    // synthetic number that matches nothing in the user's address book. The
-    // name-precedence logic lives in `resolveGroupParticipant` (a pure, DB-free
-    // helper) so it can be unit tested in isolation.
+    // a real phone, so showing it raw is useless to the operator. The
+    // name-resolution pipeline (history-name SQL + Google Contacts lookup +
+    // the pure precedence helper) lives in `resolveGroupParticipants` so the
+    // wiring can be integration-tested against a real DB in isolation.
     const participantsRaw = (meta.participants ?? []).map(
       (p) => p as BaileysParticipant
     );
-
-    // Resolve saved Google Contacts names by real phone, scoped to the tenant
-    // owner (so team members benefit from the owner's connected contacts).
-    let contactNames = new Map<string, string>();
-    try {
-      const ownerUserId = await resolveOwnerUserId(req.session.userId!);
-      const phones = participantsRaw
-        .map((pp) => participantRealDigits(pp))
-        .filter((d): d is string => !!d);
-      if (phones.length) {
-        contactNames = await resolveContactNames(ownerUserId, phones);
-      }
-    } catch (err) {
-      req.log.warn({ err }, "group contacts name resolution failed");
-    }
-
-    const participants = participantsRaw.map((pp) =>
-      resolveGroupParticipant(pp, nameByDigits, contactNames)
+    const participants = await resolveGroupParticipants(
+      chat.id,
+      req.session.userId!,
+      participantsRaw,
+      req.log
     );
     res.json({
       subject: meta.subject ?? chat.contactName ?? "",
