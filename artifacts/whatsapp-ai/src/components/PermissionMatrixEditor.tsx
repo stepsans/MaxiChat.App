@@ -140,8 +140,12 @@ export function PermissionMatrixEditor() {
           <div>
             <h2 className="text-sm font-semibold">Permission per Role</h2>
             <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-              Atur akses tiap menu untuk Supervisor dan Agent. Super Admin
-              selalu memiliki akses penuh dan tidak dapat diubah.
+              Atur akses <span className="font-medium">dasar (default)</span> tiap
+              menu untuk semua Supervisor dan Agent. Super Admin selalu memiliki
+              akses penuh dan tidak dapat diubah. Untuk memberi pengecualian ke
+              satu orang tertentu, gunakan tab{" "}
+              <span className="font-medium">“Permission per User”</span> —
+              pengaturan per user akan menimpa default role di sini.
               {!isSuperAdmin && " Hanya Super Admin yang dapat mengubah."}
             </p>
           </div>

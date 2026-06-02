@@ -303,8 +303,14 @@ export function UserPermissionEditor() {
         <div>
           <h2 className="text-sm font-semibold">Permission per User</h2>
           <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-            Ubah akses untuk satu user tertentu. Override hanya berlaku untuk user
-            ini; cell yang sama dengan default role tidak disimpan.
+            Atur pengecualian akses untuk satu user. Urutan prioritas:{" "}
+            <span className="font-medium">Super Admin</span> (akses penuh) ›{" "}
+            <span className="font-medium">Override per user</span> (di sini) ›{" "}
+            <span className="font-medium">Default role</span> (tab “Permission per
+            Role”). Baris bertanda <span className="font-medium">Override</span>{" "}
+            memakai izin khusus user ini; baris{" "}
+            <span className="font-medium">Ikut role</span> otomatis mengikuti
+            default role-nya. Cell yang sama dengan default role tidak disimpan.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -463,7 +469,24 @@ export function UserPermissionEditor() {
                           rowDiffers && "font-semibold"
                         )}
                       >
-                        {m.label}
+                        <div className="flex items-center gap-2">
+                          <span>{m.label}</span>
+                          {rowDiffers ? (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300"
+                            >
+                              Override
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-muted-foreground font-normal"
+                            >
+                              Ikut role
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       {ACTIONS.map((a) => {
                         const cellDiffers = cur[a.key] !== base[a.key];
