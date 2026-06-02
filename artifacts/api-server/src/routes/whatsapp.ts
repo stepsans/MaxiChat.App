@@ -30,6 +30,7 @@ import {
   ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
+import { resolveActiveChannel, listOwnedChannels } from "../lib/channel-context";
 
 // Whether the signed-in user owns the WhatsApp pairing (super_admin) or
 // merely inherits it (supervisor / agent). Invited members must not be able
@@ -2548,13 +2549,12 @@ const router = Router();
 // Read the primary WhatsApp channel and project it onto the legacy
 // WhatsappStatus shape. The whatsapp_session table is gone — channels is
 // now the single source of truth for per-channel pairing state.
-async function readPrimaryChannelStatus(userId: number): Promise<{
+async function readChannelStatus(channelId: number): Promise<{
   status: string;
   qrCode: string | null;
   phoneNumber: string | null;
   connectedAt: string | null;
 }> {
-  const channelId = await ensurePrimaryWhatsappChannelForUser(userId);
   const [row] = await db
     .select({
       status: channelsTable.status,
@@ -2583,13 +2583,48 @@ async function readPrimaryChannelStatus(userId: number): Promise<{
   };
 }
 
+const DISCONNECTED_STATUS = {
+  status: "disconnected" as const,
+  qrCode: null,
+  phoneNumber: null,
+  connectedAt: null,
+};
+
+// Resolve the channel the connection widgets (Dashboard card + sidebar badge)
+// should reflect for THIS request: the switcher's selected channel
+// (X-Channel-Id), falling back to the caller's primary ALLOWED channel. For
+// supervisor/agent this is scoped by user_channel_access, so each member sees
+// the number THEY are assigned — not the owner's primary number. Returns null
+// when the caller has no channel in scope.
+async function resolveWidgetChannelId(req: Request): Promise<number | null> {
+  const sel = await resolveActiveChannel(req);
+  // Only a WhatsApp channel is meaningful for the WhatsApp widgets. If the
+  // switcher has a WhatsApp channel selected, use it directly.
+  if (sel?.kind === "channel" && sel.channel.kind === "whatsapp") {
+    return sel.channel.id;
+  }
+  // Otherwise (a non-WhatsApp channel selected, "All channels", or no
+  // selection) fall back to the caller's primary ALLOWED WhatsApp channel so
+  // the single-value widgets still show the right number — never a Telegram
+  // (or other-kind) row.
+  const owned = await listOwnedChannels(req);
+  const wa = owned.find((c) => c.kind === "whatsapp");
+  return wa?.id ?? null;
+}
+
 router.get("/status", async (req, res): Promise<void> => {
   try {
-    const userId = requireUserId(req);
-    // Invited team members (supervisor / agent) share the super_admin's
-    // pairing — read state off the owner row, not their own.
-    const ownerUserId = await resolveOwnerUserId(userId);
-    res.json(await readPrimaryChannelStatus(ownerUserId));
+    requireUserId(req);
+    // Per-channel display: reflect the channel this member is allowed to see
+    // (switcher selection or their primary assigned channel), NOT the owner's
+    // primary. Fixes invited members seeing the owner's number on the
+    // dashboard card and sidebar badge.
+    const channelId = await resolveWidgetChannelId(req);
+    if (channelId == null) {
+      res.json(DISCONNECTED_STATUS);
+      return;
+    }
+    res.json(await readChannelStatus(channelId));
   } catch (err) {
     req.log.error({ err }, "Failed to get WhatsApp status");
     res.status(500).json({ error: "Internal server error" });
@@ -2598,26 +2633,40 @@ router.get("/status", async (req, res): Promise<void> => {
 
 router.post("/connect", async (req, res): Promise<void> => {
   try {
-    const userId = requireUserId(req);
-    // Only the super_admin can pair / re-pair a WhatsApp number for the
-    // team. Supervisor / agent inherit the owner's session.
-    if (!(await isWhatsappOwner(userId))) {
+    requireUserId(req);
+    // Connect/disconnect act on the SELECTED channel (switcher header),
+    // scoped by user_channel_access via resolveActiveChannel. An invited
+    // member can only (re)pair the channel(s) assigned to them — never the
+    // owner's other numbers — and the action targets the SAME channel the
+    // widget displays, so the button never connects/disconnects a different
+    // number than the one shown.
+    const sel = await resolveActiveChannel(req);
+    if (!sel) {
       res.status(403).json({
-        error: "Hanya pemilik akun yang dapat menghubungkan WhatsApp.",
+        error: "Tidak ada channel WhatsApp yang bisa kamu kelola.",
       });
       return;
     }
-    const current = await readPrimaryChannelStatus(userId);
+    if (sel.kind === "all") {
+      res.status(400).json({
+        error: "Pilih channel WhatsApp dulu sebelum menghubungkan.",
+      });
+      return;
+    }
+    const channel = sel.channel;
+    if (channel.kind !== "whatsapp") {
+      res.status(400).json({
+        error: `Pairing belum tersedia untuk channel ${channel.kind}.`,
+      });
+      return;
+    }
+    const current = await readChannelStatus(channel.id);
     if (current.status === "connected") {
       res.json(current);
       return;
     }
-    // Primary-channel pairing (back-compat for the legacy single-channel
-    // /connect endpoint). Per-channel pairing for non-primary channels
-    // lives at POST /api/channels/:id/pair in Phase C.
-    const channelId = await ensurePrimaryWhatsappChannelForUser(userId);
-    void syncChannelStatus(channelId, { status: "connecting" });
-    startBaileys(userId, channelId).catch((err) =>
+    void syncChannelStatus(channel.id, { status: "connecting" });
+    startBaileys(channel.userId, channel.id).catch((err) =>
       req.log.error({ err }, "Baileys start failed")
     );
     res.json({ status: "connecting", qrCode: null, phoneNumber: null, connectedAt: null });
@@ -2673,18 +2722,36 @@ router.put("/profile/bio", async (req, res): Promise<void> => {
 
 router.post("/disconnect", async (req, res): Promise<void> => {
   try {
-    const userId = requireUserId(req);
-    if (!(await isWhatsappOwner(userId))) {
+    requireUserId(req);
+    // Disconnect targets the SELECTED channel (switcher header), scoped by
+    // user_channel_access via resolveActiveChannel. An invited member can
+    // only disconnect the channel(s) assigned to them — never the owner's
+    // other numbers — and only the channel currently shown on the widget.
+    const sel = await resolveActiveChannel(req);
+    if (!sel) {
       res.status(403).json({
-        error: "Hanya pemilik akun yang dapat memutuskan WhatsApp.",
+        error: "Tidak ada channel WhatsApp yang bisa kamu kelola.",
       });
       return;
     }
-    // Resolve THIS user's primary channel — that's the channel the legacy
-    // /disconnect endpoint targets. Per-channel disconnect for non-primary
-    // channels lives at POST /api/channels/:id/unpair in Phase C.
-    const channelId = await ensurePrimaryWhatsappChannelForUser(userId);
-    const ctx = getCtxByChannel(channelId, userId);
+    if (sel.kind === "all") {
+      res.status(400).json({
+        error: "Pilih channel WhatsApp dulu sebelum memutuskan.",
+      });
+      return;
+    }
+    if (sel.channel.kind !== "whatsapp") {
+      res.status(400).json({
+        error: `Pemutusan belum tersedia untuk channel ${sel.channel.kind}.`,
+      });
+      return;
+    }
+    // Channels are owned by the tenant's super_admin, so channel.userId is the
+    // owner id — the same key startBaileys/ctx use, regardless of which team
+    // member triggers the disconnect.
+    const channelId = sel.channel.id;
+    const ownerUid = sel.channel.userId;
+    const ctx = getCtxByChannel(channelId, ownerUid);
     // Bump THIS channel's epoch FIRST so any in-flight handler callbacks
     // abort before they try to persist into chats we're about to clear.
     ctx.epoch++;
@@ -2704,7 +2771,7 @@ router.post("/disconnect", async (req, res): Promise<void> => {
     ctx.isConnecting = false;
     // Wipe THIS channel's local auth credentials so the next /connect starts
     // a fresh pairing flow (QR). Other channels' auth dirs are untouched.
-    await fs.rm(authDirForChannel(userId, channelId), { recursive: true, force: true }).catch((err) => {
+    await fs.rm(authDirForChannel(ownerUid, channelId), { recursive: true, force: true }).catch((err) => {
       req.log.warn({ err }, "Failed to wipe WhatsApp auth dir");
     });
     // Per-channel isolation: do NOT delete chats. Each chat row is scoped by
