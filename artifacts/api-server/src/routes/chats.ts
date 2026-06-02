@@ -780,11 +780,12 @@ router.get("/:id/group-info", async (req, res): Promise<void> => {
       const realDigits =
         jidDigits(pp.phoneNumber ?? "") ??
         (pp.id.endsWith("@s.whatsapp.net") ? jidDigits(pp.id) : null);
-      const historyName =
-        (lidDigits ? nameByDigits.get(lidDigits) : undefined) ??
-        (realDigits ? nameByDigits.get(realDigits) : undefined) ??
-        null;
-      return { pp, lidDigits, realDigits, historyName };
+      // Keep real-phone and LID-derived history names separate: a name stored
+      // against the real phone is a trustworthy identity, while a LID-derived
+      // one is the weakest signal and must never override a real-phone match.
+      const realHistoryName = realDigits ? nameByDigits.get(realDigits) ?? null : null;
+      const lidHistoryName = lidDigits ? nameByDigits.get(lidDigits) ?? null : null;
+      return { pp, lidDigits, realDigits, realHistoryName, lidHistoryName };
     });
 
     // Resolve saved Google Contacts names by real phone, scoped to the tenant
@@ -802,12 +803,16 @@ router.get("/:id/group-info", async (req, res): Promise<void> => {
       req.log.warn({ err }, "group contacts name resolution failed");
     }
 
-    const participants = interim.map(({ pp, lidDigits, realDigits, historyName }) => {
+    const participants = interim.map(({ pp, lidDigits, realDigits, realHistoryName, lidHistoryName }) => {
+      // Precedence: trustworthy real identities first (Baileys contact/push
+      // name, real-phone history, then the saved Google Contacts name on the
+      // real phone), and only as a last resort the weak LID-derived history.
       const name =
         pp.name ??
         pp.notify ??
-        historyName ??
-        (realDigits ? contactNames.get(realDigits) ?? null : null);
+        realHistoryName ??
+        (realDigits ? contactNames.get(realDigits) ?? null : null) ??
+        lidHistoryName;
       return {
         jid: pp.id,
         // Show the real phone when we have it; otherwise fall back to the LID
