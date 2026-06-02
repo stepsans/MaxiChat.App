@@ -31,3 +31,4 @@
 - [AI usage + join-anchored billing](ai-usage-billing-period.md) — token usage attributed to OWNER not member; monthly period anchored on join day-of-month (clamped), not the 1st; instrument every new AI call site.
 - [Chat query key not channel-scoped](chat-query-key-not-channel-scoped.md) — channel is a request header, not a cache key; client diffing of chats across channel switches needs a pending-baseline guard or it false-fires on the new channel's old unreads.
 - [Group endpoint channel binding](group-endpoint-channel-binding.md) — existing-group ops use getSockForChannel(chat.channelId); only channel-less create uses primary; re-guard phone arrays after digit-normalize.
+- [api-server test runner](test-runner-setup.md) — node:test via tsx (`pnpm --filter @workspace/api-server run test`); unit-tested logic must stay in db-free modules since @workspace/db connects eagerly.

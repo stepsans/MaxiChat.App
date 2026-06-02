@@ -48,6 +48,12 @@ import {
 import { resolveOwnerUserId } from "../lib/seed";
 import { resolveContactNames } from "../lib/contacts";
 import {
+  jidDigits,
+  participantRealDigits,
+  resolveGroupParticipant,
+  type BaileysParticipant,
+} from "../lib/group-participants";
+import {
   MEDIA_DIR,
   sendMediaToJid,
   sendContactToJid,
@@ -677,14 +683,6 @@ router.post("/:id/refresh-avatar", async (req, res): Promise<void> => {
 // Group / attachment / star helpers (WhatsApp-mobile feature parity)
 // ---------------------------------------------------------------------------
 
-// Digits-only phone parsed from a JID, when it is a real phone number
-// (…@s.whatsapp.net). Returns null for LID JIDs and anything non-numeric.
-function jidDigits(jid: string | null | undefined): string | null {
-  if (!jid) return null;
-  const local = jid.split("@")[0].split(":")[0];
-  return /^[0-9]+$/.test(local) ? local : null;
-}
-
 function phoneToJid(phone: string): string {
   return `${String(phone).replace(/[^0-9]/g, "")}@s.whatsapp.net`;
 }
@@ -763,38 +761,20 @@ router.get("/:id/group-info", async (req, res): Promise<void> => {
     // Baileys participants extend Contact, so each may carry the real phone
     // (`phoneNumber`, a @s.whatsapp.net jid) alongside the LID `id`. Prefer the
     // real phone for both display AND Google Contacts lookup — the LID is a
-    // synthetic number that matches nothing in the user's address book.
-    type BaileysParticipant = {
-      id: string;
-      admin?: string | null;
-      name?: string | null;
-      notify?: string | null;
-      phoneNumber?: string | null;
-      lid?: string | null;
-    };
-    const interim = (meta.participants ?? []).map((p) => {
-      const pp = p as BaileysParticipant;
-      const lidDigits = jidDigits(pp.id) ?? jidDigits(pp.lid ?? "");
-      // Real phone: explicit phoneNumber field, or the id itself when it's
-      // already a PN jid rather than a @lid.
-      const realDigits =
-        jidDigits(pp.phoneNumber ?? "") ??
-        (pp.id.endsWith("@s.whatsapp.net") ? jidDigits(pp.id) : null);
-      // Keep real-phone and LID-derived history names separate: a name stored
-      // against the real phone is a trustworthy identity, while a LID-derived
-      // one is the weakest signal and must never override a real-phone match.
-      const realHistoryName = realDigits ? nameByDigits.get(realDigits) ?? null : null;
-      const lidHistoryName = lidDigits ? nameByDigits.get(lidDigits) ?? null : null;
-      return { pp, lidDigits, realDigits, realHistoryName, lidHistoryName };
-    });
+    // synthetic number that matches nothing in the user's address book. The
+    // name-precedence logic lives in `resolveGroupParticipant` (a pure, DB-free
+    // helper) so it can be unit tested in isolation.
+    const participantsRaw = (meta.participants ?? []).map(
+      (p) => p as BaileysParticipant
+    );
 
     // Resolve saved Google Contacts names by real phone, scoped to the tenant
     // owner (so team members benefit from the owner's connected contacts).
     let contactNames = new Map<string, string>();
     try {
       const ownerUserId = await resolveOwnerUserId(req.session.userId!);
-      const phones = interim
-        .map((i) => i.realDigits)
+      const phones = participantsRaw
+        .map((pp) => participantRealDigits(pp))
         .filter((d): d is string => !!d);
       if (phones.length) {
         contactNames = await resolveContactNames(ownerUserId, phones);
@@ -803,26 +783,9 @@ router.get("/:id/group-info", async (req, res): Promise<void> => {
       req.log.warn({ err }, "group contacts name resolution failed");
     }
 
-    const participants = interim.map(({ pp, lidDigits, realDigits, realHistoryName, lidHistoryName }) => {
-      // Precedence: trustworthy real identities first (Baileys contact/push
-      // name, real-phone history, then the saved Google Contacts name on the
-      // real phone), and only as a last resort the weak LID-derived history.
-      const name =
-        pp.name ??
-        pp.notify ??
-        realHistoryName ??
-        (realDigits ? contactNames.get(realDigits) ?? null : null) ??
-        lidHistoryName;
-      return {
-        jid: pp.id,
-        // Show the real phone when we have it; otherwise fall back to the LID
-        // digits so the row still renders something stable.
-        phone: realDigits ?? lidDigits,
-        name,
-        isAdmin: pp.admin === "admin" || pp.admin === "superadmin",
-        isSuperAdmin: pp.admin === "superadmin",
-      };
-    });
+    const participants = participantsRaw.map((pp) =>
+      resolveGroupParticipant(pp, nameByDigits, contactNames)
+    );
     res.json({
       subject: meta.subject ?? chat.contactName ?? "",
       description: meta.desc ?? null,

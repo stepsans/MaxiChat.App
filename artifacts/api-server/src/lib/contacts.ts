@@ -2,32 +2,14 @@ import { google } from "googleapis";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db, googleContactsTable } from "@workspace/db";
 import { resolveOwnerUserId } from "./seed";
+import {
+  MATCH_KEY_LEN,
+  matchContactNames,
+  normalizePhone,
+  type NormalizedPhone,
+} from "./contact-match";
 
-// How many trailing digits we use as the prefix-insensitive match key. Local
-// subscriber numbers in Indonesia (and most countries) are stable in their
-// last ~9 digits regardless of whether the number is written as 08xx, 62 8xx
-// or +62 8xx, so matching on the suffix bridges those formats.
-const MATCH_KEY_LEN = 9;
-
-export interface NormalizedPhone {
-  digits: string;
-  matchKey: string;
-}
-
-// Reduce a raw phone string (any format) to its bare digits plus a match key.
-// Returns null when there aren't enough digits to be a real phone number.
-export function normalizePhone(raw: string | null | undefined): NormalizedPhone | null {
-  if (!raw) return null;
-  let digits = raw.replace(/[^\d]/g, "");
-  if (!digits) return null;
-  // Drop a single leading 0 (national trunk prefix) so 08xx aligns with 8xx.
-  if (digits.length > 1 && digits.startsWith("0")) {
-    digits = digits.slice(1);
-  }
-  if (digits.length < 6) return null;
-  const matchKey = digits.slice(-MATCH_KEY_LEN);
-  return { digits, matchKey };
-}
+export { normalizePhone, type NormalizedPhone };
 
 // Pull the user's Google Contacts via the People API and replace the stored
 // snapshot for that user. Returns the number of phone-bearing contact rows
@@ -97,20 +79,17 @@ export async function resolveContactNames(
   phones: (string | null | undefined)[]
 ): Promise<Map<string, string>> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const out = new Map<string, string>();
-  // Normalize each input once, collecting both exact digits and suffix keys.
-  const normByInput = new Map<string, NormalizedPhone>();
+  // Normalize each input once to collect the exact digits and suffix keys we
+  // need to fetch candidate rows for.
   const exactDigits = new Set<string>();
   const matchKeys = new Set<string>();
   for (const p of phones) {
-    if (!p) continue;
     const norm = normalizePhone(p);
     if (!norm) continue;
-    normByInput.set(p, norm);
     exactDigits.add(norm.digits);
     matchKeys.add(norm.matchKey);
   }
-  if (normByInput.size === 0) return out;
+  if (matchKeys.size === 0) return new Map<string, string>();
 
   const rows = await db
     .select({
@@ -129,33 +108,9 @@ export async function resolveContactNames(
       )
     );
 
-  // Exact full-number index, plus a suffix index that records distinct names
-  // per key so we can refuse an ambiguous suffix-only match.
-  const nameByDigits = new Map<string, string>();
-  const namesByKey = new Map<string, Set<string>>();
-  for (const r of rows) {
-    nameByDigits.set(r.phoneDigits, r.name);
-    let set = namesByKey.get(r.matchKey);
-    if (!set) {
-      set = new Set<string>();
-      namesByKey.set(r.matchKey, set);
-    }
-    set.add(r.name);
-  }
-
-  for (const [input, norm] of normByInput) {
-    // Prefer an exact full-number hit; never guess across the suffix collision.
-    const exact = nameByDigits.get(norm.digits);
-    if (exact) {
-      out.set(input, exact);
-      continue;
-    }
-    const set = namesByKey.get(norm.matchKey);
-    if (set && set.size === 1) {
-      out.set(input, set.values().next().value!);
-    }
-  }
-  return out;
+  // The matching rules (exact wins, ambiguous suffix refuses to guess) live in
+  // a pure, DB-free helper so they can be unit tested in isolation.
+  return matchContactNames(rows, phones);
 }
 
 // Count how many contacts are stored for the user's tenant (for the UI status).
