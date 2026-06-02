@@ -24,6 +24,7 @@ import KnowledgeSyncCard from "@/components/KnowledgeSyncCard";
 import ProductSyncCard from "@/components/ProductSyncCard";
 import SalesOrderSyncCard from "@/components/SalesOrderSyncCard";
 import ContactSyncCard from "@/components/ContactSyncCard";
+import DriveSyncCard from "@/components/DriveSyncCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,7 +79,7 @@ import {
   Sparkles,
   Settings2,
 } from "lucide-react";
-import { SiGoogle } from "react-icons/si";
+import { SiGoogle, SiGoogledrive } from "react-icons/si";
 
 const CRED_APPS: { type: CredentialType; label: string; description: string }[] = [
   {
@@ -283,6 +284,19 @@ export default function CredentialsPage() {
             <KnowledgeSyncCard />
             <ProductSyncCard />
             <SalesOrderSyncCard />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <SiGoogledrive className="w-4 h-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Integrasi Google Drive</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Simpan foto dari grup (menu AI Review) ke folder Google Drive.
+          </p>
+          <div className="border border-border rounded-md overflow-hidden">
+            <DriveSyncCard credentials={credentials} />
           </div>
         </div>
 
