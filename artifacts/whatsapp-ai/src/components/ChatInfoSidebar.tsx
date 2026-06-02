@@ -321,12 +321,12 @@ function ProductMetaLines({ product }: { product: Product }) {
     <>
       <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
         <span className="font-mono">{product.code}</span>
-        {hasQty ? ` · Qty: ${product.stock}` : null}
-        {hasSoh ? ` · Qty On Hand: ${product.stockOnHand}` : null}
+        {hasQty ? ` | ${product.stock}` : null}
+        {hasSoh ? ` | ${product.stockOnHand}` : null}
       </p>
       <p className="text-[11px] text-[hsl(var(--wa-meta))] truncate">
         {formatRupiah(product.price)}
-        {hasSilver ? ` · Price Silver: ${formatRupiah(product.priceSilver!)}` : null}
+        {hasSilver ? ` | ${formatRupiah(product.priceSilver!)}` : null}
       </p>
     </>
   );
