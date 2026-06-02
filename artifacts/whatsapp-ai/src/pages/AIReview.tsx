@@ -802,29 +802,26 @@ function ConfigEditor({
               </SelectContent>
             </Select>
             {driveCredentialId != null && (
-              <Select
+              <SearchableSelect
                 value={driveFolderId ?? ""}
-                onValueChange={(v) => {
+                onChange={(v) => {
                   setDriveFolderId(v);
                   const f = folders.find((x) => x.id === v);
                   setDriveFolderName(f?.name ?? null);
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      foldersQuery.isLoading ? "Memuat folder…" : "Pilih folder…"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {folders.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={folders.map((f) => ({ value: f.id, label: f.name }))}
+                placeholder={
+                  foldersQuery.isLoading ? "Memuat folder…" : "Pilih folder…"
+                }
+                searchPlaceholder="Ketik nama folder…"
+                emptyText={
+                  foldersQuery.isLoading
+                    ? "Memuat folder…"
+                    : "Folder tidak ditemukan."
+                }
+                disabled={foldersQuery.isLoading}
+                testId="drive-folder-select"
+              />
             )}
           </div>
 
