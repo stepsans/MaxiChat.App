@@ -33,7 +33,7 @@ router.get("/", async (req, res): Promise<void> => {
       .select()
       .from(whatsappStatusesTable)
       .where(
-        sql`${whatsappStatusesTable.channelId} = ANY(${scope.channelIds})
+        sql`${inArray(whatsappStatusesTable.channelId, scope.channelIds)}
             AND ${whatsappStatusesTable.expiresAt} > ${now}`
       )
       .orderBy(desc(whatsappStatusesTable.postedAt));
@@ -60,10 +60,11 @@ router.get("/", async (req, res): Promise<void> => {
         })
         .from(chatsTable)
         .where(
-          sql`${chatsTable.channelId} = ANY(${scope.channelIds})
-              AND ${chatsTable.phoneNumber} = ANY(${authorPhones.map(
-                (p: string) => "+" + p
-              )})`
+          sql`${inArray(chatsTable.channelId, scope.channelIds)}
+              AND ${inArray(
+                chatsTable.phoneNumber,
+                authorPhones.map((p: string) => "+" + p)
+              )}`
         );
     }
     const chatByPhone = new Map(chats.map((c) => [c.phoneNumber.replace(/^\+/, ""), c]));
@@ -212,7 +213,7 @@ router.delete("/:id", requireNotAgent, async (req, res): Promise<void> => {
       .delete(whatsappStatusesTable)
       .where(
         sql`${whatsappStatusesTable.id} = ${id}
-            AND ${whatsappStatusesTable.channelId} = ANY(${scope.channelIds})`
+            AND ${inArray(whatsappStatusesTable.channelId, scope.channelIds)}`
       );
     res.json({ success: true });
   } catch (err) {
