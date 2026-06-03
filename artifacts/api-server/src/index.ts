@@ -7,6 +7,64 @@ import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
 
+// Baileys downloads WhatsApp media over undici. When a media server closes the
+// socket mid-stream (common during history sync of expired/403 media), undici
+// emits an 'error' event on the response Readable *asynchronously*, after our
+// try/catch around downloadMediaMessage has already returned. An unhandled
+// 'error' event on a stream becomes an uncaughtException and kills the whole
+// process — taking the API (and the groups list) down with it. These are
+// transient network errors that are safe to log and ignore; anything else is a
+// genuine bug and must still crash the process so we don't mask real failures.
+function isRecoverableSocketError(err: unknown): boolean {
+  const e = err as
+    | { name?: string; code?: string; message?: string; cause?: { code?: string } }
+    | null;
+  if (!e) return false;
+  const codes = new Set([
+    "UND_ERR_SOCKET",
+    "UND_ERR_ABORTED",
+    "ECONNRESET",
+    "ETIMEDOUT",
+  ]);
+  // Prefer explicit error codes (on the error or its cause) — these are the
+  // reliable, unambiguous fingerprints of a transient transport failure.
+  if (e.code && codes.has(e.code)) return true;
+  if (e.cause?.code && codes.has(e.cause.code)) return true;
+  // undici surfaces a mid-stream socket close as a `TypeError: terminated`
+  // whose `cause` carries the real socket code. Require BOTH the TypeError
+  // shape AND a recoverable cause code so we don't swallow an unrelated error
+  // that merely happens to carry the word "terminated".
+  if (
+    e.name === "TypeError" &&
+    e.message === "terminated" &&
+    !!e.cause?.code &&
+    codes.has(e.cause.code)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+process.on("uncaughtException", (err) => {
+  if (isRecoverableSocketError(err)) {
+    logger.warn({ err }, "Ignored transient socket error (likely media download)");
+    return;
+  }
+  logger.error({ err }, "Fatal: uncaughtException; exiting");
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  if (isRecoverableSocketError(reason)) {
+    logger.warn({ err: reason }, "Ignored transient socket rejection (likely media download)");
+    return;
+  }
+  // Mirror the uncaughtException contract: a genuinely unhandled rejection
+  // leaves the process in an uncertain state, so fail fast rather than mask it.
+  logger.error({ err: reason }, "Fatal: unhandledRejection; exiting");
+  process.exit(1);
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
