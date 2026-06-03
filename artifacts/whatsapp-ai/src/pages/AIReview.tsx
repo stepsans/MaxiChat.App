@@ -71,9 +71,36 @@ import {
   ExternalLink,
   FolderOpen,
   Clock,
+  Sparkles,
 } from "lucide-react";
 
 const SHEET_CRED_TYPES = ["googleSheetsOAuth2Api", "googleSheetsTriggerOAuth2Api"];
+
+// Ready-made template for a daily cash report (Laporan Kas Harian). Applying it
+// fills both the AI instruction and the matching output columns so the owner can
+// start from a working setup instead of writing the prompt from scratch.
+const KAS_HARIAN_TEMPLATE: { prompt: string; columns: ColumnDraft[] } = {
+  prompt: `Anda adalah asisten pembukuan kas harian toko berbahasa Indonesia. Dari setiap foto nota/struk, tentukan apakah transaksi merupakan PEMASUKAN (uang masuk) atau PENGELUARAN (uang keluar), lalu ekstrak detailnya untuk Laporan Kas Harian.
+
+Aturan:
+- Jenis transaksi: nota pembelian/belanja/biaya = Pengeluaran; nota penjualan/setoran/penerimaan = Pemasukan.
+- Kolom "Pemasukan" diisi HANYA jika uang masuk, selain itu kosongkan. Kolom "Pengeluaran" diisi HANYA jika uang keluar, selain itu kosongkan.
+- Tanggal pakai format YYYY-MM-DD sesuai yang tertera di nota; jika tidak ada, kosongkan.
+- Semua nominal ditulis angka saja, tanpa "Rp", tanpa titik/koma ribuan.
+- Kategori pilih yang paling sesuai: Penjualan, Pembelian Barang, Operasional, Gaji, Sewa, Listrik/Air/Internet, Transport, atau Lainnya.
+- Metode bayar: Tunai atau Transfer sesuai nota; jika tidak jelas, isi "Tunai".
+- Keterangan: ringkas isi transaksi (mis. "Beli ATK", "Bayar listrik", "Setoran penjualan harian").`,
+  columns: [
+    { name: "Tanggal", hint: "Tanggal pada nota, format YYYY-MM-DD" },
+    { name: "Keterangan", hint: "Ringkasan transaksi" },
+    { name: "Kategori", hint: "Penjualan / Pembelian / Operasional / dll" },
+    { name: "Pemasukan", hint: "Nominal uang masuk, angka saja" },
+    { name: "Pengeluaran", hint: "Nominal uang keluar, angka saja" },
+    { name: "Metode Bayar", hint: "Tunai atau Transfer" },
+    { name: "Nama Toko/Vendor", hint: "Nama penjual/toko di nota" },
+    { name: "No. Nota", hint: "Nomor struk/nota bila ada" },
+  ],
+};
 
 function groupShortName(jid: string): string {
   return jid.replace(/@g\.us$/, "");
@@ -549,6 +576,16 @@ function ConfigEditor({
     setColumns((cols) => cols.filter((_, idx) => idx !== i));
   }
 
+  function applyKasHarianTemplate() {
+    setPrompt(KAS_HARIAN_TEMPLATE.prompt);
+    setColumns(KAS_HARIAN_TEMPLATE.columns.map((c) => ({ ...c })));
+    toast({
+      title: "Contoh diterapkan",
+      description:
+        "Instruksi AI & kolom Laporan Kas Harian sudah diisi. Sesuaikan bila perlu.",
+    });
+  }
+
   function validate(): string | null {
     if (channelId == null || !groupJid) return "Pilih grup WhatsApp dulu.";
     if (sheetCredentialId == null) return "Pilih credential Google Sheets.";
@@ -788,7 +825,18 @@ function ConfigEditor({
 
           {/* AI prompt (optional, per-group) */}
           <div className="space-y-2 border-t border-border pt-4">
-            <Label htmlFor="ai-prompt">Instruksi AI (opsional)</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="ai-prompt">Instruksi AI (opsional)</Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={applyKasHarianTemplate}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                Pakai contoh: Laporan Kas Harian
+              </Button>
+            </div>
             <Textarea
               id="ai-prompt"
               value={prompt}
