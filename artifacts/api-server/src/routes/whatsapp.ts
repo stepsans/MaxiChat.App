@@ -1549,6 +1549,39 @@ function pickOption(node: FlowNode, text: string): string | null {
   return null;
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Random human-like pause (ms) derived from the tenant's reply-delay bounds
+// (stored in seconds). Mirrors the AI auto-reply jitter so the chatbot flow
+// doesn't fire messages back-to-back in milliseconds — rapid-fire sends are a
+// strong bot/spam signal that risks WhatsApp restricting the number.
+function flowSendDelayMs(
+  minSec: number | null | undefined,
+  maxSec: number | null | undefined
+): number {
+  const min = Math.max(0, (minSec ?? 1) * 1000);
+  const max = Math.max(min, (maxSec ?? 3) * 1000);
+  return Math.random() * (max - min) + min;
+}
+
+// Best-effort "typing…" indicator on a WhatsApp chat for the given duration,
+// then mark it paused. Presence is decorative: any failure is swallowed so it
+// can never block the actual message send.
+async function typingPause(sock: WASocket, jid: string, ms: number): Promise<void> {
+  try {
+    await sock.presenceSubscribe(jid);
+    await sock.sendPresenceUpdate("composing", jid);
+  } catch {
+    /* presence is best-effort */
+  }
+  await sleep(ms);
+  try {
+    await sock.sendPresenceUpdate("paused", jid);
+  } catch {
+    /* presence is best-effort */
+  }
+}
+
 async function sendFlowMessage(
   userId: number,
   channelId: number,
@@ -1556,7 +1589,8 @@ async function sendFlowMessage(
   chatId: number,
   jid: string,
   text: string,
-  imageUrl?: string | null
+  imageUrl?: string | null,
+  delayBounds?: { min?: number | null; max?: number | null }
 ): Promise<boolean> {
   const ctx = getCtxByChannel(channelId, userId);
   if (epoch !== ctx.epoch) return false;
@@ -1573,6 +1607,20 @@ async function sendFlowMessage(
     } catch (err) {
       logger.warn({ err, imageUrl, chatId }, "flow image load failed; sending text only");
     }
+  }
+
+  // Human-like pacing before each flow send: show a "typing…" indicator and
+  // pause for a random interval. Without this a flow step (especially a
+  // Products node that sends many cards) fires several messages within
+  // milliseconds — a strong bot/spam signal that risks WhatsApp bans. The
+  // delay is applied per message, so multi-image Products nodes get a pause
+  // between every product. Reuses the tenant's reply-delay bounds.
+  if (delayBounds) {
+    const waitMs = flowSendDelayMs(delayBounds.min, delayBounds.max);
+    await typingPause(ctx.sock, jid, waitMs);
+    // The pause is non-trivial; bail if the channel disconnected meanwhile
+    // (epoch bump) or the socket was torn down during the wait.
+    if (epoch !== ctx.epoch || !ctx.sock) return false;
   }
 
   // Tag every chatbot-flow send so the recipient can tell the reply was
@@ -1751,6 +1799,12 @@ async function runFlowFrom(
   let cursorId: string | null = startNodeId;
   const visited = new Set<string>();
 
+  // Reply-delay bounds are tenant-wide (shared with the AI auto-reply). Fetch
+  // once per flow run and reuse for every send so each message gets its own
+  // fresh random "typing…" pause.
+  const tenant = await getOrCreateTenantSettings(userId);
+  const delayBounds = { min: tenant.replyDelayMin, max: tenant.replyDelayMax };
+
   while (cursorId) {
     if (visited.has(cursorId)) break; // cycle guard
     visited.add(cursorId);
@@ -1766,7 +1820,8 @@ async function runFlowFrom(
           chatId,
           jid,
           node.data.text ?? "",
-          node.data.imageUrl ?? null
+          node.data.imageUrl ?? null,
+          delayBounds
         );
         if (!ok) return;
       }
@@ -1784,7 +1839,8 @@ async function runFlowFrom(
         chatId,
         jid,
         text,
-        node.data.imageUrl ?? null
+        node.data.imageUrl ?? null,
+        delayBounds
       );
       if (!ok) return;
       await db
@@ -1825,7 +1881,8 @@ async function runFlowFrom(
             chatId,
             jid,
             caption,
-            p.imageUrl ?? null
+            p.imageUrl ?? null,
+            delayBounds
           );
           if (!ok) return;
         }
@@ -1852,7 +1909,16 @@ async function runFlowFrom(
       // customer's subsequent messages naturally. Keyword triggers still
       // override this if the customer types one.
       if (node.data.text) {
-        const ok = await sendFlowMessage(userId, channelId, epoch, chatId, jid, node.data.text);
+        const ok = await sendFlowMessage(
+          userId,
+          channelId,
+          epoch,
+          chatId,
+          jid,
+          node.data.text,
+          null,
+          delayBounds
+        );
         if (!ok) return;
       }
       await db
@@ -1912,6 +1978,9 @@ async function tryRunFlow(
   const cooldownMin = tenant.flowCooldownMinutes ?? 5;
   const cooldownMs = cooldownMin * 60 * 1000;
   const muteState = { defaultMutedUntil: Date.now() + cooldownMs };
+  // Same human-like pacing the rest of the flow uses, for the strict-option
+  // re-ask sends below (nudge + re-asked question).
+  const delayBounds = { min: tenant.replyDelayMin, max: tenant.replyDelayMax };
 
   // Case A: chat is mid-flow at a question → try to advance.
   if (state && state.flowId && state.currentNodeId) {
@@ -1952,7 +2021,8 @@ async function tryRunFlow(
             chat.id,
             jid,
             retryMsg,
-            null
+            null,
+            delayBounds
           );
           if (!okMsg) return false;
         }
@@ -1964,7 +2034,8 @@ async function tryRunFlow(
           chat.id,
           jid,
           questionText,
-          node.data.imageUrl ?? null
+          node.data.imageUrl ?? null,
+          delayBounds
         );
         // If the re-ask failed to send, don't claim the flow handled the
         // message — fall through to AI so the customer isn't left in silence.
