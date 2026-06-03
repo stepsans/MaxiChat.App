@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListAiReviewGroups,
@@ -72,6 +72,10 @@ import {
   FolderOpen,
   Clock,
   Sparkles,
+  FileSpreadsheet,
+  HardDrive,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 
 const SHEET_CRED_TYPES = ["googleSheetsOAuth2Api", "googleSheetsTriggerOAuth2Api"];
@@ -104,6 +108,58 @@ Aturan:
 
 function groupShortName(jid: string): string {
   return jid.replace(/@g\.us$/, "");
+}
+
+// Numbered, bordered section used to break the config form into clear steps so
+// users aren't overwhelmed by one long list of fields.
+function FormSection({
+  step,
+  title,
+  description,
+  children,
+}: {
+  step: number;
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-border bg-card/40 p-4 space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+          {step}
+        </div>
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold leading-tight">{title}</h3>
+          {description && (
+            <p className="text-xs text-muted-foreground">{description}</p>
+          )}
+        </div>
+      </div>
+      <div className="space-y-4 sm:pl-9">{children}</div>
+    </section>
+  );
+}
+
+// Small labelled divider for the two output destinations inside section 3.
+function OutputSubHeader({
+  icon,
+  title,
+  hint,
+}: {
+  icon: ReactNode;
+  title: string;
+  hint?: string;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-2 text-foreground">
+        {icon}
+        <h4 className="text-xs font-semibold uppercase tracking-wide">{title}</h4>
+      </div>
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
 }
 
 function RunStatusPill({ config }: { config: AiReviewConfig }) {
@@ -576,6 +632,19 @@ function ConfigEditor({
     setColumns((cols) => cols.filter((_, idx) => idx !== i));
   }
 
+  // Drag-to-reorder for output columns. Only the grip handle is draggable so the
+  // text inputs stay normally selectable; the row is the drop target.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  function moveColumn(from: number, to: number) {
+    if (from === to) return;
+    setColumns((cols) => {
+      const next = [...cols];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }
+
   function applyKasHarianTemplate() {
     setPrompt(KAS_HARIAN_TEMPLATE.prompt);
     setColumns(KAS_HARIAN_TEMPLATE.columns.map((c) => ({ ...c })));
@@ -588,6 +657,8 @@ function ConfigEditor({
 
   function validate(): string | null {
     if (channelId == null || !groupJid) return "Pilih grup WhatsApp dulu.";
+    if (!prompt.trim())
+      return "Isi Instruksi AI dulu — tanpa instruksi, AI Review tidak akan berjalan.";
     if (sheetCredentialId == null) return "Pilih credential Google Sheets.";
     if (!spreadsheetId) return "Pilih atau buat spreadsheet.";
     if (!sheetTab) return "Pilih tab (sheet) tujuan.";
@@ -595,8 +666,6 @@ function ConfigEditor({
       .map((c) => ({ name: c.name.trim(), hint: c.hint.trim() }))
       .filter((c) => c.name);
     if (cleaned.length === 0) return "Tambahkan minimal satu kolom output.";
-    if (!prompt.trim())
-      return "Isi Instruksi AI dulu — tanpa instruksi, AI Review tidak akan berjalan.";
     if (driveFolderId && driveCredentialId == null)
       return "Folder Drive dipilih tapi credential Drive belum dipilih.";
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime))
@@ -657,298 +726,397 @@ function ConfigEditor({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
-          {/* Group */}
-          <div className="space-y-2">
-            <Label>Grup WhatsApp</Label>
-            <SearchableSelect
-              value={channelId != null && groupJid ? `${channelId}:${groupJid}` : ""}
-              onChange={pickGroup}
-              options={groups.map((g) => ({
-                value: `${g.channelId}:${g.groupJid}`,
-                label: `${g.name || groupShortName(g.groupJid)} · ${g.channelName}`,
-              }))}
-              placeholder={groupsQuery.isLoading ? "Memuat grup…" : "Pilih grup…"}
-              searchPlaceholder="Cari grup…"
-              emptyText={
-                groupsQuery.isLoading
-                  ? "Memuat grup…"
-                  : "Belum ada grup. Pastikan WhatsApp terhubung & ada chat grup masuk."
-              }
-              className="h-9 text-sm"
-            />
-            {groupJid && (
-              <Input
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Nama tampilan grup (opsional)"
-              />
-            )}
-          </div>
-
-          {/* Sheet credential */}
-          <div className="space-y-2">
-            <Label>Credential Google Sheets</Label>
-            <Select
-              value={sheetCredentialId != null ? String(sheetCredentialId) : ""}
-              onValueChange={(v) => {
-                setSheetCredentialId(Number(v));
-                setSpreadsheetId("");
-                setSpreadsheetUrl(null);
-                setSheetTab("");
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih credential Sheets…" />
-              </SelectTrigger>
-              <SelectContent>
-                {sheetCreds.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                    {c.accountEmail ? ` · ${c.accountEmail}` : ""}
-                  </SelectItem>
-                ))}
-                {sheetCreds.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">
-                    Belum ada credential Sheets yang terhubung. Buat di menu Credentials.
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Spreadsheet pick/create */}
-          {sheetCredentialId != null && (
+        <div className="space-y-4 py-2">
+          {/* Section 1: Group selection */}
+          <FormSection
+            step={1}
+            title="Pemilihan Grup Percakapan"
+            description="Pilih grup WhatsApp yang foto notanya akan direkap otomatis."
+          >
             <div className="space-y-2">
-              <Label>Spreadsheet</Label>
-              <Select
-                value={spreadsheetId}
-                onValueChange={(v) => {
-                  setSpreadsheetId(v);
-                  const sp = spreadsheets.find((s) => s.id === v);
-                  setSpreadsheetUrl(sp?.url ?? null);
-                  setSheetTab("");
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      spreadsheetsQuery.isLoading ? "Memuat…" : "Pilih spreadsheet…"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {spreadsheets.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex items-center gap-2">
+              <Label>Grup WhatsApp</Label>
+              <SearchableSelect
+                value={
+                  channelId != null && groupJid ? `${channelId}:${groupJid}` : ""
+                }
+                onChange={pickGroup}
+                options={groups.map((g) => ({
+                  value: `${g.channelId}:${g.groupJid}`,
+                  label: `${g.name || groupShortName(g.groupJid)} · ${g.channelName}`,
+                }))}
+                placeholder={groupsQuery.isLoading ? "Memuat grup…" : "Pilih grup…"}
+                searchPlaceholder="Cari grup…"
+                emptyText={
+                  groupsQuery.isLoading
+                    ? "Memuat grup…"
+                    : "Belum ada grup. Pastikan WhatsApp terhubung & ada chat grup masuk."
+                }
+                className="h-9 text-sm"
+              />
+              {groupJid && (
                 <Input
-                  value={newSheetTitle}
-                  onChange={(e) => setNewSheetTitle(e.target.value)}
-                  placeholder="…atau buat spreadsheet baru (judul)"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Nama tampilan grup (opsional)"
                 />
+              )}
+            </div>
+          </FormSection>
+
+          {/* Section 2: AI instruction */}
+          <FormSection
+            step={2}
+            title="Instruksi AI"
+            description="Tentukan apa yang AI baca & lakukan pada setiap foto. Wajib diisi."
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-end">
                 <Button
                   type="button"
+                  size="sm"
                   variant="outline"
-                  disabled={!newSheetTitle.trim() || createSheetMut.isPending}
-                  onClick={handleCreateSheet}
+                  onClick={applyKasHarianTemplate}
                 >
-                  {createSheetMut.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    "Buat"
-                  )}
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                  Pakai contoh: Laporan Kas Harian
                 </Button>
               </div>
-            </div>
-          )}
-
-          {/* Tab */}
-          {spreadsheetId && (
-            <div className="space-y-2">
-              <Label>Tab (sheet) tujuan</Label>
-              <Select value={sheetTab} onValueChange={setSheetTab}>
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={tabsQuery.isLoading ? "Memuat…" : "Pilih tab…"}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {tabs.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Columns */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Kolom output (urutan = urutan kolom di Sheet)</Label>
-              <Button type="button" size="sm" variant="ghost" onClick={addColumn}>
-                <Plus className="w-3.5 h-3.5 mr-1" /> Kolom
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {columns.map((col, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <GripVertical className="w-4 h-4 text-muted-foreground mt-2.5 flex-shrink-0" />
-                  <div className="grid grid-cols-2 gap-2 flex-1">
-                    <Input
-                      value={col.name}
-                      onChange={(e) => setColumn(i, { name: e.target.value })}
-                      placeholder="Nama kolom (mis. Total)"
-                    />
-                    <Input
-                      value={col.hint}
-                      onChange={(e) => setColumn(i, { hint: e.target.value })}
-                      placeholder="Petunjuk untuk AI (opsional)"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => removeColumn(i)}
-                  >
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* AI prompt (required, per-group) */}
-          <div className="space-y-2 border-t border-border pt-4">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="ai-prompt">Instruksi AI (wajib)</Label>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={applyKasHarianTemplate}
-              >
-                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                Pakai contoh: Laporan Kas Harian
-              </Button>
-            </div>
-            <Textarea
-              id="ai-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={4}
-              maxLength={4000}
-              placeholder="Wajib diisi — tentukan apa yang AI baca/lakukan, mis. 'Baca foto nota dan catat pemasukan/pengeluaran untuk laporan kas harian.' Gunakan tombol contoh di atas untuk mulai cepat."
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Wajib diisi: tanpa Instruksi AI, modul AI Review tidak akan memproses apa
-              pun. Kolom output di atas tetap menjadi format hasilnya — AI selalu
-              membalas dengan data sesuai nama kolom yang ditulis ke Google Sheet.
-              Instruksi ini hanya mengubah apa yang AI baca/lakukan, bukan format
-              outputnya.
-            </p>
-          </div>
-
-          {/* Drive (optional) */}
-          <div className="space-y-2 border-t border-border pt-4">
-            <Label>Arsip foto ke Google Drive (opsional)</Label>
-            <Select
-              value={driveCredentialId != null ? String(driveCredentialId) : "none"}
-              onValueChange={(v) => {
-                if (v === "none") {
-                  setDriveCredentialId(null);
-                  setDriveFolderId(null);
-                  setDriveFolderName(null);
-                } else {
-                  setDriveCredentialId(Number(v));
-                  setDriveFolderId(null);
-                  setDriveFolderName(null);
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Tanpa arsip Drive" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Tanpa arsip Drive</SelectItem>
-                {driveCreds.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                    {c.accountEmail ? ` · ${c.accountEmail}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {driveCredentialId != null && (
-              <SearchableSelect
-                value={driveFolderId ?? ""}
-                onChange={(v) => {
-                  setDriveFolderId(v);
-                  const f = folders.find((x) => x.id === v);
-                  setDriveFolderName(f?.name ?? null);
-                }}
-                options={folders.map((f) => ({ value: f.id, label: f.name }))}
-                placeholder={
-                  foldersQuery.isLoading ? "Memuat folder…" : "Pilih folder…"
-                }
-                searchPlaceholder="Ketik nama folder…"
-                emptyText={
-                  foldersQuery.isLoading
-                    ? "Memuat folder…"
-                    : "Folder tidak ditemukan."
-                }
-                disabled={foldersQuery.isLoading}
-                testId="drive-folder-select"
-              />
-            )}
-            {driveCredentialId != null && (
-              <div className="flex items-start justify-between gap-4 rounded-md border border-border p-3">
-                <div className="space-y-0.5">
-                  <Label htmlFor="scanner-ai-switch">Scanner AI</Label>
-                  <p className="text-xs text-muted-foreground">
-                    {scannerAi
-                      ? "Aktif: setiap foto dideteksi notanya, dihilangkan background-nya, diluruskan & dipertajam sebelum disimpan ke Drive (seperti hasil scan)."
-                      : "Nonaktif: foto disimpan apa adanya ke Drive."}
-                  </p>
-                </div>
-                <Switch
-                  id="scanner-ai-switch"
-                  checked={scannerAi}
-                  onCheckedChange={setScannerAi}
-                  data-testid="scanner-ai-switch"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Schedule + enabled */}
-          <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
-            <div className="space-y-2">
-              <Label>Jam cut-off harian</Label>
-              <Input
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
+              <Textarea
+                id="ai-prompt"
+                aria-label="Instruksi AI"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={5}
+                maxLength={4000}
+                placeholder="Wajib diisi — tentukan apa yang AI baca/lakukan, mis. 'Baca foto nota dan catat pemasukan/pengeluaran untuk laporan kas harian.' Gunakan tombol contoh di atas untuk mulai cepat."
               />
               <p className="text-[11px] text-muted-foreground">
-                Zona waktu Asia/Jakarta (WIB).
+                Wajib diisi: tanpa Instruksi AI, modul AI Review tidak akan memproses
+                apa pun. Kolom output (di Settingan Output) tetap menjadi format
+                hasilnya — AI selalu membalas dengan data sesuai nama kolom yang
+                ditulis ke Google Sheet. Instruksi ini hanya mengubah apa yang AI
+                baca/lakukan, bukan format outputnya.
               </p>
             </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <div className="flex items-center gap-2 h-10">
-                <Switch checked={enabled} onCheckedChange={setEnabled} />
-                <span className="text-sm">{enabled ? "Aktif" : "Nonaktif"}</span>
+          </FormSection>
+
+          {/* Section 3: Output settings */}
+          <FormSection
+            step={3}
+            title="Settingan Output"
+            description="Ke mana hasil rekap ditulis dan (opsional) foto diarsipkan."
+          >
+            {/* Output: Google Sheet */}
+            <div className="space-y-4">
+              <OutputSubHeader
+                icon={<FileSpreadsheet className="w-4 h-4" />}
+                title="Output Google Sheet"
+                hint="Hasil rekap ditulis satu baris per nota ke tab spreadsheet."
+              />
+
+              <div className="space-y-2">
+                <Label>Credential Google Sheets</Label>
+                <Select
+                  value={sheetCredentialId != null ? String(sheetCredentialId) : ""}
+                  onValueChange={(v) => {
+                    setSheetCredentialId(Number(v));
+                    setSpreadsheetId("");
+                    setSpreadsheetUrl(null);
+                    setSheetTab("");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih credential Sheets…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sheetCreds.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                        {c.accountEmail ? ` · ${c.accountEmail}` : ""}
+                      </SelectItem>
+                    ))}
+                    {sheetCreds.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">
+                        Belum ada credential Sheets yang terhubung. Buat di menu
+                        Credentials.
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {sheetCredentialId != null && (
+                <div className="space-y-2">
+                  <Label>Spreadsheet</Label>
+                  <Select
+                    value={spreadsheetId}
+                    onValueChange={(v) => {
+                      setSpreadsheetId(v);
+                      const sp = spreadsheets.find((s) => s.id === v);
+                      setSpreadsheetUrl(sp?.url ?? null);
+                      setSheetTab("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          spreadsheetsQuery.isLoading
+                            ? "Memuat…"
+                            : "Pilih spreadsheet…"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {spreadsheets.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={newSheetTitle}
+                      onChange={(e) => setNewSheetTitle(e.target.value)}
+                      placeholder="…atau buat spreadsheet baru (judul)"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!newSheetTitle.trim() || createSheetMut.isPending}
+                      onClick={handleCreateSheet}
+                    >
+                      {createSheetMut.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        "Buat"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {spreadsheetId && (
+                <div className="space-y-2">
+                  <Label>Tab (sheet) tujuan</Label>
+                  <Select value={sheetTab} onValueChange={setSheetTab}>
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={tabsQuery.isLoading ? "Memuat…" : "Pilih tab…"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tabs.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Columns (drag to reorder) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Kolom output</Label>
+                  <Button type="button" size="sm" variant="ghost" onClick={addColumn}>
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Kolom
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Urutan kolom = urutan kolom di Sheet. Tarik ikon{" "}
+                  <GripVertical className="inline w-3 h-3 align-text-bottom" /> untuk
+                  mengubah urutan.
+                </p>
+                <div className="space-y-2">
+                  {columns.map((col, i) => (
+                    <div
+                      key={i}
+                      onDragOver={(e) => {
+                        if (dragIndex !== null) e.preventDefault();
+                      }}
+                      onDrop={() => {
+                        if (dragIndex !== null) {
+                          moveColumn(dragIndex, i);
+                          setDragIndex(null);
+                        }
+                      }}
+                      className={`flex items-start gap-2 rounded-md transition-opacity ${
+                        dragIndex === i ? "opacity-50" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(e) => {
+                          setDragIndex(i);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", String(i));
+                        }}
+                        onDragEnd={() => setDragIndex(null)}
+                        aria-label="Tarik untuk mengubah urutan kolom"
+                        className="mt-2 flex-shrink-0 cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </button>
+                      <div className="grid grid-cols-2 gap-2 flex-1">
+                        <Input
+                          value={col.name}
+                          onChange={(e) => setColumn(i, { name: e.target.value })}
+                          placeholder="Nama kolom (mis. Total)"
+                        />
+                        <Input
+                          value={col.hint}
+                          onChange={(e) => setColumn(i, { hint: e.target.value })}
+                          placeholder="Petunjuk untuk AI (opsional)"
+                        />
+                      </div>
+                      <div className="flex flex-col flex-shrink-0">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-7"
+                          disabled={i === 0}
+                          aria-label="Pindah kolom ke atas"
+                          onClick={() => moveColumn(i, i - 1)}
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-7"
+                          disabled={i === columns.length - 1}
+                          aria-label="Pindah kolom ke bawah"
+                          onClick={() => moveColumn(i, i + 1)}
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeColumn(i)}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+
+            {/* Output: Google Drive */}
+            <div className="space-y-4 border-t border-border pt-4">
+              <OutputSubHeader
+                icon={<HardDrive className="w-4 h-4" />}
+                title="Output Google Drive (opsional)"
+                hint="Arsipkan foto nota ke folder Drive."
+              />
+              <div className="space-y-2">
+                <Label>Folder penyimpanan</Label>
+                <Select
+                  value={driveCredentialId != null ? String(driveCredentialId) : "none"}
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      setDriveCredentialId(null);
+                      setDriveFolderId(null);
+                      setDriveFolderName(null);
+                    } else {
+                      setDriveCredentialId(Number(v));
+                      setDriveFolderId(null);
+                      setDriveFolderName(null);
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tanpa arsip Drive" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa arsip Drive</SelectItem>
+                    {driveCreds.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                        {c.accountEmail ? ` · ${c.accountEmail}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {driveCredentialId != null && (
+                  <SearchableSelect
+                    value={driveFolderId ?? ""}
+                    onChange={(v) => {
+                      setDriveFolderId(v);
+                      const f = folders.find((x) => x.id === v);
+                      setDriveFolderName(f?.name ?? null);
+                    }}
+                    options={folders.map((f) => ({ value: f.id, label: f.name }))}
+                    placeholder={
+                      foldersQuery.isLoading ? "Memuat folder…" : "Pilih folder…"
+                    }
+                    searchPlaceholder="Ketik nama folder…"
+                    emptyText={
+                      foldersQuery.isLoading
+                        ? "Memuat folder…"
+                        : "Folder tidak ditemukan."
+                    }
+                    disabled={foldersQuery.isLoading}
+                    testId="drive-folder-select"
+                  />
+                )}
+              </div>
+              {driveCredentialId != null && (
+                <div className="flex items-start justify-between gap-4 rounded-md border border-border p-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="scanner-ai-switch">Scanner AI</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {scannerAi
+                        ? "Aktif: setiap foto dideteksi notanya, dihilangkan background-nya, diluruskan & dipertajam sebelum disimpan ke Drive (seperti hasil scan)."
+                        : "Nonaktif: foto disimpan apa adanya ke Drive."}
+                    </p>
+                  </div>
+                  <Switch
+                    id="scanner-ai-switch"
+                    checked={scannerAi}
+                    onCheckedChange={setScannerAi}
+                    data-testid="scanner-ai-switch"
+                  />
+                </div>
+              )}
+            </div>
+          </FormSection>
+
+          {/* Section 4: schedule + status */}
+          <FormSection
+            step={4}
+            title="Cut Off Harian & Status"
+            description="Kapan rekap dijalankan tiap hari, dan apakah otomatisasi aktif."
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Jam cut-off harian</Label>
+                <Input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Zona waktu Asia/Jakarta (WIB).
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <Switch checked={enabled} onCheckedChange={setEnabled} />
+                  <span className="text-sm">{enabled ? "Aktif" : "Nonaktif"}</span>
+                </div>
+              </div>
+            </div>
+          </FormSection>
         </div>
 
         <DialogFooter>
