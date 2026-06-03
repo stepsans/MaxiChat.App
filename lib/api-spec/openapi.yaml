@@ -420,6 +420,31 @@ paths:
                 items:
                   $ref: "#/components/schemas/Chat"
 
+  /chats/search-content:
+    get:
+      operationId: searchChatContent
+      tags: [chats]
+      summary: Find chats whose message content matches a query
+      description: >
+        Returns the ids of chats (within the caller's channel scope and
+        role-based access) that contain at least one message whose text
+        content matches the query. Used to extend the chat-list search box
+        so it also matches the words inside conversations, not just contact
+        name and phone number.
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Ids of chats with matching message content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatContentSearchResult"
+
   /chats/open-by-phone:
     post:
       operationId: openChatByPhone
@@ -3981,6 +4006,16 @@ components:
         phoneNumber:
           type: string
           description: The normalised phone number that was used to look up / create the chat (E.164-ish, with leading +).
+
+    ChatContentSearchResult:
+      type: object
+      required: [chatIds]
+      properties:
+        chatIds:
+          type: array
+          items:
+            type: integer
+          description: Ids of chats that have at least one message matching the query.
 
     ChatUpdate:
       type: object

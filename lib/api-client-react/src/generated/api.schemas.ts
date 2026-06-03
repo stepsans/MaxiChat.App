@@ -607,6 +607,11 @@ export interface OpenChatByPhoneResult {
   phoneNumber: string;
 }
 
+export interface ChatContentSearchResult {
+  /** Ids of chats that have at least one message matching the query. */
+  chatIds: number[];
+}
+
 export type ChatUpdateStatus = typeof ChatUpdateStatus[keyof typeof ChatUpdateStatus];
 
 
@@ -2172,6 +2177,10 @@ export const ListChatsTag = {
   cold: 'cold',
   closing: 'closing',
 } as const;
+
+export type SearchChatContentParams = {
+q: string;
+};
 
 export type GetChatHistoryParams = {
 chatId: number;

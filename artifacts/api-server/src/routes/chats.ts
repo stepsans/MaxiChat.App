@@ -27,7 +27,7 @@ import {
   deleteMessage as tgDeleteMessage,
 } from "../lib/telegram";
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, ilike } from "drizzle-orm";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import {
   ListChatsQueryParams,
@@ -587,6 +587,53 @@ function normalisePhoneDigits(raw: string): string {
   }
   return digits;
 }
+
+router.get("/search-content", async (req, res): Promise<void> => {
+  try {
+    const raw = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (raw.length < 2) {
+      res.json({ chatIds: [] });
+      return;
+    }
+
+    const scope = await resolveChannelScope(req, res);
+    if (!scope) return;
+    const userId = req.session.userId!;
+    if (scope.channelIds.length === 0) {
+      res.json({ chatIds: [] });
+      return;
+    }
+    const { getAllowedChannelIds } = await import("../lib/user-channel-access");
+    const allowed = await getAllowedChannelIds(userId);
+    const allowedScopeIds = scope.channelIds.filter((id) => allowed.has(id));
+    if (allowedScopeIds.length === 0) {
+      res.json({ chatIds: [] });
+      return;
+    }
+
+    const teamRole = await getEffectiveTeamRole(userId);
+    const channelFilter = inArray(chatsTable.channelId, allowedScopeIds);
+    const baseWhere =
+      teamRole === "agent"
+        ? and(channelFilter, eq(chatsTable.assignedUserId, userId))!
+        : channelFilter;
+
+    // Escape LIKE wildcards so they are matched literally.
+    const escaped = raw.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const pattern = `%${escaped}%`;
+
+    const rows = await db
+      .selectDistinct({ chatId: chatMessagesTable.chatId })
+      .from(chatMessagesTable)
+      .innerJoin(chatsTable, eq(chatMessagesTable.chatId, chatsTable.id))
+      .where(and(baseWhere, ilike(chatMessagesTable.content, pattern)));
+
+    res.json({ chatIds: rows.map((r) => r.chatId) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to search chat content");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.post("/open-by-phone", async (req, res): Promise<void> => {
   try {

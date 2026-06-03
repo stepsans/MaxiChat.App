@@ -46,6 +46,7 @@ import type {
   ChannelUpdate,
   Chat,
   ChatAttachments,
+  ChatContentSearchResult,
   ChatHistoryPage,
   ChatLabelsResult,
   ChatMessage,
@@ -127,6 +128,7 @@ import type {
   SalesOrder,
   SalesOrderInput,
   SalesOrderSyncConfigInput,
+  SearchChatContentParams,
   SendProductBody,
   SendQuotationBody,
   SendShortcutBody,
@@ -1422,6 +1424,92 @@ export function useListChats<TData = Awaited<ReturnType<typeof listChats>>, TErr
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListChatsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSearchChatContentUrl = (params: SearchChatContentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/chats/search-content?${stringifiedParams}` : `/api/chats/search-content`
+}
+
+/**
+ * Returns the ids of chats (within the caller's channel scope and role-based access) that contain at least one message whose text content matches the query. Used to extend the chat-list search box so it also matches the words inside conversations, not just contact name and phone number.
+
+ * @summary Find chats whose message content matches a query
+ */
+export const searchChatContent = async (params: SearchChatContentParams, options?: RequestInit): Promise<ChatContentSearchResult> => {
+
+  return customFetch<ChatContentSearchResult>(getSearchChatContentUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchChatContentQueryKey = (params?: SearchChatContentParams,) => {
+    return [
+    `/api/chats/search-content`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchChatContentQueryOptions = <TData = Awaited<ReturnType<typeof searchChatContent>>, TError = ErrorType<unknown>>(params: SearchChatContentParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchChatContent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchChatContentQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchChatContent>>> = ({ signal }) => searchChatContent(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchChatContent>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchChatContentQueryResult = NonNullable<Awaited<ReturnType<typeof searchChatContent>>>
+export type SearchChatContentQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Find chats whose message content matches a query
+ */
+
+export function useSearchChatContent<TData = Awaited<ReturnType<typeof searchChatContent>>, TError = ErrorType<unknown>>(
+ params: SearchChatContentParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchChatContent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchChatContentQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

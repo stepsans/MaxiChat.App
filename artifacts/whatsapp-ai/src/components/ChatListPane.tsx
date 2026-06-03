@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Dialog,
@@ -15,6 +15,8 @@ import {
   useOpenChatByPhone,
   useCreateGroup,
   useListCustomerLabels,
+  useSearchChatContent,
+  getSearchChatContentQueryKey,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
 import { ContactPicker } from "@/components/ContactPicker";
@@ -102,7 +104,15 @@ export default function ChatListPane({ selectedChatId }: Props) {
   const [tagFilter, setTagFilter] = useState("all");
   const [labelFilter, setLabelFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [scope, setScope] = useState<"personal" | "group">("personal");
+
+  // Debounce the search term used for the message-content lookup so we don't
+  // hit the server on every keystroke (name/phone filtering stays instant).
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
   const qc = useQueryClient();
   const { toast } = useToast();
   // Surface the per-chat channel badge only in the "All channels" view —
@@ -118,6 +128,20 @@ export default function ChatListPane({ selectedChatId }: Props) {
 
   const { data: labels } = useListCustomerLabels();
   const availableLabels = labels ?? [];
+
+  // Server-side message-content search: returns ids of chats whose messages
+  // contain the query. Combined with the instant name/phone filter below so
+  // the search box also matches words inside conversations.
+  const { data: contentMatch } = useSearchChatContent(
+    { q: debouncedSearch },
+    {
+      query: {
+        queryKey: getSearchChatContentQueryKey({ q: debouncedSearch }),
+        enabled: debouncedSearch.length >= 2,
+      },
+    }
+  );
+  const contentMatchIds = new Set(contentMatch?.chatIds ?? []);
 
   const deleteChat = useDeleteChat({
     mutation: {
@@ -159,7 +183,8 @@ export default function ChatListPane({ selectedChatId }: Props) {
       !search ||
       c.contactName.toLowerCase().includes(search.toLowerCase()) ||
       (c.nickname?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-      c.phoneNumber.includes(search);
+      c.phoneNumber.includes(search) ||
+      contentMatchIds.has(c.id);
     return matchScope && matchStatus && matchTag && matchLabel && matchSearch;
   });
 
@@ -189,7 +214,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
           <input
             data-testid="input-search-chats"
             className="w-full h-9 pl-9 pr-3 rounded-lg bg-[hsl(var(--wa-panel-header))] text-sm text-foreground placeholder:text-[hsl(var(--wa-meta))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--wa-accent))]"
-            placeholder="Cari atau mulai chat baru"
+            placeholder="Cari nama, nomor, atau isi chat"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

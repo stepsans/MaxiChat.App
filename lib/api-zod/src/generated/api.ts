@@ -288,6 +288,20 @@ export const ListChatsResponse = zod.array(ListChatsResponseItem)
 
 
 /**
+ * Returns the ids of chats (within the caller's channel scope and role-based access) that contain at least one message whose text content matches the query. Used to extend the chat-list search box so it also matches the words inside conversations, not just contact name and phone number.
+
+ * @summary Find chats whose message content matches a query
+ */
+export const SearchChatContentQueryParams = zod.object({
+  "q": zod.coerce.string()
+})
+
+export const SearchChatContentResponse = zod.object({
+  "chatIds": zod.array(zod.number()).describe('Ids of chats that have at least one message matching the query.')
+})
+
+
+/**
  * Looks up a chat owned by the current WhatsApp account that matches the normalised phone number. If found, returns its id. If not, creates an empty chat placeholder and returns the new id. Use this for the "start a new chat" UX where the user types a number that may or may not already exist in their history.
 
  * @summary Open (or create) a chat with the given phone number

@@ -9,8 +9,7 @@ On a Baileys `messages.upsert` where `key.fromMe` is true, `msg.pushName` is the
 OWNER's own WhatsApp display name — NOT the remote contact's. Using it to set
 `chats.contactName` (on chat create OR the "name is still a bare number" update)
 labels every customer the operator messaged first with the operator's name
-(symptom: many distinct numbers all showing the same owner-like name, e.g.
-"Stephen Maxipro").
+(symptom: many distinct numbers all showing the same owner-like display name).
 
 **Rule:** in the 1:1 branch of message parsing, only adopt `msg.pushName` when
 `!fromMe`; otherwise fall back to the raw number. A contact's real name must come
