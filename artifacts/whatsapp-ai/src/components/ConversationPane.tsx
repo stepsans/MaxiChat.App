@@ -572,10 +572,45 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       toast({ title: "Nomor anggota tidak diketahui." });
       return;
     }
+    // `digits` comes from the stored message row and — for messages ingested
+    // before the LID fix, or when the connection's LID store hasn't learned
+    // the mapping — can be a synthetic privacy LID rather than a real phone.
+    // We can only tell a LID apart from a real number via the group roster
+    // (server-side groupMetadata), which reliably carries the real
+    // phoneNumber. Until that roster has loaded we refuse to act, otherwise a
+    // stale LID would be opened as if it were a phone (the original bug).
+    if (groupParticipants.length === 0) {
+      toast({
+        title: "Memuat data grup",
+        description: "Coba lagi sebentar.",
+      });
+      return;
+    }
+    // Map the value through the roster: if `digits` matches a participant's
+    // LID JID, swap in that participant's real phone instead.
+    let phone: string | null = digits;
+    const byLid = groupParticipants.find(
+      (p) => jidLocalDigits(p.jid) === digits
+    );
+    if (byLid) {
+      const realPhone = (byLid.phone ?? "").replace(/\D/g, "");
+      // Only a real phone is safe to open. Guard against the roster echoing
+      // the LID back as `phone`: if the "phone" equals the LID digits, the
+      // member's real number is unknown — say so rather than open the
+      // unreachable LID-keyed chat.
+      phone =
+        realPhone && realPhone !== jidLocalDigits(byLid.jid) ? realPhone : null;
+      contactName = contactName ?? byLid.name ?? undefined;
+    }
+    if (!phone) {
+      toast({ title: "Nomor anggota tidak diketahui." });
+      return;
+    }
     const match = (allChats ?? []).find((c: any) => {
-      const phone = typeof c.phoneNumber === "string" ? c.phoneNumber : "";
+      const chatPhone = typeof c.phoneNumber === "string" ? c.phoneNumber : "";
       return (
-        !phone.endsWith("@g.us") && phone.replace(/\D/g, "").endsWith(digits)
+        !chatPhone.endsWith("@g.us") &&
+        chatPhone.replace(/\D/g, "").endsWith(phone)
       );
     });
     if (match) {
@@ -584,7 +619,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     }
     openPrivateMut.mutate({
       data: {
-        phoneNumber: digits,
+        phoneNumber: phone,
         ...(contactName ? { contactName } : {}),
       },
     });
