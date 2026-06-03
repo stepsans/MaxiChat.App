@@ -1303,7 +1303,7 @@ async function persistWaMessage(
         createdAt: parsed.timestamp,
         ...senderColumns,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning({ id: chatMessagesTable.id });
     inserted = result.length > 0;
 
@@ -1353,7 +1353,12 @@ async function persistWaMessage(
         await db
           .update(chatMessagesTable)
           .set(fillSet)
-          .where(eq(chatMessagesTable.waMessageId, parsed.waMessageId));
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, chat.id),
+              eq(chatMessagesTable.waMessageId, parsed.waMessageId),
+            ),
+          );
       }
     }
   } else {
@@ -1484,7 +1489,7 @@ async function sendFlowMessage(
       isAiGenerated: false,
       waMessageId: sent?.key?.id ?? null,
     })
-    .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+    .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
   await db
     .update(chatsTable)
     .set({ lastMessage: stored, lastMessageAt: new Date(), status: "ai_handled" })
@@ -1989,7 +1994,7 @@ async function maybeTriggerAutoReply(
             isAiGenerated: !!aiReply,
             waMessageId: sent?.key?.id ?? null,
           })
-          .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+          .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
 
         await db
           .update(chatsTable)

@@ -762,7 +762,7 @@ router.post("/:id/send", async (req, res): Promise<void> => {
         isAiGenerated: false,
         waMessageId: dedupeKey,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
     await db
       .update(chatsTable)
       .set({ lastMessage: text, lastMessageAt: new Date() })

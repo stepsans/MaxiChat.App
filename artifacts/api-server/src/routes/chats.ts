@@ -1184,7 +1184,7 @@ router.post("/:id/messages/:messageId/forward", async (req, res): Promise<void> 
             isForwarded: true,
             forwardingScore: newScore,
           })
-          .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+          .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
 
         await db
           .update(chatsTable)
@@ -1632,9 +1632,10 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
     }
 
     // Tag the row with the dedupe key (WA id, or tg:<chat>:<msg>) so the echo
-    // from messages.upsert (onConflictDoNothing on wa_message_id) cannot
-    // create a duplicate row. A null id (rare) inserts cleanly since the
-    // unique index treats NULLs as distinct.
+    // from messages.upsert (onConflictDoNothing on the per-chat unique
+    // (chat_id, wa_message_id)) cannot create a duplicate row in THIS chat. A
+    // null id (rare) inserts cleanly since the unique index treats NULLs as
+    // distinct.
     const inserted = await db
       .insert(chatMessagesTable)
       .values({
@@ -1644,14 +1645,19 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         isAiGenerated: false,
         waMessageId,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
     const [message] = inserted.length
       ? inserted
       : await db
           .select()
           .from(chatMessagesTable)
-          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, idParsed.data.id),
+              eq(chatMessagesTable.waMessageId, waMessageId!),
+            ),
+          )
           .limit(1);
 
     // Channel-atomic: include channelId in WHERE so a channel /unpair that
@@ -1869,14 +1875,19 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
         mediaFilename: originalName,
         waMessageId,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
     const [message] = inserted.length
       ? inserted
       : await db
           .select()
           .from(chatMessagesTable)
-          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, id),
+              eq(chatMessagesTable.waMessageId, waMessageId!),
+            ),
+          )
           .limit(1);
 
     await db
@@ -2057,7 +2068,7 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         mediaFilename: displayName,
         waMessageId: dedupeKey,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
     const [message] = inserted.length
       ? inserted
@@ -2065,7 +2076,12 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         ? await db
             .select()
             .from(chatMessagesTable)
-            .where(eq(chatMessagesTable.waMessageId, dedupeKey))
+            .where(
+              and(
+                eq(chatMessagesTable.chatId, id),
+                eq(chatMessagesTable.waMessageId, dedupeKey),
+              ),
+            )
             .limit(1)
         : [];
 
@@ -2133,14 +2149,19 @@ router.post("/:id/contact", async (req, res): Promise<void> => {
         mediaFilename: name,
         waMessageId,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
     const [message] = insertedRows.length
       ? insertedRows
       : await db
           .select()
           .from(chatMessagesTable)
-          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, id),
+              eq(chatMessagesTable.waMessageId, waMessageId!),
+            ),
+          )
           .limit(1);
 
     await db
@@ -2321,14 +2342,19 @@ router.post("/:id/product", async (req, res): Promise<void> => {
         mediaFilename,
         waMessageId,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
     const [message] = insertedRows.length
       ? insertedRows
       : await db
           .select()
           .from(chatMessagesTable)
-          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, id),
+              eq(chatMessagesTable.waMessageId, waMessageId!),
+            ),
+          )
           .limit(1);
 
     // Follow-up sequence per UX spec:
@@ -2372,7 +2398,7 @@ router.post("/:id/product", async (req, res): Promise<void> => {
                 mediaFilename: `${product.name} - Flyer`,
                 waMessageId: flyerWaId,
               })
-              .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+              .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
           }
           lastSentDescription = "📄 Flyer";
         } catch (err) {
@@ -2417,7 +2443,7 @@ router.post("/:id/product", async (req, res): Promise<void> => {
               mediaFilename: null,
               waMessageId: followWaId,
             })
-            .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+            .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
         }
         lastSentDescription = url;
       } catch (err) {
@@ -2647,14 +2673,19 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
         mediaFilename,
         waMessageId: dedupeKey,
       })
-      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
     const [message] = insertedRows.length
       ? insertedRows
       : await db
           .select()
           .from(chatMessagesTable)
-          .where(eq(chatMessagesTable.waMessageId, dedupeKey!))
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, id),
+              eq(chatMessagesTable.waMessageId, dedupeKey!),
+            ),
+          )
           .limit(1);
 
     const preview = mediaType === "image" ? `🖼️ ${caption}` : caption;

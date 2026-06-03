@@ -23,6 +23,7 @@
 - [Self-delete cascade requirements](self-delete-cascade.md) — tenant deletion needs FK cascades on every user_id/channel_id + users.parent_user_id self-FK; route-level deletes alone leave orphans.
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.
+- [chat_messages dedup per-chat](chat-message-dedup-per-chat.md) — wa_message_id unique must be composite (chat_id, wa_message_id); global unique drops other channels' copies of the same group message.
 - [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).
 - [Baileys has no echo-send](baileys-no-echo-on-api-sends.md) — every outbound path must explicitly sock.sendMessage on the chat's OWN channel; a DB row alone never transmits (null wa_message_id = never sent).
 - [Customer labels are contact-level](contact-vs-chat-labels.md) — labels key off (ownerUserId, phoneNumber) in contact_labels (no chat_labels); resolve via chats→channels→contact_labels, follow a number across all the owner's channels.

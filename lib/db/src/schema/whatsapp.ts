@@ -192,7 +192,15 @@ export const chatMessagesTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    waMessageIdUnique: uniqueIndex("chat_messages_wa_message_id_unique").on(t.waMessageId),
+    // Dedup is scoped PER CHAT, not globally. The same WhatsApp message id is
+    // delivered identically to every group participant, so the same id must be
+    // storable once per channel's chat (e.g. SS Halo's outbound row and SS XL's
+    // inbound copy of that exact message). A global unique on wa_message_id
+    // silently dropped the second channel's copy via onConflictDoNothing.
+    waMessageIdUnique: uniqueIndex("chat_messages_chat_wa_message_id_unique").on(
+      t.chatId,
+      t.waMessageId,
+    ),
     // Conversation loads filter by chat_id and page by (created_at, id) — this
     // composite index turns that from a full table scan into an index range
     // scan, which matters a lot for large group chats (tens of thousands of

@@ -135,11 +135,9 @@ async function processUpdate(
     })
     .where(eq(chatsTable.id, chat.id));
 
-  // De-dupe via the global-unique chat_messages.wa_message_id index.
-  // Telegram message_id is only unique PER chat, so we must include the
-  // telegram chat id in the key — otherwise two different Telegram chats
-  // both with message_id 1 would collide and the second insert would be
-  // silently dropped.
+  // De-dupe via the per-chat unique (chat_id, wa_message_id) index. Telegram
+  // message_id is only unique PER chat, so the key includes the telegram chat
+  // id too — keeping it stable even though the unique index is now composite.
   const dedupeId = `tg:${parsed.telegramChatId}:${parsed.messageId}`;
   const insertedRows = await db
     .insert(chatMessagesTable)
@@ -150,7 +148,7 @@ async function processUpdate(
       waMessageId: dedupeId,
       isForwarded: parsed.isForwarded,
     })
-    .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
+    .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
     .returning();
 
   if (insertedRows.length === 0) return; // duplicate, skip AI
@@ -207,7 +205,7 @@ async function processUpdate(
         ? `tg:${parsed.telegramChatId}:${sentMessageId}`
         : null,
     })
-    .onConflictDoNothing({ target: chatMessagesTable.waMessageId });
+    .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
 
   await db
     .update(chatsTable)
