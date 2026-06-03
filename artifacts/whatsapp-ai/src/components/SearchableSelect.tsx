@@ -31,6 +31,12 @@ interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
   testId?: string;
+  /**
+   * Render the popover in modal mode. Required when this combobox lives inside a
+   * Radix Dialog — otherwise the dialog owns the scroll layer and the option
+   * list cannot be scrolled. Leave false for standalone (non-dialog) usages.
+   */
+  modalPopover?: boolean;
 }
 
 // A typeahead combobox: a scrollable list (CommandList caps height and scrolls)
@@ -48,12 +54,13 @@ export function SearchableSelect({
   disabled,
   className,
   testId,
+  modalPopover = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value) ?? null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={modalPopover}>
       <PopoverTrigger asChild>
         <Button
           type="button"

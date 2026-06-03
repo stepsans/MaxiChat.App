@@ -762,6 +762,7 @@ function ConfigEditor({
                     : "Belum ada grup. Pastikan WhatsApp terhubung & ada chat grup masuk."
                 }
                 className="h-9 text-sm"
+                modalPopover
               />
               {groupJid && (
                 <Input
@@ -1076,6 +1077,7 @@ function ConfigEditor({
                     }
                     disabled={foldersQuery.isLoading}
                     testId="drive-folder-select"
+                    modalPopover
                   />
                 )}
               </div>
