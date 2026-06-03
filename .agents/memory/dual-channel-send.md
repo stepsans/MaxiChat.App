@@ -1,29 +1,33 @@
 ---
 name: Dual-channel outbound send (WhatsApp + Telegram)
-description: How to send a message/document to a chat over its channel, and the primary-WA-socket constraint that affects all WA sends.
+description: How to send a message/document to a chat over its channel — always bind WA sends to the chat's OWN channel socket.
 ---
 
 # Sending outbound to a chat over its channel
 
-Established pattern (see `chats.ts` `/reply`, `/media`, `/quotation`): branch on the
-chat's channel `kind`.
+Established pattern (see `chats.ts` `/reply`, `/media`, `/quotation`, react, pin, forward):
+branch on the chat's channel `kind`.
 
 - **Telegram**: read `channel.metadata.telegram.botToken`, derive numeric chat id from
   `chat.phoneNumber` (`tg:<id>` → strip prefix), call the telegram lib. Telegram has NO
   inbound echo, so you MUST actively push AND record the outbound row yourself; build a
   dedupe key `tg:<chatId>:<messageId>`.
-- **WhatsApp**: use `sendMediaToJid` / socket send. Resolve the jid via `jidForChat`
-  (groups already hold `<id>@g.us`; personal = `<digits>@s.whatsapp.net`).
+- **WhatsApp**: resolve the socket with **`getSockForChannel(chat.channelId)`** (synchronous,
+  returns `WASocket | null`) and send via `sock.sendMessage` / `sendMediaToJid`. Resolve the
+  jid via `jidForChat` (groups already hold `<id>@g.us`; personal = `<digits>@s.whatsapp.net`).
 
-## Constraint: WA sends always use the PRIMARY channel
-**Every** WhatsApp send helper (`sendMediaToJid`, `getActiveSocket`, contact/flow sends)
-resolves the socket via `getPrimaryCtxForUser(ownerUserId)` — the tenant's *first/primary*
-WA channel — NOT the specific `chat.channelId`.
+## Rule: WA sends bind to the chat's OWN channel, NOT the primary
+**Why:** a group belongs to the specific paired number that is a member of it, and a tenant can
+have multiple WA channels (e.g. WA VS + SS XL under one owner). Sending via the wrong account
+silently fails ("not in group") or goes out from the wrong business identity, and the Baileys
+echo is then persisted under the sending socket's channel → cross-channel message drift.
 
-**Why it matters:** "deliver over the chat's channel" is only truly honored for Telegram.
-For a tenant with multiple WA channels, WA sends go out from the primary account. This is
-app-wide, not a per-endpoint bug; don't "fix" it in one route — it would diverge from every
-sibling and needs a channel-specific send helper that doesn't exist yet.
+**How to apply:** every actual WA *send* of a message to a chat MUST use
+`getSockForChannel(chat.channelId)`. `getActiveSocket(userId)` returns the PRIMARY socket only —
+use it ONLY as a "is any WA connected?" guard or for channel-less creation flows, never as the
+send socket for an existing chat. (Historical note: forward once used `getActiveSocket` for its
+real send — that was a bug, fixed to `getSockForChannel(targetChat.channelId)`. If you find any
+remaining existing-chat send on `getActiveSocket`, it is almost certainly the same bug.)
 
 ## Telegram document send
 Telegram `sendDocument` needs `multipart/form-data` — the JSON `call()` helper in

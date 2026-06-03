@@ -1295,10 +1295,12 @@ router.post("/:id/messages/:messageId/forward", async (req, res): Promise<void> 
           }
           newWaMessageId = `tg:${tgChatId}:${sent.messageId}`;
         } else {
-          // WhatsApp: all outbound sends go through the owner's PRIMARY socket
-          // (see sendMediaToJid / dual-channel-send), regardless of which WA
-          // channel owns the target chat.
-          const sock = await getActiveSocket(req.session.userId!);
+          // WhatsApp: send over the TARGET chat's OWN channel socket — not the
+          // user's primary channel — so a forward goes out from the WhatsApp
+          // account that actually owns that chat. Mirrors the /reply path; a
+          // group belongs to the specific paired number, and sending via the
+          // wrong account would silently fail / send from the wrong identity.
+          const sock = getSockForChannel(targetChat.channelId);
           if (!sock) {
             results.push({ chatId: targetId, ok: false, error: "WhatsApp tidak terhubung" });
             continue;
