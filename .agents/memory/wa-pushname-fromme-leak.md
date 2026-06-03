@@ -21,3 +21,13 @@ from their own INBOUND messages or a `contacts.upsert`/`contacts.update`.
 (no `+`) so the re-resolution guards (`contactName = rawNumber OR IS NULL`) let a
 future inbound message repopulate the correct name. Do NOT reset the owner's own
 self-chat (phone == channel.owner_phone) — that name is legitimately the owner.
+
+**The code guard alone does NOT heal existing corruption — cleanup is a SEPARATE
+step that must be run per channel after the fix lands.** A row already named with
+the owner's display name can never self-heal: its `contact_name` is no longer a
+bare number, so every re-resolution guard (`= rawNumber OR IS NULL`) skips it.
+Shipping the guard fixes one channel's *new* messages but leaves every other
+channel's pre-fix rows stuck. Find leaked rows channel-agnostically by joining
+each channel's owner self-chat name: a 1:1 chat (`phone_number LIKE '+%'`) whose
+`contact_name` equals the owner self-chat's name AND whose phone != the owner's
+is a leak. Reset those to `ltrim(phone_number,'+')`.
