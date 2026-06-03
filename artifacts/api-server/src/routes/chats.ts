@@ -1567,17 +1567,18 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
     const agentTag = await resolveAgentTag(req.session.userId!);
     const taggedContent = withTag(bodyParsed.data.content, agentTag);
 
-    // For Telegram we must actively push the message — there is no
-    // inbound echo loop (unlike Baileys messages.upsert which echoes
-    // outbound sends back through our handler). For WhatsApp the
-    // outbound send is handled elsewhere (e.g. sendMediaToJid for media,
-    // or the socket echo for text via the existing flow).
+    // Both transports need an EXPLICIT send. Baileys does not echo our own
+    // API-initiated sends back through messages.upsert in any way we can rely
+    // on to deliver, so recording the row alone never actually transmits the
+    // message (it would just show two ticks in the UI while never reaching
+    // WhatsApp). Media/contact/product/quotation already do this; plain text
+    // must too.
     const [channel] = await db
       .select()
       .from(channelsTable)
       .where(eq(channelsTable.id, chat.channelId))
       .limit(1);
-    let tgDedupeKey: string | null = null;
+    let waMessageId: string | null = null;
     if (channel?.kind === "telegram") {
       const meta =
         (channel.metadata as Record<string, unknown> | null)?.["telegram"] as
@@ -1598,24 +1599,60 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
       }
       try {
         const sent = await tgSendMessage(meta.botToken, tgChatId, taggedContent);
-        tgDedupeKey = `tg:${tgChatId}:${sent.messageId}`;
+        waMessageId = `tg:${tgChatId}:${sent.messageId}`;
       } catch (err) {
         req.log.error({ err, chatId: idParsed.data.id }, "telegram reply failed");
         res.status(502).json({ error: "Gagal kirim ke Telegram" });
         return;
       }
+    } else {
+      // WhatsApp: send over the chat's OWN channel socket — not the user's
+      // primary channel. A group chat belongs to the specific paired number
+      // that is a member of that group; sending via the wrong account would
+      // silently fail (not in group). Capture the returned WA message id so
+      // the messages.upsert echo dedupes against it instead of duplicating.
+      const sock = getSockForChannel(chat.channelId);
+      if (!sock) {
+        res.status(503).json({ error: "WhatsApp belum terhubung" });
+        return;
+      }
+      // Groups: phoneNumber already holds the full "<id>@g.us" JID;
+      // 1:1 chats store the bare number.
+      const jid = chat.phoneNumber.includes("@")
+        ? chat.phoneNumber
+        : `${chat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+      try {
+        const sent = await sock.sendMessage(jid, { text: taggedContent });
+        waMessageId = sent?.key?.id ?? null;
+      } catch (err) {
+        req.log.error({ err, chatId: idParsed.data.id }, "whatsapp reply failed");
+        res.status(502).json({ error: "Gagal kirim ke WhatsApp" });
+        return;
+      }
     }
 
-    const [message] = await db
+    // Tag the row with the dedupe key (WA id, or tg:<chat>:<msg>) so the echo
+    // from messages.upsert (onConflictDoNothing on wa_message_id) cannot
+    // create a duplicate row. A null id (rare) inserts cleanly since the
+    // unique index treats NULLs as distinct.
+    const inserted = await db
       .insert(chatMessagesTable)
       .values({
         chatId: idParsed.data.id,
         direction: "outbound",
         content: taggedContent,
         isAiGenerated: false,
-        waMessageId: tgDedupeKey,
+        waMessageId,
       })
+      .onConflictDoNothing({ target: chatMessagesTable.waMessageId })
       .returning();
+    const [message] = inserted.length
+      ? inserted
+      : await db
+          .select()
+          .from(chatMessagesTable)
+          .where(eq(chatMessagesTable.waMessageId, waMessageId!))
+          .limit(1);
 
     // Channel-atomic: include channelId in WHERE so a channel /unpair that
     // happens between loadOwnedChat and this update can't write into a
