@@ -24,6 +24,8 @@ export * from './aiReviewColumn';
 export * from './aiReviewConfig';
 export * from './aiReviewConfigInput';
 export * from './aiReviewConfigLastRunStatus';
+export * from './aiReviewGenerateColumnsInput';
+export * from './aiReviewGenerateColumnsResult';
 export * from './aiReviewGroup';
 export * from './aiReviewRunResult';
 export * from './aiUsageSummary';

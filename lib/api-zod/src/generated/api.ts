@@ -1837,6 +1837,31 @@ export const RunAiReviewConfigResponse = zod.object({
 
 
 /**
+ * @summary Generate output columns from the AI instruction
+ */
+export const generateAiReviewColumnsBodyPromptMax = 4000;
+
+
+
+export const GenerateAiReviewColumnsBody = zod.object({
+  "prompt": zod.string().min(1).max(generateAiReviewColumnsBodyPromptMax)
+})
+
+export const generateAiReviewColumnsResponseColumnsItemNameMax = 100;
+
+export const generateAiReviewColumnsResponseColumnsItemHintMax = 300;
+
+
+
+export const GenerateAiReviewColumnsResponse = zod.object({
+  "columns": zod.array(zod.object({
+  "name": zod.string().min(1).max(generateAiReviewColumnsResponseColumnsItemNameMax),
+  "hint": zod.string().max(generateAiReviewColumnsResponseColumnsItemHintMax).optional()
+}))
+})
+
+
+/**
  * @summary List team members for the current owner account
  */
 export const ListAgentsResponse = zod.object({

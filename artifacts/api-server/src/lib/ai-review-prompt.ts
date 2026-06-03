@@ -29,3 +29,20 @@ ${OUTPUT_CONTRACT}
 KOLOM:
 ${colList}`;
 }
+
+// System prompt for the "Generate by AI" button: the model reads the per-group
+// instruction and proposes the set of output columns (Sheet headers) needed to
+// fulfil it. It must reply with ONLY a JSON array of {name, hint} objects so the
+// caller can map it straight into the column editor.
+export function buildAiReviewColumnSuggestionPrompt(): string {
+  return `Anda membantu menyiapkan kolom output Google Sheet untuk fitur rekap foto nota/dokumen. Berdasarkan instruksi pengguna, tentukan daftar kolom (header Sheet) yang paling cocok untuk menampung hasil ekstraksi.
+
+Balas HANYA dengan JSON array berisi objek, tanpa teks lain. Setiap objek mewakili satu kolom dengan bentuk: {"name": "Nama Kolom", "hint": "petunjuk singkat untuk AI mengisi kolom ini"}.
+
+Aturan:
+- Gunakan Bahasa Indonesia untuk nama kolom dan petunjuk.
+- "name" wajib ringkas dan jelas (mis. "Tanggal", "Nama Barang", "Qty", "Harga Satuan", "Total").
+- "hint" menjelaskan secara singkat nilai apa yang diisi di kolom itu.
+- Jika instruksi menyiratkan rincian per item (mis. daftar belanja), sertakan kolom per item (nama barang, qty, harga satuan, subtotal) di samping kolom tingkat nota (tanggal, nama toko, total).
+- Berikan antara 3 sampai 12 kolom yang relevan. Jangan menambah kolom yang tidak diperlukan.`;
+}

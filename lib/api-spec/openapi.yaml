@@ -1974,6 +1974,23 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AiReviewRunResult" }
 
+  /ai-review/generate-columns:
+    post:
+      operationId: generateAiReviewColumns
+      tags: [ai-review]
+      summary: Generate output columns from the AI instruction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiReviewGenerateColumnsInput" }
+      responses:
+        "200":
+          description: Suggested columns
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiReviewGenerateColumnsResult" }
+
   /agents:
     get:
       operationId: listAgents
@@ -4841,6 +4858,20 @@ components:
         appended: { type: integer }
         uploaded: { type: integer }
         errors: { type: integer }
+
+    AiReviewGenerateColumnsInput:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: { type: string, minLength: 1, maxLength: 4000 }
+
+    AiReviewGenerateColumnsResult:
+      type: object
+      required: [columns]
+      properties:
+        columns:
+          type: array
+          items: { $ref: "#/components/schemas/AiReviewColumn" }
 
     ProductSyncConfig:
       type: object

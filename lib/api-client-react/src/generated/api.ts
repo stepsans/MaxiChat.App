@@ -30,6 +30,8 @@ import type {
   AiProviderTestResult,
   AiReviewConfig,
   AiReviewConfigInput,
+  AiReviewGenerateColumnsInput,
+  AiReviewGenerateColumnsResult,
   AiReviewGroup,
   AiReviewRunResult,
   AiUsageSummary,
@@ -6492,6 +6494,77 @@ export const useRunAiReviewConfig = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRunAiReviewConfigMutationOptions(options));
+    }
+
+export const getGenerateAiReviewColumnsUrl = () => {
+
+
+
+
+  return `/api/ai-review/generate-columns`
+}
+
+/**
+ * @summary Generate output columns from the AI instruction
+ */
+export const generateAiReviewColumns = async (aiReviewGenerateColumnsInput: AiReviewGenerateColumnsInput, options?: RequestInit): Promise<AiReviewGenerateColumnsResult> => {
+
+  return customFetch<AiReviewGenerateColumnsResult>(getGenerateAiReviewColumnsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiReviewGenerateColumnsInput,)
+  }
+);}
+
+
+
+
+export const getGenerateAiReviewColumnsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateAiReviewColumns>>, TError,{data: BodyType<AiReviewGenerateColumnsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateAiReviewColumns>>, TError,{data: BodyType<AiReviewGenerateColumnsInput>}, TContext> => {
+
+const mutationKey = ['generateAiReviewColumns'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateAiReviewColumns>>, {data: BodyType<AiReviewGenerateColumnsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateAiReviewColumns(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateAiReviewColumnsMutationResult = NonNullable<Awaited<ReturnType<typeof generateAiReviewColumns>>>
+    export type GenerateAiReviewColumnsMutationBody = BodyType<AiReviewGenerateColumnsInput>
+    export type GenerateAiReviewColumnsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Generate output columns from the AI instruction
+ */
+export const useGenerateAiReviewColumns = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateAiReviewColumns>>, TError,{data: BodyType<AiReviewGenerateColumnsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateAiReviewColumns>>,
+        TError,
+        {data: BodyType<AiReviewGenerateColumnsInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateAiReviewColumnsMutationOptions(options));
     }
 
 export const getListAgentsUrl = () => {

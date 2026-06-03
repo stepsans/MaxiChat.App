@@ -16,6 +16,7 @@ import {
   useListCredentialSpreadsheetTabs,
   getListCredentialSpreadsheetTabsQueryKey,
   useCreateCredentialSpreadsheet,
+  useGenerateAiReviewColumns,
   useListCredentialDriveFolders,
   getListCredentialDriveFoldersQueryKey,
   type AiReviewConfig,
@@ -594,7 +595,40 @@ function ConfigEditor({
   const createSheetMut = useCreateCredentialSpreadsheet();
   const createMut = useCreateAiReviewConfig();
   const updateMut = useUpdateAiReviewConfig();
+  const generateColumnsMut = useGenerateAiReviewColumns();
   const saving = createMut.isPending || updateMut.isPending;
+
+  // "Generate by AI": read the Instruksi AI (section 2) and replace the output
+  // columns with an AI-proposed set. Requires the instruction to be filled.
+  async function handleGenerateColumns() {
+    const instruction = prompt.trim();
+    if (!instruction) {
+      toast({
+        title: "Instruksi AI kosong",
+        description: "Isi Instruksi AI (langkah 2) dulu sebelum generate kolom.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      const res = await generateColumnsMut.mutateAsync({
+        data: { prompt: instruction },
+      });
+      setColumns(
+        res.columns.map((c) => ({ name: c.name, hint: c.hint ?? "" }))
+      );
+      toast({
+        title: "Kolom dibuat",
+        description: `AI mengusulkan ${res.columns.length} kolom dari Instruksi AI. Sesuaikan bila perlu.`,
+      });
+    } catch {
+      toast({
+        title: "Gagal membuat kolom",
+        description: "AI tidak dapat membuat kolom. Coba perjelas Instruksi AI.",
+        variant: "destructive",
+      });
+    }
+  }
 
   // When picking a group from the list, the option value is a composite
   // `channelId:groupJid` so the same group present on two channels resolves to
@@ -926,6 +960,30 @@ function ConfigEditor({
                   </Select>
                 </div>
               )}
+
+              {/* Generate output columns from the Instruksi AI (section 2). */}
+              <div className="rounded-md border border-dashed border-border p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Buat kolom output otomatis: AI membaca Instruksi AI (langkah
+                    2) lalu menyusun kolomnya.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!prompt.trim() || generateColumnsMut.isPending}
+                    onClick={handleGenerateColumns}
+                  >
+                    {generateColumnsMut.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Generate by AI
+                  </Button>
+                </div>
+              </div>
 
               {/* Columns (drag to reorder) */}
               <div className="space-y-2">

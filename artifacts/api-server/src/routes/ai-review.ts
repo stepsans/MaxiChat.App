@@ -13,6 +13,10 @@ import {
 import { resolveOwnerUserId } from "../lib/seed";
 import { runAndRecord } from "../lib/ai-review";
 import { requirePermission } from "../lib/role-permissions";
+import { resolveAiClient } from "../lib/ai-provider";
+import { recordAiUsage } from "../lib/ai-usage";
+import { buildAiReviewColumnSuggestionPrompt } from "../lib/ai-review-prompt";
+import { parseJsonRows, cellToString } from "../lib/ai-review-parse";
 
 const router = Router();
 
@@ -410,6 +414,67 @@ router.post("/configs/:id/run", reviewManage, async (req, res): Promise<void> =>
   } catch (err: unknown) {
     req.log.error({ err }, "ai-review manual run failed");
     res.status(500).json({ error: (err as Error)?.message || "Run gagal" });
+  }
+});
+
+const GenerateColumnsInput = z.object({
+  prompt: z.string().trim().min(1, "Instruksi AI wajib diisi.").max(4000),
+});
+
+// "Generate by AI": read the per-group instruction and propose the output
+// columns. Super-admin only (it spends AI billing, like the other write
+// routes); usage is recorded against the tenant owner.
+router.post("/generate-columns", reviewManage, async (req, res): Promise<void> => {
+  try {
+    const parsed = GenerateColumnsInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Instruksi AI wajib diisi." });
+      return;
+    }
+    const { client, model, provider, ownerUserId } = await resolveAiClient(
+      req.session.userId!
+    );
+    const resp = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: buildAiReviewColumnSuggestionPrompt() },
+        { role: "user", content: parsed.data.prompt },
+      ],
+      max_tokens: 1000,
+      temperature: 0,
+    });
+    void recordAiUsage({
+      ownerUserId,
+      channelId: null,
+      provider,
+      model,
+      usage: resp.usage,
+    });
+    const content = resp.choices[0]?.message?.content ?? "";
+    const seen = new Set<string>();
+    const columns: AiReviewColumn[] = [];
+    for (const obj of parseJsonRows(content)) {
+      const name = cellToString(obj.name).trim().slice(0, 100);
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const hint = cellToString(obj.hint).trim().slice(0, 300);
+      columns.push(hint ? { name, hint } : { name });
+      if (columns.length >= 50) break;
+    }
+    if (columns.length === 0) {
+      res.status(422).json({
+        error: "AI tidak menghasilkan kolom. Coba perjelas Instruksi AI.",
+      });
+      return;
+    }
+    res.json({ columns });
+  } catch (err: unknown) {
+    req.log.error({ err }, "ai-review generate columns failed");
+    res
+      .status(500)
+      .json({ error: (err as Error)?.message || "Gagal membuat kolom" });
   }
 });
 

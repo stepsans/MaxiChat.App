@@ -1603,6 +1603,18 @@ export interface AiReviewRunResult {
   errors: number;
 }
 
+export interface AiReviewGenerateColumnsInput {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  prompt: string;
+}
+
+export interface AiReviewGenerateColumnsResult {
+  columns: AiReviewColumn[];
+}
+
 export type ProductSyncConfigIntervalMinutes = typeof ProductSyncConfigIntervalMinutes[keyof typeof ProductSyncConfigIntervalMinutes];
 
 
