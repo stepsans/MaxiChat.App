@@ -4016,7 +4016,7 @@ components:
 
     AnalyticsSummary:
       type: object
-      required: [totalChats, aiHandled, needsHuman, closed, hotLeads, closingLeads, coldLeads, totalMessages, todayChats, closingRate]
+      required: [totalChats, aiHandled, needsHuman, closed, hotLeads, closingLeads, coldLeads, totalMessages, todayChats, closingRate, chatsByLabel]
       properties:
         totalChats:
           type: integer
@@ -4038,6 +4038,26 @@ components:
           type: integer
         closingRate:
           type: number
+        chatsByLabel:
+          type: array
+          description: Count of chats carrying each customer label, scoped to the current account. Sorted by count descending.
+          items:
+            $ref: "#/components/schemas/LabelCount"
+
+    LabelCount:
+      type: object
+      required: [id, name, color, count]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+          description: Hex color of the label, mirrored from CustomerLabel.
+        count:
+          type: integer
+          description: Number of chats in scope that carry this label.
 
     Product:
       type: object

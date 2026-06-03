@@ -33,6 +33,21 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useEffect } from "react";
 
+// Convert a label's hex color into translucent fill/border so the count chip
+// reads as a soft tint with the label color as text — consistent with the
+// tag/status badge styling used elsewhere in the app.
+function hexToRgba(hex: string, alpha: number): string {
+  const m = hex.replace("#", "");
+  const full =
+    m.length === 3 ? m.split("").map((c) => c + c).join("") : m.slice(0, 6);
+  const r = parseInt(full.slice(0, 2), 16) || 0;
+  const g = parseInt(full.slice(2, 4), 16) || 0;
+  const b = parseInt(full.slice(4, 6), 16) || 0;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+const labelChipBg = (hex: string) => hexToRgba(hex, 0.15);
+const labelChipBorder = (hex: string) => hexToRgba(hex, 0.35);
+
 function StatCard({
   title,
   value,
@@ -285,6 +300,38 @@ export default function Dashboard() {
             </>
           )}
         </div>
+
+        {/* Chats by Label */}
+        {!summaryLoading && (summary?.chatsByLabel?.length ?? 0) > 0 && (
+          <Card data-testid="chats-by-label-card">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">Chat per Label</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {summary!.chatsByLabel.map((label) => (
+                  <span
+                    key={label.id}
+                    data-testid={`label-count-${label.id}`}
+                    className="inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium"
+                    style={{
+                      backgroundColor: labelChipBg(label.color),
+                      color: label.color,
+                      border: `1px solid ${labelChipBorder(label.color)}`,
+                    }}
+                  >
+                    <span
+                      className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: label.color }}
+                    />
+                    <span>{label.name}</span>
+                    <span className="font-bold tabular-nums">{label.count}</span>
+                  </span>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Needs Human Section */}
         {needsHumanChats.length > 0 && (

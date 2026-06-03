@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { chatsTable, chatMessagesTable } from "@workspace/db";
-import { sql, inArray } from "drizzle-orm";
+import {
+  chatsTable,
+  chatMessagesTable,
+  chatLabelsTable,
+  customerLabelsTable,
+} from "@workspace/db";
+import { sql, inArray, eq } from "drizzle-orm";
 import { resolveChannelScope } from "../lib/channel-context";
 import { requirePermission } from "../lib/role-permissions";
 
@@ -30,6 +35,7 @@ router.get("/summary", async (req, res): Promise<void> => {
         totalMessages: 0,
         todayChats: 0,
         closingRate: 0,
+        chatsByLabel: [],
       });
       return;
     }
@@ -62,6 +68,29 @@ router.get("/summary", async (req, res): Promise<void> => {
 
     const closingRate = totalChats > 0 ? Math.round((closingLeads / totalChats) * 100) : 0;
 
+    // Count chats carrying each customer label, scoped to this account's chats.
+    const chatsByLabel = chatIds.length
+      ? await db
+          .select({
+            id: customerLabelsTable.id,
+            name: customerLabelsTable.name,
+            color: customerLabelsTable.color,
+            count: sql<number>`cast(count(*) as int)`,
+          })
+          .from(chatLabelsTable)
+          .innerJoin(
+            customerLabelsTable,
+            eq(chatLabelsTable.labelId, customerLabelsTable.id)
+          )
+          .where(inArray(chatLabelsTable.chatId, chatIds))
+          .groupBy(
+            customerLabelsTable.id,
+            customerLabelsTable.name,
+            customerLabelsTable.color
+          )
+          .orderBy(sql`count(*) desc`, customerLabelsTable.name)
+      : [];
+
     res.json({
       totalChats,
       aiHandled,
@@ -73,6 +102,7 @@ router.get("/summary", async (req, res): Promise<void> => {
       totalMessages: msgCount?.count ?? 0,
       todayChats,
       closingRate,
+      chatsByLabel,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get analytics summary");

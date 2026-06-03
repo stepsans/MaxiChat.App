@@ -42,6 +42,8 @@ export default function Analytics() {
       ]
     : [];
 
+  const labelData = summary?.chatsByLabel ?? [];
+
   return (
     <div className="flex flex-col h-full overflow-auto">
       {/* Header */}
@@ -180,6 +182,61 @@ export default function Analytics() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Chats by Label */}
+        {labelData.length > 0 && (
+          <Card data-testid="chart-chats-by-label">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Chat per Label</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {summaryLoading ? (
+                <Skeleton className="h-48" />
+              ) : (
+                <ResponsiveContainer
+                  width="100%"
+                  height={Math.max(120, labelData.length * 44)}
+                >
+                  <BarChart data={labelData} layout="vertical" barSize={20}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(215,15%,18%)"
+                      horizontal={false}
+                    />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 11, fill: "hsl(215,10%,65%)" }}
+                      axisLine={false}
+                      tickLine={false}
+                      allowDecimals={false}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={140}
+                      tick={{ fontSize: 11, fill: "hsl(215,10%,65%)" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(215,15%,12%)",
+                        border: "1px solid hsl(215,15%,18%)",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                      {labelData.map((label) => (
+                        <Cell key={label.id} fill={label.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Common Questions */}
         <Card data-testid="chart-common-questions">

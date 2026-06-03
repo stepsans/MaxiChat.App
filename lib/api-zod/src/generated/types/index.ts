@@ -130,6 +130,7 @@ export * from './knowledgeSyncConfigLastSyncStatus';
 export * from './knowledgeType';
 export * from './knowledgeTypeInput';
 export * from './knowledgeUpdate';
+export * from './labelCount';
 export * from './listChatsParams';
 export * from './listChatsStatus';
 export * from './listChatsTag';

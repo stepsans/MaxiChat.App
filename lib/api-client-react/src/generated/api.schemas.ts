@@ -708,6 +708,15 @@ export interface AutoReplyUpdate {
   autoReplyEnabled: boolean;
 }
 
+export interface LabelCount {
+  id: number;
+  name: string;
+  /** Hex color of the label, mirrored from CustomerLabel. */
+  color: string;
+  /** Number of chats in scope that carry this label. */
+  count: number;
+}
+
 export interface AnalyticsSummary {
   totalChats: number;
   aiHandled: number;
@@ -719,6 +728,8 @@ export interface AnalyticsSummary {
   totalMessages: number;
   todayChats: number;
   closingRate: number;
+  /** Count of chats carrying each customer label, scoped to the current account. Sorted by count descending. */
+  chatsByLabel: LabelCount[];
 }
 
 export interface Product {

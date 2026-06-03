@@ -5,6 +5,7 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { LabelCount } from './labelCount';
 
 export interface AnalyticsSummary {
   totalChats: number;
@@ -17,4 +18,6 @@ export interface AnalyticsSummary {
   totalMessages: number;
   todayChats: number;
   closingRate: number;
+  /** Count of chats carrying each customer label, scoped to the current account. Sorted by count descending. */
+  chatsByLabel: LabelCount[];
 }

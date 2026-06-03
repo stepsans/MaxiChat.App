@@ -14,6 +14,7 @@ import {
   useDeleteChat,
   useOpenChatByPhone,
   useCreateGroup,
+  useListCustomerLabels,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
 import { ContactPicker } from "@/components/ContactPicker";
@@ -66,6 +67,19 @@ function formatChatTimestamp(iso: string): string {
   return format(d, "dd/MM/yyyy");
 }
 
+// Pick black or white text for a label chip based on its background luminance,
+// mirroring the helper used in ChatInfoSidebar so chips read consistently.
+function readableText(hex: string): string {
+  const m = hex.replace("#", "");
+  const full =
+    m.length === 3 ? m.split("").map((c) => c + c).join("") : m.slice(0, 6);
+  const r = parseInt(full.slice(0, 2), 16) || 0;
+  const g = parseInt(full.slice(2, 4), 16) || 0;
+  const b = parseInt(full.slice(4, 6), 16) || 0;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#111827" : "#ffffff";
+}
+
 const tagColors: Record<string, string> = {
   hot_lead: "bg-orange-500/15 text-orange-300 border-orange-500/30",
   cold: "bg-orange-500/15 text-orange-300 border-orange-500/30",
@@ -86,6 +100,7 @@ interface Props {
 export default function ChatListPane({ selectedChatId }: Props) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
+  const [labelFilter, setLabelFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<"personal" | "group">("personal");
   const qc = useQueryClient();
@@ -100,6 +115,9 @@ export default function ChatListPane({ selectedChatId }: Props) {
     {},
     { query: { queryKey: getListChatsQueryKey(), refetchInterval: 5000 } }
   );
+
+  const { data: labels } = useListCustomerLabels();
+  const availableLabels = labels ?? [];
 
   const deleteChat = useDeleteChat({
     mutation: {
@@ -134,16 +152,21 @@ export default function ChatListPane({ selectedChatId }: Props) {
     const matchScope = scope === "group" ? isGroupChat(c) : !isGroupChat(c);
     const matchStatus = statusFilter === "all" || c.status === statusFilter;
     const matchTag = tagFilter === "all" || c.tag === tagFilter;
+    const matchLabel =
+      labelFilter === "all" ||
+      (c.labels ?? []).some((l) => String(l.id) === labelFilter);
     const matchSearch =
       !search ||
       c.contactName.toLowerCase().includes(search.toLowerCase()) ||
       (c.nickname?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
       c.phoneNumber.includes(search);
-    return matchScope && matchStatus && matchTag && matchSearch;
+    return matchScope && matchStatus && matchTag && matchLabel && matchSearch;
   });
 
   const activeFilters =
-    (statusFilter !== "all" ? 1 : 0) + (tagFilter !== "all" ? 1 : 0);
+    (statusFilter !== "all" ? 1 : 0) +
+    (tagFilter !== "all" ? 1 : 0) +
+    (labelFilter !== "all" ? 1 : 0);
 
   return (
     <div className="flex flex-col h-full bg-[hsl(var(--wa-panel))] border-r border-[hsl(var(--wa-divider))]">
@@ -205,6 +228,26 @@ export default function ChatListPane({ selectedChatId }: Props) {
               <DropdownMenuRadioItem value="cold">Cold</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="closing">Closing</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
+            {availableLabels.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs">Label</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={labelFilter} onValueChange={setLabelFilter}>
+                  <DropdownMenuRadioItem value="all">Semua</DropdownMenuRadioItem>
+                  {availableLabels.map((l) => (
+                    <DropdownMenuRadioItem key={l.id} value={String(l.id)}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: l.color }}
+                        />
+                        <span className="truncate">{l.name}</span>
+                      </span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </>
+            )}
             {activeFilters > 0 && (
               <>
                 <DropdownMenuSeparator />
@@ -212,6 +255,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                   onClick={() => {
                     setStatusFilter("all");
                     setTagFilter("all");
+                    setLabelFilter("all");
                   }}
                 >
                   Reset filter
@@ -384,6 +428,26 @@ export default function ChatListPane({ selectedChatId }: Props) {
                         </button>
                       </div>
                     </div>
+                    {(chat.labels?.length ?? 0) > 0 && (
+                      <div
+                        className="flex flex-wrap items-center gap-1"
+                        data-testid={`chat-labels-${chat.id}`}
+                      >
+                        {chat.labels.map((label) => (
+                          <span
+                            key={label.id}
+                            className="inline-flex items-center gap-1 max-w-[140px] rounded px-1.5 py-0.5 text-[10px] font-medium leading-none"
+                            style={{
+                              backgroundColor: label.color,
+                              color: readableText(label.color),
+                            }}
+                            title={label.name}
+                          >
+                            <span className="truncate">{label.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Link>
               );

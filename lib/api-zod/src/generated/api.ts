@@ -2509,7 +2509,13 @@ export const GetAnalyticsSummaryResponse = zod.object({
   "coldLeads": zod.number(),
   "totalMessages": zod.number(),
   "todayChats": zod.number(),
-  "closingRate": zod.number()
+  "closingRate": zod.number(),
+  "chatsByLabel": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color of the label, mirrored from CustomerLabel.'),
+  "count": zod.number().describe('Number of chats in scope that carry this label.')
+})).describe('Count of chats carrying each customer label, scoped to the current account. Sorted by count descending.')
 })
 
 
