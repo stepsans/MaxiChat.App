@@ -29,8 +29,14 @@ describe("buildAiReviewSystemPrompt", () => {
 
   it("always enforces the JSON-keyed-by-column output contract", () => {
     const p = buildAiReviewSystemPrompt("Custom task instruction.", COLUMNS);
-    assert.match(p, /Balas HANYA dengan satu objek JSON/);
+    assert.match(p, /Balas HANYA dengan JSON array berisi objek/);
     assert.match(p, /Gunakan nama kolom persis sebagai key JSON/);
+  });
+
+  it("instructs one object per line item (multi-row per nota)", () => {
+    const p = buildAiReviewSystemPrompt("Custom task.", COLUMNS);
+    assert.match(p, /SATU baris\/item/);
+    assert.match(p, /balas array berisi satu objek/);
   });
 
   it("lists every configured column (with hint when present) under KOLOM", () => {

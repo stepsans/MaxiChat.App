@@ -84,25 +84,34 @@ const SHEET_CRED_TYPES = ["googleSheetsOAuth2Api", "googleSheetsTriggerOAuth2Api
 // fills both the AI instruction and the matching output columns so the owner can
 // start from a working setup instead of writing the prompt from scratch.
 const KAS_HARIAN_TEMPLATE: { prompt: string; columns: ColumnDraft[] } = {
-  prompt: `Anda adalah asisten pembukuan kas harian toko berbahasa Indonesia. Dari setiap foto nota/struk, tentukan apakah transaksi merupakan PEMASUKAN (uang masuk) atau PENGELUARAN (uang keluar), lalu ekstrak detailnya untuk Laporan Kas Harian.
+  prompt: `Anda adalah asisten pembukuan kas harian toko berbahasa Indonesia. Dari setiap foto nota/struk, tentukan apakah transaksi PEMASUKAN (uang masuk) atau PENGELUARAN (uang keluar), lalu ekstrak SETIAP item/baris pada nota untuk Laporan Kas Harian.
+
+PENTING — satu baris per item:
+- Jika satu nota memuat beberapa item (mis. 5 barang), buat SATU baris untuk tiap item (berarti 5 baris).
+- Nilai yang berlaku untuk seluruh nota (Tanggal, No. Nota, Nama Toko/Vendor, Metode Bayar, jenis transaksi) ditulis SAMA di setiap baris.
+- Nilai khusus item (Nama Item, Qty, Harga Satuan, Keterangan, dan nominal Pemasukan/Pengeluaran) diisi sesuai item baris tersebut.
+- Jika nota tidak punya rincian item, cukup buat satu baris.
 
 Aturan:
 - Jenis transaksi: nota pembelian/belanja/biaya = Pengeluaran; nota penjualan/setoran/penerimaan = Pemasukan.
-- Kolom "Pemasukan" diisi HANYA jika uang masuk, selain itu kosongkan. Kolom "Pengeluaran" diisi HANYA jika uang keluar, selain itu kosongkan.
+- "Pemasukan" diisi HANYA jika uang masuk, selain itu kosongkan. "Pengeluaran" diisi HANYA jika uang keluar, selain itu kosongkan. Isi dengan subtotal item baris itu (Qty × Harga Satuan).
 - Tanggal pakai format YYYY-MM-DD sesuai yang tertera di nota; jika tidak ada, kosongkan.
 - Semua nominal ditulis angka saja, tanpa "Rp", tanpa titik/koma ribuan.
 - Kategori pilih yang paling sesuai: Penjualan, Pembelian Barang, Operasional, Gaji, Sewa, Listrik/Air/Internet, Transport, atau Lainnya.
 - Metode bayar: Tunai atau Transfer sesuai nota; jika tidak jelas, isi "Tunai".
-- Keterangan: ringkas isi transaksi (mis. "Beli ATK", "Bayar listrik", "Setoran penjualan harian").`,
+- Keterangan: ringkas item pada baris ini (mis. "Pulpen 1 lusin"), bukan ringkasan seluruh nota.`,
   columns: [
-    { name: "Tanggal", hint: "Tanggal pada nota, format YYYY-MM-DD" },
-    { name: "Keterangan", hint: "Ringkasan transaksi" },
+    { name: "Tanggal", hint: "Tanggal pada nota, format YYYY-MM-DD (sama di tiap baris nota ini)" },
+    { name: "No. Nota", hint: "Nomor struk/nota bila ada (sama di tiap baris nota ini)" },
+    { name: "Nama Toko/Vendor", hint: "Nama penjual/toko di nota (sama di tiap baris)" },
+    { name: "Nama Item", hint: "Nama barang/jasa pada baris ini" },
+    { name: "Qty", hint: "Jumlah/kuantitas item ini, angka saja" },
+    { name: "Harga Satuan", hint: "Harga per unit item ini, angka saja" },
+    { name: "Keterangan", hint: "Ringkasan item pada baris ini" },
     { name: "Kategori", hint: "Penjualan / Pembelian / Operasional / dll" },
-    { name: "Pemasukan", hint: "Nominal uang masuk, angka saja" },
-    { name: "Pengeluaran", hint: "Nominal uang keluar, angka saja" },
+    { name: "Pemasukan", hint: "Subtotal bila uang masuk, angka saja" },
+    { name: "Pengeluaran", hint: "Subtotal bila uang keluar, angka saja" },
     { name: "Metode Bayar", hint: "Tunai atau Transfer" },
-    { name: "Nama Toko/Vendor", hint: "Nama penjual/toko di nota" },
-    { name: "No. Nota", hint: "Nomor struk/nota bila ada" },
   ],
 };
 
@@ -168,7 +177,7 @@ function RunStatusPill({ config }: { config: AiReviewConfig }) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-emerald-500">
         <CheckCircle2 className="w-3.5 h-3.5" />
-        {config.lastRunCount} nota terakhir
+        {config.lastRunCount} baris ditulis
       </span>
     );
   }
@@ -298,8 +307,9 @@ export default function AIReviewPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             Rekap nota/struk otomatis. Kasir kirim foto nota ke grup WhatsApp; pada jam
-            cut-off harian, AI membaca tiap nota, menulis satu baris per nota ke Google
-            Sheet, dan (opsional) menyimpan fotonya ke folder Google Drive.
+            cut-off harian, AI membaca tiap nota, menulis satu baris per item ke Google
+            Sheet (satu nota bisa jadi beberapa baris), dan (opsional) menyimpan fotonya
+            ke folder Google Drive.
           </p>
         </div>
         {canManage && (
@@ -811,7 +821,7 @@ function ConfigEditor({
               <OutputSubHeader
                 icon={<FileSpreadsheet className="w-4 h-4" />}
                 title="Output Google Sheet"
-                hint="Hasil rekap ditulis satu baris per nota ke tab spreadsheet."
+                hint="Hasil rekap ditulis satu baris per item ke tab spreadsheet (satu nota bisa jadi beberapa baris)."
               />
 
               <div className="space-y-2">

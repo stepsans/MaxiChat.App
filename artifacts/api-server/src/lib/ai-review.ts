@@ -13,6 +13,7 @@ import {
   type Credential,
 } from "@workspace/db";
 import { buildAiReviewSystemPrompt } from "./ai-review-prompt";
+import { parseJsonRows, cellToString } from "./ai-review-parse";
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
 import { scanDocument } from "./scanner";
@@ -70,42 +71,6 @@ function todayCutoffUtc(now: Date, tz: string, hhmm: string): Date {
   const ymd = localDateStr(now, tz).split("-").map((n) => parseInt(n, 10));
   const [h, min] = hhmm.split(":").map((n) => parseInt(n, 10));
   return zonedWallToUtc(ymd[0]!, ymd[1]!, ymd[2]!, h!, min!, tz);
-}
-
-// ---- JSON parsing ----------------------------------------------------------
-
-// Models sometimes wrap JSON in ``` fences or prose. Extract the first JSON
-// object defensively so a stray character doesn't drop a whole receipt.
-function parseJsonObject(content: string): Record<string, unknown> | null {
-  const trimmed = content.trim();
-  try {
-    const v = JSON.parse(trimmed);
-    if (v && typeof v === "object" && !Array.isArray(v)) {
-      return v as Record<string, unknown>;
-    }
-  } catch {
-    // fall through to substring extraction
-  }
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    try {
-      const v = JSON.parse(trimmed.slice(start, end + 1));
-      if (v && typeof v === "object" && !Array.isArray(v)) {
-        return v as Record<string, unknown>;
-      }
-    } catch {
-      // give up
-    }
-  }
-  return null;
-}
-
-function cellToString(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  return JSON.stringify(v);
 }
 
 // ---- Sheet writing ---------------------------------------------------------
@@ -168,7 +133,7 @@ export interface ReviewRunResult {
 
 // Receipt recap for one group config: OCR every new receipt photo received
 // since the previous successful run (or local midnight on first ever run),
-// append a row per receipt to the bound Sheet, and (optionally) upload each
+// append a row per receipt line item to the bound Sheet, and (optionally) upload each
 // photo to the Drive folder. `runAt` is the window-end / watermark instant —
 // the caller persists it as lastRunAt so the next run starts exactly here,
 // giving a complete daily cycle (incl. receipts posted after the cut-off) and
@@ -285,7 +250,7 @@ export async function runReviewForConfig(
             ],
           },
         ],
-        max_tokens: 600,
+        max_tokens: 2000,
         temperature: 0,
       });
       void recordAiUsage({
@@ -296,12 +261,15 @@ export async function runReviewForConfig(
         usage: resp.usage,
       });
       const content = resp.choices[0]?.message?.content ?? "";
-      const parsed = parseJsonObject(content);
-      if (!parsed) {
+      const parsedRows = parseJsonRows(content);
+      if (parsedRows.length === 0) {
         errors++;
         continue;
       }
-      rows.push(columns.map((c) => cellToString(parsed[c.name])));
+      // One nota can yield several rows (one per line item on the receipt).
+      for (const obj of parsedRows) {
+        rows.push(columns.map((c) => cellToString(obj[c.name])));
+      }
       if (driveCred && cfg.driveFolderId) {
         const ext = mime.split("/")[1]?.split(";")[0] || "jpg";
         const safeSender = (msg.senderName ?? "nota").replace(/[^\w.-]+/g, "_").slice(0, 40);
@@ -320,7 +288,8 @@ export async function runReviewForConfig(
     }
   }
 
-  // Append rows to the Sheet (one row per receipt).
+  // Append rows to the Sheet (one row per receipt line item; a single nota can
+  // contribute several rows).
   let appended = 0;
   if (rows.length > 0) {
     const auth = await getAuthorizedOAuthClient(sheetCred);
