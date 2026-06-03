@@ -25,6 +25,7 @@
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.
 - [chat_messages dedup per-chat](chat-message-dedup-per-chat.md) — wa_message_id unique must be composite (chat_id, wa_message_id); global unique drops other channels' copies of the same group message.
 - [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).
+- [Chat compose/quote/link-preview UI](chat-compose-quote-ui.md) — normalize scheme-less links via hrefForLink before /link-preview; reset replyTo/reaction/select-mode on chatId change or quotes leak cross-chat.
 - [WhatsApp group @mentions](whatsapp-mentions.md) — needs both `@<jidLocalpart>` text token AND `mentions[]` JIDs; client label→digits rewriter must be boundary-anchored + collision-safe.
 - [WA fromMe pushName leak](wa-pushname-fromme-leak.md) — on fromMe upserts msg.pushName is the OWNER's name; never use it to name a 1:1 contact or every operator-initiated chat shows the owner's name.
 - [Baileys has no echo-send](baileys-no-echo-on-api-sends.md) — every outbound path must explicitly sock.sendMessage on the chat's OWN channel; a DB row alone never transmits (null wa_message_id = never sent).

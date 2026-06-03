@@ -81,6 +81,15 @@ export interface StarMessageBody {
   starred: boolean;
 }
 
+export interface ReactionInput {
+  /** Emoji to react with. Empty string clears the operator's reaction. */
+  emoji: string;
+}
+
+export interface PinMessageBody {
+  pinned: boolean;
+}
+
 export interface ForwardTargetsBody {
   /** @minItems 1 */
   targetChatIds: number[];
@@ -443,6 +452,16 @@ export const ChatMessageDirection = {
   outbound: 'outbound',
 } as const;
 
+export interface MessageReaction {
+  emoji: string;
+  /** True when the reaction is the operator's own (sent from MaxiChat / the connected account). */
+  fromMe?: boolean;
+  /** @nullable */
+  senderName?: string | null;
+  /** @nullable */
+  senderPhoneDigits?: string | null;
+}
+
 export interface ChatMessage {
   id: number;
   chatId: number;
@@ -468,6 +487,40 @@ export interface ChatMessage {
   isForwarded?: boolean;
   /** WhatsApp forward count. >=1 shows "Diteruskan", >=4 shows "Diteruskan berkali-kali". Telegram forwards are 0. */
   forwardingScore?: number;
+  /**
+     * Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).
+     * @nullable
+     */
+  quotedMessageId?: number | null;
+  /**
+     * Snapshot of the quoted message's text/preview, rendered in the grey reply bar.
+     * @nullable
+     */
+  quotedContent?: string | null;
+  /**
+     * Display name of who was quoted (sender of the replied-to message).
+     * @nullable
+     */
+  quotedSender?: string | null;
+  /** Emoji reactions on this message. Empty/omitted when none. */
+  reactions?: MessageReaction[];
+  /**
+     * When this message was pinned (MaxiChat-internal). Null when not pinned.
+     * @nullable
+     */
+  pinnedAt?: string | null;
+}
+
+export interface LinkPreview {
+  url: string;
+  /** @nullable */
+  title?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  image?: string | null;
+  /** @nullable */
+  siteName?: string | null;
 }
 
 export type ChatWithMessagesStatus = typeof ChatWithMessagesStatus[keyof typeof ChatWithMessagesStatus];
@@ -614,6 +667,12 @@ export interface ChatLabelsResult {
 
 export interface ManualReplyInput {
   content: string;
+  /**
+     * Our local chat_messages id this reply quotes. The server builds the WhatsApp/Telegram quoted context from it and snapshots the quoted text/sender for rendering the reply bar.
+
+     * @nullable
+     */
+  quotedMessageId?: number | null;
   /** Full participant JIDs to mention (WhatsApp group chats only). For each JID the message text must contain a matching "@<localpart>" token (the digits before the @ in the JID) so WhatsApp links the mention to the participant. Ignored for non-group and Telegram chats.
    */
   mentions?: string[];
@@ -2130,6 +2189,10 @@ limit?: number;
 
 export type RefreshChatAvatar200 = {
   profilePicUrl: string | null;
+};
+
+export type GetLinkPreviewParams = {
+url: string;
 };
 
 export type GetShortcutSyncConfig200 = {

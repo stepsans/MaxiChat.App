@@ -73,11 +73,16 @@ export async function deleteWebhook(token: string): Promise<void> {
 export async function sendMessage(
   token: string,
   chatId: number | string,
-  text: string
+  text: string,
+  replyToMessageId?: number
 ): Promise<{ messageId: number }> {
   const r = await call<{ message_id: number }>(token, "sendMessage", {
     chat_id: chatId,
     text,
+    // Telegram silently drops reply_to_message_id when the referenced message
+    // no longer exists, so quoting a deleted message degrades to a plain send
+    // rather than failing.
+    ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
   });
   return { messageId: r.message_id };
 }

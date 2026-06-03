@@ -189,6 +189,27 @@ export const chatMessagesTable = pgTable(
     // berkali-kali". Telegram has no count so forwards land with score 0.
     isForwarded: boolean("is_forwarded").notNull().default(false),
     forwardingScore: integer("forwarding_score").notNull().default(0),
+    // Reply / quote. When this message is a reply to another, we snapshot
+    // enough to render the grey "quoted" bar even if the original isn't in our
+    // DB (e.g. a reply to a very old message). quotedMessageId points at our
+    // local chat_messages row when we have it (plain integer, no FK — the
+    // snapshot always covers display so we never need a cascade); the snapshot
+    // fields are what actually render.
+    //   quotedWaMessageId — the quoted WA message id (matches inbound replies)
+    //   quotedContent     — short text/preview of the quoted message
+    //   quotedSender      — display name of who was quoted
+    quotedMessageId: integer("quoted_message_id"),
+    quotedWaMessageId: text("quoted_wa_message_id"),
+    quotedContent: text("quoted_content"),
+    quotedSender: text("quoted_sender"),
+    // Per-message emoji reactions (WhatsApp reactions). Array of objects:
+    // { emoji, fromMe, senderName?, senderPhoneDigits? }. Null/empty = none.
+    // Stored as jsonb so a single column carries all reactors for a message.
+    reactions: jsonb("reactions"),
+    // Message-level pin. WhatsApp's own per-message pins don't sync reliably
+    // over Baileys, so this is dashboard-local: pinning surfaces the message in
+    // a pinned bar at the top of the conversation. Null = not pinned.
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

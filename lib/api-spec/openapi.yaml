@@ -737,6 +737,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /link-preview:
+    get:
+      operationId: getLinkPreview
+      tags: [chats]
+      summary: Fetch OpenGraph metadata for a URL (for link preview cards)
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Link preview metadata (fields null when unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkPreview"
+        "400":
+          description: Invalid or disallowed URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}/reply:
     post:
       operationId: sendManualReply
@@ -2943,6 +2967,78 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /chats/{id}/messages/{messageId}/react:
+    post:
+      operationId: reactMessage
+      tags: [chats]
+      summary: React to a message with an emoji
+      description: >
+        Sends a WhatsApp emoji reaction for the message on the channel and
+        records the operator's reaction locally. Empty emoji clears it.
+        Telegram channels record the reaction locally only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactionInput"
+      responses:
+        "200":
+          description: Updated message with reactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chats/{id}/messages/{messageId}/pin:
+    post:
+      operationId: setMessagePin
+      tags: [chats]
+      summary: Pin or unpin a message (MaxiChat-internal)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PinMessageBody"
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}/messages/{messageId}/star:
     post:
       operationId: setMessageStar
@@ -3338,6 +3434,19 @@ components:
       properties:
         starred:
           type: boolean
+    ReactionInput:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
+          type: string
+          description: Emoji to react with. Empty string clears the operator's reaction.
+    PinMessageBody:
+      type: object
+      required: [pinned]
+      properties:
+        pinned:
+          type: boolean
     ForwardTargetsBody:
       type: object
       required: [targetChatIds]
@@ -3726,6 +3835,52 @@ components:
         forwardingScore:
           type: integer
           description: WhatsApp forward count. >=1 shows "Diteruskan", >=4 shows "Diteruskan berkali-kali". Telegram forwards are 0.
+        quotedMessageId:
+          type: ["integer", "null"]
+          description: Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).
+        quotedContent:
+          type: ["string", "null"]
+          description: Snapshot of the quoted message's text/preview, rendered in the grey reply bar.
+        quotedSender:
+          type: ["string", "null"]
+          description: Display name of who was quoted (sender of the replied-to message).
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageReaction"
+          description: Emoji reactions on this message. Empty/omitted when none.
+        pinnedAt:
+          type: ["string", "null"]
+          description: When this message was pinned (MaxiChat-internal). Null when not pinned.
+
+    MessageReaction:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
+          type: string
+        fromMe:
+          type: boolean
+          description: True when the reaction is the operator's own (sent from MaxiChat / the connected account).
+        senderName:
+          type: ["string", "null"]
+        senderPhoneDigits:
+          type: ["string", "null"]
+
+    LinkPreview:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        image:
+          type: ["string", "null"]
+        siteName:
+          type: ["string", "null"]
 
     ChatWithMessages:
       type: object
@@ -3902,6 +4057,12 @@ components:
       properties:
         content:
           type: string
+        quotedMessageId:
+          type: ["integer", "null"]
+          description: >
+            Our local chat_messages id this reply quotes. The server builds the
+            WhatsApp/Telegram quoted context from it and snapshots the quoted
+            text/sender for rendering the reply bar.
         mentions:
           type: array
           items:

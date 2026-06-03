@@ -332,7 +332,17 @@ export const GetChatHistoryResponse = zod.object({
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
-  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
 })).describe('Older messages, ordered oldest-first.'),
   "hasMore": zod.boolean().describe('True when still older messages exist before this page.')
 })
@@ -399,7 +409,17 @@ export const GetChatResponse = zod.object({
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
-  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
 })),
   "hasMoreMessages": zod.boolean().optional().describe('True when older messages exist beyond the returned window. The conversation loads only the most recent page; pass the oldest returned message id as `before` to fetch the previous page.\n')
 })
@@ -484,7 +504,17 @@ export const SendProductToChatResponse = zod.object({
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
-  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
 })
 
 
@@ -511,7 +541,17 @@ export const SendShortcutToChatResponse = zod.object({
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
-  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
 })
 
 
@@ -542,7 +582,33 @@ export const SendQuotationToChatResponse = zod.object({
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
-  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+})
+
+
+/**
+ * @summary Fetch OpenGraph metadata for a URL (for link preview cards)
+ */
+export const GetLinkPreviewQueryParams = zod.object({
+  "url": zod.coerce.string()
+})
+
+export const GetLinkPreviewResponse = zod.object({
+  "url": zod.string(),
+  "title": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "image": zod.string().nullish(),
+  "siteName": zod.string().nullish()
 })
 
 
@@ -555,6 +621,7 @@ export const SendManualReplyParams = zod.object({
 
 export const SendManualReplyBody = zod.object({
   "content": zod.string(),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this reply quotes. The server builds the WhatsApp\/Telegram quoted context from it and snapshots the quoted text\/sender for rendering the reply bar.\n'),
   "mentions": zod.array(zod.string()).optional().describe('Full participant JIDs to mention (WhatsApp group chats only). For each JID the message text must contain a matching \"@<localpart>\" token (the digits before the @ in the JID) so WhatsApp links the mention to the participant. Ignored for non-group and Telegram chats.\n')
 })
 
@@ -570,7 +637,17 @@ export const SendManualReplyResponse = zod.object({
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
-  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
 })
 
 
@@ -3134,8 +3211,96 @@ export const GetStarredMessagesResponse = zod.object({
   "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
   "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
   "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
-  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.')
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
 }))
+})
+
+
+/**
+ * Sends a WhatsApp emoji reaction for the message on the channel and records the operator's reaction locally. Empty emoji clears it. Telegram channels record the reaction locally only.
+
+ * @summary React to a message with an emoji
+ */
+export const ReactMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const ReactMessageBody = zod.object({
+  "emoji": zod.string().describe('Emoji to react with. Empty string clears the operator\'s reaction.')
+})
+
+export const ReactMessageResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+})
+
+
+/**
+ * @summary Pin or unpin a message (MaxiChat-internal)
+ */
+export const SetMessagePinParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const SetMessagePinBody = zod.object({
+  "pinned": zod.boolean()
+})
+
+export const SetMessagePinResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
 })
 
 

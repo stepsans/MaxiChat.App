@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ChatMessageDirection } from './chatMessageDirection';
+import type { MessageReaction } from './messageReaction';
 
 export interface ChatMessage {
   id: number;
@@ -32,4 +33,26 @@ export interface ChatMessage {
   isForwarded?: boolean;
   /** WhatsApp forward count. >=1 shows "Diteruskan", >=4 shows "Diteruskan berkali-kali". Telegram forwards are 0. */
   forwardingScore?: number;
+  /**
+     * Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).
+     * @nullable
+     */
+  quotedMessageId?: number | null;
+  /**
+     * Snapshot of the quoted message's text/preview, rendered in the grey reply bar.
+     * @nullable
+     */
+  quotedContent?: string | null;
+  /**
+     * Display name of who was quoted (sender of the replied-to message).
+     * @nullable
+     */
+  quotedSender?: string | null;
+  /** Emoji reactions on this message. Empty/omitted when none. */
+  reactions?: MessageReaction[];
+  /**
+     * When this message was pinned (MaxiChat-internal). Null when not pinned.
+     * @nullable
+     */
+  pinnedAt?: string | null;
 }

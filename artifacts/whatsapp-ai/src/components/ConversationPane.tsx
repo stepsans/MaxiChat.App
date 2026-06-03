@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetChat,
@@ -20,12 +20,16 @@ import {
   getGetStarredMessagesQueryKey,
   useDeleteMessageForMe,
   useRevokeMessage,
+  useReactMessage,
+  useSetMessagePin,
+  getLinkPreview,
   useListChats,
   useForwardMessage,
   useGetGroupInfo,
   getGetGroupInfoQueryKey,
   getChatHistory,
   type GroupParticipant,
+  type LinkPreview as LinkPreviewData,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +46,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -88,6 +93,12 @@ import {
   Star,
   Trash2,
   Share2,
+  Reply,
+  Pin,
+  PinOff,
+  CheckSquare,
+  MessageCircle,
+  CornerUpLeft,
 } from "lucide-react";
 import { cn, resolveImageSrc } from "@/lib/utils";
 import { format, isToday, isYesterday, isThisYear } from "date-fns";
@@ -121,9 +132,122 @@ function formatDayHeader(iso: string): string {
   return format(d, "d MMMM yyyy", { locale: idLocale });
 }
 
+// Quick-react emoji palette shown in the per-message reaction bar.
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+// A short human label for a media-only message, used when it is quoted in a
+// reply bar (where there's no text body to show).
+function mediaPlaceholder(msg: any): string {
+  switch (msg?.mediaType) {
+    case "image":
+      return "📷 Foto";
+    case "video":
+      return "🎥 Video";
+    case "audio":
+      return "🎙️ Pesan suara";
+    case "sticker":
+      return "🏷️ Stiker";
+    case "document":
+      return `📄 ${msg.mediaFilename ?? "Dokumen"}`;
+    case "contact":
+      return "👤 Kontak";
+    default:
+      return "Pesan";
+  }
+}
+
+// Matches http(s) URLs and bare "www." / domain-style links so we can render
+// them as clickable anchors. Kept permissive but anchored on a scheme or a
+// "www."/domain boundary so we don't accidentally linkify plain words.
+const URL_RE =
+  /\b((?:https?:\/\/|www\.)[^\s<]+[^\s<.,;:!?)\]}'"]|[a-z0-9-]+(?:\.[a-z0-9-]+)+\.(?:com|net|org|io|co|id|ai|app|dev|me|info|biz|store|xyz|link|gg|tv)(?:\/[^\s<]*)?)/gi;
+
+// Normalize a matched link into an href the browser can open. Bare domains /
+// "www." links get an https:// scheme so they open as absolute URLs.
+function hrefForLink(raw: string): string {
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+// Return the first link found in a body, or null. Used to decide whether to
+// render a link-preview card under the bubble.
+function firstLink(text: string): string | null {
+  if (!text) return null;
+  URL_RE.lastIndex = 0;
+  const m = URL_RE.exec(text);
+  return m ? m[0] : null;
+}
+
+// A WhatsApp-style link-preview card. Fetches OpenGraph metadata for the URL
+// from the server (SSRF-guarded) and renders a clickable thumbnail + title +
+// description. Renders nothing until/unless useful metadata is available.
+function LinkPreviewCard({ url, isOutbound }: { url: string; isOutbound: boolean }) {
+  const [data, setData] = useState<LinkPreviewData | null>(null);
+  // Normalize before fetching: linkified text can include scheme-less links
+  // (e.g. "www.example.com"); the server parses with `new URL()` and rejects
+  // those, so send the canonical href the card itself links to.
+  const fetchUrl = hrefForLink(url);
+  useEffect(() => {
+    let alive = true;
+    setData(null);
+    getLinkPreview({ url: fetchUrl })
+      .then((res) => {
+        if (alive) setData(res);
+      })
+      .catch(() => {
+        if (alive) setData(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [fetchUrl]);
+  if (!data || (!data.title && !data.description && !data.image)) return null;
+  return (
+    <a
+      href={hrefForLink(url)}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid="link-preview-card"
+      className={cn(
+        "block mb-1 overflow-hidden rounded-md border border-black/10 no-underline",
+        isOutbound ? "bg-black/10" : "bg-black/20",
+      )}
+    >
+      {data.image && (
+        <img
+          src={data.image}
+          alt={data.title ?? "preview"}
+          className="w-full max-h-40 object-cover"
+          loading="lazy"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
+        />
+      )}
+      <div className="px-2.5 py-1.5">
+        {data.siteName && (
+          <p className="text-[10px] uppercase tracking-wide text-[hsl(var(--wa-meta))] truncate">
+            {data.siteName}
+          </p>
+        )}
+        {data.title && (
+          <p className="text-[12.5px] font-medium text-foreground line-clamp-2">
+            {data.title}
+          </p>
+        )}
+        {data.description && (
+          <p className="text-[11.5px] text-[hsl(var(--wa-meta))] line-clamp-2">
+            {data.description}
+          </p>
+        )}
+      </div>
+    </a>
+  );
+}
+
 export default function ConversationPane({ chatId }: { chatId: number }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const refreshAvatar = useRefreshChatAvatar({
     mutation: {
@@ -208,6 +332,16 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     setSearchOpen(false);
     setSearchQuery("");
   }, [chatId]);
+  // Drop all transient per-message UI state when switching chats so a reply
+  // quote, open reaction bar, or select-mode selection can never leak into a
+  // different conversation (a stale quote would otherwise carry a foreign
+  // quotedMessageId the server silently ignores).
+  useEffect(() => {
+    setReplyTo(null);
+    setReactionTarget(null);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, [chatId]);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [sendingContact, setSendingContact] = useState(false);
@@ -218,6 +352,18 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const [forwardSelected, setForwardSelected] = useState<Set<number>>(
     () => new Set()
   );
+  // Active "reply to" target shown as a quoted bar above the composer. Sent
+  // along as quotedMessageId so the outbound message threads under the original.
+  const [replyTo, setReplyTo] = useState<
+    { id: number; sender: string; content: string } | null
+  >(null);
+  // Message whose emoji reaction bar is currently open (the small pill row).
+  const [reactionTarget, setReactionTarget] = useState<number | null>(null);
+  // Multi-select mode for bulk forward/delete (WhatsApp "Pilih pesan").
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  // Briefly highlights a bubble after we scroll to it (e.g. tapping a quote).
+  const [highlightId, setHighlightId] = useState<number | null>(null);
   const [productPanelOpen, setProductPanelOpen] = useState(false);
   const [sendingProductId, setSendingProductId] = useState<number | null>(null);
   const [productSearch, setProductSearch] = useState("");
@@ -298,6 +444,128 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     });
   }
 
+  const reactMut = useReactMessage({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal menambah reaksi",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  function reactTo(messageId: number, emoji: string) {
+    setReactionTarget(null);
+    reactMut.mutate({ id: chatId, messageId, data: { emoji } });
+  }
+
+  const pinMut = useSetMessagePin({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal menyematkan pesan",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  function togglePin(messageId: number, pinned: boolean) {
+    pinMut.mutate({ id: chatId, messageId, data: { pinned } });
+  }
+
+  // Jump to a message bubble already rendered in the list and flash it. Used
+  // when tapping a quoted-reply bar. No-op if the original isn't in the window.
+  function scrollToMessage(messageId: number) {
+    const el = document.querySelector(
+      `[data-testid="message-${messageId}"]`,
+    );
+    if (!el) {
+      toast({ title: "Pesan asli tidak ada di tampilan ini." });
+      return;
+    }
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightId(messageId);
+    window.setTimeout(() => setHighlightId(null), 1600);
+  }
+
+  // Copy a message body to the clipboard.
+  async function copyMessage(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Pesan disalin." });
+    } catch {
+      toast({
+        title: "Gagal menyalin",
+        description: "Coba salin manual.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  // Begin replying to a message: stash the quoted snippet and focus the box.
+  function startReply(msg: any) {
+    const sender =
+      msg.direction === "outbound"
+        ? "Anda"
+        : (typeof msg.senderName === "string" && msg.senderName.trim()) ||
+          displayName;
+    setReplyTo({
+      id: msg.id,
+      sender,
+      content:
+        (typeof msg.content === "string" && msg.content.trim()) ||
+        mediaPlaceholder(msg),
+    });
+    requestAnimationFrame(() => replyRef.current?.focus());
+  }
+
+  // Toggle a message in multi-select mode.
+  function toggleSelected(messageId: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  // Navigate to the 1:1 chat for a group participant ("Kirim pesan" / "Balas
+  // pribadi"). Resolves an existing chat by phone digits; if none exists we
+  // tell the user rather than silently failing.
+  function openPrivateChat(digits: string | null | undefined) {
+    if (!digits) {
+      toast({ title: "Nomor anggota tidak diketahui." });
+      return;
+    }
+    const match = (allChats ?? []).find((c: any) => {
+      const phone = typeof c.phoneNumber === "string" ? c.phoneNumber : "";
+      return (
+        !phone.endsWith("@g.us") && phone.replace(/\D/g, "").endsWith(digits)
+      );
+    });
+    if (match) {
+      navigate(`/chats/${match.id}`);
+    } else {
+      toast({
+        title: "Chat pribadi belum ada",
+        description: "Belum ada percakapan langsung dengan anggota ini.",
+      });
+    }
+  }
+
   function invalidateAfterDelete() {
     qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
     qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
@@ -350,6 +618,16 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       },
     }
   );
+
+  // Chat list used to resolve a group member's 1:1 chat for "Kirim pesan" /
+  // "Balas pribadi". Reads from the shared list cache (populated by the chat
+  // list page); kept fresh enough without polling.
+  const { data: allChats } = useListChats(undefined, {
+    query: {
+      queryKey: getListChatsQueryKey(),
+      staleTime: 30_000,
+    },
+  });
 
   const forwardMut = useForwardMessage({
     mutation: {
@@ -513,11 +791,14 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     );
     const finalText = text.trim();
     if (finalText) {
+      const quotedMessageId = replyTo?.id;
       sendReply.mutate({
         id: chatId,
-        data: jids.length
-          ? { content: finalText, mentions: jids }
-          : { content: finalText },
+        data: {
+          content: finalText,
+          ...(jids.length ? { mentions: jids } : {}),
+          ...(quotedMessageId ? { quotedMessageId } : {}),
+        },
       });
     }
   }
@@ -632,6 +913,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
         setReply("");
         setPickedMentions([]);
         setMention(null);
+        setReplyTo(null);
         qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
         qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
       },
@@ -863,6 +1145,36 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   // resolved nickname (highlighted as a chip-like span). Splits the text
   // on the mention regex so React can interleave plain strings with
   // styled <span> elements without dangerouslySetInnerHTML.
+  // Split a plain-text run into text + clickable <a> link nodes. Links open in
+  // a new tab (the device browser) and are isolated from app navigation.
+  const linkify = (text: string, keyBase: string): ReactNode[] => {
+    const out: ReactNode[] = [];
+    URL_RE.lastIndex = 0;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    let i = 0;
+    while ((m = URL_RE.exec(text)) !== null) {
+      if (m.index > last) out.push(text.slice(last, m.index));
+      const raw = m[0];
+      out.push(
+        <a
+          key={`${keyBase}-link-${i++}-${m.index}`}
+          href={hrefForLink(raw)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="underline break-all text-[hsl(var(--wa-tick-read))]"
+          data-testid="message-link"
+        >
+          {raw}
+        </a>,
+      );
+      last = m.index + raw.length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  };
+
   const renderBodyWithMentions = (text: string): ReactNode => {
     const parts: ReactNode[] = [];
     const re = /@(\d{5,})/g;
@@ -870,7 +1182,8 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     let m: RegExpExecArray | null;
     let i = 0;
     while ((m = re.exec(text)) !== null) {
-      if (m.index > last) parts.push(text.slice(last, m.index));
+      if (m.index > last)
+        parts.push(...linkify(text.slice(last, m.index), `seg-${i}`));
       const digits = m[1];
       const label = resolveMentionLabel(digits);
       parts.push(
@@ -884,7 +1197,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       );
       last = m.index + m[0].length;
     }
-    if (last < text.length) parts.push(text.slice(last));
+    if (last < text.length) parts.push(...linkify(text.slice(last), "seg-tail"));
     return parts.length ? parts : text;
   };
   const subtitle = isGroup
@@ -903,6 +1216,11 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
         m.content.toLowerCase().includes(trimmedQuery)
       )
     : combinedMessages;
+
+  // Messages the operator has pinned locally, newest last. Surfaced in a small
+  // bar above the thread (WhatsApp's pinned-message strip).
+  const pinnedMessages = combinedMessages.filter((m: any) => m.pinnedAt);
+  const lastPinned = pinnedMessages[pinnedMessages.length - 1];
 
   // Group messages by day so we can drop a "Hari ini / Kemarin / d MMMM"
   // pill between them — same UX as WhatsApp.
@@ -1193,6 +1511,62 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
         </div>
       )}
 
+      {/* Select-mode toolbar (WhatsApp "Pilih pesan"): count + bulk delete. */}
+      {selectMode && (
+        <div
+          className="flex items-center gap-3 px-4 h-12 bg-[hsl(var(--wa-panel-header))] border-b border-[hsl(var(--wa-divider))] flex-shrink-0"
+          data-testid="select-toolbar"
+        >
+          <button
+            type="button"
+            onClick={exitSelectMode}
+            className="p-1.5 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
+            title="Batal"
+            data-testid="button-exit-select"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <span className="text-[13px] text-foreground flex-1">
+            {selectedIds.size} dipilih
+          </span>
+          <button
+            type="button"
+            disabled={selectedIds.size === 0}
+            onClick={() => {
+              const ids = Array.from(selectedIds);
+              ids.forEach((mid) => deleteForMe(mid));
+              exitSelectMode();
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[13px] text-red-500 hover:bg-white/5 disabled:opacity-40 transition-colors"
+            data-testid="button-bulk-delete"
+          >
+            <Trash2 className="w-4 h-4" />
+            Hapus
+          </button>
+        </div>
+      )}
+
+      {/* Pinned-message strip: jump to the most recently pinned message. */}
+      {!selectMode && lastPinned && (
+        <div
+          className="flex items-center gap-2 px-4 py-1.5 bg-[hsl(var(--wa-panel-header))] border-b border-[hsl(var(--wa-divider))] flex-shrink-0"
+          data-testid="pinned-bar"
+        >
+          <Pin className="w-3.5 h-3.5 text-[hsl(var(--wa-accent))] shrink-0" />
+          <button
+            type="button"
+            onClick={() => scrollToMessage(lastPinned.id)}
+            className="min-w-0 flex-1 text-left"
+            data-testid="button-jump-pinned"
+          >
+            <span className="text-[12px] text-[hsl(var(--wa-meta))] truncate block">
+              {pinnedMessages.length} pesan disematkan ·{" "}
+              {lastPinned.content || mediaPlaceholder(lastPinned)}
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Messages on doodle background */}
       <div
         ref={scrollContainerRef}
@@ -1285,17 +1659,32 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                     <div
                       key={msg.id}
                       data-testid={`message-${msg.id}`}
+                      onClick={
+                        selectMode ? () => toggleSelected(msg.id) : undefined
+                      }
                       className={cn(
-                        "group flex mb-0.5",
+                        "group flex mb-0.5 items-center gap-2",
+                        selectMode && "cursor-pointer",
                         isOutbound ? "justify-end pl-12" : "justify-start pr-12",
                         isCont && sameSenderAsPrev ? "mt-0.5" : "mt-2"
                       )}
                     >
+                      {selectMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(msg.id)}
+                          readOnly
+                          data-testid={`select-message-${msg.id}`}
+                          className="w-4 h-4 accent-[hsl(var(--wa-accent))] flex-shrink-0"
+                        />
+                      )}
                       <div
                         className={cn(
-                          "max-w-[65%] min-w-[80px] px-2 py-1 text-[14.2px] leading-[19px]",
+                          "relative max-w-[65%] min-w-[80px] px-2 py-1 text-[14.2px] leading-[19px]",
                           isOutbound ? "wa-bubble-out" : "wa-bubble-in",
-                          isCont && sameSenderAsPrev && "wa-bubble-cont"
+                          isCont && sameSenderAsPrev && "wa-bubble-cont",
+                          highlightId === msg.id &&
+                            "ring-2 ring-[hsl(var(--wa-accent))]"
                         )}
                       >
                         {showSenderHeader && (
@@ -1328,6 +1717,24 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                                 : "Diteruskan"}
                             </span>
                           </div>
+                        )}
+                        {msg.quotedContent && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              msg.quotedMessageId &&
+                              scrollToMessage(msg.quotedMessageId)
+                            }
+                            data-testid={`quoted-${msg.id}`}
+                            className="flex w-full flex-col items-start text-left mb-1 pl-2 pr-2 py-1 rounded bg-black/20 border-l-[3px] border-[hsl(var(--wa-accent))]"
+                          >
+                            <span className="text-[12px] font-medium text-[hsl(var(--wa-accent))] truncate max-w-full">
+                              {msg.quotedSender || "Pesan"}
+                            </span>
+                            <span className="text-[12px] text-[hsl(var(--wa-meta))] line-clamp-2 break-words max-w-full">
+                              {msg.quotedContent}
+                            </span>
+                          </button>
                         )}
                         {mediaType === "image" && mediaUrl && (
                           <button
@@ -1394,11 +1801,35 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                             </div>
                           </div>
                         )}
+                        {msg.content &&
+                          mediaType !== "contact" &&
+                          firstLink(msg.content) && (
+                            <LinkPreviewCard
+                              url={firstLink(msg.content)!}
+                              isOutbound={isOutbound}
+                            />
+                          )}
                         {msg.content && mediaType !== "contact" && (
                           <p className="whitespace-pre-wrap break-words pr-14">
                             {renderBodyWithMentions(msg.content)}
                           </p>
                         )}
+                        {Array.isArray(msg.reactions) &&
+                          msg.reactions.length > 0 && (
+                            <div
+                              className="flex flex-wrap gap-0.5 mt-0.5"
+                              data-testid={`reactions-${msg.id}`}
+                            >
+                              {msg.reactions.map((r: any, ri: number) => (
+                                <span
+                                  key={ri}
+                                  className="text-[12px] bg-black/25 rounded-full px-1.5 py-0.5 leading-none"
+                                >
+                                  {r.emoji}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         <div className="flex items-center justify-end gap-1 -mt-3 -mb-0.5 float-right pl-2">
                           <button
                             type="button"
@@ -1432,7 +1863,49 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                                 <MoreVertical className="w-3 h-3" />
                               </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" side="top">
+                            <DropdownMenuContent
+                              align="end"
+                              side="top"
+                              className="w-56"
+                            >
+                              <DropdownMenuItem
+                                onClick={() => startReply(msg)}
+                                data-testid={`menu-reply-${msg.id}`}
+                              >
+                                <Reply className="w-3.5 h-3.5 mr-2" />
+                                Balas
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setReactionTarget((cur) =>
+                                    cur === msg.id ? null : msg.id,
+                                  )
+                                }
+                                data-testid={`menu-react-${msg.id}`}
+                              >
+                                <Smile className="w-3.5 h-3.5 mr-2" />
+                                Reaksi
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  toggleStar(msg.id, !!msg.isStarred)
+                                }
+                                data-testid={`menu-star-${msg.id}`}
+                              >
+                                <Star className="w-3.5 h-3.5 mr-2" />
+                                {msg.isStarred ? "Hapus bintang" : "Bintang"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => togglePin(msg.id, !msg.pinnedAt)}
+                                data-testid={`menu-pin-${msg.id}`}
+                              >
+                                {msg.pinnedAt ? (
+                                  <PinOff className="w-3.5 h-3.5 mr-2" />
+                                ) : (
+                                  <Pin className="w-3.5 h-3.5 mr-2" />
+                                )}
+                                {msg.pinnedAt ? "Lepas sematan" : "Sematkan"}
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => {
                                   setForwardSelected(new Set());
@@ -1444,6 +1917,41 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                                 <Share2 className="w-3.5 h-3.5 mr-2" />
                                 Teruskan
                               </DropdownMenuItem>
+                              {msg.content && (
+                                <DropdownMenuItem
+                                  onClick={() => copyMessage(msg.content)}
+                                  data-testid={`menu-copy-${msg.id}`}
+                                >
+                                  <Copy className="w-3.5 h-3.5 mr-2" />
+                                  Salin
+                                </DropdownMenuItem>
+                              )}
+                              {isGroup && !isOutbound && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      openPrivateChat(msg.senderPhoneDigits)
+                                    }
+                                    data-testid={`menu-reply-privately-${msg.id}`}
+                                  >
+                                    <CornerUpLeft className="w-3.5 h-3.5 mr-2" />
+                                    Balas pribadi
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      openPrivateChat(msg.senderPhoneDigits)
+                                    }
+                                    data-testid={`menu-message-${msg.id}`}
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 mr-2" />
+                                    <span className="truncate">
+                                      Kirim pesan ke {senderLabel}
+                                    </span>
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => deleteForMe(msg.id)}
                                 data-testid={`menu-delete-for-me-${msg.id}`}
@@ -1461,6 +1969,17 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                                   Hapus untuk semua orang
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectMode(true);
+                                  setSelectedIds(new Set([msg.id]));
+                                }}
+                                data-testid={`menu-select-${msg.id}`}
+                              >
+                                <CheckSquare className="w-3.5 h-3.5 mr-2" />
+                                Pilih pesan
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                           {isOutbound && msg.isAiGenerated && (
@@ -1479,6 +1998,24 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                             />
                           )}
                         </div>
+                        {reactionTarget === msg.id && (
+                          <div
+                            className="absolute z-30 -top-8 right-1 flex gap-1 rounded-full bg-[hsl(var(--wa-panel-header))] border border-[hsl(var(--wa-divider))] px-2 py-1 shadow-lg"
+                            data-testid={`reaction-bar-${msg.id}`}
+                          >
+                            {QUICK_EMOJIS.map((e) => (
+                              <button
+                                key={e}
+                                type="button"
+                                onClick={() => reactTo(msg.id, e)}
+                                className="text-[18px] leading-none hover:scale-125 transition-transform"
+                                data-testid={`react-${msg.id}-${e}`}
+                              >
+                                {e}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <div className="clear-both" />
                       </div>
                     </div>
@@ -1604,6 +2141,30 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                     </button>
                   );
                 })}
+              </div>
+            )}
+            {replyTo && (
+              <div
+                className="mb-2 flex items-stretch gap-2 rounded-md bg-[hsl(var(--wa-panel-header))] border-l-[3px] border-[hsl(var(--wa-accent))] pl-2 pr-1 py-1"
+                data-testid="reply-compose-bar"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-medium text-[hsl(var(--wa-accent))] truncate">
+                    {replyTo.sender}
+                  </div>
+                  <div className="text-[12px] text-[hsl(var(--wa-meta))] truncate">
+                    {replyTo.content}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-testid="button-cancel-reply"
+                  onClick={() => setReplyTo(null)}
+                  className="self-start p-1 rounded-full hover:bg-black/10 transition-colors text-[hsl(var(--wa-meta))]"
+                  title="Batal balas"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
             {pastedImage && pastedPreview && (

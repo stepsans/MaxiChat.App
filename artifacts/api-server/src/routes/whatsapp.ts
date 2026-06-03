@@ -925,6 +925,11 @@ interface ParsedWaMessage {
   // forwarded; forwardingScore is WhatsApp's forward count (>=4 == "many times").
   isForwarded: boolean;
   forwardingScore: number;
+  // Reply/quote context from contextInfo. quotedWaMessageId is the WA id of the
+  // replied-to message (stanzaId); quotedContent is a text snapshot for the
+  // reply bar. Both null when the message isn't a reply.
+  quotedWaMessageId: string | null;
+  quotedContent: string | null;
 }
 
 function toEpochMs(ts: unknown): number {
@@ -1187,6 +1192,18 @@ async function parseWaMessage(
   const forwardingScore = Number(fwdContextInfo?.forwardingScore ?? 0) || 0;
   const isForwarded = !!fwdContextInfo?.isForwarded || forwardingScore > 0;
 
+  // Quoted/reply context: WhatsApp puts the replied-to message id in
+  // contextInfo.stanzaId and a snapshot of its body in contextInfo.quotedMessage.
+  // We capture the id (to link to our local row) and a text snapshot (to render
+  // the grey reply bar even if we never stored the original).
+  const quotedWaMessageId: string | null =
+    (typeof fwdContextInfo?.stanzaId === "string" && fwdContextInfo.stanzaId) || null;
+  let quotedContent: string | null = null;
+  if (quotedWaMessageId) {
+    const qm = fwdContextInfo?.quotedMessage ?? null;
+    quotedContent = extractQuotedText(qm);
+  }
+
   return {
     jid,
     isGroup,
@@ -1204,7 +1221,29 @@ async function parseWaMessage(
     mentionedPhoneDigits,
     isForwarded,
     forwardingScore,
+    quotedWaMessageId,
+    quotedContent,
   };
+}
+
+// Pull a short text snapshot from a (possibly media) quotedMessage proto so we
+// can render it in the reply bar. Mirrors buildPreview's media labels.
+function extractQuotedText(qm: any): string | null {
+  if (!qm || typeof qm !== "object") return null;
+  const text: string =
+    qm.conversation ||
+    qm.extendedTextMessage?.text ||
+    qm.imageMessage?.caption ||
+    qm.videoMessage?.caption ||
+    qm.documentMessage?.caption ||
+    "";
+  if (text && text.trim()) return text.trim();
+  if (qm.imageMessage) return "📷 Gambar";
+  if (qm.stickerMessage) return "🏷️ Stiker";
+  if (qm.videoMessage) return "🎥 Video";
+  if (qm.audioMessage) return "🎤 Audio";
+  if (qm.documentMessage) return "📄 Dokumen";
+  return null;
 }
 
 function buildPreview(messageText: string, media?: IncomingMedia): string {
@@ -1290,6 +1329,45 @@ async function persistWaMessage(
       : null,
   };
 
+  // Resolve the local row this message replies to (if any) so the UI can link
+  // back to it. We match on (chatId, quotedWaMessageId); the row may not exist
+  // yet (e.g. quoting a very old message we never stored), in which case the
+  // snapshot text alone still renders the reply bar. quotedSender is derived
+  // from the resolved row's direction/sender.
+  let quotedColumns: {
+    quotedMessageId: number | null;
+    quotedWaMessageId: string | null;
+    quotedContent: string | null;
+    quotedSender: string | null;
+  } | null = null;
+  if (parsed.quotedWaMessageId) {
+    const [q] = await db
+      .select({
+        id: chatMessagesTable.id,
+        direction: chatMessagesTable.direction,
+        senderName: chatMessagesTable.senderName,
+      })
+      .from(chatMessagesTable)
+      .where(
+        and(
+          eq(chatMessagesTable.chatId, chat.id),
+          eq(chatMessagesTable.waMessageId, parsed.quotedWaMessageId),
+        ),
+      )
+      .limit(1);
+    const quotedSender = q
+      ? q.direction === "outbound"
+        ? "Anda"
+        : (q.senderName ?? contactName)
+      : null;
+    quotedColumns = {
+      quotedMessageId: q?.id ?? null,
+      quotedWaMessageId: parsed.quotedWaMessageId,
+      quotedContent: parsed.quotedContent,
+      quotedSender,
+    };
+  }
+
   let inserted = true;
   if (parsed.waMessageId) {
     const result = await db
@@ -1308,6 +1386,7 @@ async function persistWaMessage(
         forwardingScore: parsed.forwardingScore,
         createdAt: parsed.timestamp,
         ...senderColumns,
+        ...(quotedColumns ?? {}),
       })
       .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning({ id: chatMessagesTable.id });
@@ -1380,6 +1459,7 @@ async function persistWaMessage(
       waMessageId: null,
       createdAt: parsed.timestamp,
       ...senderColumns,
+      ...(quotedColumns ?? {}),
     });
   }
 
@@ -2237,6 +2317,51 @@ async function startBaileys(userId: number, channelId: number) {
           await maybeTriggerAutoReply(userId, channelId, myEpoch, chat, parsed.jid, parsed.messageContent);
         } catch (err) {
           logger.error({ err }, "Failed to process incoming message");
+        }
+      }
+    });
+
+    // Contact reactions. Baileys emits an array of { key, reaction } where `key`
+    // is the reacted-to message's key and `reaction.text` is the emoji (empty
+    // string == reaction removed). We locate the target row by its WA id within
+    // this channel and store the contact's reaction in the non-fromMe slot
+    // (operator reactions are written separately by the /react endpoint with
+    // fromMe=true, so we never clobber them here).
+    sock.ev.on("messages.reaction", async (reactions) => {
+      if (myEpoch !== ctx.epoch) return;
+      for (const item of reactions) {
+        try {
+          const targetId = item.key?.id;
+          if (!targetId) continue;
+          const emoji = (item.reaction?.text ?? "").trim();
+          const [target] = await db
+            .select({
+              id: chatMessagesTable.id,
+              reactions: chatMessagesTable.reactions,
+            })
+            .from(chatMessagesTable)
+            .innerJoin(chatsTable, eq(chatMessagesTable.chatId, chatsTable.id))
+            .where(
+              and(
+                eq(chatsTable.channelId, channelId),
+                eq(chatMessagesTable.waMessageId, targetId),
+              ),
+            )
+            .limit(1);
+          if (!target) continue;
+
+          const existing = Array.isArray(target.reactions)
+            ? (target.reactions as Array<Record<string, unknown>>)
+            : [];
+          // Keep the operator's own reaction; replace the single contact slot.
+          const mine = existing.filter((r) => r.fromMe);
+          const next = emoji ? [...mine, { emoji, fromMe: false }] : mine;
+          await db
+            .update(chatMessagesTable)
+            .set({ reactions: next })
+            .where(eq(chatMessagesTable.id, target.id));
+        } catch (err) {
+          logger.error({ err }, "Failed to process reaction");
         }
       }
     });

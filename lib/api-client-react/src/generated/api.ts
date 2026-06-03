@@ -84,6 +84,7 @@ import type {
   GeneralSettingsUpdate,
   GetChatHistoryParams,
   GetKnowledgeSyncConfig200,
+  GetLinkPreviewParams,
   GetProductSyncConfig200,
   GetSalesOrderSyncConfig200,
   GetShortcutSyncConfig200,
@@ -100,6 +101,7 @@ import type {
   KnowledgeType,
   KnowledgeTypeInput,
   KnowledgeUpdate,
+  LinkPreview,
   ListChatsParams,
   ListSalesOrdersParams,
   ListTeamMemberPermissions200,
@@ -108,10 +110,12 @@ import type {
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
   PermissionMatrix,
+  PinMessageBody,
   PostStatusInput,
   Product,
   ProductInput,
   ProductSyncConfigInput,
+  ReactionInput,
   RefreshChatAvatar200,
   ResendVerificationInput,
   ResendVerificationResult,
@@ -2097,6 +2101,90 @@ export const useSendQuotationToChat = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getSendQuotationToChatMutationOptions(options));
     }
+
+export const getGetLinkPreviewUrl = (params: GetLinkPreviewParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/link-preview?${stringifiedParams}` : `/api/link-preview`
+}
+
+/**
+ * @summary Fetch OpenGraph metadata for a URL (for link preview cards)
+ */
+export const getLinkPreview = async (params: GetLinkPreviewParams, options?: RequestInit): Promise<LinkPreview> => {
+
+  return customFetch<LinkPreview>(getGetLinkPreviewUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLinkPreviewQueryKey = (params?: GetLinkPreviewParams,) => {
+    return [
+    `/api/link-preview`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetLinkPreviewQueryOptions = <TData = Awaited<ReturnType<typeof getLinkPreview>>, TError = ErrorType<ErrorResponse>>(params: GetLinkPreviewParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLinkPreview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLinkPreviewQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLinkPreview>>> = ({ signal }) => getLinkPreview(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLinkPreview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLinkPreviewQueryResult = NonNullable<Awaited<ReturnType<typeof getLinkPreview>>>
+export type GetLinkPreviewQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Fetch OpenGraph metadata for a URL (for link preview cards)
+ */
+
+export function useGetLinkPreview<TData = Awaited<ReturnType<typeof getLinkPreview>>, TError = ErrorType<ErrorResponse>>(
+ params: GetLinkPreviewParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLinkPreview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLinkPreviewQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getSendManualReplyUrl = (id: number,) => {
 
@@ -10390,6 +10478,156 @@ export function useGetStarredMessages<TData = Awaited<ReturnType<typeof getStarr
 
 
 
+
+export const getReactMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/chats/${id}/messages/${messageId}/react`
+}
+
+/**
+ * Sends a WhatsApp emoji reaction for the message on the channel and records the operator's reaction locally. Empty emoji clears it. Telegram channels record the reaction locally only.
+
+ * @summary React to a message with an emoji
+ */
+export const reactMessage = async (id: number,
+    messageId: number,
+    reactionInput: ReactionInput, options?: RequestInit): Promise<ChatMessage> => {
+
+  return customFetch<ChatMessage>(getReactMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reactionInput,)
+  }
+);}
+
+
+
+
+export const getReactMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactMessage>>, TError,{id: number;messageId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reactMessage>>, TError,{id: number;messageId: number;data: BodyType<ReactionInput>}, TContext> => {
+
+const mutationKey = ['reactMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reactMessage>>, {id: number;messageId: number;data: BodyType<ReactionInput>}> = (props) => {
+          const {id,messageId,data} = props ?? {};
+
+          return  reactMessage(id,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReactMessageMutationResult = NonNullable<Awaited<ReturnType<typeof reactMessage>>>
+    export type ReactMessageMutationBody = BodyType<ReactionInput>
+    export type ReactMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary React to a message with an emoji
+ */
+export const useReactMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactMessage>>, TError,{id: number;messageId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reactMessage>>,
+        TError,
+        {id: number;messageId: number;data: BodyType<ReactionInput>},
+        TContext
+      > => {
+      return useMutation(getReactMessageMutationOptions(options));
+    }
+
+export const getSetMessagePinUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/chats/${id}/messages/${messageId}/pin`
+}
+
+/**
+ * @summary Pin or unpin a message (MaxiChat-internal)
+ */
+export const setMessagePin = async (id: number,
+    messageId: number,
+    pinMessageBody: PinMessageBody, options?: RequestInit): Promise<ChatMessage> => {
+
+  return customFetch<ChatMessage>(getSetMessagePinUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      pinMessageBody,)
+  }
+);}
+
+
+
+
+export const getSetMessagePinMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMessagePin>>, TError,{id: number;messageId: number;data: BodyType<PinMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setMessagePin>>, TError,{id: number;messageId: number;data: BodyType<PinMessageBody>}, TContext> => {
+
+const mutationKey = ['setMessagePin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setMessagePin>>, {id: number;messageId: number;data: BodyType<PinMessageBody>}> = (props) => {
+          const {id,messageId,data} = props ?? {};
+
+          return  setMessagePin(id,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetMessagePinMutationResult = NonNullable<Awaited<ReturnType<typeof setMessagePin>>>
+    export type SetMessagePinMutationBody = BodyType<PinMessageBody>
+    export type SetMessagePinMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Pin or unpin a message (MaxiChat-internal)
+ */
+export const useSetMessagePin = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setMessagePin>>, TError,{id: number;messageId: number;data: BodyType<PinMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setMessagePin>>,
+        TError,
+        {id: number;messageId: number;data: BodyType<PinMessageBody>},
+        TContext
+      > => {
+      return useMutation(getSetMessagePinMutationOptions(options));
+    }
 
 export const getSetMessageStarUrl = (id: number,
     messageId: number,) => {

@@ -42,6 +42,8 @@ import {
   OpenChatByPhoneBody,
   SetChatLabelsBody,
   SetMessageStarBody,
+  ReactMessageBody,
+  SetMessagePinBody,
   ForwardMessageBody,
   AddGroupParticipantsBody,
 } from "@workspace/api-zod";
@@ -707,6 +709,8 @@ function serializeChatMessage(m: ChatMessageRow) {
     createdAt: m.createdAt.toISOString(),
     mentionedPhoneDigits: m.mentionedPhoneDigits ?? [],
     isStarred: m.isStarred ?? false,
+    reactions: Array.isArray(m.reactions) ? m.reactions : [],
+    pinnedAt: m.pinnedAt ? m.pinnedAt.toISOString() : null,
   };
 }
 
@@ -870,6 +874,126 @@ router.post("/:id/messages/:messageId/star", async (req, res): Promise<void> => 
   }
 });
 
+// POST /:id/messages/:messageId/react — add/replace/clear the operator's emoji
+// reaction on a message. On WhatsApp the reaction is also pushed to the contact
+// (Baileys `react`); on Telegram reactions aren't supported via bot API so it
+// stays MaxiChat-internal. The reactions jsonb keeps at most ONE fromMe entry.
+router.post("/:id/messages/:messageId/react", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(chatId) || !Number.isInteger(messageId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const bodyParsed = ReactMessageBody.safeParse(req.body);
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
+    const emoji = bodyParsed.data.emoji.trim();
+
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [message] = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .limit(1);
+    if (!message) { res.status(404).json({ error: "Message not found" }); return; }
+
+    // Push the reaction to WhatsApp when we have a real WA id. A group reaction
+    // needs the original message's key (remoteJid/id/fromMe/participant). Empty
+    // emoji removes our reaction (Baileys treats an empty react as a removal).
+    const [channel] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, chat.channelId))
+      .limit(1);
+    if (
+      channel?.kind !== "telegram" &&
+      message.waMessageId &&
+      !message.waMessageId.startsWith("tg:")
+    ) {
+      const sock = getSockForChannel(chat.channelId);
+      if (sock) {
+        const jid = chat.phoneNumber.includes("@")
+          ? chat.phoneNumber
+          : `${chat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+        const fromMe = message.direction === "outbound";
+        const participant = jid.endsWith("@g.us")
+          ? fromMe
+            ? sock.user?.id
+            : (message.senderJid ?? undefined)
+          : undefined;
+        try {
+          await sock.sendMessage(jid, {
+            react: {
+              text: emoji,
+              key: {
+                remoteJid: jid,
+                fromMe,
+                id: message.waMessageId,
+                ...(participant ? { participant } : {}),
+              },
+            },
+          });
+        } catch (err) {
+          req.log.error({ err, chatId, messageId }, "whatsapp react failed");
+          res.status(502).json({ error: "Gagal mengirim reaksi ke WhatsApp" });
+          return;
+        }
+      }
+    }
+
+    // Merge into the stored reactions: drop any existing operator reaction,
+    // then add the new one (unless cleared). Contacts' reactions (fromMe=false)
+    // captured via messages.reaction are preserved untouched.
+    const existing = Array.isArray(message.reactions)
+      ? (message.reactions as Array<Record<string, unknown>>)
+      : [];
+    const others = existing.filter((r) => !r.fromMe);
+    const next = emoji ? [...others, { emoji, fromMe: true }] : others;
+
+    const [updated] = await db
+      .update(chatMessagesTable)
+      .set({ reactions: next })
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .returning();
+    res.json(serializeChatMessage(updated));
+  } catch (err) {
+    req.log.error({ err }, "Failed to react to message");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /:id/messages/:messageId/pin — pin/unpin a message (MaxiChat-internal;
+// not synced to the phone). Sets pinnedAt to now or null.
+router.post("/:id/messages/:messageId/pin", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(chatId) || !Number.isInteger(messageId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const bodyParsed = SetMessagePinBody.safeParse(req.body);
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
+
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [updated] = await db
+      .update(chatMessagesTable)
+      .set({ pinnedAt: bodyParsed.data.pinned ? new Date() : null })
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Message not found" }); return; }
+    res.json(serializeChatMessage(updated));
+  } catch (err) {
+    req.log.error({ err }, "Failed to pin message");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // DELETE /:id/messages/:messageId — "delete for me": remove the message row
 // from MaxiChat only. The message stays on the contact's device / WhatsApp.
 router.delete("/:id/messages/:messageId", async (req, res): Promise<void> => {
@@ -1009,6 +1133,13 @@ const MEDIA_PREVIEW_LABELS: Record<string, string> = {
   audio: "🎤 Audio",
   document: "📄 Dokumen",
 };
+
+// Short human label for a message with no text (used to snapshot a quoted
+// media message into the reply bar, and as a reaction/forward preview).
+function mediaLabel(mediaType: string | null): string {
+  if (!mediaType) return "Pesan";
+  return MEDIA_PREVIEW_LABELS[mediaType] ?? "Media";
+}
 router.post("/:id/messages/:messageId/forward", async (req, res): Promise<void> => {
   try {
     const chatId = Number(req.params.id);
@@ -1346,12 +1477,7 @@ router.get("/history", async (req, res): Promise<void> => {
 
     res.json({
       hasMore,
-      messages: page.map((m) => ({
-        ...m,
-        createdAt: m.createdAt.toISOString(),
-        mentionedPhoneDigits: m.mentionedPhoneDigits ?? [],
-        isStarred: m.isStarred ?? false,
-      })),
+      messages: page.map(serializeChatMessage),
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get chat history");
@@ -1398,15 +1524,7 @@ router.get("/:id", async (req, res): Promise<void> => {
       createdAt: chat.createdAt.toISOString(),
       labels: labelMap.get(chat.id) ?? [],
       hasMoreMessages,
-      messages: messages.map((m) => ({
-        ...m,
-        createdAt: m.createdAt.toISOString(),
-        // Normalize the nullable text[] column to an empty array so the
-        // OpenAPI contract (mentionedPhoneDigits: string[]) holds for
-        // every row — clients never see a stray null here.
-        mentionedPhoneDigits: m.mentionedPhoneDigits ?? [],
-        isStarred: m.isStarred ?? false,
-      })),
+      messages: messages.map(serializeChatMessage),
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get chat");
@@ -1562,6 +1680,34 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
     const chat = await loadOwnedChat(req, res, idParsed.data.id);
     if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
 
+    // Reply/quote: when the client passes quotedMessageId we load that local
+    // row (scoped to THIS chat) so we can (a) reconstruct the WhatsApp/Telegram
+    // "quoted" context for the recipient and (b) snapshot the quoted text +
+    // sender onto the new row so the grey reply bar renders even if the
+    // original is later deleted. A missing/foreign id is ignored (plain send).
+    let quotedRow: typeof chatMessagesTable.$inferSelect | null = null;
+    if (bodyParsed.data.quotedMessageId != null) {
+      const [q] = await db
+        .select()
+        .from(chatMessagesTable)
+        .where(
+          and(
+            eq(chatMessagesTable.id, bodyParsed.data.quotedMessageId),
+            eq(chatMessagesTable.chatId, idParsed.data.id),
+          ),
+        )
+        .limit(1);
+      quotedRow = q ?? null;
+    }
+    const quotedContentSnap = quotedRow
+      ? (quotedRow.content?.trim() || mediaLabel(quotedRow.mediaType))
+      : null;
+    const quotedSenderSnap = quotedRow
+      ? quotedRow.direction === "outbound"
+        ? "Anda"
+        : (quotedRow.senderName ?? chat.contactName ?? null)
+      : null;
+
     // Append the human agent's signature so the recipient can tell who on
     // the team replied. See lib/sender-tag.ts for the format.
     const agentTag = await resolveAgentTag(req.session.userId!);
@@ -1613,8 +1759,15 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         });
         return;
       }
+      // Telegram reply context: outbound/inbound rows store waMessageId as
+      // `tg:<chatId>:<messageId>`; pull the per-chat message id back out.
+      let tgReplyToId: number | undefined;
+      if (quotedRow?.waMessageId?.startsWith("tg:")) {
+        const n = Number.parseInt(quotedRow.waMessageId.split(":")[2] ?? "", 10);
+        if (Number.isFinite(n)) tgReplyToId = n;
+      }
       try {
-        const sent = await tgSendMessage(meta.botToken, tgChatId, taggedContent);
+        const sent = await tgSendMessage(meta.botToken, tgChatId, taggedContent, tgReplyToId);
         waMessageId = `tg:${tgChatId}:${sent.messageId}`;
       } catch (err) {
         req.log.error({ err, chatId: idParsed.data.id }, "telegram reply failed");
@@ -1637,12 +1790,35 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
       const jid = chat.phoneNumber.includes("@")
         ? chat.phoneNumber
         : `${chat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+      // Reconstruct the minimal WAMessage Baileys needs to attach a quote.
+      // It uses the key (remoteJid/id/fromMe/participant) to link the reply;
+      // the message body is shown verbatim in the recipient's reply bar. Only
+      // possible when the quoted row carries a real WhatsApp id.
+      let quotedProto: { key: Record<string, unknown>; message: Record<string, unknown> } | undefined;
+      if (quotedRow?.waMessageId && !quotedRow.waMessageId.startsWith("tg:")) {
+        const quotedFromMe = quotedRow.direction === "outbound";
+        const participant = jid.endsWith("@g.us")
+          ? quotedFromMe
+            ? sock.user?.id
+            : (quotedRow.senderJid ?? undefined)
+          : undefined;
+        quotedProto = {
+          key: {
+            remoteJid: jid,
+            fromMe: quotedFromMe,
+            id: quotedRow.waMessageId,
+            ...(participant ? { participant } : {}),
+          },
+          message: { conversation: quotedContentSnap ?? "" },
+        };
+      }
       try {
         const sent = await sock.sendMessage(
           jid,
           mentionJids.length
             ? { text: taggedContent, mentions: mentionJids }
-            : { text: taggedContent }
+            : { text: taggedContent },
+          quotedProto ? { quoted: quotedProto } : undefined
         );
         waMessageId = sent?.key?.id ?? null;
       } catch (err) {
@@ -1666,6 +1842,10 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         isAiGenerated: false,
         waMessageId,
         mentionedPhoneDigits: mentionDigits.length ? mentionDigits : undefined,
+        quotedMessageId: quotedRow?.id ?? null,
+        quotedWaMessageId: quotedRow?.waMessageId ?? null,
+        quotedContent: quotedContentSnap,
+        quotedSender: quotedSenderSnap,
       })
       .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
@@ -1698,7 +1878,7 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.channelId} = ${chat.channelId}`
       );
 
-    res.json({ ...message, createdAt: message.createdAt.toISOString() });
+    res.json(serializeChatMessage(message));
   } catch (err) {
     req.log.error({ err }, "Failed to send reply");
     res.status(500).json({ error: "Internal server error" });
