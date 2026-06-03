@@ -140,7 +140,7 @@ router.delete("/:id", requireSuperAdmin, async (req, res): Promise<void> => {
     const ownerUserId = await requireOwnerUserId(req, res);
     if (ownerUserId == null) return;
 
-    // chat_labels rows cascade-delete via the FK, so unassigning is automatic.
+    // contact_labels rows cascade-delete via the FK, so unassigning is automatic.
     const deleted = await db
       .delete(customerLabelsTable)
       .where(

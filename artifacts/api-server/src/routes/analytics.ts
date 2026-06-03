@@ -3,10 +3,11 @@ import { db } from "@workspace/db";
 import {
   chatsTable,
   chatMessagesTable,
-  chatLabelsTable,
+  channelsTable,
+  contactLabelsTable,
   customerLabelsTable,
 } from "@workspace/db";
-import { sql, inArray, eq } from "drizzle-orm";
+import { sql, inArray, eq, and } from "drizzle-orm";
 import { resolveChannelScope } from "../lib/channel-context";
 import { requirePermission } from "../lib/role-permissions";
 
@@ -69,6 +70,9 @@ router.get("/summary", async (req, res): Promise<void> => {
     const closingRate = totalChats > 0 ? Math.round((closingLeads / totalChats) * 100) : 0;
 
     // Count chats carrying each customer label, scoped to this account's chats.
+    // Labels are contact-level (owner + phone), so a chat "carries" a label when
+    // contact_labels has a row for its owner + phone number — this naturally
+    // includes labels set from another channel for the same contact.
     const chatsByLabel = chatIds.length
       ? await db
           .select({
@@ -77,12 +81,23 @@ router.get("/summary", async (req, res): Promise<void> => {
             color: customerLabelsTable.color,
             count: sql<number>`cast(count(*) as int)`,
           })
-          .from(chatLabelsTable)
+          .from(chatsTable)
+          .innerJoin(
+            channelsTable,
+            eq(chatsTable.channelId, channelsTable.id)
+          )
+          .innerJoin(
+            contactLabelsTable,
+            and(
+              eq(contactLabelsTable.ownerUserId, channelsTable.userId),
+              eq(contactLabelsTable.phoneNumber, chatsTable.phoneNumber)
+            )
+          )
           .innerJoin(
             customerLabelsTable,
-            eq(chatLabelsTable.labelId, customerLabelsTable.id)
+            eq(contactLabelsTable.labelId, customerLabelsTable.id)
           )
-          .where(inArray(chatLabelsTable.chatId, chatIds))
+          .where(inArray(chatsTable.id, chatIds))
           .groupBy(
             customerLabelsTable.id,
             customerLabelsTable.name,

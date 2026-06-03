@@ -24,6 +24,7 @@
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.
 - [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).
+- [Customer labels are contact-level](contact-vs-chat-labels.md) — labels key off (ownerUserId, phoneNumber) in contact_labels (no chat_labels); resolve via chats→channels→contact_labels, follow a number across all the owner's channels.
 - [Legacy /whatsapp/* are kind-agnostic](whatsapp-status-channel-aware.md) — status/connect/disconnect use resolveActiveChannel (per-channel access) but it returns ALL kinds; MUST guard channel.kind==="whatsapp".
 - [Scanner AI document pipeline](scanner-ai-pipeline.md) — receipt deskew is pure-JS homography (no OpenCV-WASM, breaks esbuild); must never throw + validate quad or it corrupts archived photos.
 - [Chat message pagination](chat-message-pagination.md) — polled GET /chats/:id is capped to recent window; older history is a separate query-only keyset endpoint; autoscroll keys on newest id not count.

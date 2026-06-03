@@ -16,7 +16,7 @@ import {
   chatMessagesTable,
   productsTable,
   channelsTable,
-  chatLabelsTable,
+  contactLabelsTable,
   customerLabelsTable,
   textShortcutsTable,
 } from "@workspace/db";
@@ -435,6 +435,11 @@ export type SerializedLabel = {
 // Batch-load the customer labels attached to each chat. Returns a map keyed
 // by chatId so list/detail serializers can attach a `labels` array without an
 // N+1 query. Labels are ordered by name for stable rendering.
+//
+// Labels are stored per-contact (owner + phone), not per-chat, so a label set
+// on one channel surfaces on every chat that shares the same phone number under
+// the same owner — including chats created later. We resolve them by joining
+// each chat to its channel's owner and matching contact_labels on phone number.
 async function fetchLabelsForChats(
   chatIds: number[]
 ): Promise<Map<number, SerializedLabel[]>> {
@@ -442,18 +447,26 @@ async function fetchLabelsForChats(
   if (chatIds.length === 0) return map;
   const rows = await db
     .select({
-      chatId: chatLabelsTable.chatId,
+      chatId: chatsTable.id,
       id: customerLabelsTable.id,
       name: customerLabelsTable.name,
       color: customerLabelsTable.color,
       createdAt: customerLabelsTable.createdAt,
     })
-    .from(chatLabelsTable)
+    .from(chatsTable)
+    .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
+    .innerJoin(
+      contactLabelsTable,
+      and(
+        eq(contactLabelsTable.ownerUserId, channelsTable.userId),
+        eq(contactLabelsTable.phoneNumber, chatsTable.phoneNumber)
+      )
+    )
     .innerJoin(
       customerLabelsTable,
-      eq(chatLabelsTable.labelId, customerLabelsTable.id)
+      eq(contactLabelsTable.labelId, customerLabelsTable.id)
     )
-    .where(inArray(chatLabelsTable.chatId, chatIds))
+    .where(inArray(chatsTable.id, chatIds))
     .orderBy(customerLabelsTable.name);
   for (const r of rows) {
     const list = map.get(r.chatId) ?? [];
@@ -1482,12 +1495,24 @@ router.put("/:id/labels", async (req, res): Promise<void> => {
               )
           ).map((r) => r.id);
 
+    // Labels are contact-level: replace the whole set for this owner+phone so
+    // the change applies to every channel's chat with the same number at once.
+    const phoneNumber = chat.phoneNumber;
     await db.transaction(async (tx) => {
-      await tx.delete(chatLabelsTable).where(eq(chatLabelsTable.chatId, chatId));
+      await tx
+        .delete(contactLabelsTable)
+        .where(
+          and(
+            eq(contactLabelsTable.ownerUserId, ownerUserId),
+            eq(contactLabelsTable.phoneNumber, phoneNumber)
+          )
+        );
       if (valid.length > 0) {
         await tx
-          .insert(chatLabelsTable)
-          .values(valid.map((labelId) => ({ chatId, labelId })))
+          .insert(contactLabelsTable)
+          .values(
+            valid.map((labelId) => ({ ownerUserId, phoneNumber, labelId }))
+          )
           .onConflictDoNothing();
       }
     });

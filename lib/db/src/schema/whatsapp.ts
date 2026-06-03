@@ -88,7 +88,7 @@ export type InsertChat = z.infer<typeof insertChatSchema>;
 
 // Customer labels ("Label Customer") — colored tags a super_admin defines per
 // business (owner user) in Settings, e.g. "High Risk Cust", "Follow Up". A
-// contact can carry MANY labels (see chatLabelsTable). Owner-scoped by userId
+// contact can carry MANY labels (see contactLabelsTable). Owner-scoped by userId
 // (not ownerPhone) so a phone reassignment never leaks another tenant's labels.
 export const customerLabelsTable = pgTable(
   "customer_labels",
@@ -117,27 +117,36 @@ export const insertCustomerLabelSchema = createInsertSchema(customerLabelsTable)
 export type CustomerLabel = typeof customerLabelsTable.$inferSelect;
 export type InsertCustomerLabel = z.infer<typeof insertCustomerLabelSchema>;
 
-// Many-to-many join: which labels are attached to which chat/contact.
-export const chatLabelsTable = pgTable(
-  "chat_labels",
+// Contact-level labels. A label attached to a phone number follows that
+// contact across EVERY channel the owner has (e.g. a number marked "High Risk"
+// on WhatsApp 1 shows the same label on WhatsApp 2), and onto chats created
+// later for the same number. Keyed by (ownerUserId, phoneNumber) — owner-scoped
+// like customerLabelsTable so a phone reassignment never leaks another tenant's
+// labels. Replaces the old per-chat chat_labels association.
+export const contactLabelsTable = pgTable(
+  "contact_labels",
   {
-    chatId: integer("chat_id")
+    ownerUserId: integer("owner_user_id")
       .notNull()
-      .references(() => chatsTable.id, { onDelete: "cascade" }),
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    phoneNumber: text("phone_number").notNull(),
     labelId: integer("label_id")
       .notNull()
       .references(() => customerLabelsTable.id, { onDelete: "cascade" }),
   },
   (t) => ({
-    chatLabelsPk: uniqueIndex("chat_labels_chat_label_unique").on(
-      t.chatId,
-      t.labelId
+    contactLabelsPk: uniqueIndex(
+      "contact_labels_owner_phone_label_unique"
+    ).on(t.ownerUserId, t.phoneNumber, t.labelId),
+    contactLabelsLabelIdx: index("contact_labels_label_idx").on(t.labelId),
+    contactLabelsOwnerPhoneIdx: index("contact_labels_owner_phone_idx").on(
+      t.ownerUserId,
+      t.phoneNumber
     ),
-    chatLabelsLabelIdx: index("chat_labels_label_idx").on(t.labelId),
   })
 );
 
-export type ChatLabel = typeof chatLabelsTable.$inferSelect;
+export type ContactLabel = typeof contactLabelsTable.$inferSelect;
 
 export const chatMessagesTable = pgTable(
   "chat_messages",
