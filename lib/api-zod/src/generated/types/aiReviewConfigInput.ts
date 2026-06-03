@@ -28,8 +28,11 @@ export interface AiReviewConfigInput {
      * @maxItems 50
      */
   columns: AiReviewColumn[];
-  /** @maxLength 4000 */
-  prompt?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  prompt: string;
   driveCredentialId?: number | null;
   /** @maxLength 200 */
   driveFolderId?: string | null;

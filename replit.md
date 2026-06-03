@@ -31,6 +31,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
+- AI Review requires a per-group "Instruksi AI" (free-text prompt). It is mandatory: without an instruction the module does nothing (the guard in `runReviewForConfig` throws, and create/save is blocked). There is no built-in default receipt-OCR fallback. The JSON-keyed-by-column-names → Google Sheet output contract is always enforced on top of the instruction, regardless of what the instruction says. A one-click "Laporan Kas Harian" template fills the instruction + matching columns.
 - AI token usage is tracked per tenant owner (super admin). Each owner uses their own AI quota; usage by team members rolls up to the owner. The monthly reporting period is anchored on the owner's join date (day-of-month), not the 1st. Visible in the admin app (all owners) and the whatsapp-ai dashboard (each owner's own). No historical backfill — usage accrues forward only.
 
 ## User preferences

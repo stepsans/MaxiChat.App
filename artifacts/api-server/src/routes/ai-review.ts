@@ -155,7 +155,11 @@ const ConfigInput = z.object({
   spreadsheetUrl: z.string().max(2000).nullable().optional(),
   sheetTab: z.string().min(1).max(200),
   columns: z.array(ColumnSchema).min(1).max(50),
-  prompt: z.string().trim().max(4000).nullable().optional(),
+  prompt: z
+    .string()
+    .trim()
+    .min(1, "Instruksi AI wajib diisi.")
+    .max(4000),
   driveCredentialId: z.number().int().positive().nullable().optional(),
   driveFolderId: z.string().max(200).nullable().optional(),
   driveFolderName: z.string().max(300).nullable().optional(),
@@ -235,7 +239,7 @@ router.post("/configs", reviewManage, async (req, res): Promise<void> => {
           spreadsheetUrl: d.spreadsheetUrl ?? null,
           sheetTab: d.sheetTab,
           columns: d.columns,
-          prompt: d.prompt ?? null,
+          prompt: d.prompt,
           driveCredentialId: d.driveCredentialId ?? null,
           driveFolderId: d.driveFolderId ?? null,
           driveFolderName: d.driveFolderName ?? null,

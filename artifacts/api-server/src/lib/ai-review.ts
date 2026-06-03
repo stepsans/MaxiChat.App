@@ -251,9 +251,17 @@ export async function runReviewForConfig(
         .orderBy(asc(chatMessagesTable.createdAt))
     : [];
 
+  // Instruction is required: without it the module must do nothing. Guard here
+  // so legacy rows (or any row missing a prompt) don't silently fall back.
+  if (!(cfg.prompt ?? "").trim()) {
+    throw new Error(
+      "Instruksi AI belum diisi. Isi 'Instruksi AI' pada konfigurasi grup agar AI Review berjalan."
+    );
+  }
+
   const { client, model, provider, ownerUserId } = await resolveAiClient(cfg.userId);
 
-  const systemPrompt = buildAiReviewSystemPrompt(cfg.prompt, columns);
+  const systemPrompt = buildAiReviewSystemPrompt(cfg.prompt!, columns);
 
   const rows: string[][] = [];
   const uploads: { buf: Buffer; mime: string; name: string }[] = [];

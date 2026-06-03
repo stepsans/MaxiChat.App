@@ -595,6 +595,8 @@ function ConfigEditor({
       .map((c) => ({ name: c.name.trim(), hint: c.hint.trim() }))
       .filter((c) => c.name);
     if (cleaned.length === 0) return "Tambahkan minimal satu kolom output.";
+    if (!prompt.trim())
+      return "Isi Instruksi AI dulu — tanpa instruksi, AI Review tidak akan berjalan.";
     if (driveFolderId && driveCredentialId == null)
       return "Folder Drive dipilih tapi credential Drive belum dipilih.";
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime))
@@ -620,7 +622,7 @@ function ConfigEditor({
       spreadsheetUrl: spreadsheetUrl ?? null,
       sheetTab,
       columns: cleanedColumns,
-      prompt: prompt.trim() || null,
+      prompt: prompt.trim(),
       driveCredentialId: driveFolderId ? driveCredentialId : null,
       driveFolderId: driveFolderId ?? null,
       driveFolderName: driveFolderId ? driveFolderName : null,
@@ -823,10 +825,10 @@ function ConfigEditor({
             </div>
           </div>
 
-          {/* AI prompt (optional, per-group) */}
+          {/* AI prompt (required, per-group) */}
           <div className="space-y-2 border-t border-border pt-4">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="ai-prompt">Instruksi AI (opsional)</Label>
+              <Label htmlFor="ai-prompt">Instruksi AI (wajib)</Label>
               <Button
                 type="button"
                 size="sm"
@@ -843,12 +845,14 @@ function ConfigEditor({
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
               maxLength={4000}
-              placeholder="Kosongkan untuk perilaku default (rekap nota/struk). Isi untuk mengarahkan AI grup ini secara khusus, mis. 'Baca daftar pesanan pelanggan dan ekstrak nama, item, dan jumlah.'"
+              placeholder="Wajib diisi — tentukan apa yang AI baca/lakukan, mis. 'Baca foto nota dan catat pemasukan/pengeluaran untuk laporan kas harian.' Gunakan tombol contoh di atas untuk mulai cepat."
             />
             <p className="text-[11px] text-muted-foreground">
-              Kolom output di atas tetap menjadi format hasilnya — AI selalu membalas
-              dengan data sesuai nama kolom yang ditulis ke Google Sheet. Instruksi ini
-              hanya mengubah apa yang AI baca/lakukan, bukan format outputnya.
+              Wajib diisi: tanpa Instruksi AI, modul AI Review tidak akan memproses apa
+              pun. Kolom output di atas tetap menjadi format hasilnya — AI selalu
+              membalas dengan data sesuai nama kolom yang ditulis ke Google Sheet.
+              Instruksi ini hanya mengubah apa yang AI baca/lakukan, bukan format
+              outputnya.
             </p>
           </div>
 
