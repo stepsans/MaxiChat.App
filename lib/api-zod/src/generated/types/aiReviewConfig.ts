@@ -18,6 +18,7 @@ export interface AiReviewConfig {
   spreadsheetUrl?: string | null;
   sheetTab: string;
   columns: AiReviewColumn[];
+  prompt?: string | null;
   driveCredentialId?: number | null;
   driveFolderId?: string | null;
   driveFolderName?: string | null;

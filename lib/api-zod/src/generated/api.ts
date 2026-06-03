@@ -1652,6 +1652,7 @@ export const ListAiReviewConfigsResponseItem = zod.object({
   "name": zod.string().min(1).max(listAiReviewConfigsResponseColumnsItemNameMax),
   "hint": zod.string().max(listAiReviewConfigsResponseColumnsItemHintMax).optional()
 })),
+  "prompt": zod.string().nullish(),
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().nullish(),
   "driveFolderName": zod.string().nullish(),
@@ -1685,6 +1686,8 @@ export const createAiReviewConfigBodyColumnsItemHintMax = 300;
 
 export const createAiReviewConfigBodyColumnsMax = 50;
 
+export const createAiReviewConfigBodyPromptMax = 4000;
+
 export const createAiReviewConfigBodyDriveFolderIdMax = 200;
 
 export const createAiReviewConfigBodyDriveFolderNameMax = 300;
@@ -1706,6 +1709,7 @@ export const CreateAiReviewConfigBody = zod.object({
   "name": zod.string().min(1).max(createAiReviewConfigBodyColumnsItemNameMax),
   "hint": zod.string().max(createAiReviewConfigBodyColumnsItemHintMax).optional()
 })).min(1).max(createAiReviewConfigBodyColumnsMax),
+  "prompt": zod.string().max(createAiReviewConfigBodyPromptMax).nullish(),
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().max(createAiReviewConfigBodyDriveFolderIdMax).nullish(),
   "driveFolderName": zod.string().max(createAiReviewConfigBodyDriveFolderNameMax).nullish(),
@@ -1737,6 +1741,8 @@ export const updateAiReviewConfigBodyColumnsItemHintMax = 300;
 
 export const updateAiReviewConfigBodyColumnsMax = 50;
 
+export const updateAiReviewConfigBodyPromptMax = 4000;
+
 export const updateAiReviewConfigBodyDriveFolderIdMax = 200;
 
 export const updateAiReviewConfigBodyDriveFolderNameMax = 300;
@@ -1758,6 +1764,7 @@ export const UpdateAiReviewConfigBody = zod.object({
   "name": zod.string().min(1).max(updateAiReviewConfigBodyColumnsItemNameMax),
   "hint": zod.string().max(updateAiReviewConfigBodyColumnsItemHintMax).optional()
 })).min(1).max(updateAiReviewConfigBodyColumnsMax),
+  "prompt": zod.string().max(updateAiReviewConfigBodyPromptMax).nullish(),
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().max(updateAiReviewConfigBodyDriveFolderIdMax).nullish(),
   "driveFolderName": zod.string().max(updateAiReviewConfigBodyDriveFolderNameMax).nullish(),
@@ -1786,6 +1793,7 @@ export const UpdateAiReviewConfigResponse = zod.object({
   "name": zod.string().min(1).max(updateAiReviewConfigResponseColumnsItemNameMax),
   "hint": zod.string().max(updateAiReviewConfigResponseColumnsItemHintMax).optional()
 })),
+  "prompt": zod.string().nullish(),
   "driveCredentialId": zod.number().nullish(),
   "driveFolderId": zod.string().nullish(),
   "driveFolderName": zod.string().nullish(),

@@ -52,6 +52,12 @@ export const aiReviewConfigTable = pgTable(
     // User-defined output columns: AiReviewColumn[]. Row 1 of the tab is kept in
     // lock-step with these names; the OCR model is asked to extract each one.
     columns: jsonb("columns").notNull().default([]),
+    // Optional per-group free-text instruction for the AI. When set, it replaces
+    // the default receipt-OCR task description so each group's AI can behave
+    // differently; the JSON-keyed-by-column-names output contract is ALWAYS
+    // appended on top, so the Sheet append stays unchanged. Null/empty = keep
+    // the default receipt recap behavior.
+    prompt: text("prompt"),
     // Optional Google Drive output. Nullable so the menu/structure works before
     // the user connects Drive — uploads are skipped gracefully when unset.
     driveCredentialId: integer("drive_credential_id").references(

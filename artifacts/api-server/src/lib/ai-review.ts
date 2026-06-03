@@ -12,6 +12,7 @@ import {
   type AiReviewColumn,
   type Credential,
 } from "@workspace/db";
+import { buildAiReviewSystemPrompt } from "./ai-review-prompt";
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
 import { scanDocument } from "./scanner";
@@ -252,16 +253,7 @@ export async function runReviewForConfig(
 
   const { client, model, provider, ownerUserId } = await resolveAiClient(cfg.userId);
 
-  const colList = columns
-    .map(
-      (c, i) =>
-        `${i + 1}. "${c.name}"${c.hint ? ` — ${c.hint}` : ""}`
-    )
-    .join("\n");
-  const systemPrompt = `Anda adalah asisten OCR untuk merekap nota/struk pengeluaran toko berbahasa Indonesia. Baca foto nota lalu ekstrak data sesuai daftar kolom. Balas HANYA dengan satu objek JSON, tanpa teks lain. Gunakan nama kolom persis sebagai key JSON. Jika sebuah nilai tidak ada di nota, isi dengan string kosong "". Untuk nominal uang, tulis angka saja tanpa "Rp" atau pemisah ribuan.
-
-KOLOM:
-${colList}`;
+  const systemPrompt = buildAiReviewSystemPrompt(cfg.prompt, columns);
 
   const rows: string[][] = [];
   const uploads: { buf: Buffer; mime: string; name: string }[] = [];
@@ -280,7 +272,7 @@ ${colList}`;
           {
             role: "user",
             content: [
-              { type: "text", text: "Ekstrak data nota berikut menjadi JSON." },
+              { type: "text", text: "Proses gambar berikut sesuai instruksi dan balas HANYA dengan JSON." },
               { type: "image_url", image_url: { url: dataUrl } },
             ],
           },

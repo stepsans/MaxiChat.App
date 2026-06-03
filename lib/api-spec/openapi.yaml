@@ -4774,6 +4774,7 @@ components:
         spreadsheetUrl: { type: string, nullable: true }
         sheetTab: { type: string }
         columns: { type: array, items: { $ref: "#/components/schemas/AiReviewColumn" } }
+        prompt: { type: string, nullable: true }
         driveCredentialId: { type: integer, nullable: true }
         driveFolderId: { type: string, nullable: true }
         driveFolderName: { type: string, nullable: true }
@@ -4803,6 +4804,7 @@ components:
           minItems: 1
           maxItems: 50
           items: { $ref: "#/components/schemas/AiReviewColumn" }
+        prompt: { type: string, maxLength: 4000, nullable: true }
         driveCredentialId: { type: integer, nullable: true }
         driveFolderId: { type: string, maxLength: 200, nullable: true }
         driveFolderName: { type: string, maxLength: 300, nullable: true }

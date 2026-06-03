@@ -1528,6 +1528,7 @@ export interface AiReviewConfig {
   spreadsheetUrl?: string | null;
   sheetTab: string;
   columns: AiReviewColumn[];
+  prompt?: string | null;
   driveCredentialId?: number | null;
   driveFolderId?: string | null;
   driveFolderName?: string | null;
@@ -1563,6 +1564,8 @@ export interface AiReviewConfigInput {
      * @maxItems 50
      */
   columns: AiReviewColumn[];
+  /** @maxLength 4000 */
+  prompt?: string | null;
   driveCredentialId?: number | null;
   /** @maxLength 200 */
   driveFolderId?: string | null;

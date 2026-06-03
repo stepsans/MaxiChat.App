@@ -73,6 +73,7 @@ function publicConfig(row: AiReviewConfig) {
     spreadsheetUrl: row.spreadsheetUrl ?? null,
     sheetTab: row.sheetTab,
     columns: (row.columns as AiReviewColumn[]) ?? [],
+    prompt: row.prompt ?? null,
     driveCredentialId: row.driveCredentialId ?? null,
     driveFolderId: row.driveFolderId ?? null,
     driveFolderName: row.driveFolderName ?? null,
@@ -154,6 +155,7 @@ const ConfigInput = z.object({
   spreadsheetUrl: z.string().max(2000).nullable().optional(),
   sheetTab: z.string().min(1).max(200),
   columns: z.array(ColumnSchema).min(1).max(50),
+  prompt: z.string().trim().max(4000).nullable().optional(),
   driveCredentialId: z.number().int().positive().nullable().optional(),
   driveFolderId: z.string().max(200).nullable().optional(),
   driveFolderName: z.string().max(300).nullable().optional(),
@@ -233,6 +235,7 @@ router.post("/configs", reviewManage, async (req, res): Promise<void> => {
           spreadsheetUrl: d.spreadsheetUrl ?? null,
           sheetTab: d.sheetTab,
           columns: d.columns,
+          prompt: d.prompt ?? null,
           driveCredentialId: d.driveCredentialId ?? null,
           driveFolderId: d.driveFolderId ?? null,
           driveFolderName: d.driveFolderName ?? null,
@@ -330,6 +333,7 @@ router.patch("/configs/:id", reviewManage, async (req, res): Promise<void> => {
     if (d.spreadsheetUrl !== undefined) patch.spreadsheetUrl = d.spreadsheetUrl;
     if (d.sheetTab != null) patch.sheetTab = d.sheetTab;
     if (d.columns != null) patch.columns = d.columns;
+    if (d.prompt !== undefined) patch.prompt = d.prompt;
     if (d.driveCredentialId !== undefined) patch.driveCredentialId = d.driveCredentialId;
     if (d.driveFolderId !== undefined) patch.driveFolderId = d.driveFolderId;
     if (d.driveFolderName !== undefined) patch.driveFolderName = d.driveFolderName;

@@ -26,6 +26,7 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -440,6 +441,7 @@ function ConfigEditor({
       { name: "Total", hint: "Total nominal pengeluaran, angka saja" },
     ]
   );
+  const [prompt, setPrompt] = useState<string>(existing?.prompt ?? "");
   const [driveCredentialId, setDriveCredentialId] = useState<number | null>(
     existing?.driveCredentialId ?? null
   );
@@ -581,6 +583,7 @@ function ConfigEditor({
       spreadsheetUrl: spreadsheetUrl ?? null,
       sheetTab,
       columns: cleanedColumns,
+      prompt: prompt.trim() || null,
       driveCredentialId: driveFolderId ? driveCredentialId : null,
       driveFolderId: driveFolderId ?? null,
       driveFolderName: driveFolderId ? driveFolderName : null,
@@ -781,6 +784,24 @@ function ConfigEditor({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* AI prompt (optional, per-group) */}
+          <div className="space-y-2 border-t border-border pt-4">
+            <Label htmlFor="ai-prompt">Instruksi AI (opsional)</Label>
+            <Textarea
+              id="ai-prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={4}
+              maxLength={4000}
+              placeholder="Kosongkan untuk perilaku default (rekap nota/struk). Isi untuk mengarahkan AI grup ini secara khusus, mis. 'Baca daftar pesanan pelanggan dan ekstrak nama, item, dan jumlah.'"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Kolom output di atas tetap menjadi format hasilnya — AI selalu membalas
+              dengan data sesuai nama kolom yang ditulis ke Google Sheet. Instruksi ini
+              hanya mengubah apa yang AI baca/lakukan, bukan format outputnya.
+            </p>
           </div>
 
           {/* Drive (optional) */}
