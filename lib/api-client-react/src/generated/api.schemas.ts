@@ -614,6 +614,9 @@ export interface ChatLabelsResult {
 
 export interface ManualReplyInput {
   content: string;
+  /** Full participant JIDs to mention (WhatsApp group chats only). For each JID the message text must contain a matching "@<localpart>" token (the digits before the @ in the JID) so WhatsApp links the mention to the participant. Ignored for non-group and Telegram chats.
+   */
+  mentions?: string[];
 }
 
 export interface TakeoverInput {

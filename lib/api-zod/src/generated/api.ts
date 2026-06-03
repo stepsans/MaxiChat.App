@@ -554,7 +554,8 @@ export const SendManualReplyParams = zod.object({
 })
 
 export const SendManualReplyBody = zod.object({
-  "content": zod.string()
+  "content": zod.string(),
+  "mentions": zod.array(zod.string()).optional().describe('Full participant JIDs to mention (WhatsApp group chats only). For each JID the message text must contain a matching \"@<localpart>\" token (the digits before the @ in the JID) so WhatsApp links the mention to the participant. Ignored for non-group and Telegram chats.\n')
 })
 
 export const SendManualReplyResponse = zod.object({

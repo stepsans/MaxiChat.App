@@ -22,7 +22,10 @@ import {
   useRevokeMessage,
   useListChats,
   useForwardMessage,
+  useGetGroupInfo,
+  getGetGroupInfoQueryKey,
   getChatHistory,
+  type GroupParticipant,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -94,6 +97,22 @@ import { useShortcutMap, expandShortcuts } from "@/lib/shortcuts";
 
 type MediaKind = "image" | "video" | "document";
 
+// Digits of a participant JID's local part ("628…@s.whatsapp.net" -> "628…",
+// "9988@lid" -> "9988"). This is exactly the "@<localpart>" token WhatsApp
+// expects in the body so the mention links to the participant.
+function jidLocalDigits(jid: string): string {
+  return jid.split("@")[0]?.split(":")[0] ?? "";
+}
+
+// The label shown for a participant in the @picker and inserted into the
+// compose box: their name, else real phone, else the JID's digits.
+function participantLabel(p: GroupParticipant): string {
+  const name = p.name?.trim();
+  if (name) return name;
+  if (p.phone) return p.phone;
+  return jidLocalDigits(p.jid) || p.jid;
+}
+
 function formatDayHeader(iso: string): string {
   const d = new Date(iso);
   if (isToday(d)) return "Hari ini";
@@ -135,6 +154,19 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   });
   const [reply, setReply] = useState("");
   const shortcutMap = useShortcutMap();
+  const replyRef = useRef<HTMLTextAreaElement | null>(null);
+  // @mention picker (group chats only). `query` is the text typed after the
+  // active "@"; `start` is the index of that "@" in the textarea value so we
+  // can replace the token on select. `index` is the keyboard-highlighted row.
+  const [mention, setMention] = useState<
+    { start: number; query: string; index: number } | null
+  >(null);
+  // Tracks mentions the operator inserted via the picker: the visible
+  // "@<label>" token mapped to the participant's JID + digits. On send we swap
+  // each surviving label token for "@<digits>" and ship the JIDs to Baileys.
+  const [pickedMentions, setPickedMentions] = useState<
+    { label: string; jid: string; digits: string }[]
+  >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   // Scroll container — used to restore scroll position when we prepend older
@@ -425,23 +457,123 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     return false;
   }
 
-  // Send whatever is staged: a pasted image (with the text box as its caption)
-  // takes priority, otherwise the typed text is sent as a normal message.
+  // Swap every surviving "@<label>" token the operator inserted via the picker
+  // back to the "@<digits>" form WhatsApp needs, and collect the JIDs to
+  // notify. Tokens the user deleted are silently dropped (no stale mention).
+  //
+  // We walk the text left-to-right with a single boundary-anchored regex
+  // instead of a naive substring replace, which fixes two bugs:
+  //   - boundaries: "@Adi" must not match inside "@Adianto" (the token must end
+  //     at whitespace, end-of-text, or a non-word char).
+  //   - collisions: two members with the SAME display label are each consumed
+  //     once, in order of appearance, so they map to distinct JIDs instead of
+  //     both collapsing onto the first pick's digits.
+  function applyPickedMentions(text: string): { text: string; jids: string[] } {
+    // Longest labels first so an alternation prefers "@Budi Santoso" over a
+    // bare "@Budi" when both are picked.
+    const sorted = [...pickedMentions].sort(
+      (a, b) => b.label.length - a.label.length,
+    );
+    if (sorted.length === 0) return { text, jids: [] };
+    const remaining = sorted.map((m) => ({ ...m, used: false }));
+    const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const alternation = sorted.map((m) => escapeRe(m.label)).join("|");
+    // The token must follow start/whitespace and be followed by a word
+    // boundary so we never rewrite a substring of a longer word.
+    const re = new RegExp(`(^|\\s)@(${alternation})(?=$|\\s|[^\\w])`, "g");
+    const jids: string[] = [];
+    const out = text.replace(re, (full, pre: string, label: string) => {
+      const pick = remaining.find((m) => !m.used && m.label === label);
+      if (!pick) return full; // every pick of this label already consumed
+      pick.used = true;
+      if (!jids.includes(pick.jid)) jids.push(pick.jid);
+      return `${pre}@${pick.digits}`;
+    });
+    return { text: out, jids };
+  }
+
   function handleSend() {
     // Guard the keyboard path too (the button is disabled, Enter isn't) so an
     // in-flight upload/send can't be duplicated or run concurrently.
     if (uploading || sendReply.isPending) return;
     if (pastedImage) {
-      const caption = expandShortcuts(reply, shortcutMap, true);
+      // Media captions can't carry WhatsApp mention metadata, but we still
+      // convert the visible "@name" tokens to "@digits" so the caption renders
+      // consistently with how a sent mention looks.
+      const caption = applyPickedMentions(
+        expandShortcuts(reply, shortcutMap, true),
+      ).text;
       const img = pastedImage;
       setPastedImage(null);
       void uploadMedia(img, caption);
       return;
     }
-    const finalText = expandShortcuts(reply, shortcutMap, true).trim();
+    const { text, jids } = applyPickedMentions(
+      expandShortcuts(reply, shortcutMap, true),
+    );
+    const finalText = text.trim();
     if (finalText) {
-      sendReply.mutate({ id: chatId, data: { content: finalText } });
+      sendReply.mutate({
+        id: chatId,
+        data: jids.length
+          ? { content: finalText, mentions: jids }
+          : { content: finalText },
+      });
     }
+  }
+
+  // Detect whether the caret sits inside an "@token" so we can open the picker.
+  // The "@" must start the text or follow whitespace, and the token must not
+  // yet contain a space (the token ends at the first space).
+  function detectMention(value: string, caret: number) {
+    if (!isGroupChat) {
+      setMention(null);
+      return;
+    }
+    const upToCaret = value.slice(0, caret);
+    const at = upToCaret.lastIndexOf("@");
+    if (at === -1) {
+      setMention(null);
+      return;
+    }
+    const before = at === 0 ? " " : upToCaret[at - 1];
+    if (!/\s/.test(before)) {
+      setMention(null);
+      return;
+    }
+    const query = upToCaret.slice(at + 1);
+    if (/\s/.test(query)) {
+      setMention(null);
+      return;
+    }
+    setMention({ start: at, query, index: 0 });
+  }
+
+  // Replace the active "@query" token with the chosen participant's label and
+  // remember the mapping so handleSend can turn it back into "@digits".
+  function insertMention(p: GroupParticipant) {
+    if (!mention) return;
+    const label = participantLabel(p);
+    const digits = jidLocalDigits(p.jid);
+    const token = `@${label} `;
+    const before = reply.slice(0, mention.start);
+    const after = reply.slice(mention.start + 1 + mention.query.length);
+    const nextText = before + token + after;
+    setReply(nextText);
+    setPickedMentions((prev) =>
+      prev.some((m) => m.jid === p.jid && m.label === label)
+        ? prev
+        : [...prev, { label, jid: p.jid, digits }],
+    );
+    setMention(null);
+    const caretPos = before.length + token.length;
+    requestAnimationFrame(() => {
+      const el = replyRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(caretPos, caretPos);
+      }
+    });
   }
 
   async function handleSendContact() {
@@ -498,11 +630,26 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     mutation: {
       onSuccess: () => {
         setReply("");
+        setPickedMentions([]);
+        setMention(null);
         qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
         qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
       },
     },
   });
+
+  // Live group roster for the @mention picker. Only fetched for group chats —
+  // it hits WhatsApp's groupMetadata on the server, so we keep it cheap with a
+  // long staleTime and no polling.
+  const isGroupChat = !!chat && chat.phoneNumber.endsWith("@g.us");
+  const { data: groupInfo } = useGetGroupInfo(chatId, {
+    query: {
+      queryKey: getGetGroupInfoQueryKey(chatId),
+      enabled: !!chatId && isGroupChat,
+      staleTime: 60_000,
+    },
+  });
+  const groupParticipants: GroupParticipant[] = groupInfo?.participants ?? [];
 
   const takeover = useTakeoverChat({
     mutation: {
@@ -672,15 +819,45 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     return SENDER_COLOURS[h % SENDER_COLOURS.length];
   };
 
+  // Names from the live group roster (groupMetadata + contacts), keyed by the
+  // digits that appear inside an "@<digits>" token — both the JID local part
+  // and the resolved real phone — so a mention we just sent renders as a name
+  // even before that member has a message in this chat's history.
+  const rosterLabelByDigits = new Map<string, string>();
+  for (const p of groupParticipants) {
+    const label = participantLabel(p);
+    const local = jidLocalDigits(p.jid);
+    if (local) rosterLabelByDigits.set(local, label);
+    if (p.phone) rosterLabelByDigits.set(p.phone, label);
+  }
+
   // Resolve a raw mention digits string to the best display label we have:
-  // first the group-local participant we just collected, then the owner's
-  // own chats list (so mentioning a known contact from another 1:1 still
-  // renders nicely), else fall back to the digits as-is.
+  // first the group-local participant we collected from history, then the live
+  // group roster, else fall back to the digits as-is.
   const resolveMentionLabel = (digits: string): string => {
-    const fromParticipants = participantsByPhone.get(digits);
-    if (fromParticipants) return fromParticipants;
+    const fromHistory = participantsByPhone.get(digits);
+    if (fromHistory) return fromHistory;
+    const fromRoster = rosterLabelByDigits.get(digits);
+    if (fromRoster) return fromRoster;
     return digits;
   };
+
+  // Participants matching the active "@query" (by name, phone, or digits),
+  // capped so the popover stays compact.
+  const mentionQuery = (mention?.query ?? "").toLowerCase();
+  const mentionCandidates = mention
+    ? groupParticipants
+        .filter((p) => {
+          if (!mentionQuery) return true;
+          const hay = `${p.name ?? ""} ${p.phone ?? ""} ${jidLocalDigits(p.jid)}`.toLowerCase();
+          return hay.includes(mentionQuery);
+        })
+        .slice(0, 8)
+    : [];
+  const mentionOpen = !!mention && mentionCandidates.length > 0;
+  const mentionActiveIndex = mention
+    ? Math.min(mention.index, mentionCandidates.length - 1)
+    : 0;
 
   // Render a message body, swapping every "@<digits>" token for the
   // resolved nickname (highlighted as a chip-like span). Splits the text
@@ -1383,7 +1560,52 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
             data-testid="input-file"
           />
 
-          <div className="flex-1 bg-[hsl(var(--wa-panel))] rounded-lg px-3 py-2">
+          <div className="relative flex-1 bg-[hsl(var(--wa-panel))] rounded-lg px-3 py-2">
+            {mentionOpen && (
+              <div
+                data-testid="mention-popover"
+                className="absolute bottom-full left-0 mb-2 w-72 max-h-64 overflow-y-auto rounded-lg border border-[hsl(var(--wa-divider))] bg-[hsl(var(--wa-panel-header))] shadow-lg z-20 py-1"
+              >
+                {mentionCandidates.map((p, i) => {
+                  const label = participantLabel(p);
+                  return (
+                    <button
+                      key={p.jid}
+                      type="button"
+                      data-testid={`mention-option-${jidLocalDigits(p.jid)}`}
+                      onMouseDown={(e) => {
+                        // Keep focus in the textarea; mousedown fires before
+                        // the textarea blur so the caret restore works.
+                        e.preventDefault();
+                        insertMention(p);
+                      }}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
+                        i === mentionActiveIndex
+                          ? "bg-white/10"
+                          : "hover:bg-white/5"
+                      }`}
+                    >
+                      <ChatAvatar name={label} size={28} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] text-foreground">
+                          {label}
+                          {p.isAdmin && (
+                            <span className="ml-1 text-[10px] text-[hsl(var(--wa-meta))]">
+                              admin
+                            </span>
+                          )}
+                        </div>
+                        {p.phone && p.phone !== label && (
+                          <div className="truncate text-[11px] text-[hsl(var(--wa-meta))]">
+                            {p.phone}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {pastedImage && pastedPreview && (
               <div
                 className="mb-2 flex items-start gap-2"
@@ -1411,6 +1633,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               </div>
             )}
             <textarea
+              ref={replyRef}
               data-testid="textarea-reply"
               placeholder={pastedImage ? "Tambahkan keterangan…" : "Ketik pesan"}
               value={reply}
@@ -1421,6 +1644,12 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                 // user can still finish typing it.
                 const next = expandShortcuts(e.target.value, shortcutMap, false);
                 setReply(next);
+                // Open/refresh the @mention picker for the token under the
+                // caret. When expansion changed the text, the event caret no
+                // longer matches `next`, so fall back to its end.
+                const caret =
+                  next === e.target.value ? e.target.selectionStart : next.length;
+                detectMention(next, caret);
               }}
               onPaste={(e) => {
                 // A screenshot / copied image arrives as a file item in the
@@ -1438,6 +1667,39 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                 el.style.height = Math.min(el.scrollHeight, 128) + "px";
               }}
               onKeyDown={(e) => {
+                // While the @mention picker is open, arrows move the
+                // highlight, Enter/Tab pick the highlighted member, and Escape
+                // dismisses it — none of these should send the message.
+                if (mentionOpen && mention) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setMention({
+                      ...mention,
+                      index: (mentionActiveIndex + 1) % mentionCandidates.length,
+                    });
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setMention({
+                      ...mention,
+                      index:
+                        (mentionActiveIndex - 1 + mentionCandidates.length) %
+                        mentionCandidates.length,
+                    });
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    insertMention(mentionCandidates[mentionActiveIndex]);
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMention(null);
+                    return;
+                  }
+                }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();

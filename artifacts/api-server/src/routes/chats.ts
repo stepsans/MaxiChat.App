@@ -1567,6 +1567,22 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
     const agentTag = await resolveAgentTag(req.session.userId!);
     const taggedContent = withTag(bodyParsed.data.content, agentTag);
 
+    // Group @mentions: the client sends the full participant JIDs to notify;
+    // the message text already carries the matching "@<localpart>" token. We
+    // keep only well-formed JIDs and stash their digits so the stored row's
+    // mentionedPhoneDigits matches inbound mentions and renders as names.
+    // Mentions only make sense in WhatsApp groups, so ignore them on 1:1 and
+    // Telegram chats rather than forwarding arbitrary JIDs to Baileys.
+    const isGroupChat = chat.phoneNumber.endsWith("@g.us");
+    const mentionJids = isGroupChat
+      ? (bodyParsed.data.mentions ?? []).filter(
+          (j): j is string => typeof j === "string" && j.includes("@")
+        )
+      : [];
+    const mentionDigits = mentionJids
+      .map((j) => j.split("@")[0]?.split(":")[0] ?? "")
+      .filter((d) => /^\d+$/.test(d));
+
     // Both transports need an EXPLICIT send. Baileys does not echo our own
     // API-initiated sends back through messages.upsert in any way we can rely
     // on to deliver, so recording the row alone never actually transmits the
@@ -1622,7 +1638,12 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         ? chat.phoneNumber
         : `${chat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
       try {
-        const sent = await sock.sendMessage(jid, { text: taggedContent });
+        const sent = await sock.sendMessage(
+          jid,
+          mentionJids.length
+            ? { text: taggedContent, mentions: mentionJids }
+            : { text: taggedContent }
+        );
         waMessageId = sent?.key?.id ?? null;
       } catch (err) {
         req.log.error({ err, chatId: idParsed.data.id }, "whatsapp reply failed");
@@ -1644,6 +1665,7 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         content: taggedContent,
         isAiGenerated: false,
         waMessageId,
+        mentionedPhoneDigits: mentionDigits.length ? mentionDigits : undefined,
       })
       .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
       .returning();
