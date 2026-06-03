@@ -2245,7 +2245,7 @@ async function startBaileys(userId: number, channelId: number) {
 
       if (connection === "close") {
         const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const loggedOut = statusCode === DisconnectReason.loggedOut;
         // Clear connectedAt so the legacy /whatsapp/status no longer
         // reports a stale connection time after a drop.
         // Channel mirror: socket dropped. We deliberately do NOT clear
@@ -2262,7 +2262,30 @@ async function startBaileys(userId: number, channelId: number) {
         ctx.sock = null;
         ctx.isConnecting = false;
         ctx.ownerPhone = null;
-        if (shouldReconnect) {
+        if (loggedOut) {
+          // The session is dead — the number was logged out remotely (from
+          // the phone or by WhatsApp) or the on-disk creds went stale. With
+          // creds still on disk Baileys keeps trying to RESUME them on every
+          // /connect and never emits a pairing QR, so the channel is stuck on
+          // "disconnected" and the Connect button appears to do nothing. Wipe
+          // the auth state and restart once so a fresh registration produces a
+          // new QR — the same recovery /disconnect performs, but automatic so
+          // re-pairing works from the Connect button alone.
+          await fs
+            .rm(authDirForChannel(userId, channelId), {
+              recursive: true,
+              force: true,
+            })
+            .catch((err) =>
+              logger.warn(
+                { err, channelId },
+                "Failed to wipe auth dir after logout"
+              )
+            );
+          setTimeout(() => startBaileys(userId, channelId).catch(() => {}), 1000);
+        } else {
+          // Transient drop (network, restart-required, etc.): resume with the
+          // existing creds rather than forcing a re-pair.
           setTimeout(() => startBaileys(userId, channelId).catch(() => {}), 3000);
         }
       }
