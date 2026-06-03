@@ -48,3 +48,13 @@ Any handler that sends a WA message itself (manual reply, quotation, sales-order
 **Why:** the echo and the manual insert are two independent write paths for the same message; the WA message id is the only shared key that lets `onConflictDoNothing` collapse them.
 
 **How to apply:** Telegram has no echo, so its branch sets a synthetic `tg:<chatId>:<messageId>` key explicitly. For WA, capture the real `.key.id` from the send result (mirror `sendMediaToJid`, which returns it). Never leave the WA dedupe key null when you also insert the outbound row yourself.
+
+## Rule 6 — Group author may be a privacy LID, not a dialable phone
+In recent Baileys, a group message's author often arrives as a privacy **LID** in `msg.key.participant` (`@lid` suffix) whose numeric local-part is NOT a real phone number. The real number, when present, is in `msg.key.participantPn` (`@s.whatsapp.net`).
+
+**Why:** Any feature that derives a phone number from the participant (e.g. "Balas pribadi" / "Kirim pesan" → open the member's 1:1 chat) will route to a bogus LID-keyed chat if it trusts `participant` blindly. The user-visible symptom: replying privately to a group member opens the wrong/empty personal chat.
+
+**How to apply:**
+- For group inbound, prefer `participantPn` (real `@s.whatsapp.net` JID). Only set the stored phone digits from a real phone JID; if only a LID is available, resolve it via `sock.signalRepository.lidMapping.getPNForLID(lid)` (defensive `as any` — the typed socket has minified prop names). If still unresolved, leave phone digits **null** rather than emitting LID digits, so the UI says "unknown number" instead of misrouting.
+- Keep a canonical author id (`senderJid = phoneJid ?? firstCandidate`) for grouping/avatars; display falls back to `pushName`, so nulling the phone digits doesn't break grouping.
+- Cache only **successful** LID→PN resolutions (not misses) per connection — the store learns mappings over time and the lookup is a cheap local read; caching nulls leaves a participant stuck as "unknown" until reconnect.

@@ -24,6 +24,7 @@ import {
   useSetMessagePin,
   getLinkPreview,
   useListChats,
+  useOpenChatByPhone,
   useForwardMessage,
   useGetGroupInfo,
   getGetGroupInfoQueryKey,
@@ -542,10 +543,31 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     setSelectedIds(new Set());
   }
 
-  // Navigate to the 1:1 chat for a group participant ("Kirim pesan" / "Balas
-  // pribadi"). Resolves an existing chat by phone digits; if none exists we
-  // tell the user rather than silently failing.
-  function openPrivateChat(digits: string | null | undefined) {
+  // Open the 1:1 chat for a group participant ("Kirim pesan" / "Balas
+  // pribadi"). `digits` is the member's real phone number resolved server-side
+  // (a privacy LID is mapped back to the phone number there, and left null if
+  // unknown — never used here, which previously routed to the wrong chat).
+  // We try the already-loaded chat list for an instant navigate, then fall
+  // back to the server's open-or-create endpoint so a private conversation can
+  // be started even when none exists yet.
+  const openPrivateMut = useOpenChatByPhone({
+    mutation: {
+      onSuccess: (result: any) => {
+        if (result?.chatId != null) navigate(`/chats/${result.chatId}`);
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal membuka chat pribadi",
+          description: err?.message ?? "",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  function openPrivateChat(
+    digits: string | null | undefined,
+    contactName?: string | null
+  ) {
     if (!digits) {
       toast({ title: "Nomor anggota tidak diketahui." });
       return;
@@ -558,12 +580,14 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     });
     if (match) {
       navigate(`/chats/${match.id}`);
-    } else {
-      toast({
-        title: "Chat pribadi belum ada",
-        description: "Belum ada percakapan langsung dengan anggota ini.",
-      });
+      return;
     }
+    openPrivateMut.mutate({
+      data: {
+        phoneNumber: digits,
+        ...(contactName ? { contactName } : {}),
+      },
+    });
   }
 
   function invalidateAfterDelete() {
@@ -1931,7 +1955,10 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     onClick={() =>
-                                      openPrivateChat(msg.senderPhoneDigits)
+                                      openPrivateChat(
+                                        msg.senderPhoneDigits,
+                                        senderLabel
+                                      )
                                     }
                                     data-testid={`menu-reply-privately-${msg.id}`}
                                   >
@@ -1940,7 +1967,10 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() =>
-                                      openPrivateChat(msg.senderPhoneDigits)
+                                      openPrivateChat(
+                                        msg.senderPhoneDigits,
+                                        senderLabel
+                                      )
                                     }
                                     data-testid={`menu-message-${msg.id}`}
                                   >

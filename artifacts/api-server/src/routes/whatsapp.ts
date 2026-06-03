@@ -948,7 +948,8 @@ async function parseWaMessage(
   isJidGroup: (jid: string) => boolean,
   downloadMediaMessage: any,
   downloadMedia: boolean,
-  resolveGroupName?: (jid: string) => Promise<string | null>
+  resolveGroupName?: (jid: string) => Promise<string | null>,
+  resolveLidToPn?: (lidJid: string) => Promise<string | null>
 ): Promise<ParsedWaMessage | null> {
   if (!msg?.message) return null;
   const jid: string | undefined = msg.key?.remoteJid;
@@ -1146,15 +1147,42 @@ async function parseWaMessage(
   let senderPhoneDigits: string | null = null;
   let senderName: string | null = null;
   if (isGroup && !fromMe) {
-    const participantJid: string | undefined =
-      msg.key?.participant ||
-      msg.key?.participantPn ||
-      msg.key?.participantAlt ||
-      msg.participant;
-    if (participantJid) {
-      senderJid = participantJid;
-      senderPhoneDigits = participantJid.split("@")[0].split(":")[0] || null;
+    const candidates = [
+      msg.key?.participantPn,
+      msg.key?.participant,
+      msg.key?.participantAlt,
+      msg.participant,
+    ].filter((j): j is string => typeof j === "string" && j.length > 0);
+
+    // Prefer the real phone-number JID (@s.whatsapp.net). Newer WhatsApp
+    // delivers group authors as a privacy LID (@lid) in msg.key.participant
+    // whose numeric part is NOT a dialable phone number — using it for
+    // "Balas pribadi" / "Kirim pesan" opened a bogus personal chat keyed by
+    // the LID. participantPn carries the actual phone number when present.
+    let phoneJid: string | null =
+      candidates.find((j) => j.endsWith("@s.whatsapp.net")) ?? null;
+    const lidJid = candidates.find((j) => j.endsWith("@lid")) ?? null;
+
+    // If only a LID is available, map it back to the phone number via the
+    // connection's LID store so the private-chat lookup matches the real
+    // contact instead of an unreachable LID number.
+    if (!phoneJid && lidJid && resolveLidToPn) {
+      try {
+        phoneJid = await resolveLidToPn(lidJid);
+      } catch {
+        phoneJid = null;
+      }
     }
+
+    // Canonical author id for grouping/avatars — the resolved phone JID when
+    // we have one, else whatever identifier we got (may be a LID).
+    senderJid = phoneJid ?? candidates[0] ?? null;
+    // Phone digits drive "Kirim pesan" / "Balas pribadi": only ever expose a
+    // real phone number here. If we could only obtain a LID, leave it null so
+    // the UI says "nomor tidak diketahui" rather than opening the wrong chat.
+    senderPhoneDigits = phoneJid
+      ? phoneJid.split("@")[0].split(":")[0] || null
+      : null;
     senderName = msg.pushName?.toString().trim() || null;
   }
 
@@ -2255,6 +2283,32 @@ async function startBaileys(userId: number, channelId: number) {
       }
     };
 
+    // Map a privacy LID (@lid) group author back to their real phone-number
+    // JID via Baileys' LID store, so "Balas pribadi" / "Kirim pesan" resolve
+    // to the actual contact instead of an unreachable LID number. Only
+    // successful resolutions are cached — a miss is left uncached so a later
+    // message re-checks once Baileys has learned the mapping (the lookup is a
+    // cheap local store read), avoiding a permanently-stuck "unknown number".
+    const lidPnCache = new Map<string, string>();
+    const resolveLidToPn = async (lidJid: string): Promise<string | null> => {
+      const cached = lidPnCache.get(lidJid);
+      if (cached) return cached;
+      try {
+        const store = (sock as any)?.signalRepository?.lidMapping;
+        const pn =
+          store && typeof store.getPNForLID === "function"
+            ? await store.getPNForLID(lidJid)
+            : null;
+        if (typeof pn === "string" && pn.endsWith("@s.whatsapp.net")) {
+          lidPnCache.set(lidJid, pn);
+          return pn;
+        }
+      } catch {
+        // fall through to null
+      }
+      return null;
+    };
+
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       if (myEpoch !== ctx.epoch) return;
       const ownerPhone = ctx.ownerPhone;
@@ -2299,7 +2353,8 @@ async function startBaileys(userId: number, channelId: number) {
             isJidGroup as (j: string) => boolean,
             downloadMediaMessage,
             true,
-            resolveGroupName
+            resolveGroupName,
+            resolveLidToPn
           );
           if (!parsed) continue;
 
@@ -2436,7 +2491,8 @@ async function startBaileys(userId: number, channelId: number) {
             isJidGroup as (j: string) => boolean,
             downloadMediaMessage,
             true,
-            resolveGroupName
+            resolveGroupName,
+            resolveLidToPn
           );
           if (!parsed) continue;
           const { inserted } = await persistWaMessage(userId, channelId, parsed, {
