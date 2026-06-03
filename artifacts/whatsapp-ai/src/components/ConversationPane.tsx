@@ -297,6 +297,10 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   // Scroll container — used to restore scroll position when we prepend older
   // history so the viewport doesn't jump after a "load older" fetch.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Concurrency guard for scroll-triggered "load older" so rapid scroll events
+  // near the top can't fire multiple overlapping history fetches (the state
+  // flag updates a render too late to block them).
+  const loadingOlderRef = useRef(false);
   // Older messages paged in above the recent window served by useGetChat.
   // Kept oldest-first; merged with chat.messages and de-duped before render.
   const [olderMessages, setOlderMessages] = useState<any[]>([]);
@@ -1039,6 +1043,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   useEffect(() => {
     setOlderMessages([]);
     setLoadingOlder(false);
+    loadingOlderRef.current = false;
     setHistoryExhausted(false);
   }, [chatId]);
 
@@ -1046,9 +1051,10 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   // prepend it, restoring scroll position so the viewport stays put instead of
   // jumping to the top after the DOM grows.
   async function loadOlderMessages() {
-    if (!chatId || loadingOlder || historyExhausted) return;
+    if (!chatId || loadingOlderRef.current || historyExhausted) return;
     const oldest = combinedMessages[0];
     if (!oldest) return;
+    loadingOlderRef.current = true;
     setLoadingOlder(true);
     const container = scrollContainerRef.current;
     const prevHeight = container?.scrollHeight ?? 0;
@@ -1070,6 +1076,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       });
     } finally {
       setLoadingOlder(false);
+      loadingOlderRef.current = false;
     }
   }
 
@@ -1629,6 +1636,20 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       {/* Messages on doodle background */}
       <div
         ref={scrollContainerRef}
+        onScroll={(e) => {
+          // WhatsApp-style infinite scroll: when the viewport nears the top,
+          // page in the next batch of older history. Mirrors the manual
+          // "Muat pesan lama" button's visibility conditions.
+          if (
+            e.currentTarget.scrollTop < 120 &&
+            !trimmedQuery &&
+            chat.hasMoreMessages &&
+            !historyExhausted &&
+            !loadingOlder
+          ) {
+            void loadOlderMessages();
+          }
+        }}
         className="flex-1 overflow-y-auto wa-scroll wa-doodle-bg px-[8%] py-4"
       >
         {trimmedQuery && visibleMessages.length === 0 ? (
