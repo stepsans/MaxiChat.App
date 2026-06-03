@@ -799,6 +799,20 @@ export interface AnalyticsSummary {
   chatsByLabel: LabelCount[];
 }
 
+export interface StorageUsage {
+  /** Total chats stored for the tenant across all channels. */
+  chatCount: number;
+  /** Total chat messages stored for the tenant across all channels. */
+  messageCount: number;
+  /** Estimated on-disk size in bytes of the tenant's chats + messages (sum of pg_column_size over both tables). */
+  estimatedBytes: number;
+}
+
+export interface PurgeChatsResult {
+  deletedChats: number;
+  deletedMessages: number;
+}
+
 export interface Product {
   id: number;
   code: string;

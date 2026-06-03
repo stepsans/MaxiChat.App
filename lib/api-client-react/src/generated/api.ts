@@ -116,6 +116,7 @@ import type {
   Product,
   ProductInput,
   ProductSyncConfigInput,
+  PurgeChatsResult,
   ReactionInput,
   RefreshChatAvatar200,
   ResendVerificationInput,
@@ -141,6 +142,7 @@ import type {
   SpreadsheetRef,
   StarMessageBody,
   StartCredentialOauth200,
+  StorageUsage,
   SuccessResponse,
   SyncProductsToKnowledge200,
   SyncSalesOrderToSheet200,
@@ -8935,6 +8937,153 @@ export function useGetCommonQuestions<TData = Awaited<ReturnType<typeof getCommo
 
 
 
+
+export const getGetStorageUsageUrl = () => {
+
+
+
+
+  return `/api/analytics/storage`
+}
+
+/**
+ * @summary Get chat data storage usage for the current tenant (all channels)
+ */
+export const getStorageUsage = async ( options?: RequestInit): Promise<StorageUsage> => {
+
+  return customFetch<StorageUsage>(getGetStorageUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStorageUsageQueryKey = () => {
+    return [
+    `/api/analytics/storage`
+    ] as const;
+    }
+
+
+export const getGetStorageUsageQueryOptions = <TData = Awaited<ReturnType<typeof getStorageUsage>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStorageUsageQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStorageUsage>>> = ({ signal }) => getStorageUsage({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStorageUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStorageUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getStorageUsage>>>
+export type GetStorageUsageQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get chat data storage usage for the current tenant (all channels)
+ */
+
+export function useGetStorageUsage<TData = Awaited<ReturnType<typeof getStorageUsage>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStorageUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPurgeChatsUrl = () => {
+
+
+
+
+  return `/api/chats/purge`
+}
+
+/**
+ * @summary Delete ALL chat history for the current tenant. Super admin only.
+ */
+export const purgeChats = async ( options?: RequestInit): Promise<PurgeChatsResult> => {
+
+  return customFetch<PurgeChatsResult>(getPurgeChatsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getPurgeChatsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof purgeChats>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof purgeChats>>, TError,void, TContext> => {
+
+const mutationKey = ['purgeChats'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof purgeChats>>, void> = () => {
+
+
+          return  purgeChats(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PurgeChatsMutationResult = NonNullable<Awaited<ReturnType<typeof purgeChats>>>
+
+    export type PurgeChatsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete ALL chat history for the current tenant. Super admin only.
+ */
+export const usePurgeChats = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof purgeChats>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof purgeChats>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getPurgeChatsMutationOptions(options));
+    }
 
 export const getListFlowsUrl = () => {
 

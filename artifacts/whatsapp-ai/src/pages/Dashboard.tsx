@@ -5,9 +5,11 @@ import {
   useListChats,
   useConnectWhatsapp,
   useDisconnectWhatsapp,
+  useGetStorageUsage,
   getGetWhatsappStatusQueryKey,
   getGetAnalyticsSummaryQueryKey,
   getListChatsQueryKey,
+  getGetStorageUsageQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,9 +28,10 @@ import {
   Loader2,
   CheckCircle,
   ShieldAlert,
+  HardDrive,
 } from "lucide-react";
 import { Link } from "wouter";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useEffect } from "react";
@@ -99,6 +102,9 @@ export default function Dashboard() {
   });
   const { data: chats } = useListChats(undefined, {
     query: { queryKey: getListChatsQueryKey(), enabled: canView },
+  });
+  const { data: storage, isLoading: storageLoading } = useGetStorageUsage({
+    query: { queryKey: getGetStorageUsageQueryKey(), enabled: canView },
   });
 
   const connect = useConnectWhatsapp({
@@ -300,6 +306,45 @@ export default function Dashboard() {
             </>
           )}
         </div>
+
+        {/* Data Usage */}
+        <Card data-testid="storage-usage-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-cyan-400" />
+              Penggunaan Data Chat
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {storageLoading ? (
+              <Skeleton className="h-16 rounded-lg" />
+            ) : (
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-foreground" data-testid="storage-bytes">
+                    {formatBytes(storage?.estimatedBytes)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Total data tersimpan</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground" data-testid="storage-chats">
+                    {storage?.chatCount ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Chat</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground" data-testid="storage-messages">
+                    {storage?.messageCount ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Pesan</p>
+                </div>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground mt-3">
+              Estimasi ukuran data chat di seluruh channel akun ini.
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Chats by Label */}
         {!summaryLoading && (summary?.chatsByLabel?.length ?? 0) > 0 && (

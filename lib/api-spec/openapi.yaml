@@ -2553,6 +2553,32 @@ paths:
                 items:
                   $ref: "#/components/schemas/CommonQuestion"
 
+  /analytics/storage:
+    get:
+      operationId: getStorageUsage
+      tags: [analytics]
+      summary: Get chat data storage usage for the current tenant (all channels)
+      responses:
+        "200":
+          description: Storage usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageUsage"
+
+  /chats/purge:
+    post:
+      operationId: purgeChats
+      tags: [chats]
+      summary: Delete ALL chat history for the current tenant. Super admin only.
+      responses:
+        "200":
+          description: Purge result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurgeChatsResult"
+
   /flows:
     get:
       operationId: listFlows
@@ -4280,6 +4306,29 @@ components:
         count:
           type: integer
           description: Number of chats in scope that carry this label.
+
+    StorageUsage:
+      type: object
+      required: [chatCount, messageCount, estimatedBytes]
+      properties:
+        chatCount:
+          type: integer
+          description: Total chats stored for the tenant across all channels.
+        messageCount:
+          type: integer
+          description: Total chat messages stored for the tenant across all channels.
+        estimatedBytes:
+          type: integer
+          description: Estimated on-disk size in bytes of the tenant's chats + messages (sum of pg_column_size over both tables).
+
+    PurgeChatsResult:
+      type: object
+      required: [deletedChats, deletedMessages]
+      properties:
+        deletedChats:
+          type: integer
+        deletedMessages:
+          type: integer
 
     Product:
       type: object

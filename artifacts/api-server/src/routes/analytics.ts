@@ -10,6 +10,8 @@ import {
 import { sql, inArray, eq, and } from "drizzle-orm";
 import { resolveChannelScope } from "../lib/channel-context";
 import { requirePermission } from "../lib/role-permissions";
+import { getSessionUserId } from "../lib/auth";
+import { resolveOwnerUserId } from "../lib/seed";
 
 const router = Router();
 
@@ -192,6 +194,62 @@ router.get("/common-questions", async (req, res): Promise<void> => {
     }
   } catch (err) {
     req.log.error({ err }, "Failed to get common questions");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Tenant-wide chat data usage (every channel the owner has), independent of
+// the channel switcher — this answers "how much chat data does this super
+// admin store". Estimated bytes use pg_column_size over the actual rows so the
+// figure tracks real on-disk footprint of chats + their messages.
+router.get("/storage", async (req, res): Promise<void> => {
+  try {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const channels = await db
+      .select({ id: channelsTable.id })
+      .from(channelsTable)
+      .where(eq(channelsTable.userId, ownerId));
+    const channelIds = channels.map((c) => c.id);
+    if (channelIds.length === 0) {
+      res.json({ chatCount: 0, messageCount: 0, estimatedBytes: 0 });
+      return;
+    }
+
+    // Bare table reference => row type => pg_column_size of the whole tuple.
+    // Sum as bigint (node-postgres returns it as a string) so it can't
+    // overflow int4 on large tenants.
+    const [chatAgg] = await db
+      .select({
+        count: sql<number>`cast(count(*) as int)`,
+        bytes: sql<string>`coalesce(sum(pg_column_size(${chatsTable})), 0)::bigint`,
+      })
+      .from(chatsTable)
+      .where(inArray(chatsTable.channelId, channelIds));
+
+    const [msgAgg] = await db
+      .select({
+        count: sql<number>`cast(count(*) as int)`,
+        bytes: sql<string>`coalesce(sum(pg_column_size(${chatMessagesTable})), 0)::bigint`,
+      })
+      .from(chatMessagesTable)
+      .innerJoin(chatsTable, eq(chatMessagesTable.chatId, chatsTable.id))
+      .where(inArray(chatsTable.channelId, channelIds));
+
+    const estimatedBytes =
+      Number(chatAgg?.bytes ?? 0) + Number(msgAgg?.bytes ?? 0);
+
+    res.json({
+      chatCount: chatAgg?.count ?? 0,
+      messageCount: msgAgg?.count ?? 0,
+      estimatedBytes,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to get storage usage");
     res.status(500).json({ error: "Internal server error" });
   }
 });

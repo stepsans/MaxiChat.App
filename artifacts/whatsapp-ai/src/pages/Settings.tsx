@@ -12,6 +12,11 @@ import {
   useCreateCustomerLabel,
   useUpdateCustomerLabel,
   useDeleteCustomerLabel,
+  useGetStorageUsage,
+  getGetStorageUsageQueryKey,
+  usePurgeChats,
+  getListChatsQueryKey,
+  getGetAnalyticsSummaryQueryKey,
 } from "@workspace/api-client-react";
 import type { TextShortcut, CustomerLabel } from "@workspace/api-client-react";
 import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
@@ -23,7 +28,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Tag, Bell, BellOff, Volume2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
+import { formatBytes } from "@/lib/utils";
+import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Tag, Bell, BellOff, Volume2, Database, AlertTriangle } from "lucide-react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useNotificationSound } from "@/hooks/use-notification-sound";
 import { NOTIFICATION_SOUND_OPTIONS } from "@/lib/notification-sounds";
@@ -58,8 +73,173 @@ export default function Settings() {
         </div>
         <ShortcutsCard />
         <LabelsCard />
+        <DangerZoneCard />
       </div>
     </div>
+  );
+}
+
+const PURGE_CONFIRM_WORD = "HAPUS";
+
+// Super-admin only. Permanently wipes the tenant's entire chat inbox (all chats
+// + messages across every channel). Channels, contacts, labels and settings are
+// kept. A typed-confirmation gate guards the irreversible action.
+function DangerZoneCard() {
+  const { isSuperAdmin } = usePermissions();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+
+  const { data: usage, isLoading: usageLoading } = useGetStorageUsage({
+    query: { queryKey: getGetStorageUsageQueryKey(), enabled: isSuperAdmin },
+  });
+
+  const purge = usePurgeChats({
+    mutation: {
+      onSuccess: (res) => {
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetStorageUsageQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetAnalyticsSummaryQueryKey() });
+        setOpen(false);
+        setConfirmText("");
+        toast({
+          title: "Database chat direset",
+          description: `${res.deletedChats} chat & ${res.deletedMessages} pesan dihapus permanen.`,
+        });
+      },
+      onError: (err: any) =>
+        toast({
+          title: "Gagal mereset database chat",
+          description: err?.data?.error ?? err?.message ?? "Coba lagi.",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  if (!isSuperAdmin) return null;
+
+  const confirmed = confirmText.trim().toUpperCase() === PURGE_CONFIRM_WORD;
+
+  return (
+    <Card className="border-destructive/40">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2 text-destructive">
+          <AlertTriangle className="w-4 h-4" />
+          Zona Berbahaya — Reset Database Chat
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Menghapus <strong>seluruh riwayat chat dan pesan</strong> di semua
+          channel akun Anda secara permanen. Channel, kontak, label, dan
+          pengaturan tetap aman. Tindakan ini tidak bisa dibatalkan.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <Database className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+          {usageLoading ? (
+            <Skeleton className="h-4 w-40" />
+          ) : (
+            <span data-testid="text-purge-usage">
+              Saat ini tersimpan{" "}
+              <strong className="text-foreground">
+                {usage?.chatCount ?? 0}
+              </strong>{" "}
+              chat ·{" "}
+              <strong className="text-foreground">
+                {usage?.messageCount ?? 0}
+              </strong>{" "}
+              pesan ·{" "}
+              <strong className="text-foreground">
+                {formatBytes(usage?.estimatedBytes)}
+              </strong>
+            </span>
+          )}
+        </div>
+
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          data-testid="button-open-purge"
+          disabled={(usage?.chatCount ?? 0) === 0}
+          onClick={() => {
+            setConfirmText("");
+            setOpen(true);
+          }}
+        >
+          <Trash2 className="w-4 h-4" />
+          Reset Database Chat
+        </Button>
+        {(usage?.chatCount ?? 0) === 0 && !usageLoading && (
+          <p className="text-[11px] text-muted-foreground">
+            Belum ada chat untuk dihapus.
+          </p>
+        )}
+      </CardContent>
+
+      <AlertDialog
+        open={open}
+        onOpenChange={(o) => {
+          if (!purge.isPending) setOpen(o);
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-purge-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Hapus semua data chat?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Ini akan menghapus permanen{" "}
+              <strong>{usage?.chatCount ?? 0} chat</strong> dan{" "}
+              <strong>{usage?.messageCount ?? 0} pesan</strong> di seluruh
+              channel akun Anda ({formatBytes(usage?.estimatedBytes)}). Data
+              yang dihapus tidak dapat dipulihkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-xs text-muted-foreground">
+              Ketik <strong className="text-foreground">{PURGE_CONFIRM_WORD}</strong>{" "}
+              untuk mengonfirmasi.
+            </label>
+            <Input
+              autoFocus
+              data-testid="input-purge-confirm"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={PURGE_CONFIRM_WORD}
+              className="h-9 text-sm"
+              disabled={purge.isPending}
+            />
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-testid="button-cancel-purge"
+              disabled={purge.isPending}
+            >
+              Batal
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              data-testid="button-confirm-purge"
+              disabled={!confirmed || purge.isPending}
+              onClick={() => purge.mutate()}
+            >
+              {purge.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              Hapus permanen
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
   );
 }
 

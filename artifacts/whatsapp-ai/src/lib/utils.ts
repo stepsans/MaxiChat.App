@@ -6,6 +6,21 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Format a byte count into a human-readable size (e.g. "12.3 MB").
+ * Uses binary units (1 KB = 1024 B). Non-positive / invalid inputs => "0 B".
+ */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0 || !Number.isFinite(bytes)) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1
+  );
+  const val = bytes / Math.pow(1024, i);
+  return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/**
  * Convert a Google Drive share/view URL (or iframe embed src) into a direct
  * image URL usable in <img src>. Non-Drive URLs are returned as-is. Falsy
  * inputs return null.

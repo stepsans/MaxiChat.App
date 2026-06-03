@@ -29,6 +29,9 @@ import {
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import { eq, desc, and, sql, inArray, ilike } from "drizzle-orm";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
+import { requireSuperAdmin } from "../lib/team-permissions";
+import { getSessionUserId } from "../lib/auth";
+import { resolveOwnerUserId } from "../lib/seed";
 import {
   ListChatsQueryParams,
   UpdateChatBody,
@@ -1486,6 +1489,58 @@ router.post("/:id/participants", async (req, res): Promise<void> => {
 // tens of thousands of messages and shipping all of them on every poll is what
 // made opening such chats feel unresponsive.
 const RECENT_MESSAGE_WINDOW = 200;
+
+// Wipe ALL chat history for the caller's tenant — every channel the owner
+// has — resetting the inbox to a fresh state. Super admin only; this is
+// irreversible and tenant-wide. Channels, contacts, customer labels and
+// settings are left intact: only chats and their messages (removed via FK
+// cascade on chat_id) are deleted. Registered before `/:id` so the literal
+// "purge" segment isn't swallowed by the param route.
+router.post("/purge", requireSuperAdmin, async (req, res): Promise<void> => {
+  try {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const channels = await db
+      .select({ id: channelsTable.id })
+      .from(channelsTable)
+      .where(eq(channelsTable.userId, ownerId));
+    const channelIds = channels.map((c) => c.id);
+    if (channelIds.length === 0) {
+      res.json({ deletedChats: 0, deletedMessages: 0 });
+      return;
+    }
+    // Count messages before deleting — they vanish via cascade once their
+    // parent chats are removed, so we can't count them afterwards.
+    const [msgCount] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(chatMessagesTable)
+      .innerJoin(chatsTable, eq(chatMessagesTable.chatId, chatsTable.id))
+      .where(inArray(chatsTable.channelId, channelIds));
+    const deleted = await db
+      .delete(chatsTable)
+      .where(inArray(chatsTable.channelId, channelIds))
+      .returning({ id: chatsTable.id });
+    req.log.info(
+      {
+        ownerId,
+        deletedChats: deleted.length,
+        deletedMessages: msgCount?.count ?? 0,
+      },
+      "Purged tenant chat history"
+    );
+    res.json({
+      deletedChats: deleted.length,
+      deletedMessages: msgCount?.count ?? 0,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to purge chats");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // Page back through a chat's older messages (query-only; registered before the
 // `/:id` route so the literal "history" segment isn't swallowed by `/:id`).

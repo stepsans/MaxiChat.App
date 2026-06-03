@@ -2647,6 +2647,25 @@ export const GetCommonQuestionsResponse = zod.array(GetCommonQuestionsResponseIt
 
 
 /**
+ * @summary Get chat data storage usage for the current tenant (all channels)
+ */
+export const GetStorageUsageResponse = zod.object({
+  "chatCount": zod.number().describe('Total chats stored for the tenant across all channels.'),
+  "messageCount": zod.number().describe('Total chat messages stored for the tenant across all channels.'),
+  "estimatedBytes": zod.number().describe('Estimated on-disk size in bytes of the tenant\'s chats + messages (sum of pg_column_size over both tables).')
+})
+
+
+/**
+ * @summary Delete ALL chat history for the current tenant. Super admin only.
+ */
+export const PurgeChatsResponse = zod.object({
+  "deletedChats": zod.number(),
+  "deletedMessages": zod.number()
+})
+
+
+/**
  * @summary List chatbot flows for the current owner
  */
 export const ListFlowsResponseItem = zod.object({
