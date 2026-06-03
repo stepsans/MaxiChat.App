@@ -26,6 +26,7 @@
 - [chat_messages dedup per-chat](chat-message-dedup-per-chat.md) — wa_message_id unique must be composite (chat_id, wa_message_id); global unique drops other channels' copies of the same group message.
 - [zod v4 record is exhaustive](zod-v4-record-exhaustive.md) — z.record(enumKey,val) requires ALL keys in zod v4; use z.partialRecord for sparse payloads (caused permission-save 400).
 - [WhatsApp group @mentions](whatsapp-mentions.md) — needs both `@<jidLocalpart>` text token AND `mentions[]` JIDs; client label→digits rewriter must be boundary-anchored + collision-safe.
+- [WA fromMe pushName leak](wa-pushname-fromme-leak.md) — on fromMe upserts msg.pushName is the OWNER's name; never use it to name a 1:1 contact or every operator-initiated chat shows the owner's name.
 - [Baileys has no echo-send](baileys-no-echo-on-api-sends.md) — every outbound path must explicitly sock.sendMessage on the chat's OWN channel; a DB row alone never transmits (null wa_message_id = never sent).
 - [Customer labels are contact-level](contact-vs-chat-labels.md) — labels key off (ownerUserId, phoneNumber) in contact_labels (no chat_labels); resolve via chats→channels→contact_labels, follow a number across all the owner's channels.
 - [Legacy /whatsapp/* are kind-agnostic](whatsapp-status-channel-aware.md) — status/connect/disconnect use resolveActiveChannel (per-channel access) but it returns ALL kinds; MUST guard channel.kind==="whatsapp".

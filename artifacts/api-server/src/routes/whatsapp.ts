@@ -1118,7 +1118,13 @@ async function parseWaMessage(
         : remoteJidAlt?.endsWith("@lid")
         ? remoteJidAlt.split("@")[0].split(":")[0]
         : null;
-    pushName = msg.pushName || rawNumber;
+    // Never let an OUTBOUND (fromMe) message name the contact: on a fromMe
+    // message msg.pushName is the OWNER's own WhatsApp display name, so using
+    // it would label the customer's 1:1 chat with the operator's name (e.g.
+    // every new chat the operator messages first would show as "Stephen
+    // Maxipro"). Fall back to the number; the contact's real name comes from
+    // their own inbound messages or a contacts.upsert.
+    pushName = !msg.key?.fromMe && msg.pushName ? msg.pushName : rawNumber;
   }
 
   const waMessageId: string | null = msg.key?.id ?? null;
