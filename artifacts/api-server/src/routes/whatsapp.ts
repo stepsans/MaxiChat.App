@@ -403,10 +403,18 @@ export async function sendMediaToJid(
   mimeType: string,
   mediaType: "image" | "video" | "document" | "audio",
   caption?: string,
-  filename?: string
+  filename?: string,
+  channelId?: number
 ): Promise<string | null> {
-  const ownerUserId = await resolveOwnerUserId(userId);
-  const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
+  // Send from the chat's OWN channel when a channelId is supplied, so a
+  // multi-channel tenant doesn't leak a media message out of the primary
+  // number instead of the channel the chat actually belongs to. Falls back to
+  // the user's primary socket only when no channel is given (legacy callers).
+  const sock =
+    channelId != null
+      ? getSockForChannel(channelId)
+      : ((await getPrimaryCtxForUser(await resolveOwnerUserId(userId)))?.sock ??
+        null);
   if (!sock) throw new Error("WhatsApp is not connected");
   const buffer = await fs.readFile(filepath);
   let sent;
@@ -694,10 +702,16 @@ export async function sendContactToJid(
   userId: number,
   jid: string,
   contactName: string,
-  contactPhone: string
+  contactPhone: string,
+  channelId?: number
 ): Promise<string | null> {
-  const ownerUserId = await resolveOwnerUserId(userId);
-  const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
+  // Send from the chat's OWN channel when a channelId is supplied (see
+  // sendMediaToJid). Falls back to the primary socket for legacy callers.
+  const sock =
+    channelId != null
+      ? getSockForChannel(channelId)
+      : ((await getPrimaryCtxForUser(await resolveOwnerUserId(userId)))?.sock ??
+        null);
   if (!sock) throw new Error("WhatsApp is not connected");
   const cleanPhone = contactPhone.replace(/[^\d+]/g, "");
   const waNumber = cleanPhone.startsWith("+") ? cleanPhone.slice(1) : cleanPhone;

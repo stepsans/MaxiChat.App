@@ -59,7 +59,6 @@ import {
   MEDIA_DIR,
   sendMediaToJid,
   sendContactToJid,
-  getActiveSocket,
   getSockForChannel,
   getOrCreateChat,
   refreshChatProfilePic,
@@ -2115,17 +2114,20 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       return;
     }
 
-    if (!(await getActiveSocket(req.session.userId!))) {
-      // Clean up the file we just saved
-      await fs.unlink(req.file.path).catch(() => {});
-      res.status(503).json({ error: "WhatsApp belum terhubung" });
-      return;
-    }
-
     const target = await jidForChat(req, res, id);
     if (!target) {
       await fs.unlink(req.file.path).catch(() => {});
       res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+
+    // Resolve the socket of the chat's OWN channel (not the user's primary
+    // channel). A multi-channel tenant otherwise sends media out of the wrong
+    // number, which never lands in this chat's conversation on the phone.
+    const sendChannelId = target.chat.channelId;
+    if (sendChannelId == null || !getSockForChannel(sendChannelId)) {
+      await fs.unlink(req.file.path).catch(() => {});
+      res.status(503).json({ error: "WhatsApp belum terhubung" });
       return;
     }
 
@@ -2147,7 +2149,8 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
         mimeType,
         mediaType,
         caption,
-        originalName
+        originalName,
+        sendChannelId
       );
     } catch (err) {
       req.log.error({ err }, "Failed to send media via WhatsApp");
@@ -2331,15 +2334,17 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         return;
       }
     } else {
-      if (!(await getActiveSocket(req.session.userId!))) {
-        await fs.unlink(filepath).catch(() => {});
-        res.status(503).json({ error: "WhatsApp belum terhubung" });
-        return;
-      }
       const target = await jidForChat(req, res, id);
       if (!target) {
         await fs.unlink(filepath).catch(() => {});
         res.status(404).json({ error: "Chat not found" });
+        return;
+      }
+      // Send from the chat's OWN channel, not the user's primary channel.
+      const sendChannelId = target.chat.channelId;
+      if (sendChannelId == null || !getSockForChannel(sendChannelId)) {
+        await fs.unlink(filepath).catch(() => {});
+        res.status(503).json({ error: "WhatsApp belum terhubung" });
         return;
       }
       try {
@@ -2350,7 +2355,8 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
           mimeType,
           "document",
           caption,
-          displayName
+          displayName,
+          sendChannelId
         );
       } catch (err) {
         req.log.error({ err, chatId: id }, "whatsapp quotation send failed");
@@ -2424,17 +2430,19 @@ router.post("/:id/contact", async (req, res): Promise<void> => {
       return;
     }
 
-    if (!(await getActiveSocket(req.session.userId!))) {
+    const target = await jidForChat(req, res, id);
+    if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    // Send from the chat's OWN channel, not the user's primary channel.
+    const sendChannelId = target.chat.channelId;
+    if (sendChannelId == null || !getSockForChannel(sendChannelId)) {
       res.status(503).json({ error: "WhatsApp belum terhubung" });
       return;
     }
 
-    const target = await jidForChat(req, res, id);
-    if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
-
     let waMessageId: string | null = null;
     try {
-      waMessageId = await sendContactToJid(req.session.userId!, target.jid, name, phone);
+      waMessageId = await sendContactToJid(req.session.userId!, target.jid, name, phone, sendChannelId);
     } catch (err) {
       req.log.error({ err }, "Failed to send contact via WhatsApp");
       res.status(500).json({ error: "Failed to send contact" });
@@ -2498,11 +2506,6 @@ router.post("/:id/product", async (req, res): Promise<void> => {
       return;
     }
 
-    if (!(await getActiveSocket(req.session.userId!))) {
-      res.status(503).json({ error: "WhatsApp belum terhubung" });
-      return;
-    }
-
     const target = await jidForChat(req, res, id);
     if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
 
@@ -2517,6 +2520,15 @@ router.post("/:id/product", async (req, res): Promise<void> => {
     // joining against `NULL`.
     if (target.chat.channelId == null) {
       res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+    // Send from the chat's OWN channel (not the user's primary channel). A
+    // multi-channel tenant otherwise transmits the product from the wrong
+    // number, so it shows as "terkirim" here but never lands in this chat's
+    // conversation on the paired phone.
+    const sock = getSockForChannel(target.chat.channelId);
+    if (!sock) {
+      res.status(503).json({ error: "WhatsApp belum terhubung" });
       return;
     }
     const { channelsTable } = await import("@workspace/db");
@@ -2603,8 +2615,6 @@ router.post("/:id/product", async (req, res): Promise<void> => {
 
     let waMessageId: string | null = null;
     if (imageBuffer && imageMimeType) {
-      const sock = await getActiveSocket(req.session.userId!);
-      if (!sock) { res.status(503).json({ error: "WhatsApp belum terhubung" }); return; }
       try {
         const sent = await sock.sendMessage(target.jid, {
           image: imageBuffer,
@@ -2622,8 +2632,6 @@ router.post("/:id/product", async (req, res): Promise<void> => {
         return;
       }
     } else {
-      const sock = await getActiveSocket(req.session.userId!);
-      if (!sock) { res.status(503).json({ error: "WhatsApp belum terhubung" }); return; }
       try {
         const sent = await sock.sendMessage(target.jid, { text: caption });
         waMessageId = sent?.key?.id ?? null;
@@ -2669,7 +2677,6 @@ router.post("/:id/product", async (req, res): Promise<void> => {
     //   4+) each videoUrl (text, WA renders link preview)
     // Each as its own message. 800ms throttle between sends keeps ordering
     // deterministic and gives WhatsApp time to resolve link previews.
-    const sock = await getActiveSocket(req.session.userId!);
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     let lastSentDescription: string | null = null;
 
@@ -2932,14 +2939,17 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
         return;
       }
     } else {
-      const sock = await getActiveSocket(req.session.userId!);
-      if (!sock) {
-        res.status(503).json({ error: "WhatsApp belum terhubung" });
-        return;
-      }
       const target = await jidForChat(req, res, id);
       if (!target) {
         res.status(404).json({ error: "Chat not found" });
+        return;
+      }
+      // Send from the chat's OWN channel, not the user's primary channel.
+      const sendChannelId = target.chat.channelId;
+      const sock =
+        sendChannelId == null ? null : getSockForChannel(sendChannelId);
+      if (!sock) {
+        res.status(503).json({ error: "WhatsApp belum terhubung" });
         return;
       }
       try {

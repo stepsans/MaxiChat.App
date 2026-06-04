@@ -21,7 +21,7 @@
 - [Incoming sticker media](incoming-media-sticker.md) — stickers reuse the image download path (free-text media_type, no migration); sticker-only msgs have empty content so they skip auto-reply by design.
 - [AI provider BYOK](ai-provider-byok.md) — all AI calls go through `resolveAiClient`; replit default is behavior-identical; baseUrl is SSRF-guarded; api-server has no direct openai dep.
 - [Server-side PDF generation](server-pdf-generation.md) — use pdf-lib not pdfkit (esbuild can't bundle pdfkit's .afm fonts); normalize images via sharp→png before embed; reuse exported loadImageBuffer.
-- [Dual-channel outbound send](dual-channel-send.md) — branch on channel.kind; Telegram needs explicit push+record+multipart sendDocument; ALL WA sends use the PRIMARY channel (getPrimaryCtxForUser), not chat.channelId.
+- [Dual-channel outbound send](dual-channel-send.md) — branch on channel.kind; every existing-chat WA send binds to the chat's OWN channel via getSockForChannel(chat.channelId); getActiveSocket(userId) is PRIMARY-only (guard/creation only), never the send socket.
 - [Self-delete cascade requirements](self-delete-cascade.md) — tenant deletion needs FK cascades on every user_id/channel_id + users.parent_user_id self-FK; route-level deletes alone leave orphans.
 - [drizzle-kit push needs TTY](drizzle-push-tty.md) — interactive prompts (unique constraint, truncate) crash in agent shell even with --force; apply ALTERs by psql then re-run push to sync.
 - [Settings merged-view contract](settings-merge-contract.md) — GET /settings must always return tenant+channel merge; never short-circuit to defaults on `!ownerPhone` or you drop saved general settings on unpaired channels.

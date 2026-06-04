@@ -18,7 +18,7 @@ import {
 } from "@workspace/db";
 import { requireOwnerUserId } from "../lib/channel-context";
 import { requireSuperAdmin } from "../lib/team-permissions";
-import { getCurrentOwnerPhone, getActiveSocket } from "./whatsapp";
+import { getCurrentOwnerPhone, getSockForChannel } from "./whatsapp";
 import { sendMessage as tgSendMessage } from "../lib/telegram";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import { logger } from "../lib/logger";
@@ -763,7 +763,11 @@ router.post("/:id/send", async (req, res): Promise<void> => {
         return;
       }
     } else {
-      const sock = await getActiveSocket(userId);
+      // Send from the chat's OWN channel (not the user's primary channel), so
+      // a multi-channel tenant doesn't transmit the order from the wrong
+      // number — which would never land in this chat's conversation.
+      const sock =
+        chat.channelId == null ? null : getSockForChannel(chat.channelId);
       if (!sock) {
         res.status(503).json({ error: "WhatsApp belum terhubung" });
         return;
