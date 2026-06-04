@@ -39,6 +39,23 @@ wrong and you silently drop or duplicate receipts.
   leave the evening scheduled run to fire, while still de-duping a second tick
   inside the matching minute.
 
+## Input formats & number parsing
+- **Process photos AND document attachments, not just `mediaType="image"`.**
+  Also accept `mediaType="document"` with `application/pdf` (PDF invoices) or
+  `image/*` (photo sent "as file"). Exclude other doc kinds (xlsx/docx/zip).
+- **PDFs go to the model as a chat.completions `file` content part**
+  (`{type:"file", file:{filename, file_data: dataUrl}}`), NOT `image_url`; the
+  model reads the PDF directly — no local rasterization (esbuild-safe).
+  **Provider-gate it:** only OpenAI models (Replit-managed default + BYOK
+  OpenAI) accept the file part; Gemini/OpenRouter OpenAI-compat endpoints do
+  not — skip PDFs there (errors++ + warn) instead of firing a doomed request.
+  On Drive upload, PDFs must skip `scanDocument` (it expects a raster image).
+- **Indonesian number format must be spelled out in the OUTPUT_CONTRACT, not
+  left to the per-group prompt.** `.`=thousands, `,`=decimal → "34.000"=34000.
+  **Why:** models default to en-US and read the thousands dot as a decimal, so
+  "34.000" became `34` in the Sheet even though the group prompt already said
+  "tanpa pemisah ribuan". Give explicit examples and forbid dot-as-decimal.
+
 ## How to apply
 Any "run once daily at a configurable cutoff over messages since last time"
 feature in this repo (recaps, digests) should reuse this watermark + cutoff

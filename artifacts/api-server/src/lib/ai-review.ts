@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import { and, asc, eq, gt, lte, isNotNull } from "drizzle-orm";
+import { and, asc, eq, gt, lte, isNotNull, or, like } from "drizzle-orm";
 import { google } from "googleapis";
 import {
   db,
@@ -213,7 +213,22 @@ export async function runReviewForConfig(
             // members (`inbound`). Filtering to inbound silently dropped
             // every owner-posted receipt. The bot never sends images here, so
             // including outbound only adds genuine human-posted photos.
-            eq(chatMessagesTable.mediaType, "image"),
+            //
+            // Accept both photos and receipt-bearing document attachments:
+            // plain images (mediaType "image"), and documents that are either
+            // a PDF invoice or a photo sent "as file" (mediaType "document"
+            // with application/pdf or an image/* mime). Other document kinds
+            // (xlsx, docx, zip, audio…) are excluded — they are never notas.
+            or(
+              eq(chatMessagesTable.mediaType, "image"),
+              and(
+                eq(chatMessagesTable.mediaType, "document"),
+                or(
+                  eq(chatMessagesTable.mediaMimeType, "application/pdf"),
+                  like(chatMessagesTable.mediaMimeType, "image/%")
+                )
+              )
+            ),
             isNotNull(chatMessagesTable.mediaUrl),
             gt(chatMessagesTable.createdAt, windowStart),
             lte(chatMessagesTable.createdAt, now)
@@ -232,6 +247,16 @@ export async function runReviewForConfig(
 
   const { client, model, provider, ownerUserId } = await resolveAiClient(cfg.userId);
 
+  // Direct PDF input (the chat.completions `file` content part) is only known
+  // to work on OpenAI models — the Replit-managed default and BYOK OpenAI. The
+  // OpenAI-compatible Gemini/OpenRouter endpoints don't accept it, so we skip
+  // PDFs there (with a logged warning + errors++) rather than fire a request
+  // that's guaranteed to fail. Images are unaffected on every provider.
+  const pdfSupported = provider === "replit" || provider === "openai";
+  // Cap PDF size so an accidental huge multi-page file can't blow up token
+  // spend (OpenAI's own hard limit is larger; this is a sane safety margin).
+  const MAX_PDF_BYTES = 15 * 1024 * 1024;
+
   const systemPrompt = buildAiReviewSystemPrompt(cfg.prompt!, columns);
 
   const rows: string[][] = [];
@@ -243,18 +268,44 @@ export async function runReviewForConfig(
     try {
       const buf = await loadImageBuffer(msg.mediaUrl);
       const mime = msg.mediaMimeType ?? "image/jpeg";
+      const isPdf = mime === "application/pdf";
+      if (isPdf && !pdfSupported) {
+        errors++;
+        logger.warn(
+          { configId, msgId: msg.id, provider, model },
+          "ai-review: PDF dilewati — provider AI ini tidak mendukung input PDF"
+        );
+        continue;
+      }
+      if (isPdf && buf.length > MAX_PDF_BYTES) {
+        errors++;
+        logger.warn(
+          { configId, msgId: msg.id, size: buf.length },
+          "ai-review: PDF dilewati — ukuran file melebihi batas"
+        );
+        continue;
+      }
       const dataUrl = `data:${mime};base64,${buf.toString("base64")}`;
+      // A PDF invoice is sent to the model as a file part (the model reads the
+      // document directly — no local rasterization); a photo is sent as an
+      // image part. Both obey the same JSON output contract.
+      const userContent = isPdf
+        ? [
+            { type: "text" as const, text: "Proses dokumen (PDF) berikut sesuai instruksi dan balas HANYA dengan JSON." },
+            {
+              type: "file" as const,
+              file: { filename: `nota-${msg.id}.pdf`, file_data: dataUrl },
+            },
+          ]
+        : [
+            { type: "text" as const, text: "Proses gambar berikut sesuai instruksi dan balas HANYA dengan JSON." },
+            { type: "image_url" as const, image_url: { url: dataUrl } },
+          ];
       const resp = await client.chat.completions.create({
         model,
         messages: [
           { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Proses gambar berikut sesuai instruksi dan balas HANYA dengan JSON." },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
-          },
+          { role: "user", content: userContent },
         ],
         max_tokens: 2000,
         temperature: 0,
@@ -330,7 +381,9 @@ export async function runReviewForConfig(
           // Scanner AI: clean up the photo (detect → deskew → enhance) before
           // archiving. scanDocument never throws — on detection failure it
           // returns a lightly-enhanced original — so uploads still proceed.
-          if (cfg.scannerAi) {
+          // PDFs are skipped: they are already clean documents and scanDocument
+          // expects a raster image, so the PDF is archived to Drive as-is.
+          if (cfg.scannerAi && up.mime !== "application/pdf") {
             const scan = await scanDocument({ buf: up.buf, client, model });
             void recordAiUsage({
               ownerUserId,
