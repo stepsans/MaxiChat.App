@@ -347,6 +347,14 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     setSelectMode(false);
     setSelectedIds(new Set());
   }, [chatId]);
+  // Auto-focus the compose box when a chat room opens, so the user can start
+  // typing immediately without clicking into it. rAF waits for the textarea to
+  // mount/render after the chat switch.
+  useEffect(() => {
+    if (!chatId) return;
+    const id = requestAnimationFrame(() => replyRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [chatId]);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [sendingContact, setSendingContact] = useState(false);
