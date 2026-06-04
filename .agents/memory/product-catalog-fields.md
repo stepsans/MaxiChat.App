@@ -5,15 +5,18 @@ description: How product category bucketing is derived and which product fields 
 
 # Product catalog field conventions
 
-## Category combo-box buckets are derived from the product CODE's first letter
-The sidebar (ChatInfoSidebar Products/Order tabs) category filter does NOT use the
-`category` text column. Buckets come from `code[0].toUpperCase()`:
-`B → Bahan`, `M → Mesin` (DEFAULT view), `S → Sparepart`, anything else → `Lainnya`.
+## Category combo-box options come from the `category` text column (sheet "kategori")
+Both the Products page filter AND the chat right-sidebar product picker
+(ChatInfoSidebar Products/Order tabs) derive their category options from distinct
+trimmed `p.category` values (sorted id-ID, case-insensitive), with `__all__` =
+"Semua kategori" (default) and `__none__` = "Tanpa kategori". The old code-first-letter
+bucket scheme (`B/M/S/O` via `productBucket(code)`) was REMOVED from the sidebar.
 
-**Why:** the user defines categories purely by SKU code prefix; the free-text
-`category` column is unreliable / used for AI knowledge grouping instead.
-**How to apply:** any new product grouping UI should reuse the `productBucket(code)`
-helper, not `p.category`.
+**Why:** the user wants the picker categories to match the Google Sheet `kategori`
+column they actually maintain, not an inferred SKU-prefix bucket.
+**How to apply:** reuse the distinct-`p.category` derivation (mirror pages/Products.tsx);
+do NOT reintroduce a code-prefix bucket helper. The sidebar picker also has an
+in-stock-only checkbox filtering `p.stock != null && p.stock !== 0`.
 
 ## Internal-only fields must never reach customers
 Internal fields: `priceSilver/Gold/Platinum/Reseller/Distributor`, `stock`, `stockOnHand`.

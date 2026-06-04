@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -288,24 +289,13 @@ function formatRupiah(value: number): string {
   }).format(value);
 }
 
-// Product category is derived from the FIRST LETTER of the product code:
-// B → Bahan, M → Mesin (default view), S → Sparepart, anything else → Lainnya.
-type ProductBucket = "B" | "M" | "S" | "O";
+// Product categories come from the product's `category` column (synced from the
+// Google Sheet "kategori" column), NOT from the product code. "__all__" shows
+// everything; "__none__" is produk tanpa kategori.
+const ALL_CATEGORIES = "__all__";
+const UNCATEGORIZED = "__none__";
 
-const PRODUCT_BUCKETS: { value: ProductBucket; label: string }[] = [
-  { value: "B", label: "Bahan" },
-  { value: "M", label: "Mesin" },
-  { value: "S", label: "Sparepart" },
-  { value: "O", label: "Lainnya" },
-];
-
-function productBucket(code: string): ProductBucket {
-  const first = (code ?? "").trim().charAt(0).toUpperCase();
-  if (first === "B") return "B";
-  if (first === "M") return "M";
-  if (first === "S") return "S";
-  return "O";
-}
+type CategoryOptions = { list: string[]; hasUncategorized: boolean };
 
 // Internal-only product detail lines for the picker. The send-product and
 // quotation flows never include the stock figures or tier prices, so they stay
@@ -336,23 +326,50 @@ function ProductMetaLines({ product }: { product: Product }) {
 // POST /chats/:id/quotation accept any product owned by the chat's owner,
 // regardless of the product's channelIds. So we deliberately do NOT channel-filter
 // here — doing so would hide products the backend would happily send. We apply
-// the search filter plus the category-bucket filter (derived from code prefix).
-// Shared by both the Products and Order tabs.
+// the search filter, the category filter (from the `category` column), and an
+// optional in-stock filter (qty != 0). Shared by both the Products and Order tabs.
 function useFilteredProducts(
   search: string,
-  bucket: ProductBucket
+  category: string,
+  inStockOnly: boolean
 ): {
   products: Product[];
   filtered: Product[];
+  categories: CategoryOptions;
   isLoading: boolean;
 } {
   const { data, isLoading } = useListProducts({
     query: { queryKey: getListProductsQueryKey() },
   });
   const products = (data ?? []) as Product[];
+
+  // Distinct categories from the catalog, sorted alfabetis (id-ID,
+  // case-insensitive). hasUncategorized flags products tanpa kategori.
+  const seen = new Set<string>();
+  let hasUncategorized = false;
+  for (const p of products) {
+    const c = (p.category ?? "").trim();
+    if (c) seen.add(c);
+    else hasUncategorized = true;
+  }
+  const categories: CategoryOptions = {
+    list: Array.from(seen).sort((a, b) =>
+      a.localeCompare(b, "id-ID", { sensitivity: "base" })
+    ),
+    hasUncategorized,
+  };
+
   const q = search.trim().toLowerCase();
   const filtered = products.filter((p) => {
-    if (productBucket(p.code) !== bucket) return false;
+    if (inStockOnly && !(p.stock != null && p.stock !== 0)) return false;
+    if (category !== ALL_CATEGORIES) {
+      const c = (p.category ?? "").trim();
+      if (category === UNCATEGORIZED) {
+        if (c) return false;
+      } else if (c !== category) {
+        return false;
+      }
+    }
     if (!q) return true;
     return (
       p.name.toLowerCase().includes(q) ||
@@ -360,35 +377,71 @@ function useFilteredProducts(
       (p.category ?? "").toLowerCase().includes(q)
     );
   });
-  return { products, filtered, isLoading };
+  return { products, filtered, categories, isLoading };
 }
 
-// Category combo box shared by both tabs. Defaults to "Mesin" via tab state.
+// Category combo box shared by both tabs. Options come from the catalog's
+// `category` column; defaults to "Semua kategori".
 function CategoryFilter({
   value,
   onChange,
+  categories,
   testId,
 }: {
-  value: ProductBucket;
-  onChange: (v: ProductBucket) => void;
+  value: string;
+  onChange: (v: string) => void;
+  categories: CategoryOptions;
   testId: string;
 }) {
   return (
-    <Select value={value} onValueChange={(v) => onChange(v as ProductBucket)}>
+    <Select value={value} onValueChange={onChange}>
       <SelectTrigger
         data-testid={testId}
         className="h-9 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
       >
-        <SelectValue />
+        <SelectValue placeholder="Semua kategori" />
       </SelectTrigger>
       <SelectContent>
-        {PRODUCT_BUCKETS.map((b) => (
-          <SelectItem key={b.value} value={b.value} className="text-xs">
-            {b.label}
+        <SelectItem value={ALL_CATEGORIES} className="text-xs">
+          Semua kategori
+        </SelectItem>
+        {categories.hasUncategorized && (
+          <SelectItem value={UNCATEGORIZED} className="text-xs">
+            <span className="italic text-[hsl(var(--wa-meta))]">
+              Tanpa kategori
+            </span>
+          </SelectItem>
+        )}
+        {categories.list.map((c) => (
+          <SelectItem key={c} value={c} className="text-xs">
+            {c}
           </SelectItem>
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+// "Tampilkan produk dengan stok ≠ 0" checkbox shared by both tabs.
+function InStockToggle({
+  checked,
+  onChange,
+  testId,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  testId: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] cursor-pointer select-none">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(v) => onChange(v === true)}
+        data-testid={testId}
+        className="h-4 w-4"
+      />
+      Tampilkan produk dengan jumlah ≠ 0
+    </label>
   );
 }
 
@@ -397,9 +450,14 @@ function CategoryFilter({
 function ProductsTab({ chatId }: { chatId: number }) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [bucket, setBucket] = useState<ProductBucket>("M");
+  const [category, setCategory] = useState<string>(ALL_CATEGORIES);
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const { products, filtered, isLoading } = useFilteredProducts(search, bucket);
+  const { products, filtered, categories, isLoading } = useFilteredProducts(
+    search,
+    category,
+    inStockOnly
+  );
 
   // Reset the selection whenever the active chat changes so a product picked for
   // one conversation can't be sent to another after switching chats.
@@ -427,8 +485,9 @@ function ProductsTab({ chatId }: { chatId: number }) {
     <div className="flex flex-1 flex-col p-3 gap-3 min-h-0">
       <div className="flex-shrink-0 flex flex-col gap-2">
         <CategoryFilter
-          value={bucket}
-          onChange={setBucket}
+          value={category}
+          onChange={setCategory}
+          categories={categories}
           testId="select-product-category"
         />
         <div className="relative">
@@ -441,6 +500,11 @@ function ProductsTab({ chatId }: { chatId: number }) {
             className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
           />
         </div>
+        <InStockToggle
+          checked={inStockOnly}
+          onChange={setInStockOnly}
+          testId="checkbox-product-instock"
+        />
       </div>
 
       {isLoading ? (
@@ -591,7 +655,7 @@ function computeTotals(
 }
 
 // Popover that lets the agent pick a catalog product to add as a line. Reuses
-// the same category-bucket + search filtering as the Products tab.
+// the same category + search + in-stock filtering as the Products tab.
 function ProductPicker({
   onPick,
 }: {
@@ -599,8 +663,13 @@ function ProductPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [bucket, setBucket] = useState<ProductBucket>("M");
-  const { products, filtered, isLoading } = useFilteredProducts(search, bucket);
+  const [category, setCategory] = useState<string>(ALL_CATEGORIES);
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const { products, filtered, categories, isLoading } = useFilteredProducts(
+    search,
+    category,
+    inStockOnly
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -617,8 +686,9 @@ function ProductPicker({
       <PopoverContent align="start" className="w-72 p-2">
         <div className="flex flex-col gap-2">
           <CategoryFilter
-            value={bucket}
-            onChange={setBucket}
+            value={category}
+            onChange={setCategory}
+            categories={categories}
             testId="select-order-picker-category"
           />
           <div className="relative">
@@ -631,6 +701,11 @@ function ProductPicker({
               className="h-9 pl-8 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
             />
           </div>
+          <InStockToggle
+            checked={inStockOnly}
+            onChange={setInStockOnly}
+            testId="checkbox-order-picker-instock"
+          />
           {isLoading ? (
             <div className="flex items-center gap-2 text-xs text-[hsl(var(--wa-meta))] py-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
