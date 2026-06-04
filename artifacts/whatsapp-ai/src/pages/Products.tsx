@@ -115,7 +115,6 @@ const strOrNull = (s: string): string | null => {
 };
 
 type SortKey =
-  | "id"
   | "code"
   | "category"
   | "name"
@@ -128,8 +127,6 @@ type SortKey =
 
 function getSortValue(p: Product, key: SortKey): string | number | null {
   switch (key) {
-    case "id":
-      return p.id;
     case "code":
       return p.code ?? "";
     case "category":
@@ -792,7 +789,6 @@ export default function Products() {
                       data-testid="checkbox-select-all-products"
                     />
                   </th>
-                  <SortableTh sortKey="id" label="ID" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <th className="px-3 py-2 font-medium">Foto</th>
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[350px]" />
@@ -827,7 +823,6 @@ export default function Products() {
                         data-testid={`checkbox-select-product-${p.id}`}
                       />
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground">{p.id}</td>
                     <td className="px-3 py-2">
                       <div className="w-10 h-10 rounded bg-secondary overflow-hidden flex items-center justify-center">
                         {p.imageUrl ? (

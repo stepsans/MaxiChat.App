@@ -23,6 +23,19 @@ rows) and put the real quantity in `stockOnHand` (sheet "qty on hand"/"stok read
 "soh"). Any "in stock" filter MUST consider stockOnHand, not just stock, or it hides
 everything.
 
+## Catalog import is an upsert by (user_id, code), NOT wipe-and-replace
+The import/sync endpoint upserts via `onConflictDoUpdate` on the
+`products_user_code_unique` (userId, code) index, then prunes codes absent from the
+file with `notInArray`. It must NOT do `DELETE all → INSERT all`.
+
+**Why:** `products.id` is a Postgres `serial`. A full delete+reinsert of ~568 rows
+drew ~568 fresh sequence values every import, so ids climbed into the tens of
+thousands even though only 568 rows ever exist — the user noticed and asked why.
+Upsert keeps existing ids stable.
+**How to apply:** keep the `entries.length===0` guard before the prune (so the
+notInArray code list is never empty → never a mass-delete). Any new bulk catalog
+writer must follow the same upsert+prune shape, never wipe-and-replace.
+
 ## Internal-only fields must never reach customers
 Internal fields: `priceSilver/Gold/Platinum/Reseller/Distributor`, `stock`, `stockOnHand`.
 Only `price` (Harga Pricelist) is customer-facing.

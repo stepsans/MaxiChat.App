@@ -7,7 +7,7 @@ import mime from "mime-types";
 import ExcelJS from "exceljs";
 import { db } from "@workspace/db";
 import { productsTable, knowledgeTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Request, Response } from "express";
 import { MEDIA_DIR } from "./whatsapp";
@@ -775,21 +775,47 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
       return;
     }
 
-    // Per-user wipe & replace: only this user's catalog is rebuilt; other
-    // users' catalogs are untouched. Filter is on user_id (post-T003 source
-    // of truth); ownerPhone is still written on each row for the legacy
-    // NOT NULL column until that constraint is dropped.
+    // Per-user upsert by (user_id, code): existing products keep their id (so
+    // the serial sequence no longer jumps ~568 every import), new codes are
+    // inserted, and codes absent from this import are removed. Filter is on
+    // user_id; other users' catalogs are untouched.
+    const codes = entries.map((e) => e.code);
     await db.transaction(async (tx) => {
-      await tx
-        .delete(productsTable)
-        .where(eq(productsTable.userId, owner.ownerUserId));
       await tx
         .insert(productsTable)
         .values(
           entries.map((e) => ({
             ...e,
-              userId: owner.ownerUserId,
+            userId: owner.ownerUserId,
           })),
+        )
+        .onConflictDoUpdate({
+          target: [productsTable.userId, productsTable.code],
+          set: {
+            name: sql`excluded.name`,
+            category: sql`excluded.category`,
+            price: sql`excluded.price`,
+            priceSilver: sql`excluded.price_silver`,
+            priceGold: sql`excluded.price_gold`,
+            pricePlatinum: sql`excluded.price_platinum`,
+            priceReseller: sql`excluded.price_reseller`,
+            priceDistributor: sql`excluded.price_distributor`,
+            stock: sql`excluded.stock`,
+            stockOnHand: sql`excluded.stock_on_hand`,
+            imageUrl: sql`excluded.image_url`,
+            flyerUrl: sql`excluded.flyer_url`,
+            productUrl: sql`excluded.product_url`,
+            videoUrls: sql`excluded.video_urls`,
+            updatedAt: sql`now()`,
+          },
+        });
+      await tx
+        .delete(productsTable)
+        .where(
+          and(
+            eq(productsTable.userId, owner.ownerUserId),
+            notInArray(productsTable.code, codes),
+          ),
         );
     });
 
