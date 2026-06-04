@@ -22,6 +22,16 @@ wrong and you silently drop or duplicate receipts.
   re-OCR'ing it → per-message idempotency without a per-message table.
 - **Advance the watermark on success only.** On failure leave `lastRunAt`
   untouched so the same window retries; never silently skip receipts.
+  **Watch-out:** a 0-image run still counts as success and advances the
+  watermark, so an empty/mis-scoped run "uses up" the day — receipts already
+  posted before it are then permanently behind the watermark. To reprocess a
+  stuck receipt you must roll `lastRunAt` back to before its `createdAt`.
+- **Process images regardless of direction (inbound AND outbound), not
+  inbound-only.** **Why:** in a "laporan kas" group the receipts are usually
+  posted by the paired number itself (owner forwarding nota) → recorded as
+  `outbound`/fromMe. An inbound-only filter silently dropped every owner-posted
+  receipt (0 baris, no error). The bot never sends images into these groups, so
+  outbound = genuine human-posted photos only.
 - **Scheduler dedup compares the watermark to today's cut-off instant**
   (`lastRunAt >= todayCutoffUtc`), NOT to a `lastRunDate` string.
   **Why:** a per-day date guard makes an earlier *manual* run that day suppress

@@ -206,7 +206,13 @@ export async function runReviewForConfig(
         .where(
           and(
             eq(chatMessagesTable.chatId, chat.id),
-            eq(chatMessagesTable.direction, "inbound"),
+            // Process receipt photos regardless of direction. In a "laporan
+            // kas" group the receipts are often posted by the paired number
+            // itself (the owner forwarding nota), which is recorded as
+            // `outbound` (fromMe) — not just images received from other
+            // members (`inbound`). Filtering to inbound silently dropped
+            // every owner-posted receipt. The bot never sends images here, so
+            // including outbound only adds genuine human-posted photos.
             eq(chatMessagesTable.mediaType, "image"),
             isNotNull(chatMessagesTable.mediaUrl),
             gt(chatMessagesTable.createdAt, windowStart),
