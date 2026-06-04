@@ -361,7 +361,11 @@ function useFilteredProducts(
 
   const q = search.trim().toLowerCase();
   const filtered = products.filter((p) => {
-    if (inStockOnly && !(p.stock != null && p.stock !== 0)) return false;
+    // "Jumlah" can live in either column — many catalogs leave `stock` empty and
+    // only fill `stockOnHand` (qty on hand). Treat a product as in-stock when
+    // either column is > 0.
+    if (inStockOnly && !((p.stock ?? 0) > 0 || (p.stockOnHand ?? 0) > 0))
+      return false;
     if (category !== ALL_CATEGORIES) {
       const c = (p.category ?? "").trim();
       if (category === UNCATEGORIZED) {
@@ -440,7 +444,7 @@ function InStockToggle({
         data-testid={testId}
         className="h-4 w-4"
       />
-      Tampilkan produk dengan jumlah ≠ 0
+      Tampilkan produk dengan jumlah &gt; 0
     </label>
   );
 }

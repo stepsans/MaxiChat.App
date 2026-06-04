@@ -16,7 +16,12 @@ bucket scheme (`B/M/S/O` via `productBucket(code)`) was REMOVED from the sidebar
 column they actually maintain, not an inferred SKU-prefix bucket.
 **How to apply:** reuse the distinct-`p.category` derivation (mirror pages/Products.tsx);
 do NOT reintroduce a code-prefix bucket helper. The sidebar picker also has an
-in-stock-only checkbox filtering `p.stock != null && p.stock !== 0`.
+in-stock-only checkbox: "jumlah > 0" means `(p.stock ?? 0) > 0 || (p.stockOnHand ?? 0) > 0`.
+
+**Stock gotcha:** real catalogs often leave the `stock` column EMPTY (null for all
+rows) and put the real quantity in `stockOnHand` (sheet "qty on hand"/"stok ready"/
+"soh"). Any "in stock" filter MUST consider stockOnHand, not just stock, or it hides
+everything.
 
 ## Internal-only fields must never reach customers
 Internal fields: `priceSilver/Gold/Platinum/Reseller/Distributor`, `stock`, `stockOnHand`.
