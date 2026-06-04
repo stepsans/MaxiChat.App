@@ -14,7 +14,7 @@
 - [drizzle sql tag spreads JS arrays](drizzle-sql-array-tuple.md) — `sql\`COALESCE(col, ${jsArr})\`` produces `($1,$2,…)` not `ARRAY[…]::T[]`; fatal for array columns, use `sql.join` + explicit cast.
 - [Sales-order Sheet export](sales-order-sheet-export.md) — one row per item, order fields repeated; kode barang live-lookup+snapshot fallback; any column-layout change must keep the row-1 header compare/rewrite in lockstep.
 - [Sales-order discount math](sales-order-discount-math.md) — per-item on gross then global on subtotal then PPN; server+client mirror in lockstep; clamp isn't enough, zod must reject percent>100.
-- [Product catalog field conventions](product-catalog-fields.md) — category buckets come from CODE first letter (not category col); stock + tier prices are internal-only, never in customer payloads.
+- [Product catalog field conventions](product-catalog-fields.md) — categories come from the `category` column (not code prefix); import is upsert-by-(user,code) not wipe-replace; stock lives in stockOnHand; tier prices/stock are internal-only.
 - [Product send/quotation scope](product-send-scope.md) — product + quotation send endpoints are USER-scoped (ignore channelIds); never channel-filter products client-side, unlike the channel-scoped shortcut send.
 - [Channel-scope on resource send-actions](resource-channel-scope-on-send.md) — acting on a shared resource (shortcut/product/knowledge) in a chat must re-check its per-channel assignment, not just owner scope.
 - [Chat-returning endpoints attach joined fields](chat-response-joined-fields.md) — every chat handler (assign/takeover too, not just list/get) must append `labels[]` w/ full CustomerLabel shape; TS won't catch the drift.

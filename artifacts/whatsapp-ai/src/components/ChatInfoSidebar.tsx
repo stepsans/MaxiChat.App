@@ -88,6 +88,8 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { ChatAvatar } from "@/components/ChatAvatar";
 import { ContactPicker } from "@/components/ContactPicker";
+import { ProductImageLightbox } from "@/components/ProductImageLightbox";
+import { resolveImageSrc } from "@/lib/utils";
 
 export type ChatLabel = { id: number; name: string; color: string };
 
@@ -633,17 +635,23 @@ function ProductsTab({ chatId }: { chatId: number }) {
                       : "border-[hsl(var(--wa-divider))] hover:bg-white/5"
                   )}
                 >
-                  {p.imageUrl ? (
-                    <img
-                      src={p.imageUrl}
-                      alt={p.name}
-                      className="w-10 h-10 rounded object-cover flex-shrink-0 bg-white/5"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded flex items-center justify-center flex-shrink-0 bg-white/5 text-[hsl(var(--wa-meta))]">
-                      <Package className="w-4 h-4" />
-                    </div>
-                  )}
+                  <ProductImageLightbox
+                    src={p.imageUrl}
+                    alt={p.name}
+                    triggerClassName="flex-shrink-0"
+                  >
+                    {p.imageUrl ? (
+                      <img
+                        src={resolveImageSrc(p.imageUrl) ?? p.imageUrl}
+                        alt={p.name}
+                        className="w-10 h-10 rounded object-cover flex-shrink-0 bg-white/5"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded flex items-center justify-center flex-shrink-0 bg-white/5 text-[hsl(var(--wa-meta))]">
+                        <Package className="w-4 h-4" />
+                      </div>
+                    )}
+                  </ProductImageLightbox>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-foreground truncate">
                       {p.name}

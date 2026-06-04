@@ -69,6 +69,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { resolveImageSrc } from "@/lib/utils";
+import { ProductImageLightbox } from "@/components/ProductImageLightbox";
 import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 
 type Product = {
@@ -824,22 +825,28 @@ export default function Products() {
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <div className="w-10 h-10 rounded bg-secondary overflow-hidden flex items-center justify-center">
-                        {p.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={resolveImageSrc(p.imageUrl) ?? p.imageUrl}
-                            alt={p.name}
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <Package className="w-4 h-4 opacity-30" />
-                        )}
-                      </div>
+                      <ProductImageLightbox
+                        src={p.imageUrl}
+                        alt={p.name}
+                        triggerClassName="block w-10 h-10"
+                      >
+                        <div className="w-10 h-10 rounded bg-secondary overflow-hidden flex items-center justify-center">
+                          {p.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={resolveImageSrc(p.imageUrl) ?? p.imageUrl}
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <Package className="w-4 h-4 opacity-30" />
+                          )}
+                        </div>
+                      </ProductImageLightbox>
                     </td>
                     <td className="px-3 py-2 font-mono">{p.code}</td>
                     <td
