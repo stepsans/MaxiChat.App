@@ -217,7 +217,7 @@ export default function ProductSyncCard({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full px-6 py-2.5 flex items-center gap-3 text-left hover:bg-muted/20"
+        className="w-full px-6 py-2.5 flex items-center gap-3 text-left hover:bg-muted/20 bg-[#ff800033]"
       >
         <SiGoogle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         <div className="flex-1 min-w-0">
@@ -243,7 +243,6 @@ export default function ProductSyncCard({
           <ChevronDown className="w-4 h-4 text-muted-foreground" />
         )}
       </button>
-
       {open && (
         <div className="px-6 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-4">
           {cfgLoading ? (
