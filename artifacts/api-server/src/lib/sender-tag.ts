@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 
-// WhatsApp italic syntax uses underscores. We append on its own line so
+// WhatsApp italic syntax uses underscores. We append on the next line so
 // the tag is visually separated from the message body. Empty/whitespace-
 // only inputs return the tag as a standalone message (used as a caption
 // fallback when an agent attaches media with no caption).
@@ -9,7 +9,7 @@ export function withTag(text: string | null | undefined, tag: string): string {
   const body = (text ?? "").trimEnd();
   const sig = `_${tag}_`;
   if (!body) return sig;
-  return `${body}\n\n${sig}`;
+  return `${body}\n${sig}`;
 }
 
 export const CHATBOT_TAG = "Chatbot";
