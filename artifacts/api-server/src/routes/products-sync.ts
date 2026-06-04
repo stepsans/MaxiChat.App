@@ -11,6 +11,8 @@ import {
   type Credential,
 } from "@workspace/db";
 import { getCurrentOwnerPhone } from "./whatsapp";
+import { requireOwnerUserId } from "../lib/channel-context";
+import { requireSuperAdmin } from "../lib/team-permissions";
 import { getAuthorizedOAuthClient } from "./credentials";
 import { HEADER_ALIASES, EXPORT_HEADERS_MAP, parseIntCell } from "./products";
 import { logger } from "../lib/logger";
@@ -39,7 +41,8 @@ function publicConfig(row: ProductSyncConfig) {
 
 router.get("/sync-config", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.json({ config: null });
@@ -73,9 +76,10 @@ const ConfigInput = z.object({
   intervalMinutes: z.number().int().refine((v) => ALLOWED_INTERVALS.has(v)).optional(),
 });
 
-router.put("/sync-config", async (req, res): Promise<void> => {
+router.put("/sync-config", requireSuperAdmin, async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.status(503).json({ error: "Hubungkan WhatsApp dulu." });

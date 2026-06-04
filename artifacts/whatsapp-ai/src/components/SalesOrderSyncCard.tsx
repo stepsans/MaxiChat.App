@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   Loader2,
   CheckCircle2,
@@ -52,6 +53,7 @@ function formatLast(d: string | null | undefined): string {
 export default function SalesOrderSyncCard() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { isSuperAdmin } = usePermissions();
   const [open, setOpen] = useState(false);
 
   const { data: cfgResp, isLoading: cfgLoading } = useGetSalesOrderSyncConfig({
@@ -191,6 +193,11 @@ export default function SalesOrderSyncCard() {
             </div>
           ) : (
             <>
+              {!isSuperAdmin && (
+                <p className="md:col-span-2 text-[11px] text-muted-foreground">
+                  Hanya admin utama yang dapat mengubah integrasi ini.
+                </p>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-[11px] uppercase text-muted-foreground">
                   Credential
@@ -202,6 +209,7 @@ export default function SalesOrderSyncCard() {
                     setSpreadsheetId("");
                     setSheetName("");
                   }}
+                  disabled={!isSuperAdmin}
                 >
                   <SelectTrigger
                     data-testid="select-salesorder-credential"
@@ -238,7 +246,7 @@ export default function SalesOrderSyncCard() {
                     value: s.id,
                     label: s.name,
                   }))}
-                  disabled={!credReady}
+                  disabled={!isSuperAdmin || !credReady}
                   placeholder={sheetsLoading ? "Memuat…" : "Pilih spreadsheet…"}
                   searchPlaceholder="Cari spreadsheet…"
                   emptyText="Spreadsheet tidak ditemukan."
@@ -254,7 +262,7 @@ export default function SalesOrderSyncCard() {
                   value={sheetName}
                   onChange={setSheetName}
                   options={(tabs ?? []).map((t) => ({ value: t, label: t }))}
-                  disabled={!spreadsheetId}
+                  disabled={!isSuperAdmin || !spreadsheetId}
                   placeholder={tabsLoading ? "Memuat…" : "Pilih tab…"}
                   searchPlaceholder="Cari tab…"
                   emptyText="Tab tidak ditemukan."
@@ -270,7 +278,7 @@ export default function SalesOrderSyncCard() {
                     size="sm"
                     data-testid="button-unbind-salesorder-sync"
                     onClick={unbind}
-                    disabled={saveMut.isPending}
+                    disabled={!isSuperAdmin || saveMut.isPending}
                   >
                     <Unlink className="w-3.5 h-3.5 mr-1.5" /> Lepas
                   </Button>
@@ -281,7 +289,7 @@ export default function SalesOrderSyncCard() {
                   size="sm"
                   data-testid="button-save-salesorder-sync"
                   onClick={save}
-                  disabled={!canSave || saveMut.isPending}
+                  disabled={!isSuperAdmin || !canSave || saveMut.isPending}
                 >
                   {saveMut.isPending ? (
                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />

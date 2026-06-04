@@ -13,12 +13,14 @@ import {
   FolderUp,
 } from "lucide-react";
 import { SiGoogledrive } from "react-icons/si";
+import { usePermissions } from "@/hooks/use-permissions";
 
 export default function DriveSyncCard({
   credentials,
 }: {
   credentials: Credential[];
 }) {
+  const { isSuperAdmin } = usePermissions();
   const [open, setOpen] = useState(false);
 
   const driveCreds = credentials.filter((c) => c.type === "googleDriveOAuth2Api");
@@ -88,6 +90,11 @@ export default function DriveSyncCard({
             </div>
           ) : (
             <>
+              {!isSuperAdmin && (
+                <p className="text-[11px] text-muted-foreground">
+                  Hanya admin utama yang dapat mengubah integrasi ini.
+                </p>
+              )}
               <div className="text-xs text-muted-foreground">
                 Foto dari grup (menu <strong className="text-foreground">AI Review</strong>)
                 otomatis tersimpan ke folder Drive. Folder dipilih per grup di menu AI

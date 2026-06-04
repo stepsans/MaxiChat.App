@@ -8,6 +8,7 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   Loader2,
   RefreshCw,
@@ -25,6 +26,7 @@ export default function ContactSyncCard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { isSuperAdmin } = usePermissions();
   const [open, setOpen] = useState(false);
 
   const contactCreds = credentials.filter(
@@ -118,6 +120,11 @@ export default function ContactSyncCard({
             </div>
           ) : (
             <>
+              {!isSuperAdmin && (
+                <p className="text-[11px] text-muted-foreground">
+                  Hanya admin utama yang dapat mengubah integrasi ini.
+                </p>
+              )}
               <div className="text-xs text-muted-foreground">
                 {statusLoading ? (
                   "Memuat jumlah kontak…"

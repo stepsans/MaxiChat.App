@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   Loader2,
   RefreshCw,
@@ -64,6 +65,7 @@ export default function ShortcutSyncCard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { isSuperAdmin } = usePermissions();
   const [open, setOpen] = useState(false);
 
   const { data: cfgResp, isLoading: cfgLoading } = useGetShortcutSyncConfig({
@@ -256,6 +258,11 @@ export default function ShortcutSyncCard({
             </div>
           ) : (
             <>
+              {!isSuperAdmin && (
+                <p className="md:col-span-2 text-[11px] text-muted-foreground">
+                  Hanya admin utama yang dapat mengubah integrasi ini.
+                </p>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-[11px] uppercase text-muted-foreground">
                   Credential
@@ -267,6 +274,7 @@ export default function ShortcutSyncCard({
                     setSpreadsheetId("");
                     setSheetName("");
                   }}
+                  disabled={!isSuperAdmin}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Pilih credential…" />
@@ -294,7 +302,7 @@ export default function ShortcutSyncCard({
                     setSpreadsheetId(v);
                     setSheetName("");
                   }}
-                  disabled={!credReady}
+                  disabled={!isSuperAdmin || !credReady}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue
@@ -318,7 +326,7 @@ export default function ShortcutSyncCard({
                 <Select
                   value={sheetName}
                   onValueChange={setSheetName}
-                  disabled={!spreadsheetId}
+                  disabled={!isSuperAdmin || !spreadsheetId}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder={tabsLoading ? "Memuat…" : "Pilih tab…"} />
@@ -346,6 +354,7 @@ export default function ShortcutSyncCard({
                     setHeaderRow(Math.max(1, Number(e.target.value) || 1))
                   }
                   className="h-8 text-xs"
+                  disabled={!isSuperAdmin}
                 />
               </div>
 
@@ -357,6 +366,7 @@ export default function ShortcutSyncCard({
                       setAutoSyncEnabled(v);
                       if (canSave) save({ autoSyncEnabled: v });
                     }}
+                    disabled={!isSuperAdmin}
                   />
                   <span className="text-xs">Auto-sync</span>
                   <Select
@@ -366,6 +376,7 @@ export default function ShortcutSyncCard({
                       setIntervalMinutes(iv);
                       if (canSave && autoSyncEnabled) save({ intervalMinutes: iv });
                     }}
+                    disabled={!isSuperAdmin}
                   >
                     <SelectTrigger className="h-8 w-44 text-xs">
                       <SelectValue />
@@ -386,7 +397,7 @@ export default function ShortcutSyncCard({
                       variant="ghost"
                       size="sm"
                       onClick={unbind}
-                      disabled={saveMut.isPending}
+                      disabled={!isSuperAdmin || saveMut.isPending}
                     >
                       <Unlink className="w-3.5 h-3.5 mr-1.5" /> Lepas
                     </Button>
@@ -396,7 +407,7 @@ export default function ShortcutSyncCard({
                     variant="outline"
                     size="sm"
                     onClick={() => save()}
-                    disabled={!canSave || saveMut.isPending}
+                    disabled={!isSuperAdmin || !canSave || saveMut.isPending}
                   >
                     {saveMut.isPending ? (
                       <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />

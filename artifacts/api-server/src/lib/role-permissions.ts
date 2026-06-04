@@ -60,7 +60,9 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     products: allow(true, true, true, true),
     flows: allow(true, true, true, true),
     analytics: allow(true, false, false, false),
-    credentials: allow(true, true, true, false),
+    // Integrations (credentials + sheet/drive sync) are owner-managed: a
+    // supervisor may VIEW them but only the super_admin parent can change.
+    credentials: allow(true, false, false, false),
     // Chats access is governed by per-channel access, not create/edit/delete.
     chats: allow(true, false, false, false),
     // Statuses has no edit route — view/create/delete only.

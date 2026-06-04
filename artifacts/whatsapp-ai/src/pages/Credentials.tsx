@@ -61,6 +61,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   KeyRound,
   Plus,
@@ -136,6 +137,7 @@ function StatusPill({ status }: { status: string }) {
 export default function CredentialsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { isSuperAdmin } = usePermissions();
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editor, setEditor] = useState<
@@ -178,9 +180,11 @@ export default function CredentialsPage() {
           <KeyRound className="w-5 h-5 text-muted-foreground" />
           <h1 className="text-base font-semibold">Credentials</h1>
         </div>
-        <Button size="sm" onClick={() => setPickerOpen(true)}>
-          <Plus className="w-4 h-4 mr-1" /> Add credential
-        </Button>
+        {isSuperAdmin && (
+          <Button size="sm" onClick={() => setPickerOpen(true)}>
+            <Plus className="w-4 h-4 mr-1" /> Add credential
+          </Button>
+        )}
       </div>
 
       <div className="px-6 py-4 border-b border-border flex items-center gap-2">
@@ -227,8 +231,14 @@ export default function CredentialsPage() {
                 {filtered.map((c) => (
                   <tr
                     key={c.id}
-                    className="border-t border-border hover:bg-muted/30 cursor-pointer"
-                    onClick={() => setEditor({ mode: "edit", credential: c })}
+                    className={`border-t border-border hover:bg-muted/30${
+                      isSuperAdmin ? " cursor-pointer" : ""
+                    }`}
+                    onClick={
+                      isSuperAdmin
+                        ? () => setEditor({ mode: "edit", credential: c })
+                        : undefined
+                    }
                   >
                     <td className="px-4 py-2.5 font-medium">{c.name}</td>
                     <td className="px-4 py-2.5">
@@ -244,26 +254,28 @@ export default function CredentialsPage() {
                       <StatusPill status={c.status} />
                     </td>
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => setEditor({ mode: "edit", credential: c })}
-                          >
-                            <Pencil className="w-4 h-4 mr-2" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setDeleting(c)}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {isSuperAdmin && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => setEditor({ mode: "edit", credential: c })}
+                            >
+                              <Pencil className="w-4 h-4 mr-2" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setDeleting(c)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </td>
                   </tr>
                 ))}

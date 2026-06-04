@@ -27,6 +27,7 @@ import {
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   Loader2,
   RefreshCw,
@@ -64,6 +65,7 @@ export default function ProductSyncCard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { isSuperAdmin } = usePermissions();
   const [open, setOpen] = useState(false);
 
   const { data: cfgResp, isLoading: cfgLoading } = useGetProductSyncConfig({
@@ -253,6 +255,11 @@ export default function ProductSyncCard({
             </div>
           ) : (
             <>
+              {!isSuperAdmin && (
+                <p className="md:col-span-2 text-[11px] text-muted-foreground">
+                  Hanya admin utama yang dapat mengubah integrasi ini.
+                </p>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-[11px] uppercase text-muted-foreground">
                   Credential
@@ -264,6 +271,7 @@ export default function ProductSyncCard({
                     setSpreadsheetId("");
                     setSheetName("");
                   }}
+                  disabled={!isSuperAdmin}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Pilih credential…" />
@@ -295,7 +303,7 @@ export default function ProductSyncCard({
                     value: s.id,
                     label: s.name,
                   }))}
-                  disabled={!credReady}
+                  disabled={!isSuperAdmin || !credReady}
                   placeholder={sheetsLoading ? "Memuat…" : "Pilih spreadsheet…"}
                   searchPlaceholder="Cari spreadsheet…"
                   emptyText="Spreadsheet tidak ditemukan."
@@ -310,7 +318,7 @@ export default function ProductSyncCard({
                   value={sheetName}
                   onChange={setSheetName}
                   options={(tabs ?? []).map((t) => ({ value: t, label: t }))}
-                  disabled={!spreadsheetId}
+                  disabled={!isSuperAdmin || !spreadsheetId}
                   placeholder={tabsLoading ? "Memuat…" : "Pilih tab…"}
                   searchPlaceholder="Cari tab…"
                   emptyText="Tab tidak ditemukan."
@@ -330,6 +338,7 @@ export default function ProductSyncCard({
                     setHeaderRow(Math.max(1, Number(e.target.value) || 1))
                   }
                   className="h-8 text-xs"
+                  disabled={!isSuperAdmin}
                 />
               </div>
 
@@ -341,6 +350,7 @@ export default function ProductSyncCard({
                       setAutoSyncEnabled(v);
                       if (canSave) save({ autoSyncEnabled: v });
                     }}
+                    disabled={!isSuperAdmin}
                   />
                   <span className="text-xs">Auto-sync</span>
                   <Select
@@ -350,6 +360,7 @@ export default function ProductSyncCard({
                       setIntervalMinutes(iv);
                       if (canSave && autoSyncEnabled) save({ intervalMinutes: iv });
                     }}
+                    disabled={!isSuperAdmin}
                   >
                     <SelectTrigger className="h-8 w-44 text-xs">
                       <SelectValue />
@@ -370,7 +381,7 @@ export default function ProductSyncCard({
                       variant="ghost"
                       size="sm"
                       onClick={unbind}
-                      disabled={saveMut.isPending}
+                      disabled={!isSuperAdmin || saveMut.isPending}
                     >
                       <Unlink className="w-3.5 h-3.5 mr-1.5" /> Lepas
                     </Button>
@@ -380,7 +391,7 @@ export default function ProductSyncCard({
                     variant="outline"
                     size="sm"
                     onClick={() => save()}
-                    disabled={!canSave || saveMut.isPending}
+                    disabled={!isSuperAdmin || !canSave || saveMut.isPending}
                   >
                     {saveMut.isPending ? (
                       <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />

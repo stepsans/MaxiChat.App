@@ -18,6 +18,7 @@ import {
   type SalesOrderSyncConfig,
 } from "@workspace/db";
 import { requireOwnerUserId } from "../lib/channel-context";
+import { requireSuperAdmin } from "../lib/team-permissions";
 import {
   getCurrentOwnerPhone,
   getActiveSocket,
@@ -274,7 +275,8 @@ function publicSyncConfig(row: SalesOrderSyncConfig) {
 
 router.get("/sync-config", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.json({ config: null });
@@ -303,9 +305,10 @@ const SyncConfigInput = z.object({
   sheetName: z.string().min(1),
 });
 
-router.put("/sync-config", async (req, res): Promise<void> => {
+router.put("/sync-config", requireSuperAdmin, async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const ownerPhone = await getCurrentOwnerPhone(userId);
     if (!ownerPhone) {
       res.status(503).json({ error: "Hubungkan WhatsApp dulu." });
@@ -784,9 +787,11 @@ router.post("/:id/send", async (req, res): Promise<void> => {
 
 router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
     const ownerUserId = await requireOwnerUserId(req, res);
     if (ownerUserId == null) return;
+    // Sheet sync config + credential are tenant-shared: resolve to the OWNER so
+    // members run the parent's configured sync instead of an empty per-member one.
+    const userId = ownerUserId;
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       res.status(400).json({ error: "Invalid id" });

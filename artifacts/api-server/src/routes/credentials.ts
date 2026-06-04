@@ -11,6 +11,8 @@ import {
 } from "@workspace/db";
 import { encryptString, decryptString } from "../lib/crypto";
 import { requirePermission } from "../lib/role-permissions";
+import { requireOwnerUserId } from "../lib/channel-context";
+import { getEffectiveOwnerUserId } from "../lib/auth";
 import {
   syncGoogleContacts,
   countGoogleContacts,
@@ -106,7 +108,8 @@ function toPublicCredential(row: Credential) {
 
 router.get("/", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const rows = await db
       .select()
       .from(credentialsTable)
@@ -128,7 +131,8 @@ const CreateBody = z.object({
 
 router.post("/", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const parsed = CreateBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Input tidak valid" });
@@ -168,7 +172,8 @@ const UpdateBody = z.object({
 
 router.patch("/:id", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -218,7 +223,8 @@ router.patch("/:id", async (req, res): Promise<void> => {
 
 router.delete("/:id", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -259,7 +265,8 @@ async function loadOwnedCredential(
 
 router.post("/:id/oauth/start", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
     if (!row) {
@@ -339,11 +346,14 @@ a{color:#60a5fa}</style></head>
   };
 
   try {
-    const userId = req.session.userId;
-    if (typeof userId !== "number") {
+    const sessionUid = req.session.userId;
+    if (typeof sessionUid !== "number") {
       respondHtml("Sesi tidak ditemukan", "Silakan login dulu lalu coba lagi.", false, null);
       return;
     }
+    // Resolve to the OWNER so credentials are tenant-shared: a member who
+    // completes the OAuth flow connects the parent account's credential.
+    const userId = await getEffectiveOwnerUserId(sessionUid);
     const stateParam = String(req.query["state"] ?? "");
     const code = String(req.query["code"] ?? "");
     const errParam = String(req.query["error"] ?? "");
@@ -482,7 +492,8 @@ async function markCredentialErrored(credId: number): Promise<void> {
 
 router.get("/:id/spreadsheets", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
     if (!row) {
@@ -533,7 +544,8 @@ router.get("/:id/spreadsheets", async (req, res): Promise<void> => {
 
 router.get("/:id/spreadsheets/:spreadsheetId/tabs", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
     if (!row) {
@@ -576,7 +588,8 @@ router.get("/:id/spreadsheets/:spreadsheetId/tabs", async (req, res): Promise<vo
 // connected credential whose scopes include Drive (googleDriveOAuth2Api).
 router.get("/:id/drive/folders", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
     if (!row) {
@@ -627,7 +640,8 @@ router.get("/:id/drive/folders", async (req, res): Promise<void> => {
 // with the sync route.
 router.get("/:id/contacts/status", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
     if (!row) {
@@ -650,7 +664,8 @@ router.get("/:id/contacts/status", async (req, res): Promise<void> => {
 // connected googleContactsApi credential. Returns the number of contacts saved.
 router.post("/:id/contacts/sync", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
     if (!row) {
@@ -691,7 +706,8 @@ const CreateSpreadsheetInput = z.object({
 // spreadsheet's id, title, and URL. Needs the spreadsheets (read-WRITE) scope.
 router.post("/:id/spreadsheets", async (req, res): Promise<void> => {
   try {
-    const userId = req.session.userId!;
+    const userId = await requireOwnerUserId(req, res);
+    if (userId == null) return;
     const id = Number(req.params.id);
     const row = Number.isInteger(id) ? await loadOwnedCredential(userId, id) : null;
     if (!row) {
