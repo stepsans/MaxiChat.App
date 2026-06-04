@@ -340,20 +340,28 @@ export type SalesOrderSyncResult = {
 
 // Core export shared by the per-order route, the manual "Sync sekarang" route,
 // and the auto-sync scheduler. Resolves the owner's config + credential by
-// ownerPhone (configs are owner-scoped, ownerPhone is unique). When `orderId`
-// is given, re-exports just that order (any sync state); otherwise exports every
-// order not yet pushed (synced_to_sheet_at IS NULL). On success marks the
-// exported orders + records config status; on a sheet-write failure records the
-// error on the config (and flags the credential on a real auth/scope error)
-// then throws a SalesOrderSyncError so callers can map it.
+// (userId, ownerPhone) so a reassigned phone can never run/mutate the prior
+// tenant's binding — callers MUST pass the authenticated owner's userId, not
+// trust the row's userId. When `orderId` is given, re-exports just that order
+// (any sync state); otherwise exports every order not yet pushed
+// (synced_to_sheet_at IS NULL). On success marks the exported orders + records
+// config status; on a sheet-write failure records the error on the config (and
+// flags the credential on a real auth/scope error) then throws a
+// SalesOrderSyncError so callers can map it.
 export async function runSalesOrderSyncForOwner(
+  ownerUserId: number,
   ownerPhone: string,
   opts: { orderId?: number } = {}
 ): Promise<SalesOrderSyncResult> {
   const [cfg] = await db
     .select()
     .from(salesOrderSyncConfigTable)
-    .where(eq(salesOrderSyncConfigTable.ownerPhone, ownerPhone))
+    .where(
+      and(
+        eq(salesOrderSyncConfigTable.userId, ownerUserId),
+        eq(salesOrderSyncConfigTable.ownerPhone, ownerPhone)
+      )
+    )
     .limit(1);
   if (!cfg) {
     throw new SalesOrderSyncError(
@@ -361,7 +369,6 @@ export async function runSalesOrderSyncForOwner(
       "Google Sheet untuk sales order belum dikonfigurasi."
     );
   }
-  const ownerUserId = cfg.userId;
 
   const [cred] = await db
     .select()

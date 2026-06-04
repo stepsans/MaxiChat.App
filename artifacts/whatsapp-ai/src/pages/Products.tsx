@@ -119,6 +119,7 @@ type SortKey =
   | "code"
   | "category"
   | "name"
+  | "stock"
   | "price"
   | "priceSilver"
   | "priceGold"
@@ -134,6 +135,8 @@ function getSortValue(p: Product, key: SortKey): string | number | null {
       return p.category ?? "";
     case "name":
       return p.name ?? "";
+    case "stock":
+      return p.stockOnHand;
     case "price":
       return p.price;
     case "priceSilver":
@@ -794,6 +797,7 @@ export default function Products() {
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[350px]" />
                   <SortableTh sortKey="category" label="Kategori" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[180px]" />
+                  <SortableTh sortKey="stock" label="Stock" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                   <SortableTh sortKey="price" label="Harga Pricelist" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} align="right" />
                   {showInternalPrices && (
                     <>
@@ -860,6 +864,13 @@ export default function Products() {
                       title={p.category ?? undefined}
                     >
                       {p.category ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {p.stockOnHand != null ? (
+                        p.stockOnHand.toLocaleString("id-ID")
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-primary">
                       {formatIDR(p.price)}

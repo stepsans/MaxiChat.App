@@ -831,7 +831,9 @@ router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
       res.status(503).json({ error: "Hubungkan WhatsApp dulu." });
       return;
     }
-    const result = await runSalesOrderSyncForOwner(ownerPhone, { orderId: id });
+    const result = await runSalesOrderSyncForOwner(ownerUserId, ownerPhone, {
+      orderId: id,
+    });
     res.json({ ok: true, syncedAt: result.syncedAt });
   } catch (err) {
     if (err instanceof SalesOrderSyncError) {
@@ -855,7 +857,7 @@ router.post("/sync-run", async (req, res): Promise<void> => {
       res.status(503).json({ error: "Hubungkan WhatsApp dulu." });
       return;
     }
-    const result = await runSalesOrderSyncForOwner(ownerPhone);
+    const result = await runSalesOrderSyncForOwner(ownerUserId, ownerPhone);
     res.json({
       synced: result.synced,
       rows: result.rows,
@@ -898,7 +900,7 @@ async function tickSalesOrderScheduler(): Promise<void> {
     salesOrderSyncInFlight.add(cfg.ownerPhone);
     void (async () => {
       try {
-        const r = await runSalesOrderSyncForOwner(cfg.ownerPhone);
+        const r = await runSalesOrderSyncForOwner(cfg.userId, cfg.ownerPhone);
         logger.info(
           { ownerPhone: cfg.ownerPhone, synced: r.synced },
           "sales-order sync scheduler: ok"
