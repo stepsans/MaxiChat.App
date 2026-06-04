@@ -1,6 +1,5 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { google } from "googleapis";
 import { z } from "zod";
 import {
   db,
@@ -19,14 +18,34 @@ import {
 } from "@workspace/db";
 import { requireOwnerUserId } from "../lib/channel-context";
 import { requireSuperAdmin } from "../lib/team-permissions";
-import {
-  getCurrentOwnerPhone,
-  getActiveSocket,
-  getLiveOwnerNameForChannel,
-} from "./whatsapp";
-import { getAuthorizedOAuthClient } from "./credentials";
+import { getCurrentOwnerPhone, getActiveSocket } from "./whatsapp";
 import { sendMessage as tgSendMessage } from "../lib/telegram";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
+import { logger } from "../lib/logger";
+import {
+  runSalesOrderSyncForOwner,
+  SalesOrderSyncError,
+} from "../lib/sales-order-sheet";
+
+// Map a SalesOrderSyncError raised by the shared export helper to an HTTP
+// response. Used by both the per-order and bulk ("Sync sekarang") routes.
+function respondSyncError(res: Response, err: SalesOrderSyncError): void {
+  switch (err.kind) {
+    case "not-configured":
+    case "not-connected":
+      res.status(400).json({ error: err.message });
+      return;
+    case "no-credential":
+    case "not-found":
+      res.status(404).json({ error: err.message });
+      return;
+    case "sheet-write":
+      res.status(502).json({ error: err.message });
+      return;
+    default:
+      res.status(500).json({ error: err.message });
+  }
+}
 
 const router = Router();
 
@@ -266,6 +285,8 @@ function publicSyncConfig(row: SalesOrderSyncConfig) {
     credentialId: row.credentialId,
     spreadsheetId: row.spreadsheetId,
     sheetName: row.sheetName,
+    autoSyncEnabled: row.autoSyncEnabled,
+    intervalMinutes: row.intervalMinutes,
     lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : null,
     lastSyncStatus: row.lastSyncStatus as "idle" | "ok" | "error",
     lastSyncError: row.lastSyncError ?? null,
@@ -303,6 +324,11 @@ const SyncConfigInput = z.object({
   credentialId: z.number().int().positive(),
   spreadsheetId: z.string().min(1),
   sheetName: z.string().min(1),
+  autoSyncEnabled: z.boolean().optional().default(false),
+  intervalMinutes: z
+    .union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)])
+    .optional()
+    .default(15),
 });
 
 router.put("/sync-config", requireSuperAdmin, async (req, res): Promise<void> => {
@@ -351,6 +377,8 @@ router.put("/sync-config", requireSuperAdmin, async (req, res): Promise<void> =>
       credentialId: parsed.data.credentialId,
       spreadsheetId: parsed.data.spreadsheetId,
       sheetName: parsed.data.sheetName,
+      autoSyncEnabled: parsed.data.autoSyncEnabled,
+      intervalMinutes: parsed.data.intervalMinutes,
       updatedAt: new Date(),
     };
     const upserted = await db
@@ -782,372 +810,121 @@ router.post("/:id/send", async (req, res): Promise<void> => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+// ---- Export sales orders to the configured Google Sheet -------------------
 
-// ---- Append the order to the configured Google Sheet -----------------------
-
+// Re-export a single order to the Sheet ("Simpan ke Sheet" on an order). The
+// heavy lifting (header/dedup/append, status bookkeeping) lives in the shared
+// sales-order-sheet helper so this path stays identical to the bulk + auto-sync.
 router.post("/:id/sync-sheet", async (req, res): Promise<void> => {
   try {
     const ownerUserId = await requireOwnerUserId(req, res);
     if (ownerUserId == null) return;
-    // Sheet sync config + credential are tenant-shared: resolve to the OWNER so
-    // members run the parent's configured sync instead of an empty per-member one.
-    const userId = ownerUserId;
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    const loaded = await loadOrderWithItems(id, ownerUserId);
-    if (!loaded) {
-      res.status(404).json({ error: "Order tidak ditemukan" });
-      return;
-    }
-    const ownerPhone = await getCurrentOwnerPhone(userId);
+    // Sheet config + credential are tenant-shared: resolve to the OWNER so
+    // members run the parent's configured sync, not an empty per-member one.
+    const ownerPhone = await getCurrentOwnerPhone(ownerUserId);
     if (!ownerPhone) {
       res.status(503).json({ error: "Hubungkan WhatsApp dulu." });
       return;
     }
-    const [cfg] = await db
-      .select()
-      .from(salesOrderSyncConfigTable)
-      .where(
-        and(
-          eq(salesOrderSyncConfigTable.userId, userId),
-          eq(salesOrderSyncConfigTable.ownerPhone, ownerPhone)
-        )
-      )
-      .limit(1);
-    if (!cfg) {
-      res
-        .status(400)
-        .json({ error: "Google Sheet untuk sales order belum dikonfigurasi." });
-      return;
-    }
-    const [cred] = await db
-      .select()
-      .from(credentialsTable)
-      .where(
-        and(
-          eq(credentialsTable.id, cfg.credentialId),
-          eq(credentialsTable.userId, userId)
-        )
-      )
-      .limit(1);
-    if (!cred) {
-      res.status(404).json({ error: "Credential tidak ditemukan" });
-      return;
-    }
-    if (cred.status !== "connected") {
-      res
-        .status(400)
-        .json({ error: "Credential belum terhubung. Reconnect dulu." });
-      return;
-    }
-
-    const { order, items } = loaded;
-    const sorted = items
-      .slice()
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
-
-    // Kode barang (product code) is looked up live from the catalog so the
-    // Sheet reflects the current SKU; fall back to the per-line snapshot if the
-    // product was since deleted. Manual lines (no productId) stay blank.
-    const productIds = sorted
-      .map((it) => it.productId)
-      .filter((x): x is number => x != null);
-    const codeByProductId = new Map<number, string>();
-    if (productIds.length > 0) {
-      const prods = await db
-        .select({ id: productsTable.id, code: productsTable.code })
-        .from(productsTable)
-        .where(
-          and(
-            eq(productsTable.userId, ownerUserId),
-            inArray(productsTable.id, productIds)
-          )
-        );
-      for (const p of prods) codeByProductId.set(p.id, p.code);
-    }
-    const kodeBarang = (it: SalesOrderItem): string =>
-      it.productId != null
-        ? codeByProductId.get(it.productId) ?? it.code ?? ""
-        : "";
-
-    // Kode customer is a chat-level attribute (typed manually in the Info tab),
-    // read live from the linked chat. Joined through channels so the lookup is
-    // owner-scoped (defense-in-depth). Blank if the chat was since deleted.
-    let customerCode = "";
-    // "Served By": the WhatsApp profile name of the channel this chat is bound
-    // to. Prefer the persisted channels.owner_name; fall back to the live
-    // socket for channels that haven't reconnected since the column was added.
-    let servedBy = "";
-    if (order.chatId != null) {
-      const [chatRow] = await db
-        .select({
-          customerCode: chatsTable.customerCode,
-          channelId: channelsTable.id,
-          ownerName: channelsTable.ownerName,
-        })
-        .from(chatsTable)
-        .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
-        .where(
-          and(
-            eq(chatsTable.id, order.chatId),
-            eq(channelsTable.userId, ownerUserId)
-          )
-        )
-        .limit(1);
-      customerCode = chatRow?.customerCode ?? "";
-      if (chatRow) {
-        servedBy =
-          chatRow.ownerName ??
-          getLiveOwnerNameForChannel(chatRow.channelId, ownerUserId) ??
-          "";
-      }
-    }
-
-    const HEADER = [
-      "Tanggal",
-      "No Order",
-      "Kode Customer",
-      "Nama Customer",
-      "No HP",
-      "Kode Barang",
-      "Nama Barang",
-      "Qty",
-      "Harga",
-      "Subtotal Item",
-      "Diskon Item",
-      "Subtotal",
-      "Diskon Keseluruhan",
-      "PPN",
-      "Total",
-      "Status",
-      "Catatan",
-      "Served By",
-    ];
-    const dateIso = new Date().toISOString().slice(0, 10);
-    const orderPpn = order.ppnEnabled ? order.ppnAmount : 0;
-    // One row per line item; order-level fields repeat on each row per the
-    // agreed Sheet layout. A blank-item fallback keeps order totals on the
-    // sheet if an order somehow has no items.
-    const buildRow = (it: SalesOrderItem | null): (string | number)[] => [
-      dateIso,
-      String(order.id),
-      customerCode,
-      order.customerName ?? "",
-      order.customerPhone ?? "",
-      it ? kodeBarang(it) : "",
-      it ? it.name : "",
-      it ? it.qty : "",
-      it ? it.price : "",
-      it ? it.qty * it.price : "",
-      it ? it.qty * it.price - it.lineTotal : "",
-      order.subtotal,
-      order.discountAmount,
-      orderPpn,
-      order.total,
-      order.status,
-      order.note ?? "",
-      servedBy,
-    ];
-    const rows =
-      sorted.length > 0 ? sorted.map((it) => buildRow(it)) : [buildRow(null)];
-
-    try {
-      const auth = await getAuthorizedOAuthClient(cred);
-      const sheets = google.sheets({ version: "v4", auth });
-      // Serialize concurrent syncs targeting the SAME spreadsheet tab. The
-      // dedupe below computes absolute grid-row indices from a snapshot and then
-      // deletes by those indices; without a lock, a concurrent sync could shift
-      // rows between snapshot and delete and clobber another order's rows. A
-      // Postgres session advisory lock (held on a dedicated pooled client)
-      // serializes across all server instances, not just within one process.
-      const lockKey = `sales-order-sheet:${cfg.spreadsheetId}:${cfg.sheetName}`;
-      const lockClient = await pool.connect();
-      try {
-        await lockClient.query(
-          "SELECT pg_advisory_lock(hashtextextended($1, 0))",
-          [lockKey]
-        );
-        // Seed a header row if the tab is currently empty.
-        const existing = await sheets.spreadsheets.values.get({
-          spreadsheetId: cfg.spreadsheetId,
-          range: `${cfg.sheetName}!A1:R1`,
-        });
-        const firstRow = existing.data.values?.[0] ?? [];
-        const isEmpty = firstRow.length === 0;
-        const headerMatches =
-          firstRow.length === HEADER.length &&
-          HEADER.every((h, i) => firstRow[i] === h);
-        // Legacy tabs carry the old 11-column header; rewrite row 1 in place to
-        // the new 16-column per-item layout before appending so header and data
-        // never drift apart. (Old data rows below stay as-is; only the header is
-        // migrated.)
-        if (!isEmpty && !headerMatches) {
-          await sheets.spreadsheets.values.update({
-            spreadsheetId: cfg.spreadsheetId,
-            range: `${cfg.sheetName}!A1:R1`,
-            valueInputOption: "USER_ENTERED",
-            requestBody: { values: [HEADER] },
-          });
-        }
-
-        // De-duplicate by "No Order" (column B = order id). If rows for this
-        // order already exist in the tab, delete them first so a re-save UPDATES
-        // the order in place instead of appending a duplicate block. If the user
-        // manually deleted the rows from the Sheet, nothing matches and we simply
-        // append a fresh block. (One order spans multiple rows — one per item —
-        // so we remove every row carrying this No Order, not just the first.)
-        if (!isEmpty) {
-          const noOrder = String(order.id);
-          // Read only the "No Order" column; rows start at sheet row 2 (after the
-          // header), so bVals index i maps to 0-based grid row index i + 1.
-          const colB = await sheets.spreadsheets.values.get({
-            spreadsheetId: cfg.spreadsheetId,
-            range: `${cfg.sheetName}!B2:B`,
-          });
-          const bVals = colB.data.values ?? [];
-          const matchIdx: number[] = [];
-          for (let i = 0; i < bVals.length; i++) {
-            if ((bVals[i]?.[0] ?? "") === noOrder) matchIdx.push(i + 1);
-          }
-          if (matchIdx.length > 0) {
-            // deleteDimension needs the tab's numeric sheetId, not its title.
-            const meta = await sheets.spreadsheets.get({
-              spreadsheetId: cfg.spreadsheetId,
-              fields: "sheets.properties(sheetId,title)",
-            });
-            const sheetId = meta.data.sheets?.find(
-              (s) => s.properties?.title === cfg.sheetName
-            )?.properties?.sheetId;
-            // A missing sheetId means we cannot safely delete the stale rows;
-            // fail loudly instead of appending and leaving duplicates behind.
-            if (sheetId == null) {
-              throw new Error(
-                `Tab "${cfg.sheetName}" tidak ditemukan di spreadsheet`
-              );
-            }
-            // Collapse matching indices into contiguous [start,end) ranges and
-            // delete bottom-up so earlier indices stay valid as rows shift up.
-            const sortedIdx = matchIdx.slice().sort((a, b) => a - b);
-            const ranges: { start: number; end: number }[] = [];
-            for (const idx of sortedIdx) {
-              const last = ranges[ranges.length - 1];
-              if (last && idx === last.end) last.end = idx + 1;
-              else ranges.push({ start: idx, end: idx + 1 });
-            }
-            const requests = ranges
-              .slice()
-              .reverse()
-              .map((r) => ({
-                deleteDimension: {
-                  range: {
-                    sheetId,
-                    dimension: "ROWS" as const,
-                    startIndex: r.start,
-                    endIndex: r.end,
-                  },
-                },
-              }));
-            await sheets.spreadsheets.batchUpdate({
-              spreadsheetId: cfg.spreadsheetId,
-              requestBody: { requests },
-            });
-          }
-        }
-
-        const values = isEmpty ? [HEADER, ...rows] : rows;
-        await sheets.spreadsheets.values.append({
-          spreadsheetId: cfg.spreadsheetId,
-          range: cfg.sheetName,
-          valueInputOption: "USER_ENTERED",
-          insertDataOption: "INSERT_ROWS",
-          requestBody: { values },
-        });
-      } finally {
-        try {
-          await lockClient.query(
-            "SELECT pg_advisory_unlock(hashtextextended($1, 0))",
-            [lockKey]
-          );
-        } finally {
-          lockClient.release();
-        }
-      }
-    } catch (err: unknown) {
-      const e = err as {
-        message?: string;
-        code?: number;
-        status?: number;
-        response?: { status?: number; data?: { error?: { message?: string } } };
-      };
-      req.log.error({ err, orderId: id }, "sales-order sheet append failed");
-      const httpStatus = e.code ?? e.status ?? e.response?.status;
-      const apiMessage = e.response?.data?.error?.message ?? e.message ?? "";
-      // Only a genuine token/scope failure is fixed by reconnecting. The most
-      // common one: the connected token was granted only the old read-only
-      // scope, so reads work but the write (append) is rejected with
-      // "insufficient authentication scopes". Detect these explicitly (not just
-      // any 401/403) so a spreadsheet-sharing 403 doesn't wrongly flag a
-      // healthy credential — upgrading the DB scope list never expands an
-      // already-granted token; the user must Reconnect to re-consent.
-      const isAuthScopeError =
-        httpStatus === 401 ||
-        /insufficient.*scope|insufficient authentication|access_token_scope_insufficient|invalid_grant|invalid_token|invalid authentication credentials|unauthorized/i.test(
-          apiMessage
-        );
-      // A 403/permission failure without an auth signal means the spreadsheet
-      // simply isn't shared with the connected Google account.
-      const isAclError =
-        !isAuthScopeError &&
-        (httpStatus === 403 ||
-          /permission|forbidden|does not have access/i.test(apiMessage));
-      let userError: string;
-      if (isAuthScopeError) {
-        userError =
-          "Izin tulis ke Google Sheet belum diberikan. Buka halaman Credentials, klik Reconnect pada credential Google untuk memberi akses tulis (write), lalu coba simpan lagi.";
-      } else if (isAclError) {
-        userError =
-          "Akun Google tidak punya akses ke spreadsheet ini. Bagikan (share) spreadsheet ke akun Google yang terhubung dengan izin Editor, lalu coba lagi.";
-      } else {
-        userError = "Gagal menulis ke Google Sheet. Cek koneksi/izin.";
-      }
-      await db
-        .update(salesOrderSyncConfigTable)
-        .set({
-          lastSyncStatus: "error",
-          lastSyncError: apiMessage || "Gagal menulis ke Sheet",
-          updatedAt: new Date(),
-        })
-        .where(eq(salesOrderSyncConfigTable.id, cfg.id));
-      // Flag the credential for reconnect ONLY on a real token/scope failure,
-      // so we never degrade a healthy credential over a sharing (ACL) error.
-      if (isAuthScopeError) {
-        await db
-          .update(credentialsTable)
-          .set({ status: "error", updatedAt: new Date() })
-          .where(eq(credentialsTable.id, cred.id));
-      }
-      res.status(502).json({ error: userError });
-      return;
-    }
-
-    const now = new Date();
-    await db
-      .update(salesOrderSyncConfigTable)
-      .set({ lastSyncedAt: now, lastSyncStatus: "ok", lastSyncError: null, updatedAt: now })
-      .where(eq(salesOrderSyncConfigTable.id, cfg.id));
-    await db
-      .update(salesOrdersTable)
-      .set({ syncedToSheetAt: now, updatedAt: now })
-      .where(eq(salesOrdersTable.id, id));
-
-    res.json({ ok: true, syncedAt: now.toISOString() });
+    const result = await runSalesOrderSyncForOwner(ownerPhone, { orderId: id });
+    res.json({ ok: true, syncedAt: result.syncedAt });
   } catch (err) {
+    if (err instanceof SalesOrderSyncError) {
+      respondSyncError(res, err);
+      return;
+    }
     req.log.error({ err }, "sync sales order to sheet failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// Bulk "Sync sekarang": export every order not yet pushed to the Sheet. Like
+// the products bulk sync this is available to all members (acts on the owner's
+// shared config); the watermark (synced_to_sheet_at) keeps it append-only.
+router.post("/sync-run", async (req, res): Promise<void> => {
+  try {
+    const ownerUserId = await requireOwnerUserId(req, res);
+    if (ownerUserId == null) return;
+    const ownerPhone = await getCurrentOwnerPhone(ownerUserId);
+    if (!ownerPhone) {
+      res.status(503).json({ error: "Hubungkan WhatsApp dulu." });
+      return;
+    }
+    const result = await runSalesOrderSyncForOwner(ownerPhone);
+    res.json({
+      synced: result.synced,
+      rows: result.rows,
+      syncedAt: result.syncedAt,
+    });
+  } catch (err) {
+    if (err instanceof SalesOrderSyncError) {
+      respondSyncError(res, err);
+      return;
+    }
+    req.log.error({ err }, "manual sales-order sync failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ---- Auto-sync scheduler --------------------------------------------------
+
+// One tick per minute. For each config with auto-sync enabled, runs the bulk
+// export if `now - lastSyncedAt >= intervalMinutes`. De-dupe by ownerPhone so a
+// slow export can't be doubled-up by the next tick.
+const salesOrderSyncInFlight = new Set<string>();
+
+async function tickSalesOrderScheduler(): Promise<void> {
+  let configs: SalesOrderSyncConfig[];
+  try {
+    configs = await db
+      .select()
+      .from(salesOrderSyncConfigTable)
+      .where(eq(salesOrderSyncConfigTable.autoSyncEnabled, true));
+  } catch (err) {
+    logger.error({ err }, "sales-order sync scheduler: db read failed");
+    return;
+  }
+  const now = Date.now();
+  for (const cfg of configs) {
+    const last = cfg.lastSyncedAt ? cfg.lastSyncedAt.getTime() : 0;
+    const dueAt = last + cfg.intervalMinutes * 60_000;
+    if (now < dueAt) continue;
+    if (salesOrderSyncInFlight.has(cfg.ownerPhone)) continue;
+    salesOrderSyncInFlight.add(cfg.ownerPhone);
+    void (async () => {
+      try {
+        const r = await runSalesOrderSyncForOwner(cfg.ownerPhone);
+        logger.info(
+          { ownerPhone: cfg.ownerPhone, synced: r.synced },
+          "sales-order sync scheduler: ok"
+        );
+      } catch (err) {
+        logger.warn(
+          { err: (err as Error)?.message, ownerPhone: cfg.ownerPhone },
+          "sales-order sync scheduler: failed"
+        );
+      } finally {
+        salesOrderSyncInFlight.delete(cfg.ownerPhone);
+      }
+    })();
+  }
+}
+
+let salesOrderSchedulerStarted = false;
+export function startSalesOrderSyncScheduler(): void {
+  if (salesOrderSchedulerStarted) return;
+  salesOrderSchedulerStarted = true;
+  // First tick after 60s to give the server time to fully boot.
+  setTimeout(() => {
+    void tickSalesOrderScheduler();
+    setInterval(() => void tickSalesOrderScheduler(), 60_000);
+  }, 60_000);
+  logger.info("sales-order sync scheduler started");
+}
 
 export default router;

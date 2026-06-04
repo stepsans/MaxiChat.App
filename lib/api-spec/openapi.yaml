@@ -2254,6 +2254,24 @@ paths:
                     allOf:
                       - $ref: "#/components/schemas/SalesOrderSyncConfig"
 
+  /sales-orders/sync-run:
+    post:
+      operationId: runSalesOrderSync
+      tags: [salesOrders]
+      summary: Export every sales order not yet pushed to the configured Sheet.
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [synced, rows]
+                properties:
+                  synced: { type: integer }
+                  rows: { type: integer }
+                  syncedAt: { type: string, format: date-time, nullable: true }
+
   /sales-orders:
     get:
       operationId: listSalesOrders
@@ -5327,12 +5345,15 @@ components:
     SalesOrderSyncConfig:
       type: object
       required:
-        [id, credentialId, spreadsheetId, sheetName, lastSyncStatus, updatedAt]
+        [id, credentialId, spreadsheetId, sheetName, autoSyncEnabled,
+         intervalMinutes, lastSyncStatus, updatedAt]
       properties:
         id: { type: integer }
         credentialId: { type: integer }
         spreadsheetId: { type: string }
         sheetName: { type: string }
+        autoSyncEnabled: { type: boolean }
+        intervalMinutes: { type: integer, enum: [5, 15, 30, 60] }
         lastSyncedAt: { type: string, format: date-time, nullable: true }
         lastSyncStatus: { type: string, enum: [idle, ok, error] }
         lastSyncError: { type: string, nullable: true }
@@ -5345,6 +5366,8 @@ components:
         credentialId: { type: integer }
         spreadsheetId: { type: string }
         sheetName: { type: string, default: "sales order" }
+        autoSyncEnabled: { type: boolean, default: false }
+        intervalMinutes: { type: integer, enum: [5, 15, 30, 60], default: 15 }
 
     FlowSummary:
       type: object

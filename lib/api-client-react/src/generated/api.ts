@@ -125,6 +125,7 @@ import type {
   RevokeMessage200,
   RunKnowledgeSync200,
   RunProductSync200,
+  RunSalesOrderSync200,
   RunShortcutSync200,
   SalesOrder,
   SalesOrderInput,
@@ -7612,6 +7613,76 @@ export const useUpsertSalesOrderSyncConfig = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpsertSalesOrderSyncConfigMutationOptions(options));
+    }
+
+export const getRunSalesOrderSyncUrl = () => {
+
+
+
+
+  return `/api/sales-orders/sync-run`
+}
+
+/**
+ * @summary Export every sales order not yet pushed to the configured Sheet.
+ */
+export const runSalesOrderSync = async ( options?: RequestInit): Promise<RunSalesOrderSync200> => {
+
+  return customFetch<RunSalesOrderSync200>(getRunSalesOrderSyncUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunSalesOrderSyncMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runSalesOrderSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runSalesOrderSync>>, TError,void, TContext> => {
+
+const mutationKey = ['runSalesOrderSync'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runSalesOrderSync>>, void> = () => {
+
+
+          return  runSalesOrderSync(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunSalesOrderSyncMutationResult = NonNullable<Awaited<ReturnType<typeof runSalesOrderSync>>>
+
+    export type RunSalesOrderSyncMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Export every sales order not yet pushed to the configured Sheet.
+ */
+export const useRunSalesOrderSync = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runSalesOrderSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runSalesOrderSync>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunSalesOrderSyncMutationOptions(options));
     }
 
 export const getListSalesOrdersUrl = (params?: ListSalesOrdersParams,) => {

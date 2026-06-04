@@ -2,6 +2,7 @@ import app from "./app";
 import { startProductSyncScheduler } from "./routes/products-sync";
 import { startKnowledgeSyncScheduler } from "./routes/knowledge-sync";
 import { startShortcutSyncScheduler } from "./routes/shortcuts-sync";
+import { startSalesOrderSyncScheduler } from "./routes/sales-orders";
 import { startAiReviewScheduler } from "./lib/ai-review";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
     startProductSyncScheduler();
     startKnowledgeSyncScheduler();
     startShortcutSyncScheduler();
+    startSalesOrderSyncScheduler();
     startAiReviewScheduler();
   });
 }

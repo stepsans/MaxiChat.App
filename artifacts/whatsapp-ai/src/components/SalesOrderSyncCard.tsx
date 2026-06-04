@@ -3,12 +3,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetSalesOrderSyncConfig,
   useUpsertSalesOrderSyncConfig,
+  useRunSalesOrderSync,
   useListCredentials,
   useListCredentialSpreadsheets,
   useListCredentialSpreadsheetTabs,
   getGetSalesOrderSyncConfigQueryKey,
   getListCredentialSpreadsheetsQueryKey,
   getListCredentialSpreadsheetTabsQueryKey,
+  getListSalesOrdersQueryKey,
   type Credential,
   type SalesOrderSyncConfig,
 } from "@workspace/api-client-react";
@@ -22,10 +24,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
   Loader2,
+  RefreshCw,
   CheckCircle2,
   AlertCircle,
   Circle,
@@ -35,6 +39,13 @@ import {
   Unlink,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
+
+const INTERVALS: { value: 5 | 15 | 30 | 60; label: string }[] = [
+  { value: 5, label: "Setiap 5 menit" },
+  { value: 15, label: "Setiap 15 menit" },
+  { value: 30, label: "Setiap 30 menit" },
+  { value: 60, label: "Setiap 60 menit" },
+];
 
 function formatLast(d: string | null | undefined): string {
   if (!d) return "Belum pernah";
@@ -71,11 +82,15 @@ export default function SalesOrderSyncCard() {
   const [credentialId, setCredentialId] = useState<number | null>(null);
   const [spreadsheetId, setSpreadsheetId] = useState<string>("");
   const [sheetName, setSheetName] = useState<string>("");
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(false);
+  const [intervalMinutes, setIntervalMinutes] = useState<5 | 15 | 30 | 60>(15);
   useEffect(() => {
     if (!cfg) return;
     setCredentialId(cfg.credentialId);
     setSpreadsheetId(cfg.spreadsheetId);
     setSheetName(cfg.sheetName);
+    setAutoSyncEnabled(cfg.autoSyncEnabled);
+    setIntervalMinutes(cfg.intervalMinutes as 5 | 15 | 30 | 60);
   }, [cfg]);
 
   const selectedCred = credentials.find((c) => c.id === credentialId) ?? null;
@@ -118,8 +133,37 @@ export default function SalesOrderSyncCard() {
     },
   });
 
+  const runMut = useRunSalesOrderSync({
+    mutation: {
+      onSuccess: (res) => {
+        qc.invalidateQueries({ queryKey: getListSalesOrdersQueryKey() });
+        qc.invalidateQueries({
+          queryKey: getGetSalesOrderSyncConfigQueryKey(),
+        });
+        const r = res as { synced?: number; rows?: number };
+        toast({
+          title: "Sync selesai",
+          description: r.synced
+            ? `${r.synced} order · ${r.rows ?? 0} baris ditulis`
+            : "Semua order sudah tersinkron",
+        });
+      },
+      onError: (e: unknown) => {
+        const err = e as { data?: { error?: string }; message?: string };
+        toast({
+          title: "Sync gagal",
+          description: err?.data?.error || err?.message || "Server error",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   const canSave = !!credentialId && !!spreadsheetId && !!sheetName;
-  function save() {
+  function save(overrides?: {
+    autoSyncEnabled?: boolean;
+    intervalMinutes?: 5 | 15 | 30 | 60;
+  }) {
     if (!canSave) {
       toast({
         title: "Lengkapi credential, spreadsheet, dan tab dulu",
@@ -128,7 +172,13 @@ export default function SalesOrderSyncCard() {
       return;
     }
     saveMut.mutate({
-      data: { credentialId: credentialId!, spreadsheetId, sheetName },
+      data: {
+        credentialId: credentialId!,
+        spreadsheetId,
+        sheetName,
+        autoSyncEnabled: overrides?.autoSyncEnabled ?? autoSyncEnabled,
+        intervalMinutes: overrides?.intervalMinutes ?? intervalMinutes,
+      },
     });
   }
 
@@ -137,6 +187,7 @@ export default function SalesOrderSyncCard() {
     setCredentialId(null);
     setSpreadsheetId("");
     setSheetName("");
+    setAutoSyncEnabled(false);
   }
 
   const statusIcon =
@@ -151,7 +202,7 @@ export default function SalesOrderSyncCard() {
   const summary = useMemo(() => {
     if (!cfg) return "Belum tersambung ke Google Sheets";
     const cred = credentials.find((c) => c.id === cfg.credentialId);
-    return `${cred?.name ?? "credential"} · ${cfg.sheetName}`;
+    return `${cred?.name ?? "credential"} · ${cfg.sheetName} · ${cfg.autoSyncEnabled ? `auto setiap ${cfg.intervalMinutes}m` : "manual"}`;
   }, [cfg, credentials]);
 
   return (
@@ -164,7 +215,14 @@ export default function SalesOrderSyncCard() {
       >
         <SiGoogle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium">Sales Order to Google Sheet</div>
+          <div className="text-xs font-medium flex items-center gap-2">
+            Sales Order to Google Sheet
+            {cfg?.autoSyncEnabled && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500">
+                AUTO
+              </span>
+            )}
+          </div>
           <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5">
             {statusIcon}
             <span>{summary}</span>
@@ -269,34 +327,82 @@ export default function SalesOrderSyncCard() {
                 />
               </div>
 
-              <div className="md:col-span-2 flex items-center justify-end gap-2 border-t border-border pt-3">
-                {cfg && (
+              <div className="md:col-span-2 flex items-center justify-between border-t border-border pt-3">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={autoSyncEnabled}
+                    onCheckedChange={(v) => {
+                      setAutoSyncEnabled(v);
+                      if (canSave) save({ autoSyncEnabled: v });
+                    }}
+                    disabled={!isSuperAdmin}
+                    data-testid="switch-salesorder-autosync"
+                  />
+                  <span className="text-xs">Auto-sync</span>
+                  <Select
+                    value={String(intervalMinutes)}
+                    onValueChange={(v) => {
+                      const iv = Number(v) as 5 | 15 | 30 | 60;
+                      setIntervalMinutes(iv);
+                      if (canSave && autoSyncEnabled) save({ intervalMinutes: iv });
+                    }}
+                    disabled={!isSuperAdmin}
+                  >
+                    <SelectTrigger className="h-8 w-44 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INTERVALS.map((i) => (
+                        <SelectItem key={i.value} value={String(i.value)}>
+                          {i.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  {cfg && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="button-unbind-salesorder-sync"
+                      onClick={unbind}
+                      disabled={!isSuperAdmin || saveMut.isPending}
+                    >
+                      <Unlink className="w-3.5 h-3.5 mr-1.5" /> Lepas
+                    </Button>
+                  )}
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    data-testid="button-unbind-salesorder-sync"
-                    onClick={unbind}
-                    disabled={!isSuperAdmin || saveMut.isPending}
+                    data-testid="button-save-salesorder-sync"
+                    onClick={() => save()}
+                    disabled={!isSuperAdmin || !canSave || saveMut.isPending}
                   >
-                    <Unlink className="w-3.5 h-3.5 mr-1.5" /> Lepas
+                    {saveMut.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Link2 className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Simpan
                   </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  data-testid="button-save-salesorder-sync"
-                  onClick={save}
-                  disabled={!isSuperAdmin || !canSave || saveMut.isPending}
-                >
-                  {saveMut.isPending ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                  ) : (
-                    <Link2 className="w-3.5 h-3.5 mr-1.5" />
-                  )}
-                  Simpan
-                </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid="button-run-salesorder-sync"
+                    onClick={() => runMut.mutate()}
+                    disabled={!cfg || runMut.isPending}
+                  >
+                    {runMut.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    Sync sekarang
+                  </Button>
+                </div>
               </div>
               {cfg?.lastSyncStatus === "error" && cfg.lastSyncError && (
                 <div className="md:col-span-2 text-xs text-destructive">
@@ -304,9 +410,11 @@ export default function SalesOrderSyncCard() {
                 </div>
               )}
               <div className="md:col-span-2 text-[11px] text-muted-foreground">
-                Setiap sales order yang kamu simpan bisa ditambahkan sebagai
-                satu baris ke tab ini lewat tombol{" "}
-                <strong className="text-foreground">Simpan ke Sheet</strong>.
+                <strong className="text-foreground">Sync sekarang</strong> mengirim
+                semua order yang belum pernah masuk ke sheet (append-only — baris
+                yang dihapus di sheet tidak akan dikirim ulang). Aktifkan{" "}
+                <strong className="text-foreground">Auto-sync</strong> agar berjalan
+                otomatis sesuai interval.
               </div>
             </>
           )}

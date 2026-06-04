@@ -1997,6 +1997,16 @@ export interface SalesOrderInput {
   items: SalesOrderItemInput[];
 }
 
+export type SalesOrderSyncConfigIntervalMinutes = typeof SalesOrderSyncConfigIntervalMinutes[keyof typeof SalesOrderSyncConfigIntervalMinutes];
+
+
+export const SalesOrderSyncConfigIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
 export type SalesOrderSyncConfigLastSyncStatus = typeof SalesOrderSyncConfigLastSyncStatus[keyof typeof SalesOrderSyncConfigLastSyncStatus];
 
 
@@ -2011,16 +2021,30 @@ export interface SalesOrderSyncConfig {
   credentialId: number;
   spreadsheetId: string;
   sheetName: string;
+  autoSyncEnabled: boolean;
+  intervalMinutes: SalesOrderSyncConfigIntervalMinutes;
   lastSyncedAt?: string | null;
   lastSyncStatus: SalesOrderSyncConfigLastSyncStatus;
   lastSyncError?: string | null;
   updatedAt: string;
 }
 
+export type SalesOrderSyncConfigInputIntervalMinutes = typeof SalesOrderSyncConfigInputIntervalMinutes[keyof typeof SalesOrderSyncConfigInputIntervalMinutes];
+
+
+export const SalesOrderSyncConfigInputIntervalMinutes = {
+  NUMBER_5: 5,
+  NUMBER_15: 15,
+  NUMBER_30: 30,
+  NUMBER_60: 60,
+} as const;
+
 export interface SalesOrderSyncConfigInput {
   credentialId: number;
   spreadsheetId: string;
   sheetName: string;
+  autoSyncEnabled?: boolean;
+  intervalMinutes?: SalesOrderSyncConfigInputIntervalMinutes;
 }
 
 export interface FlowSummary {
@@ -2325,6 +2349,12 @@ export type GetSalesOrderSyncConfig200 = {
 
 export type UpsertSalesOrderSyncConfig200 = {
   config?: SalesOrderSyncConfig | null;
+};
+
+export type RunSalesOrderSync200 = {
+  synced: number;
+  rows: number;
+  syncedAt?: string | null;
 };
 
 export type ListSalesOrdersParams = {

@@ -2162,6 +2162,8 @@ export const GetSalesOrderSyncConfigResponse = zod.object({
   "credentialId": zod.number(),
   "spreadsheetId": zod.string(),
   "sheetName": zod.string(),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
   "lastSyncedAt": zod.coerce.date().nullish(),
   "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
   "lastSyncError": zod.string().nullish(),
@@ -2174,11 +2176,15 @@ export const GetSalesOrderSyncConfigResponse = zod.object({
  * @summary Create or update the sales-order export config (pass null to clear).
  */
 export const upsertSalesOrderSyncConfigBodyOneSheetNameDefault = `sales order`;
+export const upsertSalesOrderSyncConfigBodyOneAutoSyncEnabledDefault = false;
+export const upsertSalesOrderSyncConfigBodyOneIntervalMinutesDefault = 15;
 
 export const UpsertSalesOrderSyncConfigBody = zod.union([zod.object({
   "credentialId": zod.number(),
   "spreadsheetId": zod.string(),
-  "sheetName": zod.string().default(upsertSalesOrderSyncConfigBodyOneSheetNameDefault)
+  "sheetName": zod.string().default(upsertSalesOrderSyncConfigBodyOneSheetNameDefault),
+  "autoSyncEnabled": zod.boolean().default(upsertSalesOrderSyncConfigBodyOneAutoSyncEnabledDefault),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]).default(upsertSalesOrderSyncConfigBodyOneIntervalMinutesDefault)
 }),zod.null()])
 
 export const UpsertSalesOrderSyncConfigResponse = zod.object({
@@ -2187,11 +2193,23 @@ export const UpsertSalesOrderSyncConfigResponse = zod.object({
   "credentialId": zod.number(),
   "spreadsheetId": zod.string(),
   "sheetName": zod.string(),
+  "autoSyncEnabled": zod.boolean(),
+  "intervalMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60)]),
   "lastSyncedAt": zod.coerce.date().nullish(),
   "lastSyncStatus": zod.enum(['idle', 'ok', 'error']),
   "lastSyncError": zod.string().nullish(),
   "updatedAt": zod.coerce.date()
 }).nullish()
+})
+
+
+/**
+ * @summary Export every sales order not yet pushed to the configured Sheet.
+ */
+export const RunSalesOrderSyncResponse = zod.object({
+  "synced": zod.number(),
+  "rows": zod.number(),
+  "syncedAt": zod.coerce.date().nullish()
 })
 
 

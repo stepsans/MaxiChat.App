@@ -187,9 +187,11 @@ export type ShortcutSyncConfig = typeof shortcutSyncConfigTable.$inferSelect;
 // Per-WhatsApp-account (ownerPhone) binding for EXPORTING sales orders to a
 // Google Sheet. Unlike the product/knowledge/shortcut sync configs this is a
 // one-way PUSH (app → sheet, append-only): each saved order is appended as a
-// row to `sheetName` (default "sales order"). No headerRow/auto-sync/interval
-// because export is on-demand. Requires a credential whose OAuth scopes grant
-// read-WRITE spreadsheets access (see SCOPES_BY_TYPE in routes/credentials.ts).
+// row to `sheetName` (default "sales order"). "Sync sekarang"/auto-sync export
+// every order not yet pushed (synced_to_sheet_at IS NULL); there's no headerRow
+// because export builds its own fixed header. Requires a credential whose OAuth
+// scopes grant read-WRITE spreadsheets access (see SCOPES_BY_TYPE in
+// routes/credentials.ts).
 export const salesOrderSyncConfigTable = pgTable(
   "sales_order_sync_config",
   {
@@ -203,6 +205,8 @@ export const salesOrderSyncConfigTable = pgTable(
       .references(() => credentialsTable.id, { onDelete: "cascade" }),
     spreadsheetId: text("spreadsheet_id").notNull(),
     sheetName: text("sheet_name").notNull().default("sales order"),
+    autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(false),
+    intervalMinutes: integer("interval_minutes").notNull().default(15),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     lastSyncStatus: text("last_sync_status").notNull().default("idle"),
     lastSyncError: text("last_sync_error"),

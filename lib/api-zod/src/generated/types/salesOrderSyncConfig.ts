@@ -5,6 +5,7 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { SalesOrderSyncConfigIntervalMinutes } from './salesOrderSyncConfigIntervalMinutes';
 import type { SalesOrderSyncConfigLastSyncStatus } from './salesOrderSyncConfigLastSyncStatus';
 
 export interface SalesOrderSyncConfig {
@@ -12,6 +13,8 @@ export interface SalesOrderSyncConfig {
   credentialId: number;
   spreadsheetId: string;
   sheetName: string;
+  autoSyncEnabled: boolean;
+  intervalMinutes: SalesOrderSyncConfigIntervalMinutes;
   lastSyncedAt?: Date | null;
   lastSyncStatus: SalesOrderSyncConfigLastSyncStatus;
   lastSyncError?: string | null;
