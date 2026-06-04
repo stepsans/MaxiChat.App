@@ -306,12 +306,7 @@ export default function AIReviewPage() {
           <h1 className="text-xl font-semibold flex items-center gap-2">
             <ReceiptText className="w-5 h-5" /> AI Review
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Rekap nota/struk otomatis. Kasir kirim foto nota ke grup WhatsApp; pada jam
-            cut-off harian, AI membaca tiap nota, menulis satu baris per item ke Google
-            Sheet (satu nota bisa jadi beberapa baris), dan (opsional) menyimpan fotonya
-            ke folder Google Drive.
-          </p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">Smart Review By AI</p>
         </div>
         {canManage && (
           <Button onClick={() => setEditor({ mode: "create" })}>
@@ -319,7 +314,6 @@ export default function AIReviewPage() {
           </Button>
         )}
       </div>
-
       {configsQuery.isLoading ? (
         <div className="space-y-3">
           <Skeleton className="h-28 w-full" />
@@ -447,7 +441,6 @@ export default function AIReviewPage() {
           ))}
         </div>
       )}
-
       {editor && (
         <ConfigEditor
           key={editor.mode === "edit" ? editor.config.id : "create"}
@@ -463,7 +456,6 @@ export default function AIReviewPage() {
           }}
         />
       )}
-
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
