@@ -8,8 +8,6 @@ import {
   useDeleteProduct,
   useSyncProductsToKnowledge,
   getListProductsQueryKey,
-  useListChats,
-  type Chat,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +63,6 @@ import {
   ArrowUp,
   ArrowDown,
   ChevronsUpDown,
-  FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { resolveImageSrc } from "@/lib/utils";
@@ -205,11 +202,8 @@ export default function Products() {
   const [showInternalPrices, setShowInternalPrices] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [generatingQuote, setGeneratingQuote] = useState(false);
-  const [recipientOpen, setRecipientOpen] = useState(false);
-  const [recipientSearch, setRecipientSearch] = useState("");
-  const [sendingChatId, setSendingChatId] = useState<number | null>(null);
+  // Show only products with on-hand stock > 0.
+  const [stockOnly, setStockOnly] = useState(false);
   function toggleSort(key: SortKey) {
     if (sortBy !== key) {
       setSortBy(key);
@@ -245,9 +239,6 @@ export default function Products() {
   const imgInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: products, isLoading } = useListProducts();
-  const { data: chats, isLoading: chatsLoading } = useListChats(undefined, {
-    query: { enabled: recipientOpen, queryKey: ["chats", "quotation-recipients"] },
-  });
   const invalidate = () => qc.invalidateQueries({ queryKey: getListProductsQueryKey() });
 
   const create = useCreateProduct({
@@ -453,89 +444,6 @@ export default function Products() {
     window.location.href = `/api/products/export.${format}`;
   };
 
-  const toggleSelect = (id: number, checked: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  };
-
-  const handleGenerateQuotation = async () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
-    setGeneratingQuote(true);
-    try {
-      const res = await fetch("/api/products/quotation.pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ ids }),
-      });
-      if (!res.ok) {
-        let msg = "Gagal membuat quotation.";
-        try {
-          const j = await res.json();
-          if (j?.error) msg = j.error;
-        } catch {}
-        throw new Error(msg);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `quotation_${new Date().toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      toast({ title: `Quotation dibuat (${ids.length} produk)` });
-    } catch (err) {
-      toast({
-        title: err instanceof Error ? err.message : "Gagal membuat quotation.",
-        variant: "destructive",
-      });
-    } finally {
-      setGeneratingQuote(false);
-    }
-  };
-
-  // Deliver the quotation PDF to a chosen chat over its channel.
-  const handleSendQuotation = async (chat: Chat) => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0 || sendingChatId != null) return;
-    setSendingChatId(chat.id);
-    try {
-      const res = await fetch(`/api/chats/${chat.id}/quotation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ productIds: ids }),
-      });
-      if (!res.ok) {
-        let msg = "Gagal mengirim quotation.";
-        try {
-          const j = await res.json();
-          if (j?.error) msg = j.error;
-        } catch {}
-        throw new Error(msg);
-      }
-      const recipient = chat.nickname || chat.contactName || chat.phoneNumber;
-      toast({ title: `Quotation terkirim ke ${recipient}` });
-      setRecipientOpen(false);
-      setRecipientSearch("");
-      setSelectedIds(new Set());
-    } catch (err) {
-      toast({
-        title: err instanceof Error ? err.message : "Gagal mengirim quotation.",
-        variant: "destructive",
-      });
-    } finally {
-      setSendingChatId(null);
-    }
-  };
-
   const isPending = create.isPending || update.isPending;
 
   const q = search.trim().toLowerCase();
@@ -566,6 +474,9 @@ export default function Products() {
         return false;
       }
     }
+    if (stockOnly && !(p.stockOnHand != null && p.stockOnHand > 0)) {
+      return false;
+    }
     if (q) {
       return [p.code, p.name, p.category ?? ""].some((f) =>
         f.toLowerCase().includes(q)
@@ -587,7 +498,7 @@ export default function Products() {
       return String(av).localeCompare(String(bv), "id-ID", { sensitivity: "base" }) * dir;
     });
   }
-  const isFiltered = q.length > 0 || categoryFilter !== "__all__";
+  const isFiltered = q.length > 0 || categoryFilter !== "__all__" || stockOnly;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -627,6 +538,17 @@ export default function Products() {
               ))}
             </SelectContent>
           </Select>
+          <label
+            className="flex items-center gap-1.5 text-xs cursor-pointer select-none whitespace-nowrap"
+            title="Hanya tampilkan produk dengan stok lebih dari 0"
+          >
+            <Checkbox
+              checked={stockOnly}
+              onCheckedChange={(c) => setStockOnly(c === true)}
+              data-testid="checkbox-filter-stock-only"
+            />
+            Stok tersedia
+          </label>
           <Button
             type="button"
             variant="outline"
@@ -676,19 +598,6 @@ export default function Products() {
             onChange={handleImport}
             data-testid="input-import-products"
           />
-          {selectedIds.size > 0 && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setRecipientSearch("");
-                setRecipientOpen(true);
-              }}
-              data-testid="button-generate-quotation"
-            >
-              <FileText className="w-3.5 h-3.5 mr-1.5" />
-              Generate Quotation ({selectedIds.size})
-            </Button>
-          )}
           {can.mutateProducts && (<>
           <Button
             variant="outline"
@@ -768,31 +677,6 @@ export default function Products() {
           <table className="w-full text-xs border-collapse">
             <thead className="bg-secondary sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
                 <tr className="text-left">
-                  <th className="px-3 py-2 font-medium w-8">
-                    <Checkbox
-                      checked={
-                        filteredProducts.length > 0 &&
-                        filteredProducts.every((p) => selectedIds.has(p.id))
-                          ? true
-                          : filteredProducts.some((p) => selectedIds.has(p.id))
-                            ? "indeterminate"
-                            : false
-                      }
-                      onCheckedChange={(checked) => {
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev);
-                          if (checked) {
-                            filteredProducts.forEach((p) => next.add(p.id));
-                          } else {
-                            filteredProducts.forEach((p) => next.delete(p.id));
-                          }
-                          return next;
-                        });
-                      }}
-                      aria-label="Pilih semua produk"
-                      data-testid="checkbox-select-all-products"
-                    />
-                  </th>
                   <th className="px-3 py-2 font-medium">Foto</th>
                   <SortableTh sortKey="code" label="Kode Produk" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} />
                   <SortableTh sortKey="name" label="Nama Barang" sortBy={sortBy} sortDir={sortDir} onToggle={toggleSort} className="w-[350px]" />
@@ -820,14 +704,6 @@ export default function Products() {
                     data-testid={`product-row-${p.id}`}
                     className="border-t border-border hover:bg-accent/30"
                   >
-                    <td className="px-3 py-2">
-                      <Checkbox
-                        checked={selectedIds.has(p.id)}
-                        onCheckedChange={(checked) => toggleSelect(p.id, checked === true)}
-                        aria-label={`Pilih ${p.name}`}
-                        data-testid={`checkbox-select-product-${p.id}`}
-                      />
-                    </td>
                     <td className="px-3 py-2">
                       <ProductImageLightbox
                         src={p.imageUrl}
@@ -1256,113 +1132,6 @@ export default function Products() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <Dialog open={recipientOpen} onOpenChange={setRecipientOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Kirim Quotation ke Pelanggan</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Pilih kontak tujuan. File PDF penawaran ({selectedIds.size}{" "}
-              produk) akan langsung dikirim ke chat-nya.
-            </p>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={recipientSearch}
-                onChange={(e) => setRecipientSearch(e.target.value)}
-                placeholder="Cari nama atau nomor…"
-                className="h-9 text-sm pl-8"
-                data-testid="input-recipient-search"
-              />
-            </div>
-            <div className="max-h-72 overflow-y-auto -mx-1 px-1 space-y-1">
-              {chatsLoading ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 mx-auto animate-spin" />
-                </div>
-              ) : (
-                (() => {
-                  const term = recipientSearch.trim().toLowerCase();
-                  const list = (chats ?? []).filter((c) => {
-                    if (!term) return true;
-                    return (
-                      (c.nickname ?? "").toLowerCase().includes(term) ||
-                      c.contactName.toLowerCase().includes(term) ||
-                      c.phoneNumber.toLowerCase().includes(term)
-                    );
-                  });
-                  if (list.length === 0) {
-                    return (
-                      <div className="py-8 text-center text-sm text-muted-foreground">
-                        Tidak ada kontak.
-                      </div>
-                    );
-                  }
-                  return list.map((c) => {
-                    const name = c.nickname || c.contactName || c.phoneNumber;
-                    const isTg = c.phoneNumber.startsWith("tg:");
-                    const sub = isTg ? "Telegram" : c.phoneNumber;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        disabled={sendingChatId != null}
-                        onClick={() => handleSendQuotation(c)}
-                        className="w-full flex items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted disabled:opacity-50 transition-colors"
-                        data-testid={`button-send-quotation-${c.id}`}
-                      >
-                        <div className="h-9 w-9 shrink-0 rounded-full bg-muted overflow-hidden flex items-center justify-center">
-                          {c.profilePicUrl ? (
-                            <img
-                              src={c.profilePicUrl}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <span className="text-xs font-medium text-muted-foreground">
-                              {name.slice(0, 2).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{name}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {sub}
-                          </p>
-                        </div>
-                        {sendingChatId === c.id && (
-                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                        )}
-                      </button>
-                    );
-                  });
-                })()
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setRecipientOpen(false);
-                handleGenerateQuotation();
-              }}
-              disabled={generatingQuote || sendingChatId != null}
-              data-testid="button-download-quotation"
-            >
-              {generatingQuote ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-              )}
-              Unduh PDF saja
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
