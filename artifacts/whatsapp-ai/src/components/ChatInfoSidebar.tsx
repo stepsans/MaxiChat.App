@@ -82,6 +82,8 @@ import {
   UserPlus,
   QrCode,
   ExternalLink,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { ChatAvatar } from "@/components/ChatAvatar";
@@ -297,6 +299,57 @@ const UNCATEGORIZED = "__none__";
 
 type CategoryOptions = { list: string[]; hasUncategorized: boolean };
 
+// Sort keys for the Products-tab list. "stock" sorts by the effective quantity
+// (stockOnHand falls back to stock — see the in-stock filter note above).
+type ProductSortKey = "harga" | "kode" | "nama" | "stock";
+
+const PRODUCT_SORT_OPTIONS: { value: ProductSortKey; label: string }[] = [
+  { value: "harga", label: "Harga" },
+  { value: "kode", label: "Kode" },
+  { value: "nama", label: "Nama" },
+  { value: "stock", label: "Stock" },
+];
+
+function productSortValue(
+  p: Product,
+  key: ProductSortKey
+): string | number | null {
+  switch (key) {
+    case "harga":
+      return p.price;
+    case "kode":
+      return p.code;
+    case "nama":
+      return p.name;
+    case "stock":
+      return p.stockOnHand ?? p.stock ?? null;
+  }
+}
+
+// Returns a sorted COPY (never mutates the input). Nulls always sort last,
+// regardless of direction, so empty stock/price never floats to the top.
+function sortProducts(
+  products: Product[],
+  key: ProductSortKey,
+  dir: "asc" | "desc"
+): Product[] {
+  const sign = dir === "asc" ? 1 : -1;
+  return [...products].sort((a, b) => {
+    const av = productSortValue(a, key);
+    const bv = productSortValue(b, key);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "number" && typeof bv === "number") {
+      return (av - bv) * sign;
+    }
+    return (
+      String(av).localeCompare(String(bv), "id-ID", { sensitivity: "base" }) *
+      sign
+    );
+  });
+}
+
 // Internal-only product detail lines for the picker. The send-product and
 // quotation flows never include the stock figures or tier prices, so they stay
 // visible to agents but never reach the customer. Layout (per request):
@@ -456,12 +509,15 @@ function ProductsTab({ chatId }: { chatId: number }) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>(ALL_CATEGORIES);
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<ProductSortKey>("harga");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const { products, filtered, categories, isLoading } = useFilteredProducts(
     search,
     category,
     inStockOnly
   );
+  const sorted = sortProducts(filtered, sortBy, sortDir);
 
   // Reset the selection whenever the active chat changes so a product picked for
   // one conversation can't be sent to another after switching chats.
@@ -509,6 +565,42 @@ function ProductsTab({ chatId }: { chatId: number }) {
           onChange={setInStockOnly}
           testId="checkbox-product-instock"
         />
+        <div className="flex items-center gap-2">
+          <Select
+            value={sortBy}
+            onValueChange={(v) => setSortBy(v as ProductSortKey)}
+          >
+            <SelectTrigger
+              data-testid="select-product-sort"
+              className="h-9 flex-1 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            >
+              <span className="text-[hsl(var(--wa-meta))] mr-1">Urutkan:</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRODUCT_SORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="text-xs">
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            data-testid="button-product-sort-dir"
+            onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            title={sortDir === "asc" ? "Naik (A→Z, kecil→besar)" : "Turun (Z→A, besar→kecil)"}
+            className="h-9 w-9 flex-shrink-0 border-[hsl(var(--wa-divider))]"
+          >
+            {sortDir === "asc" ? (
+              <ArrowUp className="w-3.5 h-3.5" />
+            ) : (
+              <ArrowDown className="w-3.5 h-3.5" />
+            )}
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -523,7 +615,7 @@ function ProductsTab({ chatId }: { chatId: number }) {
         </p>
       ) : (
         <ul className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
-          {filtered.map((p) => {
+          {sorted.map((p) => {
             const isSelected = selectedId === p.id;
             return (
               <li key={p.id}>
