@@ -4929,6 +4929,9 @@ components:
               type: array
               items: { type: integer }
               description: "Products only: list of product IDs to send (image + Nama/Kode/Harga caption)."
+            aiInstruction:
+              type: string
+              description: "AI node only: extra instruction appended to the global AI Studio system prompt while this node's AI handoff is active (during the flow cooldown). Empty = use the global prompt only."
 
     FlowEdge:
       type: object

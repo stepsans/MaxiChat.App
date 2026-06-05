@@ -1470,6 +1470,8 @@ export type FlowNodeData = {
   strictRetryMessage?: string;
   /** Products only: list of product IDs to send (image + Nama/Kode/Harga caption). */
   productIds?: number[];
+  /** AI node only: extra instruction appended to the global AI Studio system prompt while this node's AI handoff is active (during the flow cooldown). Empty = use the global prompt only. */
+  aiInstruction?: string;
 };
 
 export interface FlowNode {

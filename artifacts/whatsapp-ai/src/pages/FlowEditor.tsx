@@ -64,6 +64,7 @@ type FlowNodeData = {
   strictOptions?: boolean;
   strictRetryMessage?: string;
   productIds?: number[];
+  aiInstruction?: string;
 };
 
 type RFNode = Node<FlowNodeData & { label?: string }, NodeKind>;
@@ -842,6 +843,22 @@ function Inspector({
               Setelah node ini, flow keluar dan AI menjawab pesan-pesan
               berikutnya selama durasi cooldown (atur di Settings). Keyword
               Trigger tetap aktif.
+            </p>
+          </div>
+          <div>
+            <Label className="text-xs">Instruksi AI khusus (opsional)</Label>
+            <Textarea
+              rows={4}
+              value={node.data.aiInstruction ?? ""}
+              onChange={(e) => onChange({ aiInstruction: e.target.value })}
+              placeholder="Mis: Kamu konsultan mesin laminating. Rekomendasikan hanya dari kategori M12 sesuai kebutuhan & budget customer."
+              data-testid="input-ai-instruction"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+              Ditambahkan ke prompt AI Studio selama AI menangani chat setelah
+              node ini (sepanjang cooldown). Berguna untuk memberi "persona"
+              berbeda per jalur flow. Kosongkan untuk memakai prompt global apa
+              adanya.
             </p>
           </div>
         </div>

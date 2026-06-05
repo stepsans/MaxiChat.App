@@ -2721,7 +2721,8 @@ export const GetFlowResponse = zod.object({
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
   "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
-  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
+  "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.')
 })
 })),
   "edges": zod.array(zod.object({
@@ -2768,7 +2769,8 @@ export const UpdateFlowBody = zod.object({
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
   "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
-  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
+  "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.')
 })
 })),
   "edges": zod.array(zod.object({
@@ -2803,7 +2805,8 @@ export const UpdateFlowResponse = zod.object({
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
   "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
-  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
+  "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.')
 })
 })),
   "edges": zod.array(zod.object({
@@ -2856,7 +2859,8 @@ export const ActivateFlowResponse = zod.object({
 })).optional(),
   "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
   "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
-  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).')
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
+  "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.')
 })
 })),
   "edges": zod.array(zod.object({

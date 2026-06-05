@@ -901,6 +901,9 @@ export async function generateAiReply(
   // conversation as it was when this message arrived — even if newer messages
   // landed during the reply delay — and so the trigger is always the last turn.
   triggerMessageId?: number,
+  // Optional per-node instruction (from an AI-node handoff) appended to the
+  // global system prompt for THIS reply only. Empty/null = global prompt only.
+  aiInstructionOverride?: string | null,
 ): Promise<string | null> {
   try {
     const settingsRows = await db
@@ -963,7 +966,16 @@ export async function generateAiReply(
         m.direction === "outbound" ? stripTrailingTag(m.content) : m.content,
     }));
 
-    const systemPrompt = `${tenant.systemPrompt}
+    const extraInstruction = (aiInstructionOverride ?? "").trim();
+    const systemPrompt = `${tenant.systemPrompt}${
+      extraInstruction
+        ? `
+
+--- INSTRUKSI KHUSUS UNTUK PERCAKAPAN INI ---
+${extraInstruction}
+--- END INSTRUKSI KHUSUS ---`
+        : ""
+    }
 
 ATURAN MUTLAK:
 - HANYA gunakan informasi dari KATALOG PRODUK dan KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
@@ -2140,9 +2152,17 @@ async function runFlowFrom(
         );
         if (!ok) return;
       }
+      const handoffInstruction = (node.data.aiInstruction ?? "").trim();
       await db
         .update(chatsTable)
-        .set({ flowState: { defaultMutedUntil: Date.now() + cooldownMs } })
+        .set({
+          flowState: {
+            defaultMutedUntil: Date.now() + cooldownMs,
+            ...(handoffInstruction
+              ? { aiInstruction: handoffInstruction }
+              : {}),
+          },
+        })
         .where(eq(chatsTable.id, chatId));
       return;
     }
@@ -2193,6 +2213,7 @@ async function tryRunFlow(
     flowId?: number;
     currentNodeId?: string;
     defaultMutedUntil?: number;
+    aiInstruction?: string;
   } | null;
   // Cooldown after any flow exit before the Default trigger may re-fire.
   // Configurable business-wide in Settings (5/15/30/60/120 minutes), keyed
@@ -2409,12 +2430,33 @@ async function maybeTriggerAutoReply(
       // bump) happened during the delay.
       if (epoch !== ctx.epoch) return;
 
+      // If we arrived here via an AI-node handoff, that node may carry a
+      // per-node instruction stored in flowState. Apply it only while the
+      // handoff window (defaultMutedUntil) is still active, so it expires
+      // naturally with the cooldown and never lingers on later replies.
+      const [freshChat] = await db
+        .select({ flowState: chatsTable.flowState })
+        .from(chatsTable)
+        .where(eq(chatsTable.id, chat.id))
+        .limit(1);
+      const handoffState = (freshChat?.flowState ?? null) as {
+        defaultMutedUntil?: number;
+        aiInstruction?: string;
+      } | null;
+      const aiInstructionOverride =
+        handoffState?.aiInstruction &&
+        handoffState.defaultMutedUntil &&
+        Date.now() < handoffState.defaultMutedUntil
+          ? handoffState.aiInstruction
+          : null;
+
       const aiReply = await generateAiReply(
         channelId,
         userId,
         chat.id,
         messageText,
         triggerMessageId,
+        aiInstructionOverride,
       );
       // Sign AI-generated replies with the "powered by AI" tag. The
       // configured fallbackMessage is a canned operator-authored string,

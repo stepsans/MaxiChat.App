@@ -74,6 +74,9 @@ export const flowNodeSchema = z.object({
     strictRetryMessage: z.string().optional(),
     // products — list of product ids to send (image + Nama/Kode/Harga caption).
     productIds: z.array(z.number().int().positive()).optional(),
+    // ai — extra instruction appended to the global system prompt while this
+    // node's handoff is active (per-node AI persona). Empty = global prompt only.
+    aiInstruction: z.string().optional(),
   }),
 });
 
