@@ -904,6 +904,10 @@ export async function generateAiReply(
   // Optional per-node instruction (from an AI-node handoff) appended to the
   // global system prompt for THIS reply only. Empty/null = global prompt only.
   aiInstructionOverride?: string | null,
+  // Optional per-node knowledge-base restriction (from an AI-node handoff):
+  // when non-empty, only these knowledge entry ids are used as reference for
+  // THIS reply. Empty/null = full knowledge base.
+  knowledgeIdsOverride?: number[] | null,
 ): Promise<string | null> {
   try {
     const settingsRows = await db
@@ -918,10 +922,23 @@ export async function generateAiReply(
     // tenant owner (userId), not per-channel.
     const tenant = await getOrCreateTenantSettings(userId);
 
+    // When an AI-node handoff restricts the reference to specific entries, only
+    // those (still scoped to the owner) are loaded so the AI answers strictly
+    // from the chosen knowledge. Empty/null override = full knowledge base.
+    const restrictKnowledgeIds = (knowledgeIdsOverride ?? []).filter(
+      (n) => Number.isInteger(n) && n > 0,
+    );
     const knowledgeEntries = await db
       .select()
       .from(knowledgeTable)
-      .where(eq(knowledgeTable.userId, userId));
+      .where(
+        restrictKnowledgeIds.length
+          ? and(
+              eq(knowledgeTable.userId, userId),
+              inArray(knowledgeTable.id, restrictKnowledgeIds),
+            )
+          : eq(knowledgeTable.userId, userId),
+      );
     const knowledgeContext = knowledgeEntries
       .map((e) => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content}`)
       .join("\n\n");
@@ -2153,6 +2170,9 @@ async function runFlowFrom(
         if (!ok) return;
       }
       const handoffInstruction = (node.data.aiInstruction ?? "").trim();
+      const handoffKnowledgeIds = (node.data.knowledgeIds ?? []).filter(
+        (n) => Number.isInteger(n) && n > 0,
+      );
       await db
         .update(chatsTable)
         .set({
@@ -2160,6 +2180,9 @@ async function runFlowFrom(
             defaultMutedUntil: Date.now() + cooldownMs,
             ...(handoffInstruction
               ? { aiInstruction: handoffInstruction }
+              : {}),
+            ...(handoffKnowledgeIds.length
+              ? { knowledgeIds: handoffKnowledgeIds }
               : {}),
           },
         })
@@ -2214,6 +2237,7 @@ async function tryRunFlow(
     currentNodeId?: string;
     defaultMutedUntil?: number;
     aiInstruction?: string;
+    knowledgeIds?: number[];
   } | null;
   // Cooldown after any flow exit before the Default trigger may re-fire.
   // Configurable business-wide in Settings (5/15/30/60/120 minutes), keyed
@@ -2442,12 +2466,18 @@ async function maybeTriggerAutoReply(
       const handoffState = (freshChat?.flowState ?? null) as {
         defaultMutedUntil?: number;
         aiInstruction?: string;
+        knowledgeIds?: number[];
       } | null;
+      const handoffActive =
+        !!handoffState?.defaultMutedUntil &&
+        Date.now() < handoffState.defaultMutedUntil;
       const aiInstructionOverride =
-        handoffState?.aiInstruction &&
-        handoffState.defaultMutedUntil &&
-        Date.now() < handoffState.defaultMutedUntil
+        handoffActive && handoffState?.aiInstruction
           ? handoffState.aiInstruction
+          : null;
+      const knowledgeIdsOverride =
+        handoffActive && handoffState?.knowledgeIds?.length
+          ? handoffState.knowledgeIds
           : null;
 
       const aiReply = await generateAiReply(
@@ -2457,6 +2487,7 @@ async function maybeTriggerAutoReply(
         messageText,
         triggerMessageId,
         aiInstructionOverride,
+        knowledgeIdsOverride,
       );
       // Sign AI-generated replies with the "powered by AI" tag. The
       // configured fallbackMessage is a canned operator-authored string,

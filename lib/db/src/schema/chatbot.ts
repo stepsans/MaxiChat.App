@@ -77,6 +77,9 @@ export const flowNodeSchema = z.object({
     // ai — extra instruction appended to the global system prompt while this
     // node's handoff is active (per-node AI persona). Empty = global prompt only.
     aiInstruction: z.string().optional(),
+    // ai — restrict the AI's knowledge-base reference to these specific entry
+    // ids while this node's handoff is active. Empty = full knowledge base.
+    knowledgeIds: z.array(z.number().int().positive()).optional(),
   }),
 });
 

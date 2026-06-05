@@ -42,6 +42,7 @@ const FlowNodeSchema = z.object({
     strictRetryMessage: z.string().optional(),
     productIds: z.array(z.number().int().positive()).optional(),
     aiInstruction: z.string().optional(),
+    knowledgeIds: z.array(z.number().int().positive()).optional(),
   }),
 });
 

@@ -25,6 +25,7 @@ import {
   useActivateFlow,
   useDeactivateActiveFlow,
   useListProducts,
+  useListKnowledge,
   getGetFlowQueryKey,
   getListFlowsQueryKey,
 } from "@workspace/api-client-react";
@@ -43,6 +44,7 @@ import {
   Bot,
   ImagePlus,
   Package,
+  BookOpen,
   X as XIcon,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -65,6 +67,7 @@ type FlowNodeData = {
   strictRetryMessage?: string;
   productIds?: number[];
   aiInstruction?: string;
+  knowledgeIds?: number[];
 };
 
 type RFNode = Node<FlowNodeData & { label?: string }, NodeKind>;
@@ -861,6 +864,10 @@ function Inspector({
               adanya.
             </p>
           </div>
+          <KnowledgePicker
+            value={node.data.knowledgeIds ?? []}
+            onChange={(ids) => onChange({ knowledgeIds: ids })}
+          />
         </div>
       )}
 
@@ -1073,6 +1080,109 @@ function ProductsPicker({
                 <div className="truncate font-medium text-foreground">{p.name}</div>
                 <div className="truncate text-muted-foreground">
                   {p.code} · Rp {p.price.toLocaleString("id-ID")}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function KnowledgePicker({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const { data: entries, isLoading } = useListKnowledge();
+  const [query, setQuery] = useState("");
+  const selected = new Set(value);
+  const list = (entries ?? []).filter((e) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return (
+      e.title.toLowerCase().includes(q) ||
+      e.type.toLowerCase().includes(q) ||
+      String(e.id).includes(q)
+    );
+  });
+  const toggle = (id: number) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange([...next]);
+  };
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs">Knowledge Base referensi (opsional)</Label>
+      <p className="text-[11px] text-muted-foreground leading-snug">
+        Pilih satu atau beberapa entri. Jika dipilih, AI hanya memakai entri ini
+        sebagai referensi (bukan seluruh Knowledge Base) selama menangani chat
+        setelah node ini. Kosongkan untuk memakai seluruh Knowledge Base.
+      </p>
+      <Input
+        placeholder="Cari judul, tipe, atau #id…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="h-8 text-xs"
+        data-testid="input-knowledge-search"
+      />
+      <div className="text-[11px] text-muted-foreground">
+        {selected.size
+          ? `${selected.size} entri dipilih`
+          : "Belum ada entri dipilih (memakai seluruh Knowledge Base)"}
+        {selected.size > 0 && (
+          <button
+            type="button"
+            className="ml-2 underline hover:text-foreground"
+            onClick={() => onChange([])}
+            data-testid="button-knowledge-clear"
+          >
+            Kosongkan
+          </button>
+        )}
+      </div>
+      <div className="border border-border rounded-md max-h-64 overflow-y-auto divide-y divide-border/60">
+        {isLoading && (
+          <div className="p-3 text-xs text-muted-foreground">
+            Memuat knowledge…
+          </div>
+        )}
+        {!isLoading && list.length === 0 && (
+          <div className="p-3 text-xs text-muted-foreground italic">
+            {(entries ?? []).length === 0
+              ? "Belum ada knowledge. Tambahkan di halaman Knowledge dulu."
+              : "Tidak ada entri yang cocok."}
+          </div>
+        )}
+        {list.map((e) => {
+          const isOn = selected.has(e.id);
+          return (
+            <button
+              type="button"
+              key={e.id}
+              onClick={() => toggle(e.id)}
+              className={`flex items-start gap-2 w-full px-2 py-1.5 text-left text-xs hover:bg-accent ${
+                isOn ? "bg-accent/60" : ""
+              }`}
+              data-testid={`button-knowledge-toggle-${e.id}`}
+            >
+              <input
+                type="checkbox"
+                checked={isOn}
+                readOnly
+                className="pointer-events-none mt-0.5"
+              />
+              <BookOpen className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="truncate font-medium text-foreground">
+                  {e.title}
+                </div>
+                <div className="truncate text-muted-foreground">
+                  #{e.id} · {e.type}
                 </div>
               </div>
             </button>

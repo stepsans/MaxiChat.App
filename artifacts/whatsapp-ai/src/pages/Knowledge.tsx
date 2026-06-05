@@ -393,6 +393,13 @@ export default function Knowledge() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <Badge
+                        variant="secondary"
+                        className="text-[10px] shrink-0 font-mono text-muted-foreground"
+                        data-testid={`text-knowledge-id-${entry.id}`}
+                      >
+                        #{entry.id}
+                      </Badge>
+                      <Badge
                         variant="outline"
                         className={cn("text-[10px] shrink-0", colorForType(entry.type))}
                       >

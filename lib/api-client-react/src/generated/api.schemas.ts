@@ -1472,6 +1472,8 @@ export type FlowNodeData = {
   productIds?: number[];
   /** AI node only: extra instruction appended to the global AI Studio system prompt while this node's AI handoff is active (during the flow cooldown). Empty = use the global prompt only. */
   aiInstruction?: string;
+  /** AI node only: restrict the AI's knowledge-base reference to these specific knowledge entry IDs while this node's handoff is active. Empty = use all of the owner's knowledge base. */
+  knowledgeIds?: number[];
 };
 
 export interface FlowNode {
