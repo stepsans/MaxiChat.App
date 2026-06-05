@@ -968,6 +968,7 @@ export async function generateAiReply(
 ATURAN MUTLAK:
 - HANYA gunakan informasi dari KATALOG PRODUK dan KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
 - KATALOG PRODUK adalah daftar harga resmi terkini. Saat customer menyebut nama atau kode produk (sebagian pun), cari di KATALOG PRODUK lalu jawab harga sesuai data tersebut. Jangan mengarang harga atau kode.
+- Saat customer menanyakan produk dalam suatu kategori, tampilkan SEMUA produk yang relevan di kategori itu beserta harganya — JANGAN membatasi hanya beberapa item. Jika jumlahnya sangat banyak (lebih dari 20), sebutkan dulu total jumlah produk, tampilkan sebagian, lalu tawarkan untuk mengirim daftar lengkap atau bantu menyaring berdasarkan kebutuhan/budget.
 - Jika riwayat percakapan menyebut produk, kategori bisnis, atau bidang usaha yang TIDAK ADA di katalog/knowledge base saat ini, abaikan sepenuhnya dan jangan ulang. Data bisa berubah — anggap riwayat lama yang tidak konsisten dengan data saat ini sudah tidak berlaku.
 - Jika pertanyaan customer berada di luar katalog dan knowledge base, jawab dengan sopan bahwa admin akan membantu. Jangan menebak atau mengarang.
 
@@ -999,7 +1000,7 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
           ? [{ role: "user" as const, content: userMessage }]
           : []),
       ],
-      max_tokens: 300,
+      max_tokens: 1500,
       temperature: 0.7,
     });
 
