@@ -19,7 +19,12 @@ import {
   type FlowNode,
 } from "@workspace/db";
 import { and, asc, eq, sql, inArray } from "drizzle-orm";
-import { withTag, stripTrailingTag, CHATBOT_TAG, AI_TAG } from "../lib/sender-tag.js";
+import {
+  withTag,
+  stripTrailingTag,
+  CHATBOT_TAG,
+  AI_TAG,
+} from "../lib/sender-tag.js";
 import { logger } from "../lib/logger";
 import { resolveAiClient } from "../lib/ai-provider";
 import { recordAiUsage } from "../lib/ai-usage";
@@ -30,7 +35,10 @@ import {
   ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
-import { resolveActiveChannel, listOwnedChannels } from "../lib/channel-context";
+import {
+  resolveActiveChannel,
+  listOwnedChannels,
+} from "../lib/channel-context";
 
 // Whether the signed-in user owns the WhatsApp pairing (super_admin) or
 // merely inherits it (supervisor / agent). Invited members must not be able
@@ -94,15 +102,17 @@ function getCtxByChannel(channelId: number, userId: number): ChannelCtx {
 // back-compat exports that still take `userId` — they resolve to the
 // owner's "primary" channel (the first one created). Returns null if the
 // user has no WhatsApp channels yet.
-async function resolvePrimaryChannelId(ownerUserId: number): Promise<number | null> {
+async function resolvePrimaryChannelId(
+  ownerUserId: number,
+): Promise<number | null> {
   const rows = await db
     .select({ id: channelsTable.id })
     .from(channelsTable)
     .where(
       and(
         eq(channelsTable.userId, ownerUserId),
-        eq(channelsTable.kind, "whatsapp")
-      )
+        eq(channelsTable.kind, "whatsapp"),
+      ),
     )
     .orderBy(asc(channelsTable.id))
     .limit(1);
@@ -114,7 +124,9 @@ async function resolvePrimaryChannelId(ownerUserId: number): Promise<number | nu
 // channel exists yet OR no ctx has been spun up. Does NOT auto-create the
 // ctx — that only happens inside startBaileys, since a ctx without a live
 // socket is meaningless for the read-side back-compat callers.
-async function getPrimaryCtxForUser(userId: number): Promise<ChannelCtx | null> {
+async function getPrimaryCtxForUser(
+  userId: number,
+): Promise<ChannelCtx | null> {
   const ownerUserId = await resolveOwnerUserId(userId);
   const cid = await resolvePrimaryChannelId(ownerUserId);
   if (cid == null) return null;
@@ -143,7 +155,7 @@ async function syncChannelStatus(
     // shape can surface it. Pass `null` to clear, `undefined` to leave
     // untouched.
     connectedAt?: string | null;
-  }
+  },
 ): Promise<void> {
   try {
     const { qrCode, connectedAt, ...statusPatch } = patch;
@@ -162,7 +174,8 @@ async function syncChannelStatus(
       .from(channelsTable)
       .where(eq(channelsTable.id, channelId))
       .limit(1);
-    const prev = (existing[0]?.metadata as Record<string, unknown> | null) ?? {};
+    const prev =
+      (existing[0]?.metadata as Record<string, unknown> | null) ?? {};
     const nextMeta: Record<string, unknown> = { ...prev };
     if (qrCode !== undefined) nextMeta.qrCode = qrCode;
     if (connectedAt !== undefined) nextMeta.connectedAt = connectedAt;
@@ -173,7 +186,7 @@ async function syncChannelStatus(
   } catch (err) {
     logger.warn(
       { err, channelId, patch },
-      "channels-status sync failed (non-fatal)"
+      "channels-status sync failed (non-fatal)",
     );
   }
 }
@@ -184,7 +197,7 @@ async function syncChannelStatus(
 // the channel's socket is already open or a connect is in flight.
 export async function startBaileysForChannel(
   userId: number,
-  channelId: number
+  channelId: number,
 ): Promise<void> {
   await startBaileys(userId, channelId);
 }
@@ -197,7 +210,7 @@ export async function startBaileysForChannel(
 // pair attempt always starts from a fresh QR.
 export async function disconnectChannelRuntime(
   userId: number,
-  channelId: number
+  channelId: number,
 ): Promise<void> {
   const ctx = getCtxByChannel(channelId, userId);
   ctx.epoch++;
@@ -247,7 +260,7 @@ async function ensureMediaDir() {
 async function saveBufferToMedia(
   buffer: Buffer,
   mimeType: string,
-  preferredFilename?: string
+  preferredFilename?: string,
 ): Promise<{ url: string; filename: string }> {
   await ensureMediaDir();
   const ext = preferredFilename
@@ -256,14 +269,19 @@ async function saveBufferToMedia(
   const filename = `${randomUUID()}${ext}`;
   const filepath = path.join(MEDIA_DIR, filename);
   await fs.writeFile(filepath, buffer);
-  return { url: `/api/media/${filename}`, filename: preferredFilename ?? filename };
+  return {
+    url: `/api/media/${filename}`,
+    filename: preferredFilename ?? filename,
+  };
 }
 
 // Returns the live Baileys socket for this user's team. Supervisor / agent
 // inherit the super_admin parent's socket (only the owner pairs a number);
 // this resolves the call to the owner's ctx so invited members can send
 // messages without re-pairing.
-export async function getActiveSocket(userId: number): Promise<WASocket | null> {
+export async function getActiveSocket(
+  userId: number,
+): Promise<WASocket | null> {
   const ctx = await getPrimaryCtxForUser(userId);
   return ctx?.sock ?? null;
 }
@@ -281,7 +299,7 @@ export function getSockForChannel(channelId: number): WASocket | null {
 // channel from, so we must persist the resulting chat against the owner's
 // primary channel. Returns null if the user has no WhatsApp channel yet.
 export async function getPrimaryChannelForUser(
-  userId: number
+  userId: number,
 ): Promise<{ channelId: number; sock: WASocket | null } | null> {
   const ownerUserId = await resolveOwnerUserId(userId);
   const cid = await resolvePrimaryChannelId(ownerUserId);
@@ -304,7 +322,7 @@ function normalizeOwnerPhone(input: string | null | undefined): string | null {
  * we cache it on the in-memory ctx to keep the hot path off the DB.
  */
 export async function getCurrentOwnerPhone(
-  userId: number
+  userId: number,
 ): Promise<string | null> {
   const ownerUserId = await resolveOwnerUserId(userId);
   const ctx = await getPrimaryCtxForUser(ownerUserId);
@@ -322,7 +340,7 @@ export async function getCurrentOwnerPhone(
 // present).
 export function getLiveOwnerNameForChannel(
   channelId: number,
-  userId: number
+  userId: number,
 ): string | null {
   const ctx = getCtxByChannel(channelId, userId);
   return ctx.sock?.user?.name ?? ctx.sock?.user?.verifiedName ?? null;
@@ -348,7 +366,7 @@ export async function refreshChatProfilePic(
     profilePicUrl: string | null;
     profilePicCheckedAt: Date | null;
   },
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean } = {},
 ): Promise<string | null> {
   // Look up the live ctx for this chat's channel. We don't auto-create — if
   // no ctx exists the channel isn't paired and there's nothing to ask.
@@ -377,7 +395,9 @@ export async function refreshChatProfilePic(
   }
   profilePicInFlight.add(chat.id);
   try {
-    const url = (await ctx.sock.profilePictureUrl(jid, "image").catch(() => null)) ?? null;
+    const url =
+      (await ctx.sock.profilePictureUrl(jid, "image").catch(() => null)) ??
+      null;
     await db
       .update(chatsTable)
       .set({ profilePicUrl: url, profilePicCheckedAt: new Date() })
@@ -404,7 +424,7 @@ export async function sendMediaToJid(
   mediaType: "image" | "video" | "document" | "audio",
   caption?: string,
   filename?: string,
-  channelId?: number
+  channelId?: number,
 ): Promise<string | null> {
   // Send from the chat's OWN channel when a channelId is supplied, so a
   // multi-channel tenant doesn't leak a media message out of the primary
@@ -419,11 +439,23 @@ export async function sendMediaToJid(
   const buffer = await fs.readFile(filepath);
   let sent;
   if (mediaType === "image") {
-    sent = await sock.sendMessage(jid, { image: buffer, caption, mimetype: mimeType });
+    sent = await sock.sendMessage(jid, {
+      image: buffer,
+      caption,
+      mimetype: mimeType,
+    });
   } else if (mediaType === "video") {
-    sent = await sock.sendMessage(jid, { video: buffer, caption, mimetype: mimeType });
+    sent = await sock.sendMessage(jid, {
+      video: buffer,
+      caption,
+      mimetype: mimeType,
+    });
   } else if (mediaType === "audio") {
-    sent = await sock.sendMessage(jid, { audio: buffer, mimetype: mimeType, ptt: false });
+    sent = await sock.sendMessage(jid, {
+      audio: buffer,
+      mimetype: mimeType,
+      ptt: false,
+    });
   } else {
     sent = await sock.sendMessage(jid, {
       document: buffer,
@@ -450,7 +482,7 @@ async function persistWaStatus(
   ownerJid: string,
   msg: any,
   downloadMediaMessage: any,
-  downloadMedia: boolean
+  downloadMedia: boolean,
 ): Promise<void> {
   if (!msg?.message) return;
   // participant is the actual author for status broadcasts
@@ -458,7 +490,10 @@ async function persistWaStatus(
   const fromMe = !!msg.key?.fromMe;
   if (!authorJid && !fromMe) return;
   const effectiveAuthorJid = authorJid ?? ownerJid;
-  const authorPhoneDigits = effectiveAuthorJid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
+  const authorPhoneDigits = effectiveAuthorJid
+    .split("@")[0]
+    .split(":")[0]
+    .replace(/[^0-9]/g, "");
   if (!authorPhoneDigits) return;
 
   // Unwrap ephemeral wrappers (status messages are almost always ephemeral).
@@ -517,11 +552,11 @@ async function persistWaStatus(
       const buf = (await downloadMediaMessage(
         { ...msg, message: inner } as any,
         "buffer",
-        {}
+        {},
       )) as Buffer;
       const saved = await saveBufferToMedia(
         buf,
-        mediaMime ?? "application/octet-stream"
+        mediaMime ?? "application/octet-stream",
       );
       mediaUrl = saved.url;
     } catch (err) {
@@ -532,10 +567,13 @@ async function persistWaStatus(
   let authorName = msg.pushName?.trim() || "";
   if (!authorName) {
     const rows = await db
-      .select({ contactName: chatsTable.contactName, nickname: chatsTable.nickname })
+      .select({
+        contactName: chatsTable.contactName,
+        nickname: chatsTable.nickname,
+      })
       .from(chatsTable)
       .where(
-        sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${"+" + authorPhoneDigits}`
+        sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${"+" + authorPhoneDigits}`,
       )
       .limit(1);
     authorName = rows[0]?.nickname ?? rows[0]?.contactName ?? authorPhoneDigits;
@@ -564,7 +602,10 @@ async function persistWaStatus(
       expiresAt,
     })
     .onConflictDoNothing({
-      target: [whatsappStatusesTable.channelId, whatsappStatusesTable.waMessageId],
+      target: [
+        whatsappStatusesTable.channelId,
+        whatsappStatusesTable.waMessageId,
+      ],
     });
 }
 
@@ -575,7 +616,7 @@ export async function postTextStatus(
   userId: number,
   channelId: number,
   text: string,
-  backgroundColor: string
+  backgroundColor: string,
 ): Promise<typeof whatsappStatusesTable.$inferSelect> {
   const ctx = getCtxByChannel(channelId, userId);
   const sock = ctx.sock;
@@ -586,7 +627,7 @@ export async function postTextStatus(
     .from(chatsTable)
     .where(
       sql`${chatsTable.channelId} = ${channelId}
-          AND ${chatsTable.phoneNumber} NOT LIKE '%@g.us'`
+          AND ${chatsTable.phoneNumber} NOT LIKE '%@g.us'`,
     );
   const statusJidList = dmChats
     .map((c) => c.phoneNumber.replace(/^\+/, "").replace(/[^0-9]/g, ""))
@@ -609,10 +650,14 @@ export async function postTextStatus(
       backgroundColor: argb,
       font: 0,
     } as any,
-    { statusJidList } as any
+    { statusJidList } as any,
   );
-  const ownerJid = sock.user?.id ?? (ownerPhone ? `${ownerPhone}@s.whatsapp.net` : "");
-  const ownerDigits = ownerJid.split("@")[0].split(":")[0].replace(/[^0-9]/g, "");
+  const ownerJid =
+    sock.user?.id ?? (ownerPhone ? `${ownerPhone}@s.whatsapp.net` : "");
+  const ownerDigits = ownerJid
+    .split("@")[0]
+    .split(":")[0]
+    .replace(/[^0-9]/g, "");
   const postedAt = new Date();
   const waMessageId = sent?.key?.id ?? null;
   const inserted = await db
@@ -634,7 +679,10 @@ export async function postTextStatus(
       expiresAt: new Date(postedAt.getTime() + STATUS_TTL_MS),
     })
     .onConflictDoNothing({
-      target: [whatsappStatusesTable.channelId, whatsappStatusesTable.waMessageId],
+      target: [
+        whatsappStatusesTable.channelId,
+        whatsappStatusesTable.waMessageId,
+      ],
     })
     .returning();
   if (inserted[0]) return inserted[0];
@@ -644,7 +692,7 @@ export async function postTextStatus(
       .from(whatsappStatusesTable)
       .where(
         sql`${whatsappStatusesTable.channelId} = ${channelId}
-            AND ${whatsappStatusesTable.waMessageId} = ${waMessageId}`
+            AND ${whatsappStatusesTable.waMessageId} = ${waMessageId}`,
       )
       .limit(1);
     if (existing[0]) return existing[0];
@@ -654,7 +702,7 @@ export async function postTextStatus(
 
 // Bio / About — fetch own and update own.
 export async function fetchOwnBio(
-  userId: number
+  userId: number,
 ): Promise<{ bio: string | null; setAt: string | null }> {
   const ownerUserId = await resolveOwnerUserId(userId);
   const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
@@ -664,9 +712,14 @@ export async function fetchOwnBio(
   try {
     const result = (await (sock as any).fetchStatus(ownerJid)) as
       | { status?: string | null; setAt?: Date | string | null }
-      | Array<{ status?: { status?: string | null; setAt?: Date | string | null } }>
+      | Array<{
+          status?: { status?: string | null; setAt?: Date | string | null };
+        }>
       | null;
-    let normalised: { status?: string | null; setAt?: Date | string | null } | null = null;
+    let normalised: {
+      status?: string | null;
+      setAt?: Date | string | null;
+    } | null = null;
     if (Array.isArray(result)) {
       normalised = result[0]?.status ?? null;
     } else {
@@ -689,7 +742,7 @@ export async function fetchOwnBio(
 
 export async function updateOwnBio(
   userId: number,
-  text: string
+  text: string,
 ): Promise<{ bio: string; setAt: string }> {
   const ownerUserId = await resolveOwnerUserId(userId);
   const sock = (await getPrimaryCtxForUser(ownerUserId))?.sock ?? null;
@@ -703,7 +756,7 @@ export async function sendContactToJid(
   jid: string,
   contactName: string,
   contactPhone: string,
-  channelId?: number
+  channelId?: number,
 ): Promise<string | null> {
   // Send from the chat's OWN channel when a channelId is supplied (see
   // sendMediaToJid). Falls back to the primary socket for legacy callers.
@@ -714,7 +767,9 @@ export async function sendContactToJid(
         null);
   if (!sock) throw new Error("WhatsApp is not connected");
   const cleanPhone = contactPhone.replace(/[^\d+]/g, "");
-  const waNumber = cleanPhone.startsWith("+") ? cleanPhone.slice(1) : cleanPhone;
+  const waNumber = cleanPhone.startsWith("+")
+    ? cleanPhone.slice(1)
+    : cleanPhone;
   const vcard =
     "BEGIN:VCARD\n" +
     "VERSION:3.0\n" +
@@ -731,9 +786,10 @@ export async function sendContactToJid(
 }
 
 // Extracts pin/archive metadata from a Baileys chat object.
-function extractChatListMeta(
-  c: Record<string, unknown>
-): { pinnedAt?: Date | null; isArchived?: boolean } {
+function extractChatListMeta(c: Record<string, unknown>): {
+  pinnedAt?: Date | null;
+  isArchived?: boolean;
+} {
   const meta: { pinnedAt?: Date | null; isArchived?: boolean } = {};
   if (Object.prototype.hasOwnProperty.call(c, "pinned")) {
     const p = (c as { pinned?: unknown }).pinned;
@@ -755,7 +811,7 @@ function extractChatListMeta(
 async function applyChatListMeta(
   channelId: number,
   phoneNumber: string,
-  c: Record<string, unknown>
+  c: Record<string, unknown>,
 ): Promise<void> {
   const meta = extractChatListMeta(c);
   if (Object.keys(meta).length === 0) return;
@@ -763,7 +819,7 @@ async function applyChatListMeta(
     .update(chatsTable)
     .set(meta)
     .where(
-      sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
+      sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`,
     );
 }
 
@@ -772,7 +828,7 @@ export async function getOrCreateChat(
   userId: number,
   phoneNumber: string,
   contactName: string,
-  opts: { isLid?: boolean } = {}
+  opts: { isLid?: boolean } = {},
 ) {
   void userId;
   const isLid = !!opts.isLid;
@@ -813,25 +869,32 @@ export async function getOrCreateChat(
   return row;
 }
 
-async function autoAssignNewChat(ownerUserId: number, chatId: number): Promise<void> {
-  const { pickNextRoundRobinAgent, getAssignmentMode } = await import(
-    "../lib/round-robin"
-  );
+async function autoAssignNewChat(
+  ownerUserId: number,
+  chatId: number,
+): Promise<void> {
+  const { pickNextRoundRobinAgent, getAssignmentMode } =
+    await import("../lib/round-robin");
   // channels.userId is the super_admin owner — no parent-walk needed.
-  if (await getAssignmentMode(ownerUserId) !== "round_robin") return;
+  if ((await getAssignmentMode(ownerUserId)) !== "round_robin") return;
   const agentId = await pickNextRoundRobinAgent(ownerUserId);
   if (agentId == null) return;
   await db
     .update(chatsTable)
-    .set({ assignedUserId: agentId, firstAssignedAt: sql`COALESCE(${chatsTable.firstAssignedAt}, NOW())` })
-    .where(sql`${chatsTable.id} = ${chatId} AND ${chatsTable.assignedUserId} IS NULL`);
+    .set({
+      assignedUserId: agentId,
+      firstAssignedAt: sql`COALESCE(${chatsTable.firstAssignedAt}, NOW())`,
+    })
+    .where(
+      sql`${chatsTable.id} = ${chatId} AND ${chatsTable.assignedUserId} IS NULL`,
+    );
 }
 
 export async function generateAiReply(
   channelId: number,
   userId: number,
   chatId: number,
-  userMessage: string
+  userMessage: string,
 ): Promise<string | null> {
   try {
     const settingsRows = await db
@@ -861,10 +924,12 @@ export async function generateAiReply(
       .limit(10);
 
     const history = recentMessages.map((m) => ({
-      role: m.direction === "outbound" ? ("assistant" as const) : ("user" as const),
+      role:
+        m.direction === "outbound" ? ("assistant" as const) : ("user" as const),
       // Strip the appended sender signature so the model doesn't learn to
       // sign its own replies (which would then get double-tagged by withTag).
-      content: m.direction === "outbound" ? stripTrailingTag(m.content) : m.content,
+      content:
+        m.direction === "outbound" ? stripTrailingTag(m.content) : m.content,
     }));
 
     const systemPrompt = `${tenant.systemPrompt}
@@ -880,7 +945,8 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
 
     // Resolve the tenant's AI client + model. Defaults to the managed Replit
     // integration (gpt-4o-mini) when the tenant hasn't opted into BYOK.
-    const { client, model, provider, ownerUserId } = await resolveAiClient(userId);
+    const { client, model, provider, ownerUserId } =
+      await resolveAiClient(userId);
     const response = await client.chat.completions.create({
       model,
       messages: [
@@ -963,7 +1029,7 @@ async function parseWaMessage(
   downloadMediaMessage: any,
   downloadMedia: boolean,
   resolveGroupName?: (jid: string) => Promise<string | null>,
-  resolveLidToPn?: (lidJid: string) => Promise<string | null>
+  resolveLidToPn?: (lidJid: string) => Promise<string | null>,
 ): Promise<ParsedWaMessage | null> {
   if (!msg?.message) return null;
   const jid: string | undefined = msg.key?.remoteJid;
@@ -977,7 +1043,8 @@ async function parseWaMessage(
     return null;
   }
   const isGroup = isJidGroup(jid);
-  if (!isGroup && !jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@lid")) return null;
+  if (!isGroup && !jid.endsWith("@s.whatsapp.net") && !jid.endsWith("@lid"))
+    return null;
 
   let inner: any = msg.message;
   for (let i = 0; i < 5; i++) {
@@ -990,7 +1057,11 @@ async function parseWaMessage(
     inner = next;
   }
 
-  if (inner.protocolMessage || inner.senderKeyDistributionMessage || inner.messageContextInfo) {
+  if (
+    inner.protocolMessage ||
+    inner.senderKeyDistributionMessage ||
+    inner.messageContextInfo
+  ) {
     const onlyMeta =
       !inner.conversation &&
       !inner.extendedTextMessage &&
@@ -1055,12 +1126,12 @@ async function parseWaMessage(
         const buf = (await downloadMediaMessage(
           { ...msg, message: inner } as any,
           "buffer",
-          {}
+          {},
         )) as Buffer;
         const saved = await saveBufferToMedia(
           buf,
           mediaMime ?? "application/octet-stream",
-          mediaFilename ?? undefined
+          mediaFilename ?? undefined,
         );
         media = {
           mediaType: mediaKind,
@@ -1086,7 +1157,8 @@ async function parseWaMessage(
       };
     }
   } else if (inner.contactMessage || inner.contactsArrayMessage) {
-    const contact = inner.contactMessage ?? inner.contactsArrayMessage?.contacts?.[0];
+    const contact =
+      inner.contactMessage ?? inner.contactsArrayMessage?.contacts?.[0];
     const displayName = contact?.displayName ?? "Kontak";
     media = {
       mediaType: "contact",
@@ -1100,9 +1172,12 @@ async function parseWaMessage(
     if (!messageContent) messageContent = `📍 Lokasi${name}`;
   } else if (inner.pollCreationMessage || inner.pollCreationMessageV3) {
     const poll = inner.pollCreationMessage ?? inner.pollCreationMessageV3;
-    if (!messageContent) messageContent = `📊 Polling: ${poll?.name ?? ""}`.trim();
+    if (!messageContent)
+      messageContent = `📊 Polling: ${poll?.name ?? ""}`.trim();
   } else if (inner.groupInviteMessage) {
-    if (!messageContent) messageContent = `👥 Undangan grup: ${inner.groupInviteMessage.groupName ?? ""}`.trim();
+    if (!messageContent)
+      messageContent =
+        `👥 Undangan grup: ${inner.groupInviteMessage.groupName ?? ""}`.trim();
   } else if (inner.productMessage || inner.orderMessage) {
     if (!messageContent) messageContent = "🛒 Pesan produk/pesanan";
   }
@@ -1125,17 +1200,15 @@ async function parseWaMessage(
     pushName = groupName || rawNumber;
   } else {
     const remoteJidAlt: string | undefined = msg.key?.remoteJidAlt;
-    const phoneJid =
-      jid.endsWith("@s.whatsapp.net")
-        ? jid
-        : remoteJidAlt?.endsWith("@s.whatsapp.net")
+    const phoneJid = jid.endsWith("@s.whatsapp.net")
+      ? jid
+      : remoteJidAlt?.endsWith("@s.whatsapp.net")
         ? remoteJidAlt
         : jid;
     rawNumber = phoneJid.split("@")[0].split(":")[0];
-    lidRawNumber =
-      jid.endsWith("@lid")
-        ? jid.split("@")[0].split(":")[0]
-        : remoteJidAlt?.endsWith("@lid")
+    lidRawNumber = jid.endsWith("@lid")
+      ? jid.split("@")[0].split(":")[0]
+      : remoteJidAlt?.endsWith("@lid")
         ? remoteJidAlt.split("@")[0].split(":")[0]
         : null;
     // Never let an OUTBOUND (fromMe) message name the contact: on a fromMe
@@ -1239,7 +1312,8 @@ async function parseWaMessage(
   // We capture the id (to link to our local row) and a text snapshot (to render
   // the grey reply bar even if we never stored the original).
   const quotedWaMessageId: string | null =
-    (typeof fwdContextInfo?.stanzaId === "string" && fwdContextInfo.stanzaId) || null;
+    (typeof fwdContextInfo?.stanzaId === "string" && fwdContextInfo.stanzaId) ||
+    null;
   let quotedContent: string | null = null;
   if (quotedWaMessageId) {
     const qm = fwdContextInfo?.quotedMessage ?? null;
@@ -1292,13 +1366,20 @@ function buildPreview(messageText: string, media?: IncomingMedia): string {
   if (messageText.trim().length) return messageText;
   if (!media) return "";
   switch (media.mediaType) {
-    case "image": return "📷 Gambar";
-    case "sticker": return "🏷️ Stiker";
-    case "video": return "🎥 Video";
-    case "audio": return "🎤 Audio";
-    case "document": return `📄 ${media.mediaFilename ?? "Dokumen"}`;
-    case "contact": return `👤 ${media.mediaFilename ?? "Kontak"}`;
-    default: return "Media";
+    case "image":
+      return "📷 Gambar";
+    case "sticker":
+      return "🏷️ Stiker";
+    case "video":
+      return "🎥 Video";
+    case "audio":
+      return "🎤 Audio";
+    case "document":
+      return `📄 ${media.mediaFilename ?? "Dokumen"}`;
+    case "contact":
+      return `👤 ${media.mediaFilename ?? "Kontak"}`;
+    default:
+      return "Media";
   }
 }
 
@@ -1306,60 +1387,98 @@ async function persistWaMessage(
   userId: number,
   channelId: number,
   parsed: ParsedWaMessage,
-  opts: { incrementUnread: boolean }
+  opts: { incrementUnread: boolean },
 ): Promise<{ chat: typeof chatsTable.$inferSelect; inserted: boolean }> {
   const phoneNumber = parsed.isGroup ? parsed.jid : `+${parsed.rawNumber}`;
   const contactName = parsed.pushName || parsed.rawNumber;
 
-  if (!parsed.isGroup && parsed.lidRawNumber && parsed.lidRawNumber !== parsed.rawNumber) {
+  if (
+    !parsed.isGroup &&
+    parsed.lidRawNumber &&
+    parsed.lidRawNumber !== parsed.rawNumber
+  ) {
     const lidPhone = `+${parsed.lidRawNumber}`;
-    await db.transaction(async (tx) => {
-      const candidates = await tx
-        .select()
-        .from(chatsTable)
-        .where(
-          sql`${chatsTable.channelId} = ${channelId}
-              AND ${chatsTable.phoneNumber} IN (${lidPhone}, ${phoneNumber})`
-        )
-        .orderBy(chatsTable.phoneNumber)
-        .for("update");
+    // Best-effort reconciliation: a failure here must NEVER block persistence of
+    // the current inbound message below. A throwing merge previously aborted the
+    // whole handler and silently dropped the message (and every later one).
+    try {
+      await db.transaction(async (tx) => {
+        const candidates = await tx
+          .select()
+          .from(chatsTable)
+          .where(
+            sql`${chatsTable.channelId} = ${channelId}
+              AND ${chatsTable.phoneNumber} IN (${lidPhone}, ${phoneNumber})`,
+          )
+          .orderBy(chatsTable.phoneNumber)
+          .for("update");
 
-      const lidChat = candidates.find((c) => c.phoneNumber === lidPhone);
-      if (!lidChat) return;
-      const realChat = candidates.find((c) => c.phoneNumber === phoneNumber);
+        const lidChat = candidates.find((c) => c.phoneNumber === lidPhone);
+        if (!lidChat) return;
+        const realChat = candidates.find((c) => c.phoneNumber === phoneNumber);
 
-      if (realChat) {
-        await tx
-          .update(chatMessagesTable)
-          .set({ chatId: realChat.id })
-          .where(eq(chatMessagesTable.chatId, lidChat.id));
-        await tx.delete(chatsTable).where(eq(chatsTable.id, lidChat.id));
-        await tx
-          .update(chatsTable)
-          .set({ isLid: false })
-          .where(eq(chatsTable.id, realChat.id));
-        logger.info(
-          { lidPhone, phoneNumber },
-          "Merged stale LID-keyed chat into canonical phone chat"
-        );
-      } else {
-        await tx
-          .update(chatsTable)
-          .set({ phoneNumber, contactName, isLid: false })
-          .where(eq(chatsTable.id, lidChat.id));
-        logger.info(
-          { lidPhone, phoneNumber },
-          "Renamed stale LID-keyed chat to canonical phone"
-        );
-      }
-    });
+        if (realChat) {
+          // Move the LID chat's messages onto the canonical chat, but ONLY the
+          // ones whose wa_message_id isn't already present on the canonical chat.
+          // The same WhatsApp message can land in both chats (once keyed by LID,
+          // once by phone); a blind reassignment then violates the
+          // (chat_id, wa_message_id) unique constraint, aborts the whole
+          // transaction, and — because the LID chat is never deleted — makes
+          // EVERY later message for this contact re-run the same failing merge
+          // and get dropped. Leaving the colliding rows behind and deleting the
+          // LID chat (FK cascade) discards only true duplicates.
+          await tx
+            .update(chatMessagesTable)
+            .set({ chatId: realChat.id })
+            .where(
+              sql`${chatMessagesTable.chatId} = ${lidChat.id}
+                AND (
+                  ${chatMessagesTable.waMessageId} IS NULL
+                  OR ${chatMessagesTable.waMessageId} NOT IN (
+                    SELECT wa_message_id FROM chat_messages
+                    WHERE chat_id = ${realChat.id} AND wa_message_id IS NOT NULL
+                  )
+                )`,
+            );
+          await tx.delete(chatsTable).where(eq(chatsTable.id, lidChat.id));
+          await tx
+            .update(chatsTable)
+            .set({ isLid: false })
+            .where(eq(chatsTable.id, realChat.id));
+          logger.info(
+            { lidPhone, phoneNumber },
+            "Merged stale LID-keyed chat into canonical phone chat",
+          );
+        } else {
+          await tx
+            .update(chatsTable)
+            .set({ phoneNumber, contactName, isLid: false })
+            .where(eq(chatsTable.id, lidChat.id));
+          logger.info(
+            { lidPhone, phoneNumber },
+            "Renamed stale LID-keyed chat to canonical phone",
+          );
+        }
+      });
+    } catch (err) {
+      logger.warn(
+        { err, lidPhone, phoneNumber, channelId },
+        "LID chat reconciliation failed; persisting message to canonical chat anyway",
+      );
+    }
   }
 
   const isLidChat =
     !parsed.isGroup &&
     parsed.lidRawNumber !== null &&
     parsed.lidRawNumber === parsed.rawNumber;
-  const chat = await getOrCreateChat(channelId, userId, phoneNumber, contactName, { isLid: isLidChat });
+  const chat = await getOrCreateChat(
+    channelId,
+    userId,
+    phoneNumber,
+    contactName,
+    { isLid: isLidChat },
+  );
   const direction = parsed.fromMe ? "outbound" : "inbound";
 
   const senderColumns = {
@@ -1430,7 +1549,9 @@ async function persistWaMessage(
         ...senderColumns,
         ...(quotedColumns ?? {}),
       })
-      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
+      .onConflictDoNothing({
+        target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId],
+      })
       .returning({ id: chatMessagesTable.id });
     inserted = result.length > 0;
 
@@ -1571,7 +1692,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // strong bot/spam signal that risks WhatsApp restricting the number.
 function flowSendDelayMs(
   minSec: number | null | undefined,
-  maxSec: number | null | undefined
+  maxSec: number | null | undefined,
 ): number {
   const min = Math.max(0, (minSec ?? 1) * 1000);
   const max = Math.max(min, (maxSec ?? 3) * 1000);
@@ -1581,7 +1702,11 @@ function flowSendDelayMs(
 // Best-effort "typing…" indicator on a WhatsApp chat for the given duration,
 // then mark it paused. Presence is decorative: any failure is swallowed so it
 // can never block the actual message send.
-async function typingPause(sock: WASocket, jid: string, ms: number): Promise<void> {
+async function typingPause(
+  sock: WASocket,
+  jid: string,
+  ms: number,
+): Promise<void> {
   try {
     await sock.presenceSubscribe(jid);
     await sock.sendPresenceUpdate("composing", jid);
@@ -1604,7 +1729,7 @@ async function sendFlowMessage(
   jid: string,
   text: string,
   imageUrl?: string | null,
-  delayBounds?: { min?: number | null; max?: number | null }
+  delayBounds?: { min?: number | null; max?: number | null },
 ): Promise<boolean> {
   const ctx = getCtxByChannel(channelId, userId);
   if (epoch !== ctx.epoch) return false;
@@ -1619,7 +1744,10 @@ async function sendFlowMessage(
     try {
       imageBuffer = await loadImageBuffer(imageUrl);
     } catch (err) {
-      logger.warn({ err, imageUrl, chatId }, "flow image load failed; sending text only");
+      logger.warn(
+        { err, imageUrl, chatId },
+        "flow image load failed; sending text only",
+      );
     }
   }
 
@@ -1665,10 +1793,16 @@ async function sendFlowMessage(
       isAiGenerated: false,
       waMessageId: sent?.key?.id ?? null,
     })
-    .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
+    .onConflictDoNothing({
+      target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId],
+    });
   await db
     .update(chatsTable)
-    .set({ lastMessage: stored, lastMessageAt: new Date(), status: "ai_handled" })
+    .set({
+      lastMessage: stored,
+      lastMessageAt: new Date(),
+      status: "ai_handled",
+    })
     .where(eq(chatsTable.id, chatId));
   return true;
 }
@@ -1783,8 +1917,12 @@ export async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
       if (value) {
         total += value.length;
         if (total > MAX_EXTERNAL_IMAGE_BYTES) {
-          try { await reader.cancel(); } catch {}
-          throw new Error(`response exceeded ${MAX_EXTERNAL_IMAGE_BYTES} bytes`);
+          try {
+            await reader.cancel();
+          } catch {}
+          throw new Error(
+            `response exceeded ${MAX_EXTERNAL_IMAGE_BYTES} bytes`,
+          );
         }
         chunks.push(value);
       }
@@ -1807,7 +1945,7 @@ async function runFlowFrom(
   flowId: number,
   graph: FlowGraph,
   startNodeId: string,
-  cooldownMs: number
+  cooldownMs: number,
 ): Promise<void> {
   const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
   let cursorId: string | null = startNodeId;
@@ -1835,11 +1973,13 @@ async function runFlowFrom(
           jid,
           node.data.text ?? "",
           node.data.imageUrl ?? null,
-          delayBounds
+          delayBounds,
         );
         if (!ok) return;
       }
-      const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
+      const next = graph.edges.find(
+        (e) => e.source === cursorId && !e.sourceHandle,
+      );
       cursorId = next?.target ?? null;
       continue;
     }
@@ -1854,7 +1994,7 @@ async function runFlowFrom(
         jid,
         text,
         node.data.imageUrl ?? null,
-        delayBounds
+        delayBounds,
       );
       if (!ok) return;
       await db
@@ -1865,7 +2005,9 @@ async function runFlowFrom(
     }
 
     if (node.type === "products") {
-      const ids = (node.data.productIds ?? []).filter((n) => Number.isInteger(n) && n > 0);
+      const ids = (node.data.productIds ?? []).filter(
+        (n) => Number.isInteger(n) && n > 0,
+      );
       if (ids.length > 0) {
         // Scope by ownerPhone so a flow can never leak another tenant's products
         // if their ids happened to be referenced.
@@ -1878,7 +2020,12 @@ async function runFlowFrom(
             imageUrl: productsTable.imageUrl,
           })
           .from(productsTable)
-          .where(and(eq(productsTable.userId, userId), inArray(productsTable.id, ids)));
+          .where(
+            and(
+              eq(productsTable.userId, userId),
+              inArray(productsTable.id, ids),
+            ),
+          );
         // Preserve the author's ordering from the flow node.
         const byId = new Map(rows.map((p) => [p.id, p]));
         for (const pid of ids) {
@@ -1896,12 +2043,14 @@ async function runFlowFrom(
             jid,
             caption,
             p.imageUrl ?? null,
-            delayBounds
+            delayBounds,
           );
           if (!ok) return;
         }
       }
-      const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
+      const next = graph.edges.find(
+        (e) => e.source === cursorId && !e.sourceHandle,
+      );
       cursorId = next?.target ?? null;
       continue;
     }
@@ -1931,7 +2080,7 @@ async function runFlowFrom(
           jid,
           node.data.text,
           null,
-          delayBounds
+          delayBounds,
         );
         if (!ok) return;
       }
@@ -1943,7 +2092,9 @@ async function runFlowFrom(
     }
 
     // Trigger or unknown — just follow first outgoing edge.
-    const next = graph.edges.find((e) => e.source === cursorId && !e.sourceHandle);
+    const next = graph.edges.find(
+      (e) => e.source === cursorId && !e.sourceHandle,
+    );
     cursorId = next?.target ?? null;
   }
 
@@ -1961,7 +2112,7 @@ async function tryRunFlow(
   epoch: number,
   chat: typeof chatsTable.$inferSelect,
   jid: string,
-  messageText: string
+  messageText: string,
 ): Promise<boolean> {
   const text = messageText.trim();
   if (!text) return false;
@@ -1982,9 +2133,11 @@ async function tryRunFlow(
   //  - { defaultMutedUntil }                         → flow recently exited; do not
   //    auto-restart via the Default trigger until that timestamp passes.
   //    Keyword triggers still match (explicit user intent).
-  const state = (fresh?.flowState ?? null) as
-    | { flowId?: number; currentNodeId?: string; defaultMutedUntil?: number }
-    | null;
+  const state = (fresh?.flowState ?? null) as {
+    flowId?: number;
+    currentNodeId?: string;
+    defaultMutedUntil?: number;
+  } | null;
   // Cooldown after any flow exit before the Default trigger may re-fire.
   // Configurable business-wide in Settings (5/15/30/60/120 minutes), keyed
   // on the tenant owner.
@@ -2004,18 +2157,24 @@ async function tryRunFlow(
       .where(
         and(
           eq(chatbotFlowsTable.id, state.flowId),
-          eq(chatbotFlowsTable.channelId, channelId)
-        )
+          eq(chatbotFlowsTable.channelId, channelId),
+        ),
       )
       .limit(1);
     if (!flowRow) {
-      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
+      await db
+        .update(chatsTable)
+        .set({ flowState: muteState })
+        .where(eq(chatsTable.id, chat.id));
       return false;
     }
     const graph = flowRow.graph as FlowGraph;
     const node = graph.nodes.find((n) => n.id === state.currentNodeId);
     if (!node || node.type !== "question") {
-      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
+      await db
+        .update(chatsTable)
+        .set({ flowState: muteState })
+        .where(eq(chatsTable.id, chat.id));
       return false;
     }
     const optId = pickOption(node, text);
@@ -2036,7 +2195,7 @@ async function tryRunFlow(
             jid,
             retryMsg,
             null,
-            delayBounds
+            delayBounds,
           );
           if (!okMsg) return false;
         }
@@ -2049,23 +2208,29 @@ async function tryRunFlow(
           jid,
           questionText,
           node.data.imageUrl ?? null,
-          delayBounds
+          delayBounds,
         );
         // If the re-ask failed to send, don't claim the flow handled the
         // message — fall through to AI so the customer isn't left in silence.
         return ok;
       }
       // Unrecognised reply → user is asking a free-form question, let AI handle it.
-      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
+      await db
+        .update(chatsTable)
+        .set({ flowState: muteState })
+        .where(eq(chatsTable.id, chat.id));
       return false;
     }
 
     const edge = graph.edges.find(
-      (e) => e.source === node.id && e.sourceHandle === optId
+      (e) => e.source === node.id && e.sourceHandle === optId,
     );
     if (!edge) {
       // Picked an option that the flow author never wired up → AI takes over.
-      await db.update(chatsTable).set({ flowState: muteState }).where(eq(chatsTable.id, chat.id));
+      await db
+        .update(chatsTable)
+        .set({ flowState: muteState })
+        .where(eq(chatsTable.id, chat.id));
       return false;
     }
     await runFlowFrom(
@@ -2077,7 +2242,7 @@ async function tryRunFlow(
       flowRow.id,
       graph,
       edge.target,
-      cooldownMs
+      cooldownMs,
     );
     return true;
   }
@@ -2087,7 +2252,10 @@ async function tryRunFlow(
     .select()
     .from(chatbotFlowsTable)
     .where(
-      and(eq(chatbotFlowsTable.channelId, channelId), eq(chatbotFlowsTable.isActive, true))
+      and(
+        eq(chatbotFlowsTable.channelId, channelId),
+        eq(chatbotFlowsTable.isActive, true),
+      ),
     )
     .limit(1);
   if (!active) return false;
@@ -2097,18 +2265,22 @@ async function tryRunFlow(
   // Only consider triggers that actually have an outgoing edge — an
   // orphan trigger (left behind during editing) must not block the flow.
   const hasOutgoing = (id: string) => graph.edges.some((e) => e.source === id);
-  const triggers = graph.nodes.filter((n) => n.type === "trigger" && hasOutgoing(n.id));
+  const triggers = graph.nodes.filter(
+    (n) => n.type === "trigger" && hasOutgoing(n.id),
+  );
   // Keyword triggers always win (explicit intent) and bypass the mute.
   const keywordHit = triggers.find(
     (n) =>
       (n.data.matchType ?? "keyword") === "keyword" &&
-      (n.data.keywords ?? []).some((k) => k && lower.includes(k.toLowerCase()))
+      (n.data.keywords ?? []).some((k) => k && lower.includes(k.toLowerCase())),
   );
   const defaultMuted =
     !!state?.defaultMutedUntil && Date.now() < state.defaultMutedUntil;
   const start =
     keywordHit ??
-    (defaultMuted ? undefined : triggers.find((n) => n.data.matchType === "default"));
+    (defaultMuted
+      ? undefined
+      : triggers.find((n) => n.data.matchType === "default"));
   if (!start) return false;
 
   const firstEdge = graph.edges.find((e) => e.source === start.id);
@@ -2127,7 +2299,7 @@ async function tryRunFlow(
     active.id,
     graph,
     firstEdge.target,
-    cooldownMs
+    cooldownMs,
   );
   return true;
 }
@@ -2138,7 +2310,7 @@ async function maybeTriggerAutoReply(
   epoch: number,
   chat: typeof chatsTable.$inferSelect,
   jid: string,
-  messageText: string
+  messageText: string,
 ) {
   if (chat.isHumanTakeover) return;
   if (!messageText.trim()) return;
@@ -2146,7 +2318,14 @@ async function maybeTriggerAutoReply(
   // Try chatbot flow before AI. If a flow handled the message (matched a
   // trigger or advanced from a question), skip the AI auto-reply entirely.
   try {
-    const handled = await tryRunFlow(userId, channelId, epoch, chat, jid, messageText);
+    const handled = await tryRunFlow(
+      userId,
+      channelId,
+      epoch,
+      chat,
+      jid,
+      messageText,
+    );
     if (handled) return;
   } catch (err) {
     logger.error({ err }, "Flow engine failed; falling back to AI");
@@ -2173,11 +2352,18 @@ async function maybeTriggerAutoReply(
       // bump) happened during the delay.
       if (epoch !== ctx.epoch) return;
 
-      const aiReply = await generateAiReply(channelId, userId, chat.id, messageText);
+      const aiReply = await generateAiReply(
+        channelId,
+        userId,
+        chat.id,
+        messageText,
+      );
       // Sign AI-generated replies with the "powered by AI" tag. The
       // configured fallbackMessage is a canned operator-authored string,
       // so we leave it unsigned to avoid misattributing it to the AI.
-      const replyText = aiReply ? withTag(aiReply, AI_TAG) : tenant.fallbackMessage;
+      const replyText = aiReply
+        ? withTag(aiReply, AI_TAG)
+        : tenant.fallbackMessage;
 
       if (epoch !== ctx.epoch) return;
 
@@ -2193,7 +2379,9 @@ async function maybeTriggerAutoReply(
             isAiGenerated: !!aiReply,
             waMessageId: sent?.key?.id ?? null,
           })
-          .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] });
+          .onConflictDoNothing({
+            target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId],
+          });
 
         await db
           .update(chatsTable)
@@ -2212,7 +2400,8 @@ async function maybeTriggerAutoReply(
 
 async function startBaileys(userId: number, channelId: number) {
   const ctx = getCtxByChannel(channelId, userId);
-  if (ctx.isConnecting || (ctx.sock && (ctx.sock as any).ws?.readyState === 1)) return;
+  if (ctx.isConnecting || (ctx.sock && (ctx.sock as any).ws?.readyState === 1))
+    return;
   ctx.isConnecting = true;
   const myEpoch = ++ctx.epoch;
 
@@ -2273,7 +2462,7 @@ async function startBaileys(userId: number, channelId: number) {
             if (code === "23505") {
               logger.warn(
                 { userId, normalised },
-                "WhatsApp number already paired to another account; rejecting connection"
+                "WhatsApp number already paired to another account; rejecting connection",
               );
               ctx.ownerPhone = null;
               // Await so the channel row reflects 'disconnected' before
@@ -2293,7 +2482,7 @@ async function startBaileys(userId: number, channelId: number) {
             }
             logger.error(
               { err, userId },
-              "Failed to persist user_whatsapp mapping; refusing to expose ownerPhone"
+              "Failed to persist user_whatsapp mapping; refusing to expose ownerPhone",
             );
             ctx.ownerPhone = null;
             await syncChannelStatus(channelId, {
@@ -2316,8 +2505,7 @@ async function startBaileys(userId: number, channelId: number) {
         // live ctx. The frontend switcher reads these to render per-channel
         // connectivity dots. connectedAt is persisted so the legacy
         // /whatsapp/status response shape stays accurate after E1.
-        const ownerName =
-          sock.user?.name ?? sock.user?.verifiedName ?? null;
+        const ownerName = sock.user?.name ?? sock.user?.verifiedName ?? null;
         void syncChannelStatus(channelId, {
           status: "connected",
           ownerPhone: normalised,
@@ -2329,7 +2517,8 @@ async function startBaileys(userId: number, channelId: number) {
       }
 
       if (connection === "close") {
-        const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)?.output?.statusCode;
+        const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)
+          ?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason.loggedOut;
         // Clear connectedAt so the legacy /whatsapp/status no longer
         // reports a stale connection time after a drop.
@@ -2364,14 +2553,20 @@ async function startBaileys(userId: number, channelId: number) {
             .catch((err) =>
               logger.warn(
                 { err, channelId },
-                "Failed to wipe auth dir after logout"
-              )
+                "Failed to wipe auth dir after logout",
+              ),
             );
-          setTimeout(() => startBaileys(userId, channelId).catch(() => {}), 1000);
+          setTimeout(
+            () => startBaileys(userId, channelId).catch(() => {}),
+            1000,
+          );
         } else {
           // Transient drop (network, restart-required, etc.): resume with the
           // existing creds rather than forcing a re-pair.
-          setTimeout(() => startBaileys(userId, channelId).catch(() => {}), 3000);
+          setTimeout(
+            () => startBaileys(userId, channelId).catch(() => {}),
+            3000,
+          );
         }
       }
     });
@@ -2423,8 +2618,12 @@ async function startBaileys(userId: number, channelId: number) {
       if (!ownerPhone) return;
       const ownerJid = sock.user?.id ?? "";
       logger.info(
-        { type, count: messages.length, jids: messages.map((m) => m.key.remoteJid) },
-        "messages.upsert received"
+        {
+          type,
+          count: messages.length,
+          jids: messages.map((m) => m.key.remoteJid),
+        },
+        "messages.upsert received",
       );
       // Process all real message-event types. Baileys emits:
       //   - "notify"   = brand-new live message
@@ -2451,8 +2650,14 @@ async function startBaileys(userId: number, channelId: number) {
           // here used to silently lose the tail of every batch when the
           // socket flickered, because Baileys won't re-emit those events.
           if (msg.key?.remoteJid === "status@broadcast") {
-            await persistWaStatus(channelId, ownerJid, msg, downloadMediaMessage, true).catch(
-              (err) => logger.error({ err }, "Failed to persist live status")
+            await persistWaStatus(
+              channelId,
+              ownerJid,
+              msg,
+              downloadMediaMessage,
+              true,
+            ).catch((err) =>
+              logger.error({ err }, "Failed to persist live status"),
             );
             continue;
           }
@@ -2462,13 +2667,18 @@ async function startBaileys(userId: number, channelId: number) {
             downloadMediaMessage,
             true,
             resolveGroupName,
-            resolveLidToPn
+            resolveLidToPn,
           );
           if (!parsed) continue;
 
-          const { chat, inserted } = await persistWaMessage(userId, channelId, parsed, {
-            incrementUnread: true,
-          });
+          const { chat, inserted } = await persistWaMessage(
+            userId,
+            channelId,
+            parsed,
+            {
+              incrementUnread: true,
+            },
+          );
           if (!inserted) continue;
           if (parsed.fromMe) continue;
           if (parsed.isGroup) continue;
@@ -2477,7 +2687,14 @@ async function startBaileys(userId: number, channelId: number) {
           // socket). Persistence above is safe even after a reconnect.
           if (myEpoch !== ctx.epoch) continue;
 
-          await maybeTriggerAutoReply(userId, channelId, myEpoch, chat, parsed.jid, parsed.messageContent);
+          await maybeTriggerAutoReply(
+            userId,
+            channelId,
+            myEpoch,
+            chat,
+            parsed.jid,
+            parsed.messageContent,
+          );
         } catch (err) {
           logger.error({ err }, "Failed to process incoming message");
         }
@@ -2534,7 +2751,12 @@ async function startBaileys(userId: number, channelId: number) {
       const ownerPhone = ctx.ownerPhone;
       if (!ownerPhone) return;
       const ownerJid = sock.user?.id ?? "";
-      const { chats = [], messages = [], isLatest, syncType } = payload as {
+      const {
+        chats = [],
+        messages = [],
+        isLatest,
+        syncType,
+      } = payload as {
         chats?: Array<{ id: string; name?: string | null }>;
         messages?: any[];
         isLatest?: boolean;
@@ -2542,7 +2764,7 @@ async function startBaileys(userId: number, channelId: number) {
       };
       logger.info(
         { chats: chats.length, messages: messages.length, isLatest, syncType },
-        "messaging-history.set received"
+        "messaging-history.set received",
       );
 
       for (const c of chats) {
@@ -2558,7 +2780,9 @@ async function startBaileys(userId: number, channelId: number) {
           let key: string;
           if (isGroup) {
             const groupName =
-              c.name?.trim() || (await resolveGroupName(c.id)) || c.id.split("@")[0];
+              c.name?.trim() ||
+              (await resolveGroupName(c.id)) ||
+              c.id.split("@")[0];
             await getOrCreateChat(channelId, userId, c.id, groupName);
             key = c.id;
           } else {
@@ -2583,8 +2807,14 @@ async function startBaileys(userId: number, channelId: number) {
           // older chats in MaxiChat that were still visible on the
           // phone). Captured ownerPhone keeps writes isolated correctly.
           if (msg.key?.remoteJid === "status@broadcast") {
-            await persistWaStatus(channelId, ownerJid, msg, downloadMediaMessage, false).catch(
-              (err) => logger.error({ err }, "Failed to persist history status")
+            await persistWaStatus(
+              channelId,
+              ownerJid,
+              msg,
+              downloadMediaMessage,
+              false,
+            ).catch((err) =>
+              logger.error({ err }, "Failed to persist history status"),
             );
             continue;
           }
@@ -2600,12 +2830,17 @@ async function startBaileys(userId: number, channelId: number) {
             downloadMediaMessage,
             true,
             resolveGroupName,
-            resolveLidToPn
+            resolveLidToPn,
           );
           if (!parsed) continue;
-          const { inserted } = await persistWaMessage(userId, channelId, parsed, {
-            incrementUnread: false,
-          });
+          const { inserted } = await persistWaMessage(
+            userId,
+            channelId,
+            parsed,
+            {
+              incrementUnread: false,
+            },
+          );
           if (inserted) ingested++;
         } catch (err) {
           logger.error({ err }, "Failed to ingest history message");
@@ -2620,7 +2855,7 @@ async function startBaileys(userId: number, channelId: number) {
         name?: string | null;
         notify?: string | null;
         verifiedName?: string | null;
-      }>
+      }>,
     ) => {
       if (myEpoch !== ctx.epoch) return;
       const ownerPhone = ctx.ownerPhone;
@@ -2654,7 +2889,7 @@ async function startBaileys(userId: number, channelId: number) {
             .update(chatsTable)
             .set(updateSet)
             .where(
-              sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`
+              sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`,
             );
         } catch (err) {
           logger.error({ err, id: c?.id }, "Failed to apply contact update");
@@ -2671,7 +2906,9 @@ async function startBaileys(userId: number, channelId: number) {
       }
       return null;
     };
-    const handleChatMeta = async (updates: Array<{ id?: string } & Record<string, unknown>>) => {
+    const handleChatMeta = async (
+      updates: Array<{ id?: string } & Record<string, unknown>>,
+    ) => {
       if (myEpoch !== ctx.epoch) return;
       for (const c of updates) {
         try {
@@ -2693,7 +2930,7 @@ async function startBaileys(userId: number, channelId: number) {
     // name until the socket session restarted. We refresh both the in-session
     // name cache and the stored chat row so the new name shows immediately.
     const handleGroupsMeta = async (
-      updates: Array<{ id?: string; subject?: string }>
+      updates: Array<{ id?: string; subject?: string }>,
     ) => {
       if (myEpoch !== ctx.epoch) return;
       for (const g of updates) {
@@ -2706,10 +2943,13 @@ async function startBaileys(userId: number, channelId: number) {
             .update(chatsTable)
             .set({ contactName: subject })
             .where(
-              sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${g.id}`
+              sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${g.id}`,
             );
         } catch (err) {
-          logger.error({ err, id: g?.id }, "Failed to apply group subject update");
+          logger.error(
+            { err, id: g?.id },
+            "Failed to apply group subject update",
+          );
         }
       }
     };
@@ -2756,8 +2996,11 @@ export async function initWhatsapp() {
            )
       `);
       logger.info(
-        { set: (setRes as any).rowCount ?? null, cleared: (clearRes as any).rowCount ?? null },
-        "is_lid backfill done"
+        {
+          set: (setRes as any).rowCount ?? null,
+          cleared: (clearRes as any).rowCount ?? null,
+        },
+        "is_lid backfill done",
       );
     } catch (err) {
       logger.warn({ err }, "is_lid backfill failed (non-fatal)");
@@ -2783,10 +3026,13 @@ export async function initWhatsapp() {
           .then((s) => s.isFile())
           .catch(() => false);
         if (!hasLooseCreds) continue;
-        const primaryChannelId = await ensurePrimaryWhatsappChannelForUser(userIdNum);
+        const primaryChannelId =
+          await ensurePrimaryWhatsappChannelForUser(userIdNum);
         const targetDir = path.join(userDir, String(primaryChannelId));
         await fs.mkdir(targetDir, { recursive: true });
-        const looseFiles = await fs.readdir(userDir).catch(() => [] as string[]);
+        const looseFiles = await fs
+          .readdir(userDir)
+          .catch(() => [] as string[]);
         for (const f of looseFiles) {
           // Skip subdirectories (channel folders, including the one we just
           // created); only loose files are legacy artifacts.
@@ -2797,7 +3043,7 @@ export async function initWhatsapp() {
         }
         logger.info(
           { userId: userIdNum, primaryChannelId },
-          "migrated legacy auth dir to channel layout"
+          "migrated legacy auth dir to channel layout",
         );
       }
     } catch (err) {
@@ -2827,8 +3073,8 @@ export async function initWhatsapp() {
       .where(
         and(
           eq(channelsTable.kind, "whatsapp"),
-          sql`${channelsTable.status} IN ('connected', 'connecting', 'qr_ready')`
-        )
+          sql`${channelsTable.status} IN ('connected', 'connecting', 'qr_ready')`,
+        ),
       );
     for (const row of channelRows) {
       // Best-effort: if no creds on disk we'll just produce a QR (harmless).
@@ -2836,12 +3082,11 @@ export async function initWhatsapp() {
       startBaileys(row.userId, row.id).catch((err) =>
         logger.error(
           { err, userId: row.userId, channelId: row.id },
-          "Auto-reconnect failed"
-        )
+          "Auto-reconnect failed",
+        ),
       );
     }
-  } catch {
-  }
+  } catch {}
 }
 
 const router = Router();
@@ -2866,7 +3111,8 @@ async function readChannelStatus(channelId: number): Promise<{
     .where(eq(channelsTable.id, channelId))
     .limit(1);
   const meta = (row?.metadata as Record<string, unknown> | null) ?? {};
-  const qrCode = typeof meta.qrCode === "string" ? (meta.qrCode as string) : null;
+  const qrCode =
+    typeof meta.qrCode === "string" ? (meta.qrCode as string) : null;
   const status = row?.status ?? "disconnected";
   const isConnected = status === "connected";
   // Preserve legacy contract: phoneNumber + connectedAt only when actually
@@ -2878,7 +3124,7 @@ async function readChannelStatus(channelId: number): Promise<{
   return {
     status,
     qrCode,
-    phoneNumber: isConnected ? row?.ownerPhone ?? null : null,
+    phoneNumber: isConnected ? (row?.ownerPhone ?? null) : null,
     connectedAt: isConnected ? connectedAtRaw : null,
   };
 }
@@ -2967,9 +3213,14 @@ router.post("/connect", async (req, res): Promise<void> => {
     }
     void syncChannelStatus(channel.id, { status: "connecting" });
     startBaileys(channel.userId, channel.id).catch((err) =>
-      req.log.error({ err }, "Baileys start failed")
+      req.log.error({ err }, "Baileys start failed"),
     );
-    res.json({ status: "connecting", qrCode: null, phoneNumber: null, connectedAt: null });
+    res.json({
+      status: "connecting",
+      qrCode: null,
+      phoneNumber: null,
+      connectedAt: null,
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to connect WhatsApp");
     res.status(500).json({ error: "Internal server error" });
@@ -3071,9 +3322,14 @@ router.post("/disconnect", async (req, res): Promise<void> => {
     ctx.isConnecting = false;
     // Wipe THIS channel's local auth credentials so the next /connect starts
     // a fresh pairing flow (QR). Other channels' auth dirs are untouched.
-    await fs.rm(authDirForChannel(ownerUid, channelId), { recursive: true, force: true }).catch((err) => {
-      req.log.warn({ err }, "Failed to wipe WhatsApp auth dir");
-    });
+    await fs
+      .rm(authDirForChannel(ownerUid, channelId), {
+        recursive: true,
+        force: true,
+      })
+      .catch((err) => {
+        req.log.warn({ err }, "Failed to wipe WhatsApp auth dir");
+      });
     // Per-channel isolation: do NOT delete chats. Each chat row is scoped by
     // channel_id, so once we clear this channel's connected phone below the
     // dashboard returns an empty list. When the SAME number scans QR again,
@@ -3090,7 +3346,12 @@ router.post("/disconnect", async (req, res): Promise<void> => {
       qrCode: null,
       connectedAt: null,
     });
-    res.json({ status: "disconnected", qrCode: null, phoneNumber: null, connectedAt: null });
+    res.json({
+      status: "disconnected",
+      qrCode: null,
+      phoneNumber: null,
+      connectedAt: null,
+    });
   } catch (err) {
     req.log.error({ err }, "Failed to disconnect WhatsApp");
     res.status(500).json({ error: "Internal server error" });

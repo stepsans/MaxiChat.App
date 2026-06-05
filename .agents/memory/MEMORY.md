@@ -42,3 +42,4 @@
 - [Chat query key not channel-scoped](chat-query-key-not-channel-scoped.md) — channel is a request header, not a cache key; client diffing of chats across channel switches needs a pending-baseline guard or it false-fires on the new channel's old unreads.
 - [Group endpoint channel binding](group-endpoint-channel-binding.md) — existing-group ops use getSockForChannel(chat.channelId); only channel-less create uses primary; re-guard phone arrays after digit-normalize.
 - [api-server test runner](test-runner-setup.md) — node:test via tsx (`pnpm --filter @workspace/api-server run test`); unit-tested logic must stay in db-free modules since @workspace/db connects eagerly.
+- [LID-chat merge collision](lid-chat-merge-collision.md) — stale-LID→canonical chat merge that blindly reassigns chat_id aborts on duplicate wa_message_id, then silently drops EVERY later 1:1 message; move non-colliding rows + cascade-delete + best-effort try/catch.
