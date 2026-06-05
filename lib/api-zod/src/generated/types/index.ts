@@ -205,7 +205,6 @@ export * from './starMessageBody';
 export * from './startCredentialOauth200';
 export * from './storageUsage';
 export * from './successResponse';
-export * from './syncProductsToKnowledge200';
 export * from './syncSalesOrderToSheet200';
 export * from './takeoverInput';
 export * from './teamAgent';

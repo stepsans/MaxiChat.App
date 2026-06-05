@@ -35,6 +35,7 @@ import {
   ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
+import { buildProductCatalogText } from "../lib/product-catalog";
 import {
   resolveActiveChannel,
   listOwnedChannels,
@@ -922,6 +923,16 @@ export async function generateAiReply(
       .map((e) => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content}`)
       .join("\n\n");
 
+    // Live product catalog, read straight from the products table on every
+    // reply so prices/codes are always current — no manual "sync to AI" step.
+    // buildProductCatalogText excludes internal tier prices + stock.
+    const products = await db
+      .select()
+      .from(productsTable)
+      .where(eq(productsTable.userId, userId))
+      .orderBy(productsTable.id);
+    const productCatalog = buildProductCatalogText(products);
+
     // Fetch the 10 MOST RECENT messages in chronological order. Without an
     // explicit ORDER BY, Postgres returns rows in an arbitrary order, so the
     // "history" could silently include stale months-old messages and omit the
@@ -955,9 +966,14 @@ export async function generateAiReply(
     const systemPrompt = `${tenant.systemPrompt}
 
 ATURAN MUTLAK:
-- HANYA gunakan informasi dari KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
-- Jika riwayat percakapan menyebut produk, kategori bisnis, atau bidang usaha yang TIDAK ADA di knowledge base saat ini, abaikan sepenuhnya dan jangan ulang. Knowledge base bisa berubah — anggap riwayat lama yang tidak konsisten dengan knowledge base saat ini sudah tidak berlaku.
-- Jika pertanyaan customer berada di luar knowledge base, jawab dengan sopan bahwa admin akan membantu. Jangan menebak atau mengarang.
+- HANYA gunakan informasi dari KATALOG PRODUK dan KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
+- KATALOG PRODUK adalah daftar harga resmi terkini. Saat customer menyebut nama atau kode produk (sebagian pun), cari di KATALOG PRODUK lalu jawab harga sesuai data tersebut. Jangan mengarang harga atau kode.
+- Jika riwayat percakapan menyebut produk, kategori bisnis, atau bidang usaha yang TIDAK ADA di katalog/knowledge base saat ini, abaikan sepenuhnya dan jangan ulang. Data bisa berubah — anggap riwayat lama yang tidak konsisten dengan data saat ini sudah tidak berlaku.
+- Jika pertanyaan customer berada di luar katalog dan knowledge base, jawab dengan sopan bahwa admin akan membantu. Jangan menebak atau mengarang.
+
+--- KATALOG PRODUK ---
+${productCatalog || "Belum ada produk di katalog."}
+--- END KATALOG PRODUK ---
 
 --- KNOWLEDGE BASE ---
 ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
