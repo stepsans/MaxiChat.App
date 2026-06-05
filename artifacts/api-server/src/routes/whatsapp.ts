@@ -18,7 +18,7 @@ import {
   type FlowGraph,
   type FlowNode,
 } from "@workspace/db";
-import { and, asc, eq, sql, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, lte, sql, inArray } from "drizzle-orm";
 import {
   withTag,
   stripTrailingTag,
@@ -895,6 +895,11 @@ export async function generateAiReply(
   userId: number,
   chatId: number,
   userMessage: string,
+  // The DB id of the message that triggered this reply. When provided, history
+  // is anchored causally to it (`id <= triggerMessageId`) so the model sees the
+  // conversation as it was when this message arrived — even if newer messages
+  // landed during the reply delay — and so the trigger is always the last turn.
+  triggerMessageId?: number,
 ): Promise<string | null> {
   try {
     const settingsRows = await db
@@ -917,11 +922,26 @@ export async function generateAiReply(
       .map((e) => `[${e.type.toUpperCase()}] ${e.title}:\n${e.content}`)
       .join("\n\n");
 
-    const recentMessages = await db
-      .select()
-      .from(chatMessagesTable)
-      .where(eq(chatMessagesTable.chatId, chatId))
-      .limit(10);
+    // Fetch the 10 MOST RECENT messages in chronological order. Without an
+    // explicit ORDER BY, Postgres returns rows in an arbitrary order, so the
+    // "history" could silently include stale months-old messages and omit the
+    // latest turns — which made the model latch onto outdated context (e.g.
+    // repeating a product comparison from a much earlier conversation).
+    const recentMessages = (
+      await db
+        .select()
+        .from(chatMessagesTable)
+        .where(
+          triggerMessageId
+            ? and(
+                eq(chatMessagesTable.chatId, chatId),
+                lte(chatMessagesTable.id, triggerMessageId),
+              )
+            : eq(chatMessagesTable.chatId, chatId),
+        )
+        .orderBy(desc(chatMessagesTable.id))
+        .limit(10)
+    ).reverse();
 
     const history = recentMessages.map((m) => ({
       role:
@@ -947,12 +967,21 @@ ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
     // integration (gpt-4o-mini) when the tenant hasn't opted into BYOK.
     const { client, model, provider, ownerUserId } =
       await resolveAiClient(userId);
+    // The triggering message is already persisted, so it's normally the last
+    // item in `history`. Only append it explicitly when recency ordering didn't
+    // already capture it, so the same user turn isn't sent to the model twice.
+    const lastTurn = history[history.length - 1];
+    const includeUserMessage =
+      !lastTurn || lastTurn.role !== "user" || lastTurn.content !== userMessage;
+
     const response = await client.chat.completions.create({
       model,
       messages: [
         { role: "system", content: systemPrompt },
         ...history,
-        { role: "user", content: userMessage },
+        ...(includeUserMessage
+          ? [{ role: "user" as const, content: userMessage }]
+          : []),
       ],
       max_tokens: 300,
       temperature: 0.7,
@@ -1388,7 +1417,11 @@ async function persistWaMessage(
   channelId: number,
   parsed: ParsedWaMessage,
   opts: { incrementUnread: boolean },
-): Promise<{ chat: typeof chatsTable.$inferSelect; inserted: boolean }> {
+): Promise<{
+  chat: typeof chatsTable.$inferSelect;
+  inserted: boolean;
+  messageId: number | null;
+}> {
   const phoneNumber = parsed.isGroup ? parsed.jid : `+${parsed.rawNumber}`;
   const contactName = parsed.pushName || parsed.rawNumber;
 
@@ -1530,6 +1563,7 @@ async function persistWaMessage(
   }
 
   let inserted = true;
+  let messageId: number | null = null;
   if (parsed.waMessageId) {
     const result = await db
       .insert(chatMessagesTable)
@@ -1554,6 +1588,7 @@ async function persistWaMessage(
       })
       .returning({ id: chatMessagesTable.id });
     inserted = result.length > 0;
+    messageId = result[0]?.id ?? null;
 
     // Back-fill an already-persisted row when this pass finally has data
     // the original insert lacked. Two real-world cases:
@@ -1610,23 +1645,27 @@ async function persistWaMessage(
       }
     }
   } else {
-    await db.insert(chatMessagesTable).values({
-      chatId: chat.id,
-      direction,
-      content: parsed.messageContent,
-      isAiGenerated: false,
-      mediaType: parsed.media?.mediaType ?? null,
-      mediaUrl: parsed.media?.mediaUrl ?? null,
-      mediaMimeType: parsed.media?.mediaMimeType ?? null,
-      mediaFilename: parsed.media?.mediaFilename ?? null,
-      waMessageId: null,
-      createdAt: parsed.timestamp,
-      ...senderColumns,
-      ...(quotedColumns ?? {}),
-    });
+    const result = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: chat.id,
+        direction,
+        content: parsed.messageContent,
+        isAiGenerated: false,
+        mediaType: parsed.media?.mediaType ?? null,
+        mediaUrl: parsed.media?.mediaUrl ?? null,
+        mediaMimeType: parsed.media?.mediaMimeType ?? null,
+        mediaFilename: parsed.media?.mediaFilename ?? null,
+        waMessageId: null,
+        createdAt: parsed.timestamp,
+        ...senderColumns,
+        ...(quotedColumns ?? {}),
+      })
+      .returning({ id: chatMessagesTable.id });
+    messageId = result[0]?.id ?? null;
   }
 
-  if (!inserted) return { chat, inserted };
+  if (!inserted) return { chat, inserted, messageId };
 
   const preview = buildPreview(parsed.messageContent, parsed.media);
 
@@ -1650,7 +1689,7 @@ async function persistWaMessage(
   // Lazily refresh profile picture in the background via THIS user's socket.
   void refreshChatProfilePic(userId, chat).catch(() => {});
 
-  return { chat, inserted };
+  return { chat, inserted, messageId };
 }
 
 // ---------- Chatbot flow engine ----------
@@ -2311,6 +2350,7 @@ async function maybeTriggerAutoReply(
   chat: typeof chatsTable.$inferSelect,
   jid: string,
   messageText: string,
+  triggerMessageId?: number,
 ) {
   if (chat.isHumanTakeover) return;
   if (!messageText.trim()) return;
@@ -2357,6 +2397,7 @@ async function maybeTriggerAutoReply(
         userId,
         chat.id,
         messageText,
+        triggerMessageId,
       );
       // Sign AI-generated replies with the "powered by AI" tag. The
       // configured fallbackMessage is a canned operator-authored string,
@@ -2671,7 +2712,7 @@ async function startBaileys(userId: number, channelId: number) {
           );
           if (!parsed) continue;
 
-          const { chat, inserted } = await persistWaMessage(
+          const { chat, inserted, messageId } = await persistWaMessage(
             userId,
             channelId,
             parsed,
@@ -2694,6 +2735,7 @@ async function startBaileys(userId: number, channelId: number) {
             chat,
             parsed.jid,
             parsed.messageContent,
+            messageId ?? undefined,
           );
         } catch (err) {
           logger.error({ err }, "Failed to process incoming message");
