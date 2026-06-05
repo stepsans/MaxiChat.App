@@ -40,6 +40,7 @@ import {
   resolveActiveChannel,
   listOwnedChannels,
 } from "../lib/channel-context";
+import { readClearUpTo } from "../lib/chat-read-sync";
 
 // Whether the signed-in user owns the WhatsApp pairing (super_admin) or
 // merely inherits it (supervisor / agent). Invited members must not be able
@@ -815,13 +816,28 @@ async function applyChatListMeta(
   c: Record<string, unknown>,
 ): Promise<void> {
   const meta = extractChatListMeta(c);
-  if (Object.keys(meta).length === 0) return;
-  await db
-    .update(chatsTable)
-    .set(meta)
-    .where(
-      sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`,
-    );
+  if (Object.keys(meta).length > 0) {
+    await db
+      .update(chatsTable)
+      .set(meta)
+      .where(
+        sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber}`,
+      );
+  }
+  // Sync "read on the phone": when WhatsApp reports the chat as read, clear
+  // MaxiChat's unread badge too. Guarded + atomic — we only clear when the
+  // phone's read point covers the chat's latest message (lastMessageAt), so a
+  // stale read event can never overwrite a newer inbound increment. Positive
+  // unread counts are never mirrored (counted by MaxiChat's own inbound path).
+  const readUpTo = readClearUpTo(c);
+  if (readUpTo) {
+    await db
+      .update(chatsTable)
+      .set({ unreadCount: 0 })
+      .where(
+        sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber} AND (${chatsTable.lastMessageAt} IS NULL OR ${chatsTable.lastMessageAt} <= ${readUpTo})`,
+      );
+  }
 }
 
 export async function getOrCreateChat(

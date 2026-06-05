@@ -54,6 +54,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -103,6 +104,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [labelFilter, setLabelFilter] = useState("all");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [scope, setScope] = useState<"personal" | "group">("personal");
@@ -179,19 +181,23 @@ export default function ChatListPane({ selectedChatId }: Props) {
     const matchLabel =
       labelFilter === "all" ||
       (c.labels ?? []).some((l) => String(l.id) === labelFilter);
+    const matchUnread = !unreadOnly || (c.unreadCount ?? 0) > 0;
     const matchSearch =
       !search ||
       c.contactName.toLowerCase().includes(search.toLowerCase()) ||
       (c.nickname?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
       c.phoneNumber.includes(search) ||
       contentMatchIds.has(c.id);
-    return matchScope && matchStatus && matchTag && matchLabel && matchSearch;
+    return (
+      matchScope && matchStatus && matchTag && matchLabel && matchUnread && matchSearch
+    );
   });
 
   const activeFilters =
     (statusFilter !== "all" ? 1 : 0) +
     (tagFilter !== "all" ? 1 : 0) +
-    (labelFilter !== "all" ? 1 : 0);
+    (labelFilter !== "all" ? 1 : 0) +
+    (unreadOnly ? 1 : 0);
 
   return (
     <div className="flex flex-col h-full bg-[hsl(var(--wa-panel))] border-r border-[hsl(var(--wa-divider))]">
@@ -238,6 +244,14 @@ export default function ChatListPane({ selectedChatId }: Props) {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuCheckboxItem
+              checked={unreadOnly}
+              onCheckedChange={(v) => setUnreadOnly(!!v)}
+              data-testid="filter-unread-only"
+            >
+              Belum dibaca
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs">Status</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={statusFilter} onValueChange={setStatusFilter}>
               <DropdownMenuRadioItem value="all">Semua</DropdownMenuRadioItem>
@@ -281,6 +295,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                     setStatusFilter("all");
                     setTagFilter("all");
                     setLabelFilter("all");
+                    setUnreadOnly(false);
                   }}
                 >
                   Reset filter

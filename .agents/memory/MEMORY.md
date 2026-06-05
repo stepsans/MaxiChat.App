@@ -44,4 +44,5 @@
 - [api-server test runner](test-runner-setup.md) — node:test via tsx (`pnpm --filter @workspace/api-server run test`); unit-tested logic must stay in db-free modules since @workspace/db connects eagerly.
 - [LID-chat merge collision](lid-chat-merge-collision.md) — stale-LID→canonical chat merge that blindly reassigns chat_id aborts on duplicate wa_message_id, then silently drops EVERY later 1:1 message; move non-colliding rows + cascade-delete + best-effort try/catch.
 - [AI auto-reply context anchoring](ai-reply-context-anchoring.md) — order history AND anchor to triggering msg id (delay race); few-shot examples w/ real product codes become answer anchors.
+- [Read-status sync causal guard](read-status-sync-causal-guard.md) — phone-read → clear MaxiChat unread only on unreadCount===0 + atomic SQL guard last_message_at<=conversationTimestamp; never mirror positive counts.
 - [AI-node per-node instruction](ai-node-handoff-instruction.md) — AI-node `aiInstruction` is persisted in flowState at handoff, applied to generateAiReply only while defaultMutedUntil window is active; flowState is an optional-key superset.
