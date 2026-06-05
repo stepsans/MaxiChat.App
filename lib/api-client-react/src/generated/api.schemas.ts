@@ -1468,6 +1468,8 @@ export type FlowNodeData = {
   strictOptions?: boolean;
   /** Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip. */
   strictRetryMessage?: string;
+  /** Question only: when true, the question text is rephrased by AI (same meaning, varied natural wording) each time it is sent, so it doesn't feel like a canned bot message. Answer options are never rephrased. */
+  aiRephrase?: boolean;
   /** Products only: list of product IDs to send (image + Nama/Kode/Harga caption). */
   productIds?: number[];
   /** AI node only: extra instruction appended to the global AI Studio system prompt while this node's AI handoff is active (during the flow cooldown). Empty = use the global prompt only. */

@@ -65,6 +65,7 @@ type FlowNodeData = {
   options?: { id: string; label: string }[];
   strictOptions?: boolean;
   strictRetryMessage?: string;
+  aiRephrase?: boolean;
   productIds?: number[];
   aiInstruction?: string;
   knowledgeIds?: number[];
@@ -734,6 +735,21 @@ function Inspector({
               onChange={(e) => onChange({ text: e.target.value })}
               placeholder="Mau pesan apa hari ini?"
               data-testid="input-question-text"
+            />
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-0.5">
+              <Label className="text-xs">AI Generate</Label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Jika ON: AI menulis ulang pertanyaan ini dengan kata-kata
+                berbeda (makna sama) setiap kali dikirim, agar terasa natural
+                dan tidak seperti pesan otomatis. Pilihan jawaban tidak diubah.
+              </p>
+            </div>
+            <Switch
+              data-testid="switch-ai-rephrase"
+              checked={!!node.data.aiRephrase}
+              onCheckedChange={(v) => onChange({ aiRephrase: v })}
             />
           </div>
           <ImageField

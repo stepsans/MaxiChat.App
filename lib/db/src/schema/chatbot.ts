@@ -72,6 +72,10 @@ export const flowNodeSchema = z.object({
     // question — when strictOptions=true, this message is sent right before
     // the question is re-asked, to nudge the customer to pick a valid option.
     strictRetryMessage: z.string().optional(),
+    // question — when true, the question text is rephrased by AI (same meaning,
+    // varied natural wording) each time it's sent so it doesn't feel like a
+    // canned bot message. Answer options are never rephrased.
+    aiRephrase: z.boolean().optional(),
     // products — list of product ids to send (image + Nama/Kode/Harga caption).
     productIds: z.array(z.number().int().positive()).optional(),
     // ai — extra instruction appended to the global system prompt while this

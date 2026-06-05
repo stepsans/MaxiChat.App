@@ -41,6 +41,10 @@ import {
   listOwnedChannels,
 } from "../lib/channel-context";
 import { readClearUpTo } from "../lib/chat-read-sync";
+import {
+  FLOW_REPHRASE_SYSTEM_PROMPT,
+  cleanRephrasedText,
+} from "../lib/flow-rephrase";
 
 // Whether the signed-in user owns the WhatsApp pairing (super_admin) or
 // merely inherits it (supervisor / agent). Invited members must not be able
@@ -1756,12 +1760,49 @@ async function persistWaMessage(
 
 // ---------- Chatbot flow engine ----------
 
-function renderQuestion(node: FlowNode): string {
+function renderQuestion(node: FlowNode, overrideText?: string | null): string {
   const lines: string[] = [];
-  if (node.data.text) lines.push(node.data.text);
+  const text = overrideText ?? node.data.text;
+  if (text) lines.push(text);
   const opts = node.data.options ?? [];
   opts.forEach((o, i) => lines.push(`${i + 1}. ${o.label}`));
   return lines.join("\n");
+}
+
+// "AI Generate" on a question node: rephrase the question text (same meaning,
+// varied natural wording) so it doesn't feel like a canned bot message. Only
+// the lead text is rephrased — answer options are kept verbatim so pickOption's
+// exact label/number matching keeps working. Best-effort: on any failure (or
+// empty model output) we fall back to the original text and never block the
+// flow. Token usage is attributed to the tenant owner.
+async function rephraseFlowQuestionText(
+  userId: number,
+  channelId: number,
+  text: string,
+): Promise<string> {
+  try {
+    const { client, model, provider, ownerUserId } =
+      await resolveAiClient(userId);
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: FLOW_REPHRASE_SYSTEM_PROMPT },
+        { role: "user", content: text },
+      ],
+      max_tokens: 300,
+      temperature: 1,
+    });
+    void recordAiUsage({
+      ownerUserId,
+      channelId,
+      provider,
+      model,
+      usage: response.usage,
+    });
+    return cleanRephrasedText(response.choices[0]?.message?.content, text);
+  } catch {
+    return text;
+  }
 }
 
 function pickOption(node: FlowNode, text: string): string | null {
@@ -2086,7 +2127,11 @@ async function runFlowFrom(
     }
 
     if (node.type === "question") {
-      const text = renderQuestion(node);
+      let qText = node.data.text ?? "";
+      if (node.data.aiRephrase && qText.trim()) {
+        qText = await rephraseFlowQuestionText(userId, channelId, qText);
+      }
+      const text = renderQuestion(node, qText);
       const ok = await sendFlowMessage(
         userId,
         channelId,
@@ -2316,7 +2361,11 @@ async function tryRunFlow(
           );
           if (!okMsg) return false;
         }
-        const questionText = renderQuestion(node);
+        let reText = node.data.text ?? "";
+        if (node.data.aiRephrase && reText.trim()) {
+          reText = await rephraseFlowQuestionText(userId, channelId, reText);
+        }
+        const questionText = renderQuestion(node, reText);
         const ok = await sendFlowMessage(
           userId,
           channelId,
