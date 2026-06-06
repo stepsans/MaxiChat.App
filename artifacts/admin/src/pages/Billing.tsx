@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Ban,
   CalendarPlus,
+  Infinity as InfinityIcon,
 } from "lucide-react";
 
 function fmtRp(n: number): string {
@@ -63,9 +64,9 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
 
 function TenantActions({ userId }: { userId: number }) {
   const qc = useQueryClient();
-  const [pending, setPending] = useState<null | "paid" | "suspend" | "extend">(
-    null
-  );
+  const [pending, setPending] = useState<
+    null | "paid" | "suspend" | "extend" | "unlimited"
+  >(null);
   const renew = useAdminRenewSubscription({
     mutation: {
       onSettled: () => {
@@ -76,8 +77,12 @@ function TenantActions({ userId }: { userId: number }) {
   });
 
   const run = (
-    kind: "paid" | "suspend" | "extend",
-    data: { status?: "active" | "suspended"; extendMonths?: number }
+    kind: "paid" | "suspend" | "extend" | "unlimited",
+    data: {
+      status?: "active" | "suspended";
+      extendMonths?: number;
+      setUnlimited?: boolean;
+    }
   ) => {
     setPending(kind);
     renew.mutate({ userId, data });
@@ -114,6 +119,21 @@ function TenantActions({ userId }: { userId: number }) {
           <CalendarPlus className="w-3 h-3" />
         )}
         +1bln
+      </button>
+      <button
+        type="button"
+        data-testid={`unlimited-${userId}`}
+        title="Validitas selamanya (aktif, tanpa kedaluwarsa)"
+        disabled={renew.isPending}
+        onClick={() => run("unlimited", { setUnlimited: true })}
+        className="h-7 px-2 rounded-md text-[11px] font-medium flex items-center gap-1 bg-violet-500/15 text-violet-400 border border-violet-500/30 hover-elevate disabled:opacity-50"
+      >
+        {pending === "unlimited" && renew.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <InfinityIcon className="w-3 h-3" />
+        )}
+        Selamanya
       </button>
       <button
         type="button"
@@ -284,8 +304,17 @@ export default function Billing() {
                         {s.label}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                      {fmtDate(r.currentPeriodEnd)}
+                    <td className="px-3 py-2 text-xs whitespace-nowrap">
+                      {r.currentPeriodEnd == null && r.status === "active" ? (
+                        <span className="inline-flex items-center gap-1 text-violet-400 font-medium">
+                          <InfinityIcon className="w-3 h-3" />
+                          Selamanya
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {fmtDate(r.currentPeriodEnd)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right text-xs">
                       <div className="tabular-nums">

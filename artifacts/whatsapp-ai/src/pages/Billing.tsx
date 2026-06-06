@@ -176,6 +176,9 @@ export default function Billing() {
               <CardDescription className="mt-1">
                 {loading ? (
                   <Skeleton className="h-4 w-56" />
+                ) : data?.subscription.currentPeriodEnd == null &&
+                  data?.subscription.status === "active" ? (
+                  <>Berlaku selamanya</>
                 ) : (
                   <>Berlaku hingga {fmtDate(data?.subscription.currentPeriodEnd)}</>
                 )}

@@ -16,4 +16,6 @@ export interface RenewSubscriptionInput {
      * @maximum 24
      */
   extendMonths?: number;
+  /** Grant infinite validity — forces status "active" and clears the period end so the tenant never expires. Takes precedence over status/extendMonths. */
+  setUnlimited?: boolean;
 }

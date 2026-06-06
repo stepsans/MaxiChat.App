@@ -375,7 +375,8 @@ export const adminRenewSubscriptionBodyExtendMonthsMax = 24;
 
 export const AdminRenewSubscriptionBody = zod.object({
   "status": zod.enum(['trial', 'active', 'expired', 'suspended']).optional().describe('New stored status. \"active\" with extendMonths is the \"mark paid\" action.'),
-  "extendMonths": zod.number().min(1).max(adminRenewSubscriptionBodyExtendMonthsMax).optional().describe('Extend the current period end by this many months.')
+  "extendMonths": zod.number().min(1).max(adminRenewSubscriptionBodyExtendMonthsMax).optional().describe('Extend the current period end by this many months.'),
+  "setUnlimited": zod.boolean().optional().describe('Grant infinite validity — forces status \"active\" and clears the period end so the tenant never expires. Takes precedence over status\/extendMonths.')
 })
 
 export const AdminRenewSubscriptionResponse = zod.object({

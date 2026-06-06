@@ -35,4 +35,22 @@ snapshots + billing list), but it conflates the platform admin with paying
 tenants.
 
 **How to apply:** every new billing/revenue/subscription query that enumerates
-owners should filter both predicates.
+owners should filter both predicates. The admin `/billing` list itself was a
+real miss here (filtered parent-null only), so its rows could surface the admin
+account and its row-actions would 404 in the renew route.
+
+## Infinite (unlimited) validity = active + null period end
+**Rule:** "selamanya"/unlimited validity is modeled as stored `status="active"`
+with `currentPeriodEnd=null` — there is no separate "unlimited" status. The admin
+grants it via the renew action's `setUnlimited` flag, which forces active + clears
+the period end and takes precedence over status/extendMonths.
+
+**Why:** `computeEffectiveStatus` already treats a null period end on a trial/active
+row as never-expiring, so no schema/enum change is needed. There is no usage quota
+to lift — the billing model only meters usage, so "database/token forever" just
+means the account is never flipped read-only.
+
+**How to apply:** UI must render the period as "Selamanya" only when
+`status==="active" && currentPeriodEnd==null` (a null period on a non-active row is
+just "no date"). Don't try to `extendMonths` an unlimited row — clear the flag and
+set a concrete status first.

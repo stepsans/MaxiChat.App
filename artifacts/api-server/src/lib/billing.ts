@@ -186,6 +186,10 @@ export interface RenewOptions {
   // Push the current period end forward by this many whole months from
   // max(now, currentPeriodEnd). Omit/0 to leave the period untouched.
   extendMonths?: number;
+  // Grant infinite validity: force status "active" and clear currentPeriodEnd
+  // (a null period end means "never expires" — computeEffectiveStatus keeps it
+  // active forever). Takes precedence over status/extendMonths.
+  setUnlimited?: boolean;
 }
 
 // Admin action: change status and/or extend the paid period. Marking a tenant
@@ -206,14 +210,21 @@ export async function renewSubscription(
   const set: Partial<typeof subscriptionsTable.$inferInsert> = {
     updatedAt: new Date(),
   };
-  if (opts.status) set.status = opts.status;
-  if (opts.extendMonths && opts.extendMonths > 0) {
-    const now = new Date();
-    const base =
-      current?.currentPeriodEnd && current.currentPeriodEnd.getTime() > now.getTime()
-        ? current.currentPeriodEnd
-        : now;
-    set.currentPeriodEnd = addMonths(base, opts.extendMonths);
+  if (opts.setUnlimited) {
+    // Infinite validity wins over status/extendMonths: active + no expiry.
+    set.status = "active";
+    set.currentPeriodEnd = null;
+  } else {
+    if (opts.status) set.status = opts.status;
+    if (opts.extendMonths && opts.extendMonths > 0) {
+      const now = new Date();
+      const base =
+        current?.currentPeriodEnd &&
+        current.currentPeriodEnd.getTime() > now.getTime()
+          ? current.currentPeriodEnd
+          : now;
+      set.currentPeriodEnd = addMonths(base, opts.extendMonths);
+    }
   }
 
   await db

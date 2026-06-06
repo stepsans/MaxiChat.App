@@ -381,7 +381,7 @@ router.get("/billing", async (req, res): Promise<void> => {
         name: usersTable.name,
       })
       .from(usersTable)
-      .where(isNull(usersTable.parentUserId))
+      .where(and(isNull(usersTable.parentUserId), ne(usersTable.role, "admin")))
       .orderBy(usersTable.id);
 
     const rows = await Promise.all(
@@ -440,10 +440,14 @@ router.patch("/subscriptions/:userId", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid input" });
       return;
     }
-    if (parsed.data.status == null && parsed.data.extendMonths == null) {
-      res
-        .status(400)
-        .json({ error: "Provide at least one of status or extendMonths" });
+    if (
+      parsed.data.status == null &&
+      parsed.data.extendMonths == null &&
+      !parsed.data.setUnlimited
+    ) {
+      res.status(400).json({
+        error: "Provide at least one of status, extendMonths or setUnlimited",
+      });
       return;
     }
 
@@ -468,6 +472,7 @@ router.patch("/subscriptions/:userId", async (req, res): Promise<void> => {
     const updated = await renewSubscription(ownerId, {
       status: parsed.data.status,
       extendMonths: parsed.data.extendMonths,
+      setUnlimited: parsed.data.setUnlimited,
     });
     res.json(updated);
   } catch (err) {
