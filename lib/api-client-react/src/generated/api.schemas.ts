@@ -1399,6 +1399,9 @@ export interface BillBreakdown {
   total: number;
 }
 
+/**
+ * The stored subscription status.
+ */
 export type SubscriptionInfoStatus = typeof SubscriptionInfoStatus[keyof typeof SubscriptionInfoStatus];
 
 
@@ -1409,8 +1412,26 @@ export const SubscriptionInfoStatus = {
   suspended: 'suspended',
 } as const;
 
+/**
+ * Status computed live against the wall clock — an overdue trial/active collapses to "expired". This is what enforcement reacts to.
+ */
+export type SubscriptionInfoEffectiveStatus = typeof SubscriptionInfoEffectiveStatus[keyof typeof SubscriptionInfoEffectiveStatus];
+
+
+export const SubscriptionInfoEffectiveStatus = {
+  trial: 'trial',
+  active: 'active',
+  expired: 'expired',
+  suspended: 'suspended',
+} as const;
+
 export interface SubscriptionInfo {
+  /** The stored subscription status. */
   status: SubscriptionInfoStatus;
+  /** Status computed live against the wall clock — an overdue trial/active collapses to "expired". This is what enforcement reacts to. */
+  effectiveStatus: SubscriptionInfoEffectiveStatus;
+  /** True when the tenant is in read-only mode (effective status expired or suspended): viewing is allowed but every write is blocked. */
+  readOnly: boolean;
   /** @nullable */
   currentPeriodEnd: string | null;
   createdAt: string;
@@ -1443,6 +1464,62 @@ export interface AdminTenantBilling {
   currentPeriodEnd?: string | null;
   usage: BillingUsage;
   breakdown: BillBreakdown;
+}
+
+export interface RevenueTrendPoint {
+  /** Day in YYYY-MM-DD. */
+  date: string;
+  totalCharge: number;
+  dbCharge: number;
+  userCharge: number;
+  channelCharge: number;
+  aiCharge: number;
+}
+
+export interface OwnerTrend {
+  /** The caller tenant's daily spend, oldest-first. */
+  trend: RevenueTrendPoint[];
+}
+
+export interface RevenueSummary {
+  /** Monthly recurring revenue — sum of latest snapshot total for effective-active owners. */
+  mrr: number;
+  /** Annual recurring revenue (mrr * 12). */
+  arr: number;
+  /** Average revenue per paying tenant (mrr / payingTenants). */
+  arpu: number;
+  totalTenants: number;
+  activeTenants: number;
+  trialTenants: number;
+  expiredTenants: number;
+  suspendedTenants: number;
+  payingTenants: number;
+  /** Platform-wide daily total, oldest-first. */
+  trend: RevenueTrendPoint[];
+}
+
+/**
+ * New stored status. "active" with extendMonths is the "mark paid" action.
+ */
+export type RenewSubscriptionInputStatus = typeof RenewSubscriptionInputStatus[keyof typeof RenewSubscriptionInputStatus];
+
+
+export const RenewSubscriptionInputStatus = {
+  trial: 'trial',
+  active: 'active',
+  expired: 'expired',
+  suspended: 'suspended',
+} as const;
+
+export interface RenewSubscriptionInput {
+  /** New stored status. "active" with extendMonths is the "mark paid" action. */
+  status?: RenewSubscriptionInputStatus;
+  /**
+     * Extend the current period end by this many months.
+     * @minimum 1
+     * @maximum 24
+     */
+  extendMonths?: number;
 }
 
 export interface AuthMeResponse {
@@ -2282,6 +2359,24 @@ export interface ChannelPairQr {
   /** Last-paired phone number (digits). Present once the socket has connected at least once. */
   ownerPhone?: string | null;
 }
+
+export type GetMyBillingTrendParams = {
+/**
+ * Window length in days (default 30).
+ * @minimum 1
+ * @maximum 365
+ */
+days?: number;
+};
+
+export type AdminGetRevenueParams = {
+/**
+ * Trend window length in days (default 30).
+ * @minimum 1
+ * @maximum 365
+ */
+days?: number;
+};
 
 export type ListChatsParams = {
 status?: ListChatsStatus;

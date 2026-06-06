@@ -17,6 +17,7 @@ import {
 } from "../lib/telegram";
 import { generateAiReply } from "./whatsapp";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
+import { isOwnerReadOnly } from "../lib/billing";
 
 const router = Router();
 
@@ -153,6 +154,15 @@ async function processUpdate(
 
   if (insertedRows.length === 0) return; // duplicate, skip AI
   if (chat.isHumanTakeover) return; // operator is driving
+
+  // Subscription gate: an expired/suspended tenant's bot stays silent. The
+  // inbound message is still recorded above; only the auto-reply is skipped.
+  try {
+    if (await isOwnerReadOnly(ownerUserId)) return;
+  } catch (err) {
+    logger.error({ err, ownerUserId }, "tg auto-reply subscription gate failed");
+    return;
+  }
 
   // AI auto-reply (no chatbot-flow engine in v1 for Telegram — flows are
   // tightly coupled to the WA-specific runtime today and will be wired in

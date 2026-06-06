@@ -106,6 +106,7 @@ import { format, isToday, isYesterday, isThisYear } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 import { useShortcutMap, expandShortcuts } from "@/lib/shortcuts";
+import { useBillingStatus } from "@/hooks/use-billing-status";
 
 type MediaKind = "image" | "video" | "document";
 
@@ -845,6 +846,9 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     // Guard the keyboard path too (the button is disabled, Enter isn't) so an
     // in-flight upload/send can't be duplicated or run concurrently.
     if (uploading || sendReply.isPending) return;
+    // Read-only tenants can view but not send; the server also rejects with
+    // 402, this just avoids a doomed request and a confusing error toast.
+    if (readOnly) return;
     if (pastedImage) {
       // Media captions can't carry WhatsApp mention metadata, but we still
       // convert the visible "@name" tokens to "@digits" so the caption renders
@@ -977,6 +981,8 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       },
     },
   });
+
+  const { readOnly } = useBillingStatus();
 
   const sendReply = useSendManualReply({
     mutation: {
@@ -2367,9 +2373,15 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
             data-testid="button-send-reply"
             type="button"
             onClick={handleSend}
-            disabled={sendReply.isPending || uploading}
+            disabled={sendReply.isPending || uploading || readOnly}
             className="p-2 rounded-full text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors disabled:opacity-50"
-            title={reply.trim() || pastedImage ? "Kirim" : "Pesan suara"}
+            title={
+              readOnly
+                ? "Langganan tidak aktif — mode baca-saja"
+                : reply.trim() || pastedImage
+                  ? "Kirim"
+                  : "Pesan suara"
+            }
           >
             {sendReply.isPending || uploading ? (
               <Loader2 className="w-5 h-5 animate-spin" />

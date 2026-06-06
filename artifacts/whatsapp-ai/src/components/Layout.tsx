@@ -42,8 +42,10 @@ import {
 } from "@workspace/api-client-react";
 
 import { usePermissions, type PermissionMenu } from "@/hooks/use-permissions";
+import { useBillingStatus } from "@/hooks/use-billing-status";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { useChatNotificationSound } from "@/hooks/use-notification-sound";
+import { AlertTriangle } from "lucide-react";
 
 type TeamRole = "super_admin" | "supervisor" | "agent";
 
@@ -468,8 +470,32 @@ export default function Layout({
       </aside>
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <ReadOnlyBanner />
         {children}
       </main>
+    </div>
+  );
+}
+
+// Tenant-wide read-only banner. Shown to every role when the owner's
+// subscription has lapsed (expired/suspended). Viewing stays allowed; the
+// banner explains why writes are blocked and tells members to contact the
+// account owner.
+function ReadOnlyBanner() {
+  const { readOnly } = useBillingStatus();
+  if (!readOnly) return null;
+  return (
+    <div
+      data-testid="banner-read-only"
+      className="flex items-start gap-2.5 px-4 py-2.5 bg-destructive/10 border-b border-destructive/30 text-destructive text-sm"
+    >
+      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+      <div className="min-w-0">
+        <span className="font-semibold">Mode baca-saja.</span>{" "}
+        Langganan akun ini sudah tidak aktif, jadi pengiriman pesan, perubahan
+        data, dan balasan otomatis dinonaktifkan. Hubungi pemilik akun untuk
+        mengaktifkan kembali pada menu Langganan.
+      </div>
     </div>
   );
 }

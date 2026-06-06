@@ -47,3 +47,4 @@
 - [Read-status sync causal guard](read-status-sync-causal-guard.md) — phone-read → clear MaxiChat unread only on unreadCount===0 + atomic SQL guard last_message_at<=conversationTimestamp; never mirror positive counts.
 - [AI-node per-node instruction](ai-node-handoff-instruction.md) — AI-node `aiInstruction` is persisted in flowState at handoff, applied to generateAiReply only while defaultMutedUntil window is active; flowState is an optional-key superset.
 - [Usage-billed SaaS billing engine](billing-engine.md) — ceil-bucket math (500MB/2ch/100tok), whole-Rupiah ints enforced at route not orval, daily snapshot upsert per (owner,date), member→owner resolution.
+- [Subscription read-only enforcement](subscription-readonly-enforcement.md) — method-based write-block (POST/PUT/PATCH/DELETE) misses mutating GETs (OAuth callback); guard those per-route + scope tenant-owner queries to role!="admin" so platform admin never counts as a paying tenant.

@@ -1,7 +1,18 @@
 import {
   useGetMyBilling,
   getGetMyBillingQueryKey,
+  useGetMyBillingTrend,
+  getGetMyBillingTrendQueryKey,
 } from "@workspace/api-client-react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  CartesianGrid,
+} from "recharts";
 import {
   Card,
   CardContent,
@@ -68,6 +79,21 @@ export default function Billing() {
       retry: false,
     },
   });
+
+  const { data: trendData, isLoading: trendLoading } = useGetMyBillingTrend(
+    { days: 30 },
+    {
+      query: {
+        queryKey: getGetMyBillingTrendQueryKey({ days: 30 }),
+        enabled: isSuperAdmin,
+        retry: false,
+      },
+    }
+  );
+  const trend = (trendData?.trend ?? []).map((p) => ({
+    date: p.date.slice(5),
+    total: p.totalCharge,
+  }));
 
   // Route is unguarded — self-guard so non-owners get a clear message.
   if (!permLoading && !isSuperAdmin) {
@@ -223,6 +249,73 @@ export default function Billing() {
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-primary" />
+            Tren Pengeluaran (30 hari)
+          </CardTitle>
+          <CardDescription>
+            Estimasi tagihan harian akun Anda berdasarkan snapshot pemakaian.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {trendLoading ? (
+            <Skeleton className="h-56 w-full" />
+          ) : trend.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
+              Belum ada data pemakaian harian.
+            </div>
+          ) : (
+            <div className="h-56" data-testid="chart-spend-trend">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+                  <defs>
+                    <linearGradient id="spendFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11 }}
+                    className="text-muted-foreground"
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    className="text-muted-foreground"
+                    tickLine={false}
+                    axisLine={false}
+                    width={70}
+                    tickFormatter={(v) => fmtRp(Number(v))}
+                  />
+                  <RechartsTooltip
+                    formatter={(v) => [fmtRp(Number(v)), "Tagihan"]}
+                    labelFormatter={(l) => `Tanggal ${l}`}
+                    contentStyle={{
+                      background: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="total"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    fill="url(#spendFill)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
 

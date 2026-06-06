@@ -1,10 +1,20 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useAdminListBilling,
   getAdminListBillingQueryKey,
+  useAdminRenewSubscription,
   type AdminTenantBilling,
 } from "@workspace/api-client-react";
-import { Loader2, RefreshCw, Search, Wallet } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  Search,
+  Wallet,
+  CheckCircle2,
+  Ban,
+  CalendarPlus,
+} from "lucide-react";
 
 function fmtRp(n: number): string {
   return "Rp " + new Intl.NumberFormat("id-ID").format(n);
@@ -50,6 +60,79 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
     cls: "bg-red-500/15 text-red-400 border-red-500/30",
   },
 };
+
+function TenantActions({ userId }: { userId: number }) {
+  const qc = useQueryClient();
+  const [pending, setPending] = useState<null | "paid" | "suspend" | "extend">(
+    null
+  );
+  const renew = useAdminRenewSubscription({
+    mutation: {
+      onSettled: () => {
+        setPending(null);
+        qc.invalidateQueries({ queryKey: getAdminListBillingQueryKey() });
+      },
+    },
+  });
+
+  const run = (
+    kind: "paid" | "suspend" | "extend",
+    data: { status?: "active" | "suspended"; extendMonths?: number }
+  ) => {
+    setPending(kind);
+    renew.mutate({ userId, data });
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <button
+        type="button"
+        data-testid={`mark-paid-${userId}`}
+        title="Tandai lunas (+1 bulan, aktifkan)"
+        disabled={renew.isPending}
+        onClick={() => run("paid", { status: "active", extendMonths: 1 })}
+        className="h-7 px-2 rounded-md text-[11px] font-medium flex items-center gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover-elevate disabled:opacity-50"
+      >
+        {pending === "paid" && renew.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <CheckCircle2 className="w-3 h-3" />
+        )}
+        Lunas
+      </button>
+      <button
+        type="button"
+        data-testid={`extend-${userId}`}
+        title="Perpanjang 1 bulan"
+        disabled={renew.isPending}
+        onClick={() => run("extend", { extendMonths: 1 })}
+        className="h-7 px-2 rounded-md text-[11px] font-medium flex items-center gap-1 bg-muted text-foreground border border-border hover-elevate disabled:opacity-50"
+      >
+        {pending === "extend" && renew.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <CalendarPlus className="w-3 h-3" />
+        )}
+        +1bln
+      </button>
+      <button
+        type="button"
+        data-testid={`suspend-${userId}`}
+        title="Tangguhkan (mode baca-saja)"
+        disabled={renew.isPending}
+        onClick={() => run("suspend", { status: "suspended" })}
+        className="h-7 px-2 rounded-md text-[11px] font-medium flex items-center gap-1 bg-red-500/15 text-red-400 border border-red-500/30 hover-elevate disabled:opacity-50"
+      >
+        {pending === "suspend" && renew.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <Ban className="w-3 h-3" />
+        )}
+        Tangguh
+      </button>
+    </div>
+  );
+}
 
 export default function Billing() {
   const [search, setSearch] = useState("");
@@ -147,13 +230,14 @@ export default function Billing() {
                 <th className="text-right px-3 py-2 font-medium">Channel</th>
                 <th className="text-right px-3 py-2 font-medium">Token</th>
                 <th className="text-right px-3 py-2 font-medium">Tagihan</th>
+                <th className="text-right px-3 py-2 font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-3 py-8 text-center text-muted-foreground"
                   >
                     <Loader2 className="w-4 h-4 animate-spin inline mr-1.5" />
@@ -164,7 +248,7 @@ export default function Billing() {
               {!isLoading && filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-3 py-8 text-center text-muted-foreground text-xs"
                   >
                     Belum ada data tagihan.
@@ -237,6 +321,9 @@ export default function Billing() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold">
                       {fmtRp(r.breakdown.total)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <TenantActions userId={r.userId} />
                     </td>
                   </tr>
                 );

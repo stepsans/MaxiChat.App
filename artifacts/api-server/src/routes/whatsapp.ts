@@ -35,6 +35,7 @@ import {
   ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
+import { isOwnerReadOnly } from "../lib/billing";
 import { buildProductCatalogText } from "../lib/product-catalog";
 import {
   resolveActiveChannel,
@@ -2481,6 +2482,17 @@ async function maybeTriggerAutoReply(
 ) {
   if (chat.isHumanTakeover) return;
   if (!messageText.trim()) return;
+
+  // Subscription gate: an expired/suspended tenant's bot goes silent (no flow,
+  // no AI). The owner can still view chats and reply manually is also blocked
+  // by the write enforcement, but inbound messages are still recorded.
+  try {
+    const owner = await resolveOwnerUserId(userId);
+    if (await isOwnerReadOnly(owner)) return;
+  } catch (err) {
+    logger.error({ err, userId }, "auto-reply subscription gate failed");
+    return;
+  }
 
   // Try chatbot flow before AI. If a flow handled the message (matched a
   // trigger or advanced from a question), skip the AI auto-reply entirely.

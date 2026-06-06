@@ -13,6 +13,7 @@ import { encryptString, decryptString } from "../lib/crypto";
 import { requirePermission } from "../lib/role-permissions";
 import { requireOwnerUserId } from "../lib/channel-context";
 import { getEffectiveOwnerUserId } from "../lib/auth";
+import { isOwnerReadOnly } from "../lib/billing";
 import {
   syncGoogleContacts,
   countGoogleContacts,
@@ -360,6 +361,18 @@ a{color:#60a5fa}</style></head>
     const saved = req.session.oauthState;
     // Wipe state regardless of outcome so it can't be replayed.
     delete req.session.oauthState;
+    // Read-only (expired/suspended) tenants cannot connect/refresh credentials.
+    // This GET handler mutates DB state, so the method-based enforcement
+    // middleware does not cover it — guard explicitly here.
+    if (await isOwnerReadOnly(userId)) {
+      respondHtml(
+        "Langganan tidak aktif",
+        "Akun Anda dalam mode baca-saja. Perpanjang langganan untuk menghubungkan akun Google.",
+        false,
+        saved?.credentialId ?? null
+      );
+      return;
+    }
     if (errParam) {
       respondHtml("Login dibatalkan", `Google: ${esc(errParam)}`, false, saved?.credentialId ?? null);
       return;

@@ -5,10 +5,16 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { SubscriptionInfoEffectiveStatus } from './subscriptionInfoEffectiveStatus';
 import type { SubscriptionInfoStatus } from './subscriptionInfoStatus';
 
 export interface SubscriptionInfo {
+  /** The stored subscription status. */
   status: SubscriptionInfoStatus;
+  /** Status computed live against the wall clock — an overdue trial/active collapses to "expired". This is what enforcement reacts to. */
+  effectiveStatus: SubscriptionInfoEffectiveStatus;
+  /** True when the tenant is in read-only mode (effective status expired or suspended): viewing is allowed but every write is blocked. */
+  readOnly: boolean;
   /** @nullable */
   currentPeriodEnd: Date | null;
   createdAt: Date;

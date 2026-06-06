@@ -7,12 +7,12 @@
  */
 
 /**
- * The stored subscription status.
+ * New stored status. "active" with extendMonths is the "mark paid" action.
  */
-export type SubscriptionInfoStatus = typeof SubscriptionInfoStatus[keyof typeof SubscriptionInfoStatus];
+export type RenewSubscriptionInputStatus = typeof RenewSubscriptionInputStatus[keyof typeof RenewSubscriptionInputStatus];
 
 
-export const SubscriptionInfoStatus = {
+export const RenewSubscriptionInputStatus = {
   trial: 'trial',
   active: 'active',
   expired: 'expired',

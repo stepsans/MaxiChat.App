@@ -8,12 +8,17 @@ import {
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { computeBillingPeriod } from "../lib/billing-period";
-import { AdminUpdatePricingBody } from "@workspace/api-zod";
+import {
+  AdminUpdatePricingBody,
+  AdminRenewSubscriptionBody,
+} from "@workspace/api-zod";
 import {
   getPricing,
   updatePricing,
   computeOwnerBill,
   getOrCreateSubscription,
+  computeRevenue,
+  renewSubscription,
 } from "../lib/billing";
 
 // Serialize all role/status mutations through a single Postgres advisory
@@ -400,6 +405,73 @@ router.get("/billing", async (req, res): Promise<void> => {
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "adminListBilling failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Platform-wide revenue: MRR/ARR/ARPU, tenant counts and the daily spend trend.
+router.get("/revenue", async (req, res): Promise<void> => {
+  try {
+    const rawDays = Number(req.query.days);
+    const days =
+      Number.isFinite(rawDays) && rawDays >= 1 && rawDays <= 365
+        ? Math.floor(rawDays)
+        : 30;
+    const summary = await computeRevenue(days);
+    res.json(summary);
+  } catch (err) {
+    req.log.error({ err }, "adminGetRevenue failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Renew / suspend / correct a tenant's subscription. "Mark paid" is
+// { status: "active", extendMonths: 1 }, which unblocks the tenant instantly.
+router.patch("/subscriptions/:userId", async (req, res): Promise<void> => {
+  try {
+    const ownerId = Number(req.params.userId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      res.status(400).json({ error: "Invalid user id" });
+      return;
+    }
+
+    const parsed = AdminRenewSubscriptionBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input" });
+      return;
+    }
+    if (parsed.data.status == null && parsed.data.extendMonths == null) {
+      res
+        .status(400)
+        .json({ error: "Provide at least one of status or extendMonths" });
+      return;
+    }
+
+    // The tenant must be an existing owner (parent_user_id IS NULL) and not the
+    // platform admin (role="admin") — admins are not billable tenants.
+    const [owner] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.id, ownerId),
+          isNull(usersTable.parentUserId),
+          ne(usersTable.role, "admin")
+        )
+      )
+      .limit(1);
+    if (!owner) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    const updated = await renewSubscription(ownerId, {
+      status: parsed.data.status,
+      extendMonths: parsed.data.extendMonths,
+    });
+    res.json(updated);
+  } catch (err) {
+    req.log.error({ err }, "adminRenewSubscription failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

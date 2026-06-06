@@ -22,6 +22,7 @@ import type {
 import type {
   AddParticipantsBody,
   AddParticipantsResult,
+  AdminGetRevenueParams,
   AdminTenantBilling,
   AdminUpdateUserInput,
   AdminUser,
@@ -87,6 +88,7 @@ import type {
   GetChatHistoryParams,
   GetKnowledgeSyncConfig200,
   GetLinkPreviewParams,
+  GetMyBillingTrendParams,
   GetProductSyncConfig200,
   GetSalesOrderSyncConfig200,
   GetShortcutSyncConfig200,
@@ -111,6 +113,7 @@ import type {
   ManualReplyInput,
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
+  OwnerTrend,
   PermissionMatrix,
   PinMessageBody,
   PostStatusInput,
@@ -121,9 +124,11 @@ import type {
   PurgeChatsResult,
   ReactionInput,
   RefreshChatAvatar200,
+  RenewSubscriptionInput,
   ResendVerificationInput,
   ResendVerificationResult,
   ResetFlowCooldown200,
+  RevenueSummary,
   RevokeMessage200,
   RunKnowledgeSync200,
   RunProductSync200,
@@ -146,6 +151,7 @@ import type {
   StarMessageBody,
   StartCredentialOauth200,
   StorageUsage,
+  SubscriptionInfo,
   SuccessResponse,
   SyncSalesOrderToSheet200,
   TakeoverInput,
@@ -1141,6 +1147,91 @@ export function useGetMyBilling<TData = Awaited<ReturnType<typeof getMyBilling>>
 
 
 
+export const getGetMyBillingTrendUrl = (params?: GetMyBillingTrendParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/billing/trend?${stringifiedParams}` : `/api/billing/trend`
+}
+
+/**
+ * Daily computed-charge snapshots for the caller's tenant, oldest-first. Team members resolve to their owner.
+ * @summary The signed-in tenant's daily spend trend
+ */
+export const getMyBillingTrend = async (params?: GetMyBillingTrendParams, options?: RequestInit): Promise<OwnerTrend> => {
+
+  return customFetch<OwnerTrend>(getGetMyBillingTrendUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyBillingTrendQueryKey = (params?: GetMyBillingTrendParams,) => {
+    return [
+    `/api/billing/trend`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMyBillingTrendQueryOptions = <TData = Awaited<ReturnType<typeof getMyBillingTrend>>, TError = ErrorType<unknown>>(params?: GetMyBillingTrendParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyBillingTrend>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyBillingTrendQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyBillingTrend>>> = ({ signal }) => getMyBillingTrend(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyBillingTrend>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyBillingTrendQueryResult = NonNullable<Awaited<ReturnType<typeof getMyBillingTrend>>>
+export type GetMyBillingTrendQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The signed-in tenant's daily spend trend
+ */
+
+export function useGetMyBillingTrend<TData = Awaited<ReturnType<typeof getMyBillingTrend>>, TError = ErrorType<unknown>>(
+ params?: GetMyBillingTrendParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyBillingTrend>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyBillingTrendQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getAdminGetPricingUrl = () => {
 
 
@@ -1365,6 +1456,162 @@ export function useAdminListBilling<TData = Awaited<ReturnType<typeof adminListB
 
 
 
+
+export const getAdminGetRevenueUrl = (params?: AdminGetRevenueParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/revenue?${stringifiedParams}` : `/api/admin/revenue`
+}
+
+/**
+ * @summary Platform-wide MRR/ARR, tenant counts and spend trend (admin only)
+ */
+export const adminGetRevenue = async (params?: AdminGetRevenueParams, options?: RequestInit): Promise<RevenueSummary> => {
+
+  return customFetch<RevenueSummary>(getAdminGetRevenueUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetRevenueQueryKey = (params?: AdminGetRevenueParams,) => {
+    return [
+    `/api/admin/revenue`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getAdminGetRevenueQueryOptions = <TData = Awaited<ReturnType<typeof adminGetRevenue>>, TError = ErrorType<ErrorResponse>>(params?: AdminGetRevenueParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetRevenue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetRevenueQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetRevenue>>> = ({ signal }) => adminGetRevenue(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetRevenue>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetRevenueQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetRevenue>>>
+export type AdminGetRevenueQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Platform-wide MRR/ARR, tenant counts and spend trend (admin only)
+ */
+
+export function useAdminGetRevenue<TData = Awaited<ReturnType<typeof adminGetRevenue>>, TError = ErrorType<ErrorResponse>>(
+ params?: AdminGetRevenueParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetRevenue>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetRevenueQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminRenewSubscriptionUrl = (userId: number,) => {
+
+
+
+
+  return `/api/admin/subscriptions/${userId}`
+}
+
+/**
+ * @summary Renew, suspend or change a tenant's subscription (admin only)
+ */
+export const adminRenewSubscription = async (userId: number,
+    renewSubscriptionInput: RenewSubscriptionInput, options?: RequestInit): Promise<SubscriptionInfo> => {
+
+  return customFetch<SubscriptionInfo>(getAdminRenewSubscriptionUrl(userId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      renewSubscriptionInput,)
+  }
+);}
+
+
+
+
+export const getAdminRenewSubscriptionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminRenewSubscription>>, TError,{userId: number;data: BodyType<RenewSubscriptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminRenewSubscription>>, TError,{userId: number;data: BodyType<RenewSubscriptionInput>}, TContext> => {
+
+const mutationKey = ['adminRenewSubscription'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminRenewSubscription>>, {userId: number;data: BodyType<RenewSubscriptionInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  adminRenewSubscription(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminRenewSubscriptionMutationResult = NonNullable<Awaited<ReturnType<typeof adminRenewSubscription>>>
+    export type AdminRenewSubscriptionMutationBody = BodyType<RenewSubscriptionInput>
+    export type AdminRenewSubscriptionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Renew, suspend or change a tenant's subscription (admin only)
+ */
+export const useAdminRenewSubscription = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminRenewSubscription>>, TError,{userId: number;data: BodyType<RenewSubscriptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminRenewSubscription>>,
+        TError,
+        {userId: number;data: BodyType<RenewSubscriptionInput>},
+        TContext
+      > => {
+      return useMutation(getAdminRenewSubscriptionMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 

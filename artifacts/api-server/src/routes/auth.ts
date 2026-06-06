@@ -8,6 +8,7 @@ import {
   emailVerificationTokensTable,
 } from "@workspace/db";
 import { sendVerificationEmail, emailSenderConfigured } from "../lib/email";
+import { createTrialSubscription } from "../lib/billing";
 import {
   loginLimiter,
   signupLimiter,
@@ -491,6 +492,13 @@ router.post("/signup", signupLimiter, async (req, res): Promise<void> => {
       return;
     }
     const row = inserted[0];
+    // New tenant owner → start a 7-day trial. After it lapses the account
+    // falls into read-only until an admin marks them paid.
+    try {
+      await createTrialSubscription(row.id);
+    } catch (err) {
+      req.log.error({ err, userId: row.id }, "trial subscription create failed");
+    }
     const devVerifyUrl = await issueVerificationTokenAndSend(req, row);
     req.log.info(
       { userId: row.id, email: row.email, mailed: emailSenderConfigured() },

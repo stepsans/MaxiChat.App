@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeMonthlyBill } from "./billing-engine";
+import {
+  computeMonthlyBill,
+  computeEffectiveStatus,
+  isReadOnlySubscription,
+  addMonths,
+} from "./billing-engine";
 
 const PRICING = {
   dbPricePer500Mb: 50000,
@@ -155,4 +160,114 @@ test("negative usage is clamped to zero", () => {
     aiCharge: 0,
     total: 0,
   });
+});
+
+// ----- computeEffectiveStatus -----
+
+const NOW = new Date("2026-06-06T00:00:00.000Z");
+
+test("active within period stays active", () => {
+  assert.equal(
+    computeEffectiveStatus("active", "2026-07-06T00:00:00.000Z", NOW),
+    "active"
+  );
+});
+
+test("trial within period stays trial", () => {
+  assert.equal(
+    computeEffectiveStatus("trial", "2026-06-13T00:00:00.000Z", NOW),
+    "trial"
+  );
+});
+
+test("active past period end collapses to expired", () => {
+  assert.equal(
+    computeEffectiveStatus("active", "2026-06-05T23:59:59.000Z", NOW),
+    "expired"
+  );
+});
+
+test("trial past period end collapses to expired", () => {
+  assert.equal(
+    computeEffectiveStatus("trial", "2026-05-30T00:00:00.000Z", NOW),
+    "expired"
+  );
+});
+
+test("suspended is sticky regardless of a future period end", () => {
+  assert.equal(
+    computeEffectiveStatus("suspended", "2026-12-31T00:00:00.000Z", NOW),
+    "suspended"
+  );
+});
+
+test("stored expired stays expired", () => {
+  assert.equal(
+    computeEffectiveStatus("expired", "2026-12-31T00:00:00.000Z", NOW),
+    "expired"
+  );
+});
+
+test("null period end keeps active/trial alive", () => {
+  assert.equal(computeEffectiveStatus("active", null, NOW), "active");
+  assert.equal(computeEffectiveStatus("trial", null, NOW), "trial");
+});
+
+test("unknown stored status is treated as expired", () => {
+  assert.equal(computeEffectiveStatus("frozen", null, NOW), "expired");
+});
+
+// exactly AT the boundary is still active (period end is exclusive upper, but
+// equality means "not yet past"), one ms later is expired.
+test("period boundary is inclusive of the end instant", () => {
+  const end = "2026-06-06T00:00:00.000Z";
+  assert.equal(computeEffectiveStatus("active", end, NOW), "active");
+  assert.equal(
+    computeEffectiveStatus(
+      "active",
+      end,
+      new Date("2026-06-06T00:00:00.001Z")
+    ),
+    "expired"
+  );
+});
+
+// ----- isReadOnlySubscription -----
+
+test("expired and suspended are read-only; trial and active are not", () => {
+  assert.equal(isReadOnlySubscription("expired"), true);
+  assert.equal(isReadOnlySubscription("suspended"), true);
+  assert.equal(isReadOnlySubscription("trial"), false);
+  assert.equal(isReadOnlySubscription("active"), false);
+});
+
+// ----- addMonths -----
+
+test("addMonths advances one month keeping the day", () => {
+  assert.equal(
+    addMonths(new Date("2026-06-06T00:00:00.000Z"), 1).toISOString(),
+    "2026-07-06T00:00:00.000Z"
+  );
+});
+
+test("addMonths clamps to the last day of a shorter month", () => {
+  // Jan 31 + 1 month -> Feb 28 (2026 is not a leap year)
+  assert.equal(
+    addMonths(new Date("2026-01-31T00:00:00.000Z"), 1).toISOString(),
+    "2026-02-28T00:00:00.000Z"
+  );
+});
+
+test("addMonths rolls over the year boundary", () => {
+  assert.equal(
+    addMonths(new Date("2026-12-15T00:00:00.000Z"), 1).toISOString(),
+    "2027-01-15T00:00:00.000Z"
+  );
+});
+
+test("addMonths handles multi-month extension", () => {
+  assert.equal(
+    addMonths(new Date("2026-06-06T00:00:00.000Z"), 3).toISOString(),
+    "2026-09-06T00:00:00.000Z"
+  );
 });

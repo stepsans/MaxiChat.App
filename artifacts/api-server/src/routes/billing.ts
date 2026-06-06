@@ -5,7 +5,8 @@ import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import {
   computeOwnerBill,
-  getOrCreateSubscription,
+  getEffectiveSubscription,
+  computeOwnerTrend,
 } from "../lib/billing";
 
 const router = Router();
@@ -38,7 +39,7 @@ router.get("/me", async (req, res): Promise<void> => {
     }
 
     const [subscription, bill] = await Promise.all([
-      getOrCreateSubscription(ownerUserId),
+      getEffectiveSubscription(ownerUserId),
       computeOwnerBill(ownerUserId),
     ]);
 
@@ -50,6 +51,31 @@ router.get("/me", async (req, res): Promise<void> => {
     });
   } catch (err) {
     req.log.error({ err }, "getMyBilling failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/trend — the signed-in tenant's daily spend trend (oldest-first).
+// Team members resolve to their owner. `days` clamps the window length.
+router.get("/trend", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+
+    const rawDays = Number(req.query.days);
+    const days =
+      Number.isFinite(rawDays) && rawDays >= 1 && rawDays <= 365
+        ? Math.floor(rawDays)
+        : 30;
+
+    const trend = await computeOwnerTrend(ownerUserId, days);
+    res.json({ trend });
+  } catch (err) {
+    req.log.error({ err }, "getMyBillingTrend failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

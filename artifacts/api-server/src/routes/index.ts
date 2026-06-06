@@ -29,6 +29,7 @@ import linkPreviewRouter from "./link-preview";
 import telegramWebhookRouter from "./webhooks-telegram";
 import billingRouter from "./billing";
 import { requireAuth, requireAdmin } from "../lib/auth";
+import { enforceSubscription } from "../lib/enforce-subscription";
 
 const router: IRouter = Router();
 
@@ -41,6 +42,11 @@ router.use("/webhooks/telegram", telegramWebhookRouter);
 
 // Everything below requires a signed-in session.
 router.use(requireAuth);
+
+// Read-only enforcement for expired/suspended tenants: blocks writes (the
+// operator namespace /admin and read-only /billing are exempt; admins always
+// pass). Mounted before the resource routers so a single gate covers them all.
+router.use(enforceSubscription);
 
 router.use("/whatsapp", whatsappRouter);
 router.use("/chats", chatsRouter);

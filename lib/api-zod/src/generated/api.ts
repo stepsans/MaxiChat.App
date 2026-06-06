@@ -213,7 +213,9 @@ export const GetMyAiUsageResponse = zod.object({
  */
 export const GetMyBillingResponse = zod.object({
   "subscription": zod.object({
-  "status": zod.enum(['trial', 'active', 'expired', 'suspended']),
+  "status": zod.enum(['trial', 'active', 'expired', 'suspended']).describe('The stored subscription status.'),
+  "effectiveStatus": zod.enum(['trial', 'active', 'expired', 'suspended']).describe('Status computed live against the wall clock — an overdue trial\/active collapses to \"expired\". This is what enforcement reacts to.'),
+  "readOnly": zod.boolean().describe('True when the tenant is in read-only mode (effective status expired or suspended): viewing is allowed but every write is blocked.'),
   "currentPeriodEnd": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
 }),
@@ -236,6 +238,30 @@ export const GetMyBillingResponse = zod.object({
   "aiCharge": zod.number(),
   "total": zod.number()
 })
+})
+
+
+/**
+ * Daily computed-charge snapshots for the caller's tenant, oldest-first. Team members resolve to their owner.
+ * @summary The signed-in tenant's daily spend trend
+ */
+export const getMyBillingTrendQueryDaysMax = 365;
+
+
+
+export const GetMyBillingTrendQueryParams = zod.object({
+  "days": zod.coerce.number().min(1).max(getMyBillingTrendQueryDaysMax).optional().describe('Window length in days (default 30).')
+})
+
+export const GetMyBillingTrendResponse = zod.object({
+  "trend": zod.array(zod.object({
+  "date": zod.string().describe('Day in YYYY-MM-DD.'),
+  "totalCharge": zod.number(),
+  "dbCharge": zod.number(),
+  "userCharge": zod.number(),
+  "channelCharge": zod.number(),
+  "aiCharge": zod.number()
+})).describe('The caller tenant\'s daily spend, oldest-first.')
 })
 
 
@@ -302,6 +328,63 @@ export const AdminListBillingResponseItem = zod.object({
 })
 })
 export const AdminListBillingResponse = zod.array(AdminListBillingResponseItem)
+
+
+/**
+ * @summary Platform-wide MRR/ARR, tenant counts and spend trend (admin only)
+ */
+export const adminGetRevenueQueryDaysMax = 365;
+
+
+
+export const AdminGetRevenueQueryParams = zod.object({
+  "days": zod.coerce.number().min(1).max(adminGetRevenueQueryDaysMax).optional().describe('Trend window length in days (default 30).')
+})
+
+export const AdminGetRevenueResponse = zod.object({
+  "mrr": zod.number().describe('Monthly recurring revenue — sum of latest snapshot total for effective-active owners.'),
+  "arr": zod.number().describe('Annual recurring revenue (mrr \* 12).'),
+  "arpu": zod.number().describe('Average revenue per paying tenant (mrr \/ payingTenants).'),
+  "totalTenants": zod.number(),
+  "activeTenants": zod.number(),
+  "trialTenants": zod.number(),
+  "expiredTenants": zod.number(),
+  "suspendedTenants": zod.number(),
+  "payingTenants": zod.number(),
+  "trend": zod.array(zod.object({
+  "date": zod.string().describe('Day in YYYY-MM-DD.'),
+  "totalCharge": zod.number(),
+  "dbCharge": zod.number(),
+  "userCharge": zod.number(),
+  "channelCharge": zod.number(),
+  "aiCharge": zod.number()
+})).describe('Platform-wide daily total, oldest-first.')
+})
+
+
+/**
+ * @summary Renew, suspend or change a tenant's subscription (admin only)
+ */
+export const AdminRenewSubscriptionParams = zod.object({
+  "userId": zod.coerce.number().describe('The tenant owner\'s user id.')
+})
+
+export const adminRenewSubscriptionBodyExtendMonthsMax = 24;
+
+
+
+export const AdminRenewSubscriptionBody = zod.object({
+  "status": zod.enum(['trial', 'active', 'expired', 'suspended']).optional().describe('New stored status. \"active\" with extendMonths is the \"mark paid\" action.'),
+  "extendMonths": zod.number().min(1).max(adminRenewSubscriptionBodyExtendMonthsMax).optional().describe('Extend the current period end by this many months.')
+})
+
+export const AdminRenewSubscriptionResponse = zod.object({
+  "status": zod.enum(['trial', 'active', 'expired', 'suspended']).describe('The stored subscription status.'),
+  "effectiveStatus": zod.enum(['trial', 'active', 'expired', 'suspended']).describe('Status computed live against the wall clock — an overdue trial\/active collapses to \"expired\". This is what enforcement reacts to.'),
+  "readOnly": zod.boolean().describe('True when the tenant is in read-only mode (effective status expired or suspended): viewing is allowed but every write is blocked.'),
+  "currentPeriodEnd": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
 
 
 /**
