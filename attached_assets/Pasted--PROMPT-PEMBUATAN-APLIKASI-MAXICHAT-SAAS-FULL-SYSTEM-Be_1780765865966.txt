@@ -1,0 +1,484 @@
+# PROMPT PEMBUATAN APLIKASI MAXICHAT SAAS (FULL SYSTEM)
+
+Bertindaklah sebagai Senior SaaS Architect, Senior UI/UX Designer, Senior Backend Engineer, Senior DevOps Engineer, dan Senior Product Manager.
+
+Buatkan aplikasi SaaS Omnichannel bernama MaxiChat dengan arsitektur enterprise, scalable, multi-tenant, dan white-label ready.
+
+Sebelum menulis kode, buat terlebih dahulu:
+
+1. Database Schema lengkap
+2. ERD (Entity Relationship Diagram)
+3. API Specification
+4. Folder Structure
+5. RBAC (Role Based Access Control)
+6. Subscription & Billing Architecture
+7. Multi-Tenant Architecture
+8. UI Wireframe
+9. Backend Admin Architecture
+
+Gunakan best practice modern tahun 2026.
+
+---
+
+# TECHNOLOGY STACK
+
+Frontend:
+
+* Next.js 15
+* TypeScript
+* Tailwind CSS
+* ShadCN UI
+* Zustand
+* TanStack Query
+
+Backend:
+
+* NestJS
+* TypeScript
+
+Database:
+
+* PostgreSQL
+
+Cache:
+
+* Redis
+
+Queue:
+
+* BullMQ
+
+Storage:
+
+* S3 Compatible Storage
+
+Authentication:
+
+* Email OTP
+* JWT Access Token
+* Refresh Token
+
+Billing:
+
+* Modular Billing Engine
+
+Architecture:
+
+* Multi Tenant SaaS
+* White Label Ready
+* Microservice Friendly
+* Docker Ready
+
+---
+
+# SYSTEM OVERVIEW
+
+MaxiChat adalah aplikasi Omnichannel SaaS.
+
+Setiap pelanggan disebut Membership.
+
+Setiap Membership memiliki Parent User sebagai Super Admin.
+
+Parent dapat membuat Child User.
+
+Role yang tersedia:
+
+1. Parent (Super Admin)
+2. Supervisor
+3. Agent
+
+---
+
+# USER HIERARCHY
+
+Parent
+├── Supervisor
+└── Agent
+
+Hak akses Parent:
+
+* Mengelola subscription
+* Mengelola billing
+* Menambah Supervisor
+* Menambah Agent
+* Menghapus Supervisor
+* Menghapus Agent
+* Melihat seluruh laporan
+* Mengatur channel
+* Mengatur AI
+
+Hak akses Supervisor:
+
+* Monitoring Agent
+* Melihat seluruh chat
+* Assign chat
+* Melihat laporan
+
+Hak akses Agent:
+
+* Menangani chat
+* Menggunakan AI Assistant
+* Mengubah status chat
+
+Implementasikan RBAC yang fleksibel dan scalable.
+
+---
+
+# LOGIN SYSTEM
+
+Metode login:
+
+Email OTP
+
+Flow:
+
+1. User memasukkan email
+2. Sistem mengirim OTP ke email
+3. OTP berlaku 5 menit
+4. Maksimal 5 kali percobaan
+5. OTP berhasil → Login
+6. Generate JWT Access Token
+7. Generate Refresh Token
+
+Tambahkan:
+
+* Rate Limiting
+* Anti Spam OTP
+* Audit Log
+
+---
+
+# INVITATION SYSTEM
+
+Parent dapat mengundang Supervisor atau Agent.
+
+Flow:
+
+1. Parent klik Invite User
+2. Input email
+3. Pilih role
+4. Sistem kirim email invitation
+5. Email berisi tombol Accept Invitation
+6. Link memiliki token unik dan expiry
+
+Status invitation:
+
+* Pending
+* Accepted
+* Rejected
+* Expired
+
+Saat invitation diterima:
+
+* User dibuat otomatis
+* Role diberikan otomatis
+* Tenant diberikan otomatis
+
+---
+
+# MULTI TENANT ARCHITECTURE
+
+Setiap Membership adalah Tenant.
+
+Setiap Tenant memiliki:
+
+* User
+* Chat
+* Channel
+* Billing
+* AI Usage
+* Subscription
+
+Data Tenant wajib terisolasi.
+
+Tidak boleh ada kemungkinan tenant melihat data tenant lain.
+
+Gunakan tenant_id pada seluruh tabel bisnis.
+
+Tambahkan middleware tenant validation.
+
+---
+
+# WHITE LABEL READY
+
+Siapkan sistem agar suatu saat dapat dijual ulang dengan brand berbeda.
+
+Buat tabel:
+
+Tenant
+
+Field:
+
+* tenant_id
+* brand_name
+* logo_url
+* custom_domain
+* primary_color
+* secondary_color
+* smtp_host
+* smtp_port
+* smtp_username
+* smtp_password
+* whatsapp_provider
+* ai_provider
+* ai_api_key
+* status
+
+Masing-masing tenant dapat memiliki branding berbeda.
+
+---
+
+# SUBSCRIPTION SYSTEM
+
+Subscription bersifat dinamis.
+
+Harga tidak boleh hardcoded.
+
+Harga wajib diambil dari database.
+
+Buat Pricing Engine.
+
+---
+
+# PRICING COMPONENT
+
+1. Database Chat
+
+Default:
+
+500 MB = Rp 50.000 / bulan
+
+---
+
+2. Child User
+
+1 Child User = Rp 50.000 / bulan
+
+Yang dihitung:
+
+* Supervisor
+* Agent
+
+Parent tidak dihitung.
+
+---
+
+3. Channel
+
+2 Channel = Rp 50.000 / bulan
+
+Contoh:
+
+2 Channel = Rp 50.000
+
+4 Channel = Rp 100.000
+
+6 Channel = Rp 150.000
+
+---
+
+4. AI Token
+
+100 Token = Rp 50.000 / bulan
+
+Harus configurable.
+
+---
+
+# BILLING ENGINE
+
+Buat sistem billing fleksibel.
+
+Formula:
+
+Monthly Bill =
+Database Charge
++
+User Charge
++
+Channel Charge
++
+AI Token Charge
+
+Semua parameter berasal dari database.
+
+Admin dapat mengubah harga kapan saja tanpa deploy ulang aplikasi.
+
+---
+
+# USAGE TRACKING
+
+Sistem harus menghitung secara otomatis:
+
+Database Usage
+User Count
+Channel Count
+AI Token Usage
+
+Buat scheduler harian.
+
+Setiap malam simpan snapshot:
+
+* storage_used
+* user_count
+* channel_count
+* token_usage
+
+Tabel:
+
+usage_snapshots
+
+Digunakan untuk:
+
+* Billing
+* Audit
+* Reporting
+
+---
+
+# MEMBERSHIP STATUS
+
+Status:
+
+* Trial
+* Active
+* Expired
+* Suspended
+
+Jika Expired:
+
+Masih bisa login.
+
+Tetapi:
+
+* Tidak bisa kirim chat
+* Tidak bisa menggunakan AI
+* Tidak bisa menambah user
+* Tidak bisa menambah channel
+
+Tampilkan halaman:
+
+Subscription Expired
+
+Dengan tombol:
+
+Renew Subscription
+
+---
+
+# BACKEND ADMIN DASHBOARD
+
+Buat Super Admin Dashboard.
+
+Menampilkan:
+
+* Total Membership
+* Active Membership
+* Expired Membership
+* MRR
+* ARR
+* Total Storage Used
+* Total AI Token Used
+* Total Channel
+* Total Child User
+
+---
+
+# MEMBERSHIP DETAIL PAGE
+
+Per Membership tampilkan:
+
+* Nama Tenant
+* Parent User
+* Email
+* Status
+* Join Date
+* Expired Date
+* Storage Usage
+* Total Supervisor
+* Total Agent
+* Total Channel
+* AI Token Usage
+* Total Monthly Billing
+
+---
+
+# SYSTEM SETTINGS
+
+Buat menu:
+
+Pricing Management
+
+Admin dapat mengubah:
+
+* Harga per 500 MB
+* Harga per User
+* Harga per 2 Channel
+* Harga per 100 Token
+
+Tanpa perlu coding.
+
+Perubahan langsung berlaku pada billing berikutnya.
+
+---
+
+# AUDIT LOG
+
+Semua aktivitas dicatat:
+
+* Login
+* Logout
+* OTP Request
+* User Create
+* User Delete
+* Subscription Change
+* Pricing Change
+* Channel Create
+* Channel Delete
+
+Audit log wajib immutable.
+
+---
+
+# EMAIL SYSTEM
+
+Gunakan template email modern.
+
+Template:
+
+* OTP Verification
+* Invitation
+* Subscription Expired
+* Payment Success
+* Payment Failed
+
+Template harus dapat di-custom per tenant.
+
+---
+
+# OUTPUT YANG HARUS DIBUAT
+
+Buat secara berurutan:
+
+1. Database Schema Lengkap
+2. ERD Lengkap
+3. Backend Architecture
+4. Frontend Architecture
+5. API Specification
+6. Folder Structure
+7. RBAC Matrix
+8. Subscription Engine
+9. Billing Engine
+10. Multi Tenant Design
+11. White Label Design
+12. UI Wireframe
+13. Dashboard Design
+14. Coding Implementation
+15. Unit Test
+16. Integration Test
+17. Docker Configuration
+18. Deployment Guide
+
+Jangan langsung membuat kode.
+
+Mulai dari perancangan arsitektur terlebih dahulu dan pastikan seluruh desain scalable untuk minimal 10.000 tenant dan 1 juta pengguna.
