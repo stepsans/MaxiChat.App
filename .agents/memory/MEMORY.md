@@ -46,3 +46,4 @@
 - [AI auto-reply context anchoring](ai-reply-context-anchoring.md) — order history AND anchor to triggering msg id (delay race); few-shot examples w/ real product codes become answer anchors.
 - [Read-status sync causal guard](read-status-sync-causal-guard.md) — phone-read → clear MaxiChat unread only on unreadCount===0 + atomic SQL guard last_message_at<=conversationTimestamp; never mirror positive counts.
 - [AI-node per-node instruction](ai-node-handoff-instruction.md) — AI-node `aiInstruction` is persisted in flowState at handoff, applied to generateAiReply only while defaultMutedUntil window is active; flowState is an optional-key superset.
+- [Usage-billed SaaS billing engine](billing-engine.md) — ceil-bucket math (500MB/2ch/100tok), whole-Rupiah ints enforced at route not orval, daily snapshot upsert per (owner,date), member→owner resolution.

@@ -22,6 +22,7 @@ import type {
 import type {
   AddParticipantsBody,
   AddParticipantsResult,
+  AdminTenantBilling,
   AdminUpdateUserInput,
   AdminUser,
   AiProviderConfig,
@@ -113,6 +114,7 @@ import type {
   PermissionMatrix,
   PinMessageBody,
   PostStatusInput,
+  PricingConfig,
   Product,
   ProductInput,
   ProductSyncConfigInput,
@@ -152,10 +154,12 @@ import type {
   TeamSettingsInput,
   TeamSettingsResponse,
   TelegramConnect,
+  TenantBilling,
   TextShortcut,
   TextShortcutInput,
   UpdateAgentInput,
   UpdateCustomerLabelInput,
+  UpdatePricingInput,
   UpdateUserChannelAccessRequest,
   UpdateUserPermissionRequest,
   UploadPhotoResponse,
@@ -1047,6 +1051,309 @@ export function useGetMyAiUsage<TData = Awaited<ReturnType<typeof getMyAiUsage>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMyAiUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyBillingUrl = () => {
+
+
+
+
+  return `/api/billing/me`
+}
+
+/**
+ * Returns the billing state of the caller's tenant. Team members (supervisor/agent) resolve to their owner, so the figures are always the owner's tenant-wide totals.
+ * @summary The signed-in user's tenant subscription, usage and computed monthly bill
+ */
+export const getMyBilling = async ( options?: RequestInit): Promise<TenantBilling> => {
+
+  return customFetch<TenantBilling>(getGetMyBillingUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyBillingQueryKey = () => {
+    return [
+    `/api/billing/me`
+    ] as const;
+    }
+
+
+export const getGetMyBillingQueryOptions = <TData = Awaited<ReturnType<typeof getMyBilling>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyBilling>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyBillingQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyBilling>>> = ({ signal }) => getMyBilling({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyBilling>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyBillingQueryResult = NonNullable<Awaited<ReturnType<typeof getMyBilling>>>
+export type GetMyBillingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The signed-in user's tenant subscription, usage and computed monthly bill
+ */
+
+export function useGetMyBilling<TData = Awaited<ReturnType<typeof getMyBilling>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyBilling>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyBillingQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminGetPricingUrl = () => {
+
+
+
+
+  return `/api/admin/pricing`
+}
+
+/**
+ * @summary Get the global usage-based pricing config (admin only)
+ */
+export const adminGetPricing = async ( options?: RequestInit): Promise<PricingConfig> => {
+
+  return customFetch<PricingConfig>(getAdminGetPricingUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetPricingQueryKey = () => {
+    return [
+    `/api/admin/pricing`
+    ] as const;
+    }
+
+
+export const getAdminGetPricingQueryOptions = <TData = Awaited<ReturnType<typeof adminGetPricing>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetPricing>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetPricingQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetPricing>>> = ({ signal }) => adminGetPricing({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetPricing>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetPricingQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetPricing>>>
+export type AdminGetPricingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the global usage-based pricing config (admin only)
+ */
+
+export function useAdminGetPricing<TData = Awaited<ReturnType<typeof adminGetPricing>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetPricing>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetPricingQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdatePricingUrl = () => {
+
+
+
+
+  return `/api/admin/pricing`
+}
+
+/**
+ * @summary Update the global usage-based pricing config (admin only)
+ */
+export const adminUpdatePricing = async (updatePricingInput: UpdatePricingInput, options?: RequestInit): Promise<PricingConfig> => {
+
+  return customFetch<PricingConfig>(getAdminUpdatePricingUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updatePricingInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdatePricingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePricing>>, TError,{data: BodyType<UpdatePricingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePricing>>, TError,{data: BodyType<UpdatePricingInput>}, TContext> => {
+
+const mutationKey = ['adminUpdatePricing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdatePricing>>, {data: BodyType<UpdatePricingInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminUpdatePricing(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdatePricingMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdatePricing>>>
+    export type AdminUpdatePricingMutationBody = BodyType<UpdatePricingInput>
+    export type AdminUpdatePricingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the global usage-based pricing config (admin only)
+ */
+export const useAdminUpdatePricing = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePricing>>, TError,{data: BodyType<UpdatePricingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdatePricing>>,
+        TError,
+        {data: BodyType<UpdatePricingInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdatePricingMutationOptions(options));
+    }
+
+export const getAdminListBillingUrl = () => {
+
+
+
+
+  return `/api/admin/billing`
+}
+
+/**
+ * @summary Per-tenant subscription, usage and computed monthly bill (admin only)
+ */
+export const adminListBilling = async ( options?: RequestInit): Promise<AdminTenantBilling[]> => {
+
+  return customFetch<AdminTenantBilling[]>(getAdminListBillingUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminListBillingQueryKey = () => {
+    return [
+    `/api/admin/billing`
+    ] as const;
+    }
+
+
+export const getAdminListBillingQueryOptions = <TData = Awaited<ReturnType<typeof adminListBilling>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminListBilling>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminListBillingQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminListBilling>>> = ({ signal }) => adminListBilling({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminListBilling>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminListBillingQueryResult = NonNullable<Awaited<ReturnType<typeof adminListBilling>>>
+export type AdminListBillingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Per-tenant subscription, usage and computed monthly bill (admin only)
+ */
+
+export function useAdminListBilling<TData = Awaited<ReturnType<typeof adminListBilling>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminListBilling>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminListBillingQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -27,6 +27,7 @@ import aiReviewRouter from "./ai-review";
 import customerLabelsRouter from "./customer-labels";
 import linkPreviewRouter from "./link-preview";
 import telegramWebhookRouter from "./webhooks-telegram";
+import billingRouter from "./billing";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -72,6 +73,7 @@ router.use("/ai-usage", aiUsageRouter);
 router.use("/ai-review", aiReviewRouter);
 router.use("/customer-labels", customerLabelsRouter);
 router.use("/link-preview", linkPreviewRouter);
+router.use("/billing", billingRouter);
 
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.

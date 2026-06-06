@@ -208,6 +208,103 @@ export const GetMyAiUsageResponse = zod.object({
 
 
 /**
+ * Returns the billing state of the caller's tenant. Team members (supervisor/agent) resolve to their owner, so the figures are always the owner's tenant-wide totals.
+ * @summary The signed-in user's tenant subscription, usage and computed monthly bill
+ */
+export const GetMyBillingResponse = zod.object({
+  "subscription": zod.object({
+  "status": zod.enum(['trial', 'active', 'expired', 'suspended']),
+  "currentPeriodEnd": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+}),
+  "usage": zod.object({
+  "storageBytes": zod.number().describe('Chat-storage footprint in bytes.'),
+  "childUserCount": zod.number().describe('Number of invited child users (parent excluded).'),
+  "channelCount": zod.number(),
+  "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
+}),
+  "pricing": zod.object({
+  "dbPricePer500Mb": zod.number().describe('Rupiah per 500 MB of chat storage per month.'),
+  "userPricePerUser": zod.number().describe('Rupiah per invited child user (supervisor\/agent) per month.'),
+  "channelPricePer2": zod.number().describe('Rupiah per 2 channels per month.'),
+  "aiPricePer100Tokens": zod.number().describe('Rupiah per 100 AI tokens per month.')
+}),
+  "breakdown": zod.object({
+  "dbCharge": zod.number(),
+  "userCharge": zod.number(),
+  "channelCharge": zod.number(),
+  "aiCharge": zod.number(),
+  "total": zod.number()
+})
+})
+
+
+/**
+ * @summary Get the global usage-based pricing config (admin only)
+ */
+export const AdminGetPricingResponse = zod.object({
+  "dbPricePer500Mb": zod.number().describe('Rupiah per 500 MB of chat storage per month.'),
+  "userPricePerUser": zod.number().describe('Rupiah per invited child user (supervisor\/agent) per month.'),
+  "channelPricePer2": zod.number().describe('Rupiah per 2 channels per month.'),
+  "aiPricePer100Tokens": zod.number().describe('Rupiah per 100 AI tokens per month.')
+})
+
+
+/**
+ * @summary Update the global usage-based pricing config (admin only)
+ */
+export const adminUpdatePricingBodyDbPricePer500MbMin = 0;
+
+export const adminUpdatePricingBodyUserPricePerUserMin = 0;
+
+export const adminUpdatePricingBodyChannelPricePer2Min = 0;
+
+export const adminUpdatePricingBodyAiPricePer100TokensMin = 0;
+
+
+
+export const AdminUpdatePricingBody = zod.object({
+  "dbPricePer500Mb": zod.number().min(adminUpdatePricingBodyDbPricePer500MbMin),
+  "userPricePerUser": zod.number().min(adminUpdatePricingBodyUserPricePerUserMin),
+  "channelPricePer2": zod.number().min(adminUpdatePricingBodyChannelPricePer2Min),
+  "aiPricePer100Tokens": zod.number().min(adminUpdatePricingBodyAiPricePer100TokensMin)
+})
+
+export const AdminUpdatePricingResponse = zod.object({
+  "dbPricePer500Mb": zod.number().describe('Rupiah per 500 MB of chat storage per month.'),
+  "userPricePerUser": zod.number().describe('Rupiah per invited child user (supervisor\/agent) per month.'),
+  "channelPricePer2": zod.number().describe('Rupiah per 2 channels per month.'),
+  "aiPricePer100Tokens": zod.number().describe('Rupiah per 100 AI tokens per month.')
+})
+
+
+/**
+ * @summary Per-tenant subscription, usage and computed monthly bill (admin only)
+ */
+export const AdminListBillingResponseItem = zod.object({
+  "userId": zod.number(),
+  "email": zod.string().email(),
+  "name": zod.string().nullish(),
+  "status": zod.enum(['trial', 'active', 'expired', 'suspended']),
+  "currentPeriodEnd": zod.coerce.date().nullish(),
+  "usage": zod.object({
+  "storageBytes": zod.number().describe('Chat-storage footprint in bytes.'),
+  "childUserCount": zod.number().describe('Number of invited child users (parent excluded).'),
+  "channelCount": zod.number(),
+  "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
+}),
+  "breakdown": zod.object({
+  "dbCharge": zod.number(),
+  "userCharge": zod.number(),
+  "channelCharge": zod.number(),
+  "aiCharge": zod.number(),
+  "total": zod.number()
+})
+})
+export const AdminListBillingResponse = zod.array(AdminListBillingResponseItem)
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

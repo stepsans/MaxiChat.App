@@ -1359,6 +1359,92 @@ export interface AiUsageSummary {
   requestCount: number;
 }
 
+export interface PricingConfig {
+  /** Rupiah per 500 MB of chat storage per month. */
+  dbPricePer500Mb: number;
+  /** Rupiah per invited child user (supervisor/agent) per month. */
+  userPricePerUser: number;
+  /** Rupiah per 2 channels per month. */
+  channelPricePer2: number;
+  /** Rupiah per 100 AI tokens per month. */
+  aiPricePer100Tokens: number;
+}
+
+export interface UpdatePricingInput {
+  /** @minimum 0 */
+  dbPricePer500Mb: number;
+  /** @minimum 0 */
+  userPricePerUser: number;
+  /** @minimum 0 */
+  channelPricePer2: number;
+  /** @minimum 0 */
+  aiPricePer100Tokens: number;
+}
+
+export interface BillingUsage {
+  /** Chat-storage footprint in bytes. */
+  storageBytes: number;
+  /** Number of invited child users (parent excluded). */
+  childUserCount: number;
+  channelCount: number;
+  /** AI tokens consumed in the current billing period. */
+  tokenUsage: number;
+}
+
+export interface BillBreakdown {
+  dbCharge: number;
+  userCharge: number;
+  channelCharge: number;
+  aiCharge: number;
+  total: number;
+}
+
+export type SubscriptionInfoStatus = typeof SubscriptionInfoStatus[keyof typeof SubscriptionInfoStatus];
+
+
+export const SubscriptionInfoStatus = {
+  trial: 'trial',
+  active: 'active',
+  expired: 'expired',
+  suspended: 'suspended',
+} as const;
+
+export interface SubscriptionInfo {
+  status: SubscriptionInfoStatus;
+  /** @nullable */
+  currentPeriodEnd: string | null;
+  createdAt: string;
+}
+
+export interface TenantBilling {
+  subscription: SubscriptionInfo;
+  usage: BillingUsage;
+  pricing: PricingConfig;
+  breakdown: BillBreakdown;
+}
+
+export type AdminTenantBillingStatus = typeof AdminTenantBillingStatus[keyof typeof AdminTenantBillingStatus];
+
+
+export const AdminTenantBillingStatus = {
+  trial: 'trial',
+  active: 'active',
+  expired: 'expired',
+  suspended: 'suspended',
+} as const;
+
+export interface AdminTenantBilling {
+  userId: number;
+  email: string;
+  /** @nullable */
+  name?: string | null;
+  status: AdminTenantBillingStatus;
+  /** @nullable */
+  currentPeriodEnd?: string | null;
+  usage: BillingUsage;
+  breakdown: BillBreakdown;
+}
+
 export interface AuthMeResponse {
   user: AuthUser | null;
 }

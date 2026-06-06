@@ -339,6 +339,98 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /billing/me:
+    get:
+      operationId: getMyBilling
+      tags: [billing]
+      summary: The signed-in user's tenant subscription, usage and computed monthly bill
+      description: >-
+        Returns the billing state of the caller's tenant. Team members
+        (supervisor/agent) resolve to their owner, so the figures are always the
+        owner's tenant-wide totals.
+      responses:
+        "200":
+          description: Current billing state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantBilling"
+        "404":
+          description: Tenant owner not found (e.g. account deleted mid-session)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/pricing:
+    get:
+      operationId: adminGetPricing
+      tags: [admin]
+      summary: Get the global usage-based pricing config (admin only)
+      responses:
+        "200":
+          description: Current pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingConfig"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: adminUpdatePricing
+      tags: [admin]
+      summary: Update the global usage-based pricing config (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePricingInput"
+      responses:
+        "200":
+          description: Updated pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingConfig"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/billing:
+    get:
+      operationId: adminListBilling
+      tags: [admin]
+      summary: Per-tenant subscription, usage and computed monthly bill (admin only)
+      responses:
+        "200":
+          description: Per-tenant billing
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminTenantBilling"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -4787,6 +4879,133 @@ components:
         requestCount:
           type: integer
           description: Number of AI completion calls in the period.
+
+    PricingConfig:
+      type: object
+      required:
+        [
+          dbPricePer500Mb,
+          userPricePerUser,
+          channelPricePer2,
+          aiPricePer100Tokens,
+        ]
+      properties:
+        dbPricePer500Mb:
+          type: integer
+          description: Rupiah per 500 MB of chat storage per month.
+        userPricePerUser:
+          type: integer
+          description: Rupiah per invited child user (supervisor/agent) per month.
+        channelPricePer2:
+          type: integer
+          description: Rupiah per 2 channels per month.
+        aiPricePer100Tokens:
+          type: integer
+          description: Rupiah per 100 AI tokens per month.
+
+    UpdatePricingInput:
+      type: object
+      required:
+        [
+          dbPricePer500Mb,
+          userPricePerUser,
+          channelPricePer2,
+          aiPricePer100Tokens,
+        ]
+      properties:
+        dbPricePer500Mb:
+          type: integer
+          minimum: 0
+        userPricePerUser:
+          type: integer
+          minimum: 0
+        channelPricePer2:
+          type: integer
+          minimum: 0
+        aiPricePer100Tokens:
+          type: integer
+          minimum: 0
+
+    BillingUsage:
+      type: object
+      required: [storageBytes, childUserCount, channelCount, tokenUsage]
+      properties:
+        storageBytes:
+          type: integer
+          format: int64
+          description: Chat-storage footprint in bytes.
+        childUserCount:
+          type: integer
+          description: Number of invited child users (parent excluded).
+        channelCount:
+          type: integer
+        tokenUsage:
+          type: integer
+          description: AI tokens consumed in the current billing period.
+
+    BillBreakdown:
+      type: object
+      required: [dbCharge, userCharge, channelCharge, aiCharge, total]
+      properties:
+        dbCharge:
+          type: integer
+        userCharge:
+          type: integer
+        channelCharge:
+          type: integer
+        aiCharge:
+          type: integer
+        total:
+          type: integer
+
+    SubscriptionInfo:
+      type: object
+      required: [status, currentPeriodEnd, createdAt]
+      properties:
+        status:
+          type: string
+          enum: [trial, active, expired, suspended]
+        currentPeriodEnd:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    TenantBilling:
+      type: object
+      required: [subscription, usage, pricing, breakdown]
+      properties:
+        subscription:
+          $ref: "#/components/schemas/SubscriptionInfo"
+        usage:
+          $ref: "#/components/schemas/BillingUsage"
+        pricing:
+          $ref: "#/components/schemas/PricingConfig"
+        breakdown:
+          $ref: "#/components/schemas/BillBreakdown"
+
+    AdminTenantBilling:
+      type: object
+      required: [userId, email, status, usage, breakdown]
+      properties:
+        userId:
+          type: integer
+        email:
+          type: string
+          format: email
+        name:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [trial, active, expired, suspended]
+        currentPeriodEnd:
+          type: ["string", "null"]
+          format: date-time
+        usage:
+          $ref: "#/components/schemas/BillingUsage"
+        breakdown:
+          $ref: "#/components/schemas/BillBreakdown"
 
     AuthMeResponse:
       type: object

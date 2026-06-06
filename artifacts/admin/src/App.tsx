@@ -1,15 +1,25 @@
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
-import { Loader2, ShieldAlert, LogOut, Users as UsersIcon, Cpu } from "lucide-react";
+import {
+  Loader2,
+  ShieldAlert,
+  LogOut,
+  Users as UsersIcon,
+  Cpu,
+  Tag,
+  Wallet,
+} from "lucide-react";
 import Login from "./pages/Login";
 import Users from "./pages/Users";
 import TokenUsage from "./pages/TokenUsage";
+import Pricing from "./pages/Pricing";
+import Billing from "./pages/Billing";
 import { useLogoutMutation } from "./lib/useLogoutMutation";
 
 const queryClient = new QueryClient();
 
-type AdminTab = "users" | "usage";
+type AdminTab = "users" | "usage" | "pricing" | "billing";
 
 function Shell() {
   const queryClientCtx = useQueryClient();
@@ -114,6 +124,8 @@ function Shell() {
         {(
           [
             { key: "users", label: "Manajemen User", Icon: UsersIcon },
+            { key: "billing", label: "Tagihan Tenant", Icon: Wallet },
+            { key: "pricing", label: "Harga Pemakaian", Icon: Tag },
             { key: "usage", label: "Pemakaian Token", Icon: Cpu },
           ] as const
         ).map(({ key, label, Icon }) => (
@@ -133,7 +145,10 @@ function Shell() {
         ))}
       </nav>
       <main className="flex-1 p-4 sm:p-6">
-        {tab === "users" ? <Users currentUserId={user.id} /> : <TokenUsage />}
+        {tab === "users" && <Users currentUserId={user.id} />}
+        {tab === "billing" && <Billing />}
+        {tab === "pricing" && <Pricing />}
+        {tab === "usage" && <TokenUsage />}
       </main>
     </div>
   );

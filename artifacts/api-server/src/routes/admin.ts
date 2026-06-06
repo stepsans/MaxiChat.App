@@ -8,6 +8,13 @@ import {
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { computeBillingPeriod } from "../lib/billing-period";
+import { AdminUpdatePricingBody } from "@workspace/api-zod";
+import {
+  getPricing,
+  updatePricing,
+  computeOwnerBill,
+  getOrCreateSubscription,
+} from "../lib/billing";
 
 // Serialize all role/status mutations through a single Postgres advisory
 // lock so the "must keep one active admin" invariant can't be violated by
@@ -314,6 +321,85 @@ router.get("/ai-usage", async (req, res): Promise<void> => {
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "adminAiUsage failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ----- Usage-based pricing (global singleton) -----
+
+router.get("/pricing", async (req, res): Promise<void> => {
+  try {
+    const pricing = await getPricing();
+    res.json(pricing);
+  } catch (err) {
+    req.log.error({ err }, "adminGetPricing failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/pricing", async (req, res): Promise<void> => {
+  try {
+    const parsed = AdminUpdatePricingBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Input tidak valid" });
+      return;
+    }
+    // Money is whole Indonesian Rupiah — reject any non-integer (or negative)
+    // value. The generated validator only checks number/min(0), so enforce the
+    // integer rule here at the API boundary.
+    const allInts = Object.values(parsed.data).every(
+      (v) => Number.isInteger(v) && v >= 0
+    );
+    if (!allInts) {
+      res
+        .status(400)
+        .json({ error: "Harga harus berupa angka bulat (Rupiah) ≥ 0" });
+      return;
+    }
+    const adminId = getSessionUserId(req) ?? null;
+    const pricing = await updatePricing(parsed.data, adminId);
+    res.json(pricing);
+  } catch (err) {
+    req.log.error({ err }, "adminUpdatePricing failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Per-tenant subscription, live usage and computed monthly bill. One row per
+// owner (parent_user_id IS NULL).
+router.get("/billing", async (req, res): Promise<void> => {
+  try {
+    const owners = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+      })
+      .from(usersTable)
+      .where(isNull(usersTable.parentUserId))
+      .orderBy(usersTable.id);
+
+    const rows = await Promise.all(
+      owners.map(async (o) => {
+        const [subscription, bill] = await Promise.all([
+          getOrCreateSubscription(o.id),
+          computeOwnerBill(o.id),
+        ]);
+        return {
+          userId: o.id,
+          email: o.email,
+          name: o.name ?? null,
+          status: subscription.status,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          usage: bill.usage,
+          breakdown: bill.breakdown,
+        };
+      })
+    );
+
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "adminListBilling failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

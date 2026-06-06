@@ -9,6 +9,7 @@ import {
   BarChart3,
   GitBranch,
   KeyRound,
+  Wallet,
   Users,
   Sparkles,
   Wifi,
@@ -107,6 +108,7 @@ const navGroups: NavGroup[] = [
     label: "Pengaturan",
     items: [
       { href: "/agents", label: "Agen & Tim", icon: Users, roles: ["super_admin", "supervisor", "agent"] },
+      { href: "/billing", label: "Langganan", icon: Wallet, roles: ["super_admin"] },
       { href: "/credentials", label: "Credentials", icon: KeyRound, menu: "credentials" },
       { href: "/settings", label: "Settings", icon: Settings, menu: "settings" },
     ],
