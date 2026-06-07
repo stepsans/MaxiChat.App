@@ -365,6 +365,22 @@ const PROFILE_PIC_TTL_SUCCESS_MS = 2 * 60 * 60 * 1000; // 2h — URL freshness
 const PROFILE_PIC_TTL_FAILURE_MS = 12 * 60 * 60 * 1000; // 12h — privacy/no-pic
 const profilePicInFlight = new Set<number>();
 
+// Whether a chat row is due for a profile-pic re-fetch. A row that already has
+// a (token-signed, expiring) URL is due after the success TTL — this is what
+// keeps cached URLs from going stale and 403-ing in the browser. Callers use
+// this to decide *which* rows to opportunistically refresh; `refreshChatProfilePic`
+// re-checks the same condition defensively.
+export function isProfilePicRefreshDue(chat: {
+  profilePicUrl: string | null;
+  profilePicCheckedAt: Date | null;
+}): boolean {
+  if (!chat.profilePicCheckedAt) return true;
+  const ttl = chat.profilePicUrl
+    ? PROFILE_PIC_TTL_SUCCESS_MS
+    : PROFILE_PIC_TTL_FAILURE_MS;
+  return Date.now() - chat.profilePicCheckedAt.getTime() >= ttl;
+}
+
 export async function refreshChatProfilePic(
   _userId: number,
   chat: {

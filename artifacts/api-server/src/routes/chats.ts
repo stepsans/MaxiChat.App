@@ -62,6 +62,7 @@ import {
   getSockForChannel,
   getOrCreateChat,
   refreshChatProfilePic,
+  isProfilePicRefreshDue,
   loadImageBuffer,
 } from "./whatsapp";
 import {
@@ -547,11 +548,19 @@ router.get("/", async (req, res): Promise<void> => {
       filtered = filtered.filter((c) => c.tag === tag);
     }
 
-    // Opportunistically refresh missing profile pictures in the background
-    // (throttled by PROFILE_PIC_TTL_MS inside the helper), so the UI gets
-    // them on the next poll without blocking this response.
+    // Opportunistically refresh profile pictures in the background so the UI
+    // gets them on the next poll without blocking this response. We refresh BOTH
+    // missing pics AND ones whose cached (token-signed) WhatsApp URL has gone
+    // stale — those expire and start 403-ing in the browser, which is why photos
+    // "disappear" from chats that previously had them. `isProfilePicRefreshDue`
+    // enforces the success/failure TTLs; a per-request budget caps how many
+    // Baileys fetches we kick off at once (e.g. right after a restart when many
+    // rows are simultaneously due) so we don't burst the WhatsApp servers.
+    let refreshBudget = 30;
     for (const c of filtered) {
-      if (!c.profilePicUrl) {
+      if (refreshBudget <= 0) break;
+      if (isProfilePicRefreshDue(c)) {
+        refreshBudget--;
         void refreshChatProfilePic(req.session.userId!, c).catch(() => {});
       }
     }
