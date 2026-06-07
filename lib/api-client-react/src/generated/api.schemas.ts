@@ -2222,6 +2222,8 @@ export interface FlowSummary {
   id: number;
   name: string;
   isActive: boolean;
+  /** Channels this flow is assigned to. Empty array = global (all of the owner's channels). */
+  channelIds: number[];
   updatedAt: string;
 }
 
@@ -2229,6 +2231,8 @@ export interface Flow {
   id: number;
   name: string;
   isActive: boolean;
+  /** Channels this flow is assigned to. Empty array = global (all of the owner's channels). */
+  channelIds: number[];
   graph: FlowGraph;
   createdAt: string;
   updatedAt: string;
@@ -2240,6 +2244,8 @@ export interface FlowCreateInput {
      * @maxLength 120
      */
   name: string;
+  /** Channels to assign the flow to. Omit or empty array = global (all of the owner's channels). */
+  channelIds?: number[];
 }
 
 export interface FlowUpdateInput {
@@ -2249,6 +2255,8 @@ export interface FlowUpdateInput {
      */
   name?: string;
   graph?: FlowGraph;
+  /** Channels to assign the flow to. Empty array = global. Omit to leave assignments unchanged. */
+  channelIds?: number[];
 }
 
 /**

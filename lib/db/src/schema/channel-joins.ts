@@ -10,6 +10,7 @@ import {
   knowledgeTable,
   textShortcutsTable,
 } from "./whatsapp";
+import { chatbotFlowsTable } from "./chatbot";
 
 // Opt-in channel scoping for super-admin-shared resources (products,
 // knowledge, shortcuts). Semantics:
@@ -81,8 +82,32 @@ export const textShortcutChannelsTable = pgTable(
   })
 );
 
+// Chatbot flows are owner-scoped and assigned to channels here. Same
+// semantics as the resource joins above: NO rows = global (the flow may run
+// on every channel the owner has); ONE OR MORE rows = scoped to those
+// channels only.
+export const chatbotFlowChannelsTable = pgTable(
+  "chatbot_flow_channels",
+  {
+    flowId: integer("flow_id")
+      .notNull()
+      .references(() => chatbotFlowsTable.id, { onDelete: "cascade" }),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channelsTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.flowId, t.channelId] }),
+  })
+);
+
 export type ProductChannelRow = typeof productChannelsTable.$inferSelect;
 export type KnowledgeEntryChannelRow =
   typeof knowledgeEntryChannelsTable.$inferSelect;
 export type TextShortcutChannelRow =
   typeof textShortcutChannelsTable.$inferSelect;
+export type ChatbotFlowChannelRow =
+  typeof chatbotFlowChannelsTable.$inferSelect;

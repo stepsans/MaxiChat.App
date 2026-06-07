@@ -23,7 +23,7 @@ import {
   useGetFlow,
   useUpdateFlow,
   useActivateFlow,
-  useDeactivateActiveFlow,
+  useDeactivateFlow,
   useListProducts,
   useListKnowledge,
   getGetFlowQueryKey,
@@ -422,7 +422,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     },
   });
 
-  const deactivate = useDeactivateActiveFlow({
+  const deactivate = useDeactivateFlow({
     mutation: {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetFlowQueryKey(flowId) });
@@ -499,7 +499,7 @@ function EditorInner({ flowId }: { flowId: number }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => deactivate.mutate()}
+            onClick={() => deactivate.mutate({ id: flowId })}
             disabled={deactivate.isPending}
             data-testid="button-deactivate"
           >

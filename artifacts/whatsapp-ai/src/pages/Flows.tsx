@@ -6,13 +6,15 @@ import {
   useCreateFlow,
   useDeleteFlow,
   useActivateFlow,
-  useDeactivateActiveFlow,
+  useDeactivateFlow,
+  useUpdateFlow,
   useResetFlowCooldown,
   getListFlowsQueryKey,
 } from "@workspace/api-client-react";
 import { Plus, Trash2, Power, PowerOff, Pencil, GitBranch, HelpCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 import {
   Dialog,
   DialogContent,
@@ -54,11 +56,22 @@ export default function Flows() {
       },
     },
   });
-  const deactivate = useDeactivateActiveFlow({
+  const deactivate = useDeactivateFlow({
     mutation: {
       onSuccess: () => {
         invalidate();
-        toast({ title: "Semua flow dinonaktifkan" });
+        toast({ title: "Flow dinonaktifkan" });
+      },
+    },
+  });
+  const update = useUpdateFlow({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        toast({ title: "Penempatan channel disimpan" });
+      },
+      onError: () => {
+        toast({ title: "Gagal menyimpan channel", variant: "destructive" });
       },
     },
   });
@@ -83,7 +96,8 @@ export default function Flows() {
         <div className="flex-1">
           <h1 className="text-lg font-semibold">Chatbot Flow</h1>
           <p className="text-xs text-muted-foreground">
-            Susun alur balasan otomatis. Hanya 1 flow yang aktif untuk semua chat.
+            Susun alur balasan otomatis. Maksimal 1 flow aktif per channel — flow
+            bisa dipasang ke beberapa channel sekaligus.
           </p>
         </div>
         {can.mutateFlows && (
@@ -150,64 +164,85 @@ export default function Flows() {
             {flows.map((f) => (
               <div
                 key={f.id}
-                className="border border-border rounded-lg p-4 flex items-center justify-between bg-card hover-elevate"
+                className="border border-border rounded-lg p-4 flex flex-col gap-3 bg-card hover-elevate"
                 data-testid={`row-flow-${f.id}`}
               >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={
-                      "inline-block w-2 h-2 rounded-full " +
-                      (f.isActive ? "bg-green-500" : "bg-muted-foreground/40")
-                    }
-                  />
-                  <div>
-                    <div className="font-medium">{f.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {f.isActive ? "Aktif" : "Nonaktif"} · diperbarui{" "}
-                      {new Date(f.updatedAt).toLocaleString("id-ID")}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={
+                        "inline-block w-2 h-2 rounded-full " +
+                        (f.isActive ? "bg-green-500" : "bg-muted-foreground/40")
+                      }
+                    />
+                    <div>
+                      <div className="font-medium">{f.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {f.isActive ? "Aktif" : "Nonaktif"} · diperbarui{" "}
+                        {new Date(f.updatedAt).toLocaleString("id-ID")}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Link href={`/flows/${f.id}`}>
+                      <Button variant="outline" size="sm" data-testid={`button-edit-${f.id}`}>
+                        <Pencil className="w-4 h-4 mr-1" /> {can.mutateFlows ? "Edit" : "Lihat"}
+                      </Button>
+                    </Link>
+                    {can.mutateFlows && (f.isActive ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={deactivate.isPending}
+                        onClick={() => deactivate.mutate({ id: f.id })}
+                        data-testid={`button-deactivate-${f.id}`}
+                      >
+                        <PowerOff className="w-4 h-4 mr-1" /> Nonaktifkan
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        disabled={activate.isPending}
+                        onClick={() => activate.mutate({ id: f.id })}
+                        data-testid={`button-activate-${f.id}`}
+                      >
+                        <Power className="w-4 h-4 mr-1" /> Aktifkan
+                      </Button>
+                    ))}
+                    {can.mutateFlows && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={remove.isPending}
+                        onClick={() => {
+                          if (confirm(`Hapus flow "${f.name}"?`)) {
+                            remove.mutate({ id: f.id });
+                          }
+                        }}
+                        data-testid={`button-delete-${f.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Link href={`/flows/${f.id}`}>
-                    <Button variant="outline" size="sm" data-testid={`button-edit-${f.id}`}>
-                      <Pencil className="w-4 h-4 mr-1" /> {can.mutateFlows ? "Edit" : "Lihat"}
-                    </Button>
-                  </Link>
-                  {can.mutateFlows && (f.isActive ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={deactivate.isPending}
-                      onClick={() => deactivate.mutate()}
-                      data-testid={`button-deactivate-${f.id}`}
-                    >
-                      <PowerOff className="w-4 h-4 mr-1" /> Nonaktifkan
-                    </Button>
+                <div className="flex items-center gap-2 border-t border-border pt-3">
+                  <span className="text-xs text-muted-foreground shrink-0">Channel:</span>
+                  {can.mutateFlows ? (
+                    <ChannelMultiSelect
+                      value={f.channelIds}
+                      onChange={(next) =>
+                        update.mutate({ id: f.id, data: { channelIds: next } })
+                      }
+                      disabled={update.isPending}
+                      testIdPrefix={`flow-channels-${f.id}`}
+                    />
                   ) : (
-                    <Button
-                      size="sm"
-                      disabled={activate.isPending}
-                      onClick={() => activate.mutate({ id: f.id })}
-                      data-testid={`button-activate-${f.id}`}
-                    >
-                      <Power className="w-4 h-4 mr-1" /> Aktifkan
-                    </Button>
-                  ))}
-                  {can.mutateFlows && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={remove.isPending}
-                      onClick={() => {
-                        if (confirm(`Hapus flow "${f.name}"?`)) {
-                          remove.mutate({ id: f.id });
-                        }
-                      }}
-                      data-testid={`button-delete-${f.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {f.channelIds.length === 0
+                        ? "Semua channel"
+                        : `${f.channelIds.length} channel`}
+                    </span>
                   )}
                 </div>
               </div>
@@ -241,8 +276,10 @@ function FlowGuideDialog({
             <h3 className="font-semibold text-base mb-2">1. Konsep Dasar</h3>
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                Hanya <b>1 flow</b> yang bisa aktif (titik hijau). Flow lain
-                otomatis dimatikan saat satu diaktifkan.
+                Setiap flow bisa dipasang ke <b>satu atau beberapa channel</b>
+                (kolom Channel). Kosong = <b>semua channel</b>. Maksimal{" "}
+                <b>1 flow aktif per channel</b> — mengaktifkan flow baru otomatis
+                mematikan flow lain yang memakai channel yang sama.
               </li>
               <li>
                 Setiap pesan masuk dicek ke flow <b>sebelum</b> dijawab AI.

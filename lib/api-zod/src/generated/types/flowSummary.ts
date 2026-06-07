@@ -10,5 +10,7 @@ export interface FlowSummary {
   id: number;
   name: string;
   isActive: boolean;
+  /** Channels this flow is assigned to. Empty array = global (all of the owner's channels). */
+  channelIds: number[];
   updatedAt: Date;
 }

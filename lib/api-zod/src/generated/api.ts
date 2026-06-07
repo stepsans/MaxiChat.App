@@ -2855,6 +2855,7 @@ export const ListFlowsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "isActive": zod.boolean(),
+  "channelIds": zod.array(zod.number()).describe('Channels this flow is assigned to. Empty array = global (all of the owner\'s channels).'),
   "updatedAt": zod.coerce.date()
 })
 export const ListFlowsResponse = zod.array(ListFlowsResponseItem)
@@ -2868,7 +2869,8 @@ export const createFlowBodyNameMax = 120;
 
 
 export const CreateFlowBody = zod.object({
-  "name": zod.string().min(1).max(createFlowBodyNameMax)
+  "name": zod.string().min(1).max(createFlowBodyNameMax),
+  "channelIds": zod.array(zod.number()).optional().describe('Channels to assign the flow to. Omit or empty array = global (all of the owner\'s channels).')
 })
 
 
@@ -2883,6 +2885,7 @@ export const GetFlowResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "isActive": zod.boolean(),
+  "channelIds": zod.array(zod.number()).describe('Channels this flow is assigned to. Empty array = global (all of the owner\'s channels).'),
   "graph": zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
@@ -2964,13 +2967,15 @@ export const UpdateFlowBody = zod.object({
   "target": zod.string(),
   "sourceHandle": zod.string().nullish()
 }))
-}).optional()
+}).optional(),
+  "channelIds": zod.array(zod.number()).optional().describe('Channels to assign the flow to. Empty array = global. Omit to leave assignments unchanged.')
 })
 
 export const UpdateFlowResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "isActive": zod.boolean(),
+  "channelIds": zod.array(zod.number()).describe('Channels this flow is assigned to. Empty array = global (all of the owner\'s channels).'),
   "graph": zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
@@ -3027,6 +3032,7 @@ export const ActivateFlowResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "isActive": zod.boolean(),
+  "channelIds": zod.array(zod.number()).describe('Channels this flow is assigned to. Empty array = global (all of the owner\'s channels).'),
   "graph": zod.object({
   "nodes": zod.array(zod.object({
   "id": zod.string(),
@@ -3061,6 +3067,14 @@ export const ActivateFlowResponse = zod.object({
 }),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Deactivate a specific flow
+ */
+export const DeactivateFlowParams = zod.object({
+  "id": zod.coerce.number()
 })
 
 

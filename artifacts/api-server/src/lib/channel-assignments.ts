@@ -5,6 +5,7 @@ import {
   productChannelsTable,
   knowledgeEntryChannelsTable,
   textShortcutChannelsTable,
+  chatbotFlowChannelsTable,
 } from "@workspace/db";
 
 // Join-table helpers for "Assigned to channels" on shared resources
@@ -19,7 +20,7 @@ import {
 // leaves the assignments untouched, passing `[]` makes the resource global,
 // passing `[id, ...]` replaces the assignment set.
 
-export type ResourceKind = "product" | "knowledge" | "shortcut";
+export type ResourceKind = "product" | "knowledge" | "shortcut" | "flow";
 
 // Verify every id in `channelIds` belongs to the owning user. Returns the
 // de-duplicated, validated list, or `null` if any id is foreign/unknown.
@@ -104,6 +105,17 @@ export async function replaceChannelAssignments(
         }
         break;
       }
+      case "flow": {
+        await tx
+          .delete(chatbotFlowChannelsTable)
+          .where(eq(chatbotFlowChannelsTable.flowId, resourceId));
+        if (verified.length > 0) {
+          await tx
+            .insert(chatbotFlowChannelsTable)
+            .values(verified.map((cid) => ({ flowId: resourceId, channelId: cid })));
+        }
+        break;
+      }
     }
   });
   return true;
@@ -146,6 +158,15 @@ export async function loadChannelIdsBatch(
         })
         .from(textShortcutChannelsTable)
         .where(inArray(textShortcutChannelsTable.shortcutId, resourceIds));
+      break;
+    case "flow":
+      rows = await db
+        .select({
+          rid: chatbotFlowChannelsTable.flowId,
+          cid: chatbotFlowChannelsTable.channelId,
+        })
+        .from(chatbotFlowChannelsTable)
+        .where(inArray(chatbotFlowChannelsTable.flowId, resourceIds));
       break;
   }
   for (const r of rows) {

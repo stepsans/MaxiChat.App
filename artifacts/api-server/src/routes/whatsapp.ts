@@ -13,6 +13,7 @@ import {
   settingsTable,
   whatsappStatusesTable,
   chatbotFlowsTable,
+  chatbotFlowChannelsTable,
   productsTable,
   channelsTable,
   type FlowGraph,
@@ -2314,13 +2315,16 @@ async function tryRunFlow(
 
   // Case A: chat is mid-flow at a question → try to advance.
   if (state && state.flowId && state.currentNodeId) {
+    // Flows are owner-scoped now; a chat mid-flow keeps running its flow as
+    // long as it still belongs to this owner (channel assignment can change
+    // underneath an in-progress conversation without aborting it).
     const [flowRow] = await db
       .select()
       .from(chatbotFlowsTable)
       .where(
         and(
           eq(chatbotFlowsTable.id, state.flowId),
-          eq(chatbotFlowsTable.channelId, channelId),
+          eq(chatbotFlowsTable.userId, userId),
         ),
       )
       .limit(1);
@@ -2414,17 +2418,41 @@ async function tryRunFlow(
     return true;
   }
 
-  // Case B: not in a flow → try to match a trigger from the active flow.
-  const [active] = await db
+  // Case B: not in a flow → try to match a trigger from the active flow that
+  // applies to THIS channel. Flows are owner-scoped and assigned to channels
+  // via chatbot_flow_channels (no rows = global / all channels). The activate
+  // endpoint guarantees at most one active flow per channel; we still prefer a
+  // flow explicitly assigned to this channel over a global one, defensively.
+  const activeFlows = await db
     .select()
     .from(chatbotFlowsTable)
     .where(
       and(
-        eq(chatbotFlowsTable.channelId, channelId),
+        eq(chatbotFlowsTable.userId, userId),
         eq(chatbotFlowsTable.isActive, true),
       ),
     )
-    .limit(1);
+    // Deterministic order so that, even in the (invariant-guarded) edge case
+    // where two active flows somehow apply to the same channel, the most
+    // recently updated one wins consistently rather than by DB row order.
+    .orderBy(desc(chatbotFlowsTable.updatedAt), desc(chatbotFlowsTable.id));
+  let active: (typeof activeFlows)[number] | undefined;
+  if (activeFlows.length > 0) {
+    const ids = activeFlows.map((f) => f.id);
+    const assignRows = await db
+      .select({
+        fid: chatbotFlowChannelsTable.flowId,
+        cid: chatbotFlowChannelsTable.channelId,
+      })
+      .from(chatbotFlowChannelsTable)
+      .where(inArray(chatbotFlowChannelsTable.flowId, ids));
+    const byFlow = new Map<number, Set<number>>();
+    for (const id of ids) byFlow.set(id, new Set());
+    for (const r of assignRows) byFlow.get(r.fid)?.add(r.cid);
+    active =
+      activeFlows.find((f) => byFlow.get(f.id)!.has(channelId)) ??
+      activeFlows.find((f) => byFlow.get(f.id)!.size === 0);
+  }
   if (!active) return false;
   const graph = active.graph as FlowGraph;
   const lower = text.toLowerCase();

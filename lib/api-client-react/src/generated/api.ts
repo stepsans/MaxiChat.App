@@ -10070,20 +10070,20 @@ export const useActivateFlow = <TError = ErrorType<void>,
       return useMutation(getActivateFlowMutationOptions(options));
     }
 
-export const getDeactivateActiveFlowUrl = () => {
+export const getDeactivateFlowUrl = (id: number,) => {
 
 
 
 
-  return `/api/flows/active/deactivate`
+  return `/api/flows/${id}/deactivate`
 }
 
 /**
- * @summary Deactivate whichever flow is currently active (none afterwards)
+ * @summary Deactivate a specific flow
  */
-export const deactivateActiveFlow = async ( options?: RequestInit): Promise<void> => {
+export const deactivateFlow = async (id: number, options?: RequestInit): Promise<void> => {
 
-  return customFetch<void>(getDeactivateActiveFlowUrl(),
+  return customFetch<void>(getDeactivateFlowUrl(id),
   {
     ...options,
     method: 'POST'
@@ -10095,11 +10095,11 @@ export const deactivateActiveFlow = async ( options?: RequestInit): Promise<void
 
 
 
-export const getDeactivateActiveFlowMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateActiveFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deactivateActiveFlow>>, TError,void, TContext> => {
+export const getDeactivateFlowMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateFlow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deactivateFlow>>, TError,{id: number}, TContext> => {
 
-const mutationKey = ['deactivateActiveFlow'];
+const mutationKey = ['deactivateFlow'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -10109,10 +10109,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deactivateActiveFlow>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deactivateFlow>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
 
-
-          return  deactivateActiveFlow(requestOptions)
+          return  deactivateFlow(id,requestOptions)
         }
 
 
@@ -10122,22 +10122,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type DeactivateActiveFlowMutationResult = NonNullable<Awaited<ReturnType<typeof deactivateActiveFlow>>>
+    export type DeactivateFlowMutationResult = NonNullable<Awaited<ReturnType<typeof deactivateFlow>>>
 
-    export type DeactivateActiveFlowMutationError = ErrorType<unknown>
+    export type DeactivateFlowMutationError = ErrorType<void>
 
     /**
- * @summary Deactivate whichever flow is currently active (none afterwards)
+ * @summary Deactivate a specific flow
  */
-export const useDeactivateActiveFlow = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateActiveFlow>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useDeactivateFlow = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateFlow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof deactivateActiveFlow>>,
+        Awaited<ReturnType<typeof deactivateFlow>>,
         TError,
-        void,
+        {id: number},
         TContext
       > => {
-      return useMutation(getDeactivateActiveFlowMutationOptions(options));
+      return useMutation(getDeactivateFlowMutationOptions(options));
     }
 
 export const getGetPermissionMatrixUrl = () => {

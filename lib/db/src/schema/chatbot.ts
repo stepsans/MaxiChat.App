@@ -6,42 +6,32 @@ import {
   integer,
   jsonb,
   timestamp,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
-import { channelsTable } from "./channels";
+import { usersTable } from "./auth";
 
-// Visual chatbot flow graph. Each channel may have multiple flows but at
-// most one row with is_active=true. Enforced by a partial unique index plus
-// transactional swap in the activate endpoint.
-export const chatbotFlowsTable = pgTable(
-  "chatbot_flows",
-  {
-    id: serial("id").primaryKey(),
-    channelId: integer("channel_id")
-      .notNull()
-      .references(() => channelsTable.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    isActive: boolean("is_active").notNull().default(false),
-    // { nodes: FlowNode[], edges: FlowEdge[] } — see flowGraphSchema below.
-    graph: jsonb("graph").notNull().default({ nodes: [], edges: [] }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (t) => ({
-    // At most one active flow per channel.
-    chatbotFlowsChannelActiveUnique: uniqueIndex(
-      "chatbot_flows_channel_active_unique"
-    )
-      .on(t.channelId)
-      .where(sql`${t.isActive}`),
-  })
-);
+// Visual chatbot flow graph. Flows are OWNER-scoped (a super-admin's account)
+// and assigned to one or more channels via the chatbot_flow_channels join
+// table (empty assignment = global, i.e. every channel the owner has). At most
+// one ACTIVE flow may apply to any given channel — this is enforced by the
+// overlap-aware transactional swap in the activate endpoint (a global active
+// flow overlaps every channel and so excludes all others).
+export const chatbotFlowsTable = pgTable("chatbot_flows", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(false),
+  // { nodes: FlowNode[], edges: FlowEdge[] } — see flowGraphSchema below.
+  graph: jsonb("graph").notNull().default({ nodes: [], edges: [] }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
 
 export type ChatbotFlowRow = typeof chatbotFlowsTable.$inferSelect;
 

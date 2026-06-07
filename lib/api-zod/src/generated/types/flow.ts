@@ -11,6 +11,8 @@ export interface Flow {
   id: number;
   name: string;
   isActive: boolean;
+  /** Channels this flow is assigned to. Empty array = global (all of the owner's channels). */
+  channelIds: number[];
   graph: FlowGraph;
   createdAt: Date;
   updatedAt: Date;

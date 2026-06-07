@@ -14,4 +14,6 @@ export interface FlowUpdateInput {
      */
   name?: string;
   graph?: FlowGraph;
+  /** Channels to assign the flow to. Empty array = global. Omit to leave assignments unchanged. */
+  channelIds?: number[];
 }

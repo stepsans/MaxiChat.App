@@ -2851,13 +2851,19 @@ paths:
                 $ref: "#/components/schemas/Flow"
         "404": { description: Not found }
 
-  /flows/active/deactivate:
+  /flows/{id}/deactivate:
     post:
-      operationId: deactivateActiveFlow
+      operationId: deactivateFlow
       tags: [flows]
-      summary: Deactivate whichever flow is currently active (none afterwards)
+      summary: Deactivate a specific flow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
       responses:
         "204": { description: Deactivated }
+        "404": { description: Not found }
 
   /permissions:
     get:
@@ -5758,20 +5764,30 @@ components:
 
     FlowSummary:
       type: object
-      required: [id, name, isActive, updatedAt]
+      required: [id, name, isActive, channelIds, updatedAt]
       properties:
         id: { type: integer }
         name: { type: string }
         isActive: { type: boolean }
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Channels this flow is assigned to. Empty array = global (all of the owner's channels)."
         updatedAt: { type: string, format: date-time }
 
     Flow:
       type: object
-      required: [id, name, isActive, graph, createdAt, updatedAt]
+      required: [id, name, isActive, channelIds, graph, createdAt, updatedAt]
       properties:
         id: { type: integer }
         name: { type: string }
         isActive: { type: boolean }
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Channels this flow is assigned to. Empty array = global (all of the owner's channels)."
         graph: { $ref: "#/components/schemas/FlowGraph" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -5784,6 +5800,11 @@ components:
           type: string
           minLength: 1
           maxLength: 120
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Channels to assign the flow to. Omit or empty array = global (all of the owner's channels)."
 
     FlowUpdateInput:
       type: object
@@ -5794,6 +5815,11 @@ components:
           maxLength: 120
         graph:
           $ref: "#/components/schemas/FlowGraph"
+        channelIds:
+          type: array
+          items:
+            type: integer
+          description: "Channels to assign the flow to. Empty array = global. Omit to leave assignments unchanged."
 
     ChannelKind:
       type: string

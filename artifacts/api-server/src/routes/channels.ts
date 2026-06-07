@@ -7,7 +7,6 @@ import {
   chatsTable,
   whatsappStatusesTable,
   settingsTable,
-  chatbotFlowsTable,
 } from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "../lib/auth";
 import { loadOwnedChannel, listOwnedChannels } from "../lib/channel-context";
@@ -574,7 +573,11 @@ router.delete("/:id", requirePermission("channels", "delete"), async (req, res):
     await db.delete(chatsTable).where(eq(chatsTable.channelId, id));
     await db.delete(whatsappStatusesTable).where(eq(whatsappStatusesTable.channelId, id));
     await db.delete(settingsTable).where(eq(settingsTable.channelId, id));
-    await db.delete(chatbotFlowsTable).where(eq(chatbotFlowsTable.channelId, id));
+    // Flows are owner-scoped now and survive channel deletion (like products /
+    // knowledge / shortcuts). The chatbot_flow_channels join rows cascade off
+    // channels via their own FK, so deleting the channel below just unassigns
+    // the flow from this channel without destroying the flow itself.
+    //
     // channel_products / channel_knowledge / channel_text_shortcuts join
     // tables cascade off channels via their own FKs, so the row delete
     // below also cleans those up.

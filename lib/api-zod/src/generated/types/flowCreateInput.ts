@@ -12,4 +12,6 @@ export interface FlowCreateInput {
      * @maxLength 120
      */
   name: string;
+  /** Channels to assign the flow to. Omit or empty array = global (all of the owner's channels). */
+  channelIds?: number[];
 }
