@@ -28,6 +28,7 @@ import aiReviewRouter from "./ai-review";
 import customerLabelsRouter from "./customer-labels";
 import linkPreviewRouter from "./link-preview";
 import telegramWebhookRouter from "./webhooks-telegram";
+import xenditWebhookRouter from "./webhooks-xendit";
 import billingRouter from "./billing";
 import { requireAuth, requireAdmin } from "../lib/auth";
 import { enforceSubscription } from "../lib/enforce-subscription";
@@ -40,6 +41,9 @@ router.use("/auth", authRouter);
 // Telegram webhook receiver — authenticated by the per-channel secret in
 // the X-Telegram-Bot-Api-Secret-Token header rather than by session.
 router.use("/webhooks/telegram", telegramWebhookRouter);
+// Xendit payment webhook — authenticated by the static x-callback-token header
+// (XENDIT_CALLBACK_TOKEN) rather than by session.
+router.use("/webhooks/xendit", xenditWebhookRouter);
 
 // Everything below requires a signed-in session.
 router.use(requireAuth);

@@ -1644,6 +1644,107 @@ export interface OwnerTrend {
   trend: RevenueTrendPoint[];
 }
 
+export interface BillingCatalog {
+  /** Active plans, ordered by sortOrder. */
+  plans: Plan[];
+  /** Active add-ons / top-ups, ordered by sortOrder. */
+  addons: Addon[];
+}
+
+export interface TenantQuotaInfo {
+  /**
+     * Currently active plan id (null if none purchased yet).
+     * @nullable
+     */
+  planId: number | null;
+  /** @nullable */
+  planKey: string | null;
+  /** @nullable */
+  planName: string | null;
+  /** AI-token plafon for the period (plan baseline + add-on top-ups). */
+  tokenLimit: number;
+  channelLimit: number;
+  userLimit: number;
+  /** @nullable */
+  periodStart: string | null;
+  /** @nullable */
+  periodEnd: string | null;
+  usage: BillingUsage;
+}
+
+/**
+ * Whether the purchase is a plan or an add-on top-up.
+ */
+export type CheckoutInputKind = typeof CheckoutInputKind[keyof typeof CheckoutInputKind];
+
+
+export const CheckoutInputKind = {
+  plan: 'plan',
+  addon: 'addon',
+} as const;
+
+export interface CheckoutInput {
+  /** Whether the purchase is a plan or an add-on top-up. */
+  kind: CheckoutInputKind;
+  /** plans.id when kind=plan, addons.id when kind=addon. */
+  refId: number;
+  /**
+     * Units to buy (add-ons only; plans are always 1). Default 1.
+     * @minimum 1
+     * @maximum 1000
+     */
+  quantity?: number;
+  /** Absolute URL to return the tenant to after a successful payment. Must be on an allowed app host; ignored otherwise. */
+  successRedirectUrl?: string;
+}
+
+export interface CheckoutResult {
+  paymentId: number;
+  /** Hosted Xendit checkout page to redirect the tenant to. */
+  invoiceUrl: string;
+  /** Xendit invoice id stored for webhook reconciliation. */
+  externalId: string;
+  /** Charged amount in whole Rupiah (computed server-side). */
+  amountIdr: number;
+}
+
+export type PaymentRecordKind = typeof PaymentRecordKind[keyof typeof PaymentRecordKind];
+
+
+export const PaymentRecordKind = {
+  plan: 'plan',
+  addon: 'addon',
+  renewal: 'renewal',
+} as const;
+
+export type PaymentRecordStatus = typeof PaymentRecordStatus[keyof typeof PaymentRecordStatus];
+
+
+export const PaymentRecordStatus = {
+  pending: 'pending',
+  paid: 'paid',
+  expired: 'expired',
+  failed: 'failed',
+} as const;
+
+export interface PaymentRecord {
+  id: number;
+  kind: PaymentRecordKind;
+  /** @nullable */
+  refId: number | null;
+  quantity: number;
+  amountIdr: number;
+  status: PaymentRecordStatus;
+  provider: string;
+  /** @nullable */
+  externalId: string | null;
+  /** @nullable */
+  invoiceUrl: string | null;
+  /** @nullable */
+  paidAt: string | null;
+  createdAt: string;
+}
+
 export interface RevenueSummary {
   /** Monthly recurring revenue — sum of latest snapshot total for effective-active owners. */
   mrr: number;

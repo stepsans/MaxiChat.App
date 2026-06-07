@@ -479,6 +479,104 @@ export const GetMyBillingTrendResponse = zod.object({
 
 
 /**
+ * The self-serve catalog: only active plans and add-ons, ordered by sortOrder. Used by the tenant dashboard to render checkout options.
+ * @summary Active plans and add-ons the tenant can purchase
+ */
+export const GetBillingCatalogResponse = zod.object({
+  "plans": zod.array(zod.object({
+  "id": zod.number(),
+  "key": zod.string().describe('Stable machine key; matches users.plan. Cannot be changed after creation.'),
+  "name": zod.string(),
+  "description": zod.string().nullable(),
+  "priceIdr": zod.number().describe('Prepaid price for one period, in whole Rupiah.'),
+  "durationDays": zod.number().describe('How many days one paid period lasts.'),
+  "quotaUsers": zod.number().describe('Included team-member seats (parent excluded).'),
+  "quotaChannels": zod.number().describe('Included channels.'),
+  "quotaTokens": zod.number().describe('Included AI tokens per period.'),
+  "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).describe('Active plans, ordered by sortOrder.'),
+  "addons": zod.array(zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['token', 'channel', 'user_seat']).describe('What this add-on tops up.'),
+  "name": zod.string(),
+  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).'),
+  "priceIdr": zod.number().describe('Price for one unit, in whole Rupiah.'),
+  "isActive": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).describe('Active add-ons \/ top-ups, ordered by sortOrder.')
+})
+
+
+/**
+ * Returns the caller tenant's quota limits (plan baseline + add-on top-ups) alongside live usage. Team members resolve to their owner.
+ * @summary The tenant's current prepaid limits (plafon) and live usage
+ */
+export const GetMyQuotaResponse = zod.object({
+  "planId": zod.number().nullable().describe('Currently active plan id (null if none purchased yet).'),
+  "planKey": zod.string().nullable(),
+  "planName": zod.string().nullable(),
+  "tokenLimit": zod.number().describe('AI-token plafon for the period (plan baseline + add-on top-ups).'),
+  "channelLimit": zod.number(),
+  "userLimit": zod.number(),
+  "periodStart": zod.coerce.date().nullable(),
+  "periodEnd": zod.coerce.date().nullable(),
+  "usage": zod.object({
+  "storageBytes": zod.number().describe('Chat-storage footprint in bytes.'),
+  "childUserCount": zod.number().describe('Number of invited child users (parent excluded).'),
+  "channelCount": zod.number(),
+  "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
+})
+})
+
+
+/**
+ * Creates a pending payment and a hosted Xendit invoice, returning the invoice URL to redirect the tenant to. The amount is computed server-side from the catalog — the client never sends a price. Reachable even by an expired tenant so they can renew.
+ * @summary Start a Xendit checkout for a plan or add-on purchase
+ */
+export const createCheckoutBodyQuantityMax = 1000;
+
+
+
+export const CreateCheckoutBody = zod.object({
+  "kind": zod.enum(['plan', 'addon']).describe('Whether the purchase is a plan or an add-on top-up.'),
+  "refId": zod.number().describe('plans.id when kind=plan, addons.id when kind=addon.'),
+  "quantity": zod.number().min(1).max(createCheckoutBodyQuantityMax).optional().describe('Units to buy (add-ons only; plans are always 1). Default 1.'),
+  "successRedirectUrl": zod.string().optional().describe('Absolute URL to return the tenant to after a successful payment. Must be on an allowed app host; ignored otherwise.')
+})
+
+export const CreateCheckoutResponse = zod.object({
+  "paymentId": zod.number(),
+  "invoiceUrl": zod.string().describe('Hosted Xendit checkout page to redirect the tenant to.'),
+  "externalId": zod.string().describe('Xendit invoice id stored for webhook reconciliation.'),
+  "amountIdr": zod.number().describe('Charged amount in whole Rupiah (computed server-side).')
+})
+
+
+/**
+ * @summary The tenant's payment / purchase history (newest first)
+ */
+export const ListMyPaymentsResponseItem = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['plan', 'addon', 'renewal']),
+  "refId": zod.number().nullable(),
+  "quantity": zod.number(),
+  "amountIdr": zod.number(),
+  "status": zod.enum(['pending', 'paid', 'expired', 'failed']),
+  "provider": zod.string(),
+  "externalId": zod.string().nullable(),
+  "invoiceUrl": zod.string().nullable(),
+  "paidAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+export const ListMyPaymentsResponse = zod.array(ListMyPaymentsResponseItem)
+
+
+/**
  * @summary Get the global usage-based pricing config (admin only)
  */
 export const AdminGetPricingResponse = zod.object({

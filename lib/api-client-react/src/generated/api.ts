@@ -43,6 +43,7 @@ import type {
   AuthMeResponse,
   AuthUser,
   AutoReplyUpdate,
+  BillingCatalog,
   Channel,
   ChannelCreate,
   ChannelPairQr,
@@ -55,6 +56,8 @@ import type {
   ChatMessage,
   ChatUpdate,
   ChatWithMessages,
+  CheckoutInput,
+  CheckoutResult,
   CommonGroups,
   CommonQuestion,
   ContactsStatus,
@@ -117,6 +120,7 @@ import type {
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
   OwnerTrend,
+  PaymentRecord,
   PermissionMatrix,
   PinMessageBody,
   Plan,
@@ -165,6 +169,7 @@ import type {
   TeamSettingsResponse,
   TelegramConnect,
   TenantBilling,
+  TenantQuotaInfo,
   TextShortcut,
   TextShortcutInput,
   UpdateAddonInput,
@@ -1806,6 +1811,311 @@ export function useGetMyBillingTrend<TData = Awaited<ReturnType<typeof getMyBill
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMyBillingTrendQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetBillingCatalogUrl = () => {
+
+
+
+
+  return `/api/billing/catalog`
+}
+
+/**
+ * The self-serve catalog: only active plans and add-ons, ordered by sortOrder. Used by the tenant dashboard to render checkout options.
+ * @summary Active plans and add-ons the tenant can purchase
+ */
+export const getBillingCatalog = async ( options?: RequestInit): Promise<BillingCatalog> => {
+
+  return customFetch<BillingCatalog>(getGetBillingCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBillingCatalogQueryKey = () => {
+    return [
+    `/api/billing/catalog`
+    ] as const;
+    }
+
+
+export const getGetBillingCatalogQueryOptions = <TData = Awaited<ReturnType<typeof getBillingCatalog>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBillingCatalogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBillingCatalog>>> = ({ signal }) => getBillingCatalog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBillingCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBillingCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof getBillingCatalog>>>
+export type GetBillingCatalogQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Active plans and add-ons the tenant can purchase
+ */
+
+export function useGetBillingCatalog<TData = Awaited<ReturnType<typeof getBillingCatalog>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBillingCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyQuotaUrl = () => {
+
+
+
+
+  return `/api/billing/quota`
+}
+
+/**
+ * Returns the caller tenant's quota limits (plan baseline + add-on top-ups) alongside live usage. Team members resolve to their owner.
+ * @summary The tenant's current prepaid limits (plafon) and live usage
+ */
+export const getMyQuota = async ( options?: RequestInit): Promise<TenantQuotaInfo> => {
+
+  return customFetch<TenantQuotaInfo>(getGetMyQuotaUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyQuotaQueryKey = () => {
+    return [
+    `/api/billing/quota`
+    ] as const;
+    }
+
+
+export const getGetMyQuotaQueryOptions = <TData = Awaited<ReturnType<typeof getMyQuota>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyQuota>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyQuotaQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyQuota>>> = ({ signal }) => getMyQuota({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyQuota>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyQuotaQueryResult = NonNullable<Awaited<ReturnType<typeof getMyQuota>>>
+export type GetMyQuotaQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The tenant's current prepaid limits (plafon) and live usage
+ */
+
+export function useGetMyQuota<TData = Awaited<ReturnType<typeof getMyQuota>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyQuota>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyQuotaQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateCheckoutUrl = () => {
+
+
+
+
+  return `/api/billing/checkout`
+}
+
+/**
+ * Creates a pending payment and a hosted Xendit invoice, returning the invoice URL to redirect the tenant to. The amount is computed server-side from the catalog — the client never sends a price. Reachable even by an expired tenant so they can renew.
+ * @summary Start a Xendit checkout for a plan or add-on purchase
+ */
+export const createCheckout = async (checkoutInput: CheckoutInput, options?: RequestInit): Promise<CheckoutResult> => {
+
+  return customFetch<CheckoutResult>(getCreateCheckoutUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      checkoutInput,)
+  }
+);}
+
+
+
+
+export const getCreateCheckoutMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCheckout>>, TError,{data: BodyType<CheckoutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCheckout>>, TError,{data: BodyType<CheckoutInput>}, TContext> => {
+
+const mutationKey = ['createCheckout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCheckout>>, {data: BodyType<CheckoutInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCheckout(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCheckoutMutationResult = NonNullable<Awaited<ReturnType<typeof createCheckout>>>
+    export type CreateCheckoutMutationBody = BodyType<CheckoutInput>
+    export type CreateCheckoutMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Start a Xendit checkout for a plan or add-on purchase
+ */
+export const useCreateCheckout = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCheckout>>, TError,{data: BodyType<CheckoutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCheckout>>,
+        TError,
+        {data: BodyType<CheckoutInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCheckoutMutationOptions(options));
+    }
+
+export const getListMyPaymentsUrl = () => {
+
+
+
+
+  return `/api/billing/payments`
+}
+
+/**
+ * @summary The tenant's payment / purchase history (newest first)
+ */
+export const listMyPayments = async ( options?: RequestInit): Promise<PaymentRecord[]> => {
+
+  return customFetch<PaymentRecord[]>(getListMyPaymentsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMyPaymentsQueryKey = () => {
+    return [
+    `/api/billing/payments`
+    ] as const;
+    }
+
+
+export const getListMyPaymentsQueryOptions = <TData = Awaited<ReturnType<typeof listMyPayments>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyPayments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMyPaymentsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMyPayments>>> = ({ signal }) => listMyPayments({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMyPayments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMyPaymentsQueryResult = NonNullable<Awaited<ReturnType<typeof listMyPayments>>>
+export type ListMyPaymentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The tenant's payment / purchase history (newest first)
+ */
+
+export function useListMyPayments<TData = Awaited<ReturnType<typeof listMyPayments>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyPayments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMyPaymentsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

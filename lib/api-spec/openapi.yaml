@@ -637,6 +637,101 @@ paths:
               schema:
                 $ref: "#/components/schemas/OwnerTrend"
 
+  /billing/catalog:
+    get:
+      operationId: getBillingCatalog
+      tags: [billing]
+      summary: Active plans and add-ons the tenant can purchase
+      description: >-
+        The self-serve catalog: only active plans and add-ons, ordered by
+        sortOrder. Used by the tenant dashboard to render checkout options.
+      responses:
+        "200":
+          description: Purchasable plans and add-ons
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingCatalog"
+
+  /billing/quota:
+    get:
+      operationId: getMyQuota
+      tags: [billing]
+      summary: The tenant's current prepaid limits (plafon) and live usage
+      description: >-
+        Returns the caller tenant's quota limits (plan baseline + add-on
+        top-ups) alongside live usage. Team members resolve to their owner.
+      responses:
+        "200":
+          description: Current quota limits and usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantQuotaInfo"
+        "404":
+          description: Tenant owner not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /billing/checkout:
+    post:
+      operationId: createCheckout
+      tags: [billing]
+      summary: Start a Xendit checkout for a plan or add-on purchase
+      description: >-
+        Creates a pending payment and a hosted Xendit invoice, returning the
+        invoice URL to redirect the tenant to. The amount is computed
+        server-side from the catalog — the client never sends a price. Reachable
+        even by an expired tenant so they can renew.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutInput"
+      responses:
+        "200":
+          description: Checkout created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Plan or add-on not found / inactive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Payment gateway not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /billing/payments:
+    get:
+      operationId: listMyPayments
+      tags: [billing]
+      summary: The tenant's payment / purchase history (newest first)
+      responses:
+        "200":
+          description: Payment ledger for the caller's tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PaymentRecord"
+
   /admin/pricing:
     get:
       operationId: adminGetPricing
@@ -5602,6 +5697,141 @@ components:
           description: The caller tenant's daily spend, oldest-first.
           items:
             $ref: "#/components/schemas/RevenueTrendPoint"
+
+    BillingCatalog:
+      type: object
+      required: [plans, addons]
+      properties:
+        plans:
+          type: array
+          description: Active plans, ordered by sortOrder.
+          items:
+            $ref: "#/components/schemas/Plan"
+        addons:
+          type: array
+          description: Active add-ons / top-ups, ordered by sortOrder.
+          items:
+            $ref: "#/components/schemas/Addon"
+
+    TenantQuotaInfo:
+      type: object
+      required:
+        [
+          planId,
+          planKey,
+          planName,
+          tokenLimit,
+          channelLimit,
+          userLimit,
+          periodStart,
+          periodEnd,
+          usage,
+        ]
+      properties:
+        planId:
+          type: ["integer", "null"]
+          description: Currently active plan id (null if none purchased yet).
+        planKey:
+          type: ["string", "null"]
+        planName:
+          type: ["string", "null"]
+        tokenLimit:
+          type: integer
+          description: AI-token plafon for the period (plan baseline + add-on top-ups).
+        channelLimit:
+          type: integer
+        userLimit:
+          type: integer
+        periodStart:
+          type: ["string", "null"]
+          format: date-time
+        periodEnd:
+          type: ["string", "null"]
+          format: date-time
+        usage:
+          $ref: "#/components/schemas/BillingUsage"
+
+    CheckoutInput:
+      type: object
+      required: [kind, refId]
+      properties:
+        kind:
+          type: string
+          enum: [plan, addon]
+          description: Whether the purchase is a plan or an add-on top-up.
+        refId:
+          type: integer
+          description: plans.id when kind=plan, addons.id when kind=addon.
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: Units to buy (add-ons only; plans are always 1). Default 1.
+        successRedirectUrl:
+          type: string
+          description: >-
+            Absolute URL to return the tenant to after a successful payment.
+            Must be on an allowed app host; ignored otherwise.
+
+    CheckoutResult:
+      type: object
+      required: [paymentId, invoiceUrl, externalId, amountIdr]
+      properties:
+        paymentId:
+          type: integer
+        invoiceUrl:
+          type: string
+          description: Hosted Xendit checkout page to redirect the tenant to.
+        externalId:
+          type: string
+          description: Xendit invoice id stored for webhook reconciliation.
+        amountIdr:
+          type: integer
+          description: Charged amount in whole Rupiah (computed server-side).
+
+    PaymentRecord:
+      type: object
+      required:
+        [
+          id,
+          kind,
+          refId,
+          quantity,
+          amountIdr,
+          status,
+          provider,
+          externalId,
+          invoiceUrl,
+          paidAt,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum: [plan, addon, renewal]
+        refId:
+          type: ["integer", "null"]
+        quantity:
+          type: integer
+        amountIdr:
+          type: integer
+        status:
+          type: string
+          enum: [pending, paid, expired, failed]
+        provider:
+          type: string
+        externalId:
+          type: ["string", "null"]
+        invoiceUrl:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
 
     RevenueSummary:
       type: object
