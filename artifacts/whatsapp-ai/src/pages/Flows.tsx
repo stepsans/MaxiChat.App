@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,9 +9,11 @@ import {
   useDeactivateFlow,
   useUpdateFlow,
   useResetFlowCooldown,
+  useImportFlow,
+  getFlow,
   getListFlowsQueryKey,
 } from "@workspace/api-client-react";
-import { Plus, Trash2, Power, PowerOff, Pencil, GitBranch, HelpCircle, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, Pencil, GitBranch, HelpCircle, RefreshCw, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
@@ -32,6 +34,8 @@ export default function Flows() {
   const { data: flows, isLoading } = useListFlows();
   const [name, setName] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
+  const [exportingId, setExportingId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: getListFlowsQueryKey() });
@@ -88,6 +92,91 @@ export default function Flows() {
       },
     },
   });
+  const importFlowMut = useImportFlow({
+    mutation: {
+      onSuccess: (f) => {
+        invalidate();
+        toast({
+          title: "Flow diimpor",
+          description: `"${f.name}" berhasil dipulihkan (nonaktif). Aktifkan & pasang channel jika perlu.`,
+        });
+      },
+      onError: () => {
+        toast({
+          title: "Gagal impor flow",
+          description: "File tidak valid atau bukan ekspor flow MaxiChat.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  // Export pulls the full graph (the list only carries summaries) then
+  // downloads a self-describing JSON envelope the import side recognizes.
+  async function handleExport(id: number, flowName: string) {
+    setExportingId(id);
+    try {
+      const full = await getFlow(id);
+      const envelope = {
+        app: "maxichat",
+        kind: "chatbot-flow",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        name: full.name,
+        graph: full.graph,
+      };
+      const blob = new Blob([JSON.stringify(envelope, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const safe = flowName.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 40) || "flow";
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `maxichat-flow-${safe}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Gagal ekspor flow", variant: "destructive" });
+    } finally {
+      setExportingId(null);
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      toast({
+        title: "Gagal impor flow",
+        description: "File bukan JSON yang valid.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const obj = parsed as Record<string, unknown>;
+    // Accept either our export envelope or a bare flow object that carries a graph.
+    const rawGraph = (obj?.["graph"] ?? obj) as Record<string, unknown> | undefined;
+    const nodes = rawGraph?.["nodes"];
+    const edges = rawGraph?.["edges"];
+    if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+      toast({
+        title: "Gagal impor flow",
+        description: "File tidak berisi graph flow yang valid.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const importedName =
+      typeof obj?.["name"] === "string" && obj["name"].trim()
+        ? (obj["name"] as string).trim().slice(0, 120)
+        : file.name.replace(/\.json$/i, "").slice(0, 120) || "Flow impor";
+    importFlowMut.mutate({
+      data: { name: importedName, graph: { nodes, edges } as never },
+    });
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -127,29 +216,52 @@ export default function Flows() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {can.mutateFlows && (
-          <form
-            className="flex gap-2 max-w-md"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const v = name.trim();
-              if (!v) return;
-              create.mutate({ data: { name: v } });
-            }}
-          >
-            <Input
-              placeholder="Nama flow baru (mis. Greeting Toko)"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              data-testid="input-flow-name"
+          <div className="flex flex-wrap items-center gap-2">
+            <form
+              className="flex gap-2 flex-1 min-w-[18rem] max-w-md"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const v = name.trim();
+                if (!v) return;
+                create.mutate({ data: { name: v } });
+              }}
+            >
+              <Input
+                placeholder="Nama flow baru (mis. Greeting Toko)"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                data-testid="input-flow-name"
+              />
+              <Button
+                type="submit"
+                disabled={create.isPending || !name.trim()}
+                data-testid="button-create-flow"
+              >
+                <Plus className="w-4 h-4 mr-1" /> Buat Flow
+              </Button>
+            </form>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              data-testid="input-import-flow"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleImportFile(file);
+                e.target.value = "";
+              }}
             />
             <Button
-              type="submit"
-              disabled={create.isPending || !name.trim()}
-              data-testid="button-create-flow"
+              variant="outline"
+              disabled={importFlowMut.isPending}
+              onClick={() => fileInputRef.current?.click()}
+              data-testid="button-import-flow"
+              title="Pulihkan flow dari file backup (.json)"
             >
-              <Plus className="w-4 h-4 mr-1" /> Buat Flow
+              <Upload className="w-4 h-4 mr-1.5" /> Impor
             </Button>
-          </form>
+          </div>
         )}
 
         {isLoading ? (
@@ -189,6 +301,16 @@ export default function Flows() {
                         <Pencil className="w-4 h-4 mr-1" /> {can.mutateFlows ? "Edit" : "Lihat"}
                       </Button>
                     </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={exportingId === f.id}
+                      onClick={() => handleExport(f.id, f.name)}
+                      data-testid={`button-export-${f.id}`}
+                      title="Unduh backup flow ini (.json)"
+                    >
+                      <Download className="w-4 h-4 mr-1" /> Ekspor
+                    </Button>
                     {can.mutateFlows && (f.isActive ? (
                       <Button
                         variant="outline"

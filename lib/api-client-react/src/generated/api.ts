@@ -86,6 +86,7 @@ import type {
   ErrorResponse,
   Flow,
   FlowCreateInput,
+  FlowImportInput,
   FlowSummary,
   FlowUpdateInput,
   ForwardMessage200,
@@ -10825,6 +10826,77 @@ export const useCreateFlow = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateFlowMutationOptions(options));
+    }
+
+export const getImportFlowUrl = () => {
+
+
+
+
+  return `/api/flows/import`
+}
+
+/**
+ * @summary Import a flow from a backup export (creates a new inactive flow)
+ */
+export const importFlow = async (flowImportInput: FlowImportInput, options?: RequestInit): Promise<Flow> => {
+
+  return customFetch<Flow>(getImportFlowUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      flowImportInput,)
+  }
+);}
+
+
+
+
+export const getImportFlowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importFlow>>, TError,{data: BodyType<FlowImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importFlow>>, TError,{data: BodyType<FlowImportInput>}, TContext> => {
+
+const mutationKey = ['importFlow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importFlow>>, {data: BodyType<FlowImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importFlow(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportFlowMutationResult = NonNullable<Awaited<ReturnType<typeof importFlow>>>
+    export type ImportFlowMutationBody = BodyType<FlowImportInput>
+    export type ImportFlowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Import a flow from a backup export (creates a new inactive flow)
+ */
+export const useImportFlow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importFlow>>, TError,{data: BodyType<FlowImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importFlow>>,
+        TError,
+        {data: BodyType<FlowImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportFlowMutationOptions(options));
     }
 
 export const getGetFlowUrl = (id: number,) => {

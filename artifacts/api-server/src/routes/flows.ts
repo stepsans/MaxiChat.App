@@ -80,6 +80,29 @@ const FlowGraphSchema = z.object({
   edges: z.array(FlowEdgeSchema),
 });
 
+// Defensive graph integrity check shared by PATCH and import: ensure every
+// edge references existing nodes, and that any sourceHandle (question-option
+// branch) refers to a real option id on its source node. Returns an error
+// message string when invalid, or null when the graph is sound. Without this a
+// malformed graph could leave the runtime unable to advance past a question.
+function validateGraphIntegrity(
+  graph: z.infer<typeof FlowGraphSchema>,
+): string | null {
+  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
+  for (const e of graph.edges) {
+    const src = nodesById.get(e.source);
+    const tgt = nodesById.get(e.target);
+    if (!src || !tgt) return "edge references missing node";
+    if (e.sourceHandle) {
+      const opts = src.data.options ?? [];
+      if (!opts.some((o) => o.id === e.sourceHandle)) {
+        return "edge sourceHandle does not match any option on source node";
+      }
+    }
+  }
+  return null;
+}
+
 const router = Router();
 
 // `channelIds` is the resource→channel assignment surfaced on the wire.
@@ -239,6 +262,41 @@ router.post("/", requireSupervisorOrAbove, flowCreate, async (req, res): Promise
   res.status(201).json(serializeFull(row!, map.get(row!.id) ?? []));
 });
 
+// Import a flow from a backup export. Creates a brand-new flow (inactive, no
+// channel assignments) from a name + full graph so a restore can never collide
+// with the "one active flow per channel" invariant or overwrite an existing
+// flow. The graph is validated structurally (same as PATCH); product/knowledge
+// ids inside the graph are kept verbatim — they resolve when restored to the
+// same account and dangle harmlessly otherwise.
+router.post("/import", requireSupervisorOrAbove, flowCreate, async (req, res): Promise<void> => {
+  const ownerUserId = await requireOwnerUserId(req, res);
+  if (ownerUserId == null) return;
+  const parsed = z
+    .object({
+      name: z.string().trim().min(1).max(120),
+      graph: FlowGraphSchema,
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
+    return;
+  }
+  const graphError = validateGraphIntegrity(parsed.data.graph);
+  if (graphError) {
+    res.status(400).json({ error: "invalid_graph", message: graphError });
+    return;
+  }
+  const [row] = await db
+    .insert(chatbotFlowsTable)
+    .values({
+      userId: ownerUserId,
+      name: parsed.data.name,
+      graph: parsed.data.graph,
+    })
+    .returning();
+  res.status(201).json(serializeFull(row!, []));
+});
+
 router.get("/:id", flowView, async (req, res): Promise<void> => {
   const ownerUserId = await requireOwnerUserId(req, res);
   if (ownerUserId == null) return;
@@ -285,30 +343,10 @@ router.patch("/:id", requireSupervisorOrAbove, flowEdit, async (req, res): Promi
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.data.name !== undefined) patch["name"] = parsed.data.name;
   if (parsed.data.graph !== undefined) {
-    // Defensive: ensure all edges reference existing nodes, and that any
-    // sourceHandle (used for question-option branches) refers to a real
-    // option id on the source question node. Without this a malformed PATCH
-    // could leave the runtime unable to advance past a question.
-    const nodesById = new Map(parsed.data.graph.nodes.map((n) => [n.id, n]));
-    for (const e of parsed.data.graph.edges) {
-      const src = nodesById.get(e.source);
-      const tgt = nodesById.get(e.target);
-      if (!src || !tgt) {
-        res
-          .status(400)
-          .json({ error: "invalid_graph", message: "edge references missing node" });
-        return;
-      }
-      if (e.sourceHandle) {
-        const opts = src.data.options ?? [];
-        if (!opts.some((o) => o.id === e.sourceHandle)) {
-          res.status(400).json({
-            error: "invalid_graph",
-            message: "edge sourceHandle does not match any option on source node",
-          });
-          return;
-        }
-      }
+    const graphError = validateGraphIntegrity(parsed.data.graph);
+    if (graphError) {
+      res.status(400).json({ error: "invalid_graph", message: graphError });
+      return;
     }
     patch["graph"] = parsed.data.graph;
   }

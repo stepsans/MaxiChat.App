@@ -111,6 +111,7 @@ export * from './flow';
 export * from './flowCreateInput';
 export * from './flowEdge';
 export * from './flowGraph';
+export * from './flowImportInput';
 export * from './flowNode';
 export * from './flowNodeData';
 export * from './flowNodeDataMatchType';

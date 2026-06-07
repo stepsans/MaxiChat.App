@@ -2574,6 +2574,15 @@ export interface FlowUpdateInput {
   channelIds?: number[];
 }
 
+export interface FlowImportInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  graph: FlowGraph;
+}
+
 /**
  * Channel integration kind. Free-form on the backend so future kinds can ship without a schema migration; the API gates which ones are creatable.
  */

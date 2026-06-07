@@ -3171,6 +3171,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Flow"
 
+  /flows/import:
+    post:
+      operationId: importFlow
+      tags: [flows]
+      summary: Import a flow from a backup export (creates a new inactive flow)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlowImportInput"
+      responses:
+        "201":
+          description: Imported flow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flow"
+
   /flows/{id}:
     get:
       operationId: getFlow
@@ -6599,6 +6618,17 @@ components:
           items:
             type: integer
           description: "Channels to assign the flow to. Empty array = global. Omit to leave assignments unchanged."
+
+    FlowImportInput:
+      type: object
+      required: [name, graph]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        graph:
+          $ref: "#/components/schemas/FlowGraph"
 
     ChannelKind:
       type: string

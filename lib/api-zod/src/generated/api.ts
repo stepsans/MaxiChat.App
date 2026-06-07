@@ -3224,6 +3224,50 @@ export const CreateFlowBody = zod.object({
 
 
 /**
+ * @summary Import a flow from a backup export (creates a new inactive flow)
+ */
+export const importFlowBodyNameMax = 120;
+
+
+
+export const ImportFlowBody = zod.object({
+  "name": zod.string().min(1).max(importFlowBodyNameMax),
+  "graph": zod.object({
+  "nodes": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['trigger', 'message', 'question', 'end', 'ai', 'products']),
+  "position": zod.object({
+  "x": zod.number(),
+  "y": zod.number()
+}),
+  "data": zod.object({
+  "matchType": zod.enum(['default', 'keyword']).optional(),
+  "keywords": zod.array(zod.string()).optional(),
+  "text": zod.string().optional(),
+  "imageUrl": zod.string().nullish().describe('Message\/Question only: optional image URL (http(s) or \/api\/media\/...) sent with the text as caption.'),
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})).optional(),
+  "strictOptions": zod.boolean().optional().describe('Question only: re-ask question on off-option replies instead of handing off to AI.'),
+  "strictRetryMessage": zod.string().optional().describe('Question only: when strictOptions=true, this message is sent before the question is re-asked. Leave empty to skip.'),
+  "aiRephrase": zod.boolean().optional().describe('Question only: when true, the question text is rephrased by AI (same meaning, varied natural wording) each time it is sent, so it doesn\'t feel like a canned bot message. Answer options are never rephrased.'),
+  "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
+  "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.'),
+  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.')
+})
+})),
+  "edges": zod.array(zod.object({
+  "id": zod.string(),
+  "source": zod.string(),
+  "target": zod.string(),
+  "sourceHandle": zod.string().nullish()
+}))
+})
+})
+
+
+/**
  * @summary Get a flow with its full graph
  */
 export const GetFlowParams = zod.object({
