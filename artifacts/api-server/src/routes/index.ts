@@ -13,6 +13,7 @@ import statusesRouter from "./statuses";
 import shortcutsRouter from "./shortcuts";
 import flowsRouter from "./flows";
 import adminRouter from "./admin";
+import plansAdminRouter from "./plans";
 import credentialsRouter from "./credentials";
 import productsSyncRouter from "./products-sync";
 import salesOrdersRouter from "./sales-orders";
@@ -84,5 +85,6 @@ router.use("/billing", billingRouter);
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.
 router.use("/admin", requireAdmin, adminRouter);
+router.use("/admin", requireAdmin, plansAdminRouter);
 
 export default router;

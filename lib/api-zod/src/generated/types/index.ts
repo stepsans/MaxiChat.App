@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './addon';
+export * from './addonType';
 export * from './addParticipantsBody';
 export * from './addParticipantsResult';
 export * from './adminGetRevenueParams';
@@ -72,6 +74,8 @@ export * from './commonGroup';
 export * from './commonGroups';
 export * from './commonQuestion';
 export * from './contactsStatus';
+export * from './createAddonInput';
+export * from './createAddonInputType';
 export * from './createAgentInput';
 export * from './createAgentInputTeamRole';
 export * from './createCustomerLabelInput';
@@ -79,6 +83,7 @@ export * from './createGroupInput';
 export * from './createGroupResult';
 export * from './createKnowledgeType400';
 export * from './createKnowledgeType409';
+export * from './createPlanInput';
 export * from './createSpreadsheetInput';
 export * from './credential';
 export * from './credentialCreateInput';
@@ -157,6 +162,7 @@ export * from './participantAddResult';
 export * from './permissionCell';
 export * from './permissionMatrix';
 export * from './pinMessageBody';
+export * from './plan';
 export * from './postStatusInput';
 export * from './pricingConfig';
 export * from './product';
@@ -240,10 +246,13 @@ export * from './tenantBilling';
 export * from './tenantChannelOption';
 export * from './textShortcut';
 export * from './textShortcutInput';
+export * from './updateAddonInput';
+export * from './updateAddonInputType';
 export * from './updateAgentInput';
 export * from './updateAgentInputStatus';
 export * from './updateAgentInputTeamRole';
 export * from './updateCustomerLabelInput';
+export * from './updatePlanInput';
 export * from './updatePricingInput';
 export * from './updateUserChannelAccessRequest';
 export * from './updateUserPermissionRequest';

@@ -1381,6 +1381,169 @@ export interface UpdatePricingInput {
   aiPricePer100Tokens: number;
 }
 
+export interface Plan {
+  id: number;
+  /** Stable machine key; matches users.plan. Cannot be changed after creation. */
+  key: string;
+  name: string;
+  /** @nullable */
+  description: string | null;
+  /** Prepaid price for one period, in whole Rupiah. */
+  priceIdr: number;
+  /** How many days one paid period lasts. */
+  durationDays: number;
+  /** Included team-member seats (parent excluded). */
+  quotaUsers: number;
+  /** Included channels. */
+  quotaChannels: number;
+  /** Included AI tokens per period. */
+  quotaTokens: number;
+  /** Inactive plans are hidden from self-serve checkout but kept for existing tenants. */
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePlanInput {
+  /**
+     * Lowercase letters, digits and underscore only. Unique.
+     * @minLength 1
+     * @maxLength 40
+     * @pattern ^[a-z0-9_]+$
+     */
+  key: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /** @maxLength 400 */
+  description?: string;
+  /** @minimum 0 */
+  priceIdr: number;
+  /** @minimum 1 */
+  durationDays: number;
+  /** @minimum 0 */
+  quotaUsers: number;
+  /** @minimum 0 */
+  quotaChannels: number;
+  /** @minimum 0 */
+  quotaTokens: number;
+  isActive?: boolean;
+  /** @minimum 0 */
+  sortOrder?: number;
+}
+
+/**
+ * Partial update. The plan key is immutable and cannot be changed here.
+ */
+export interface UpdatePlanInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  /**
+     * @maxLength 400
+     * @nullable
+     */
+  description?: string | null;
+  /** @minimum 0 */
+  priceIdr?: number;
+  /** @minimum 1 */
+  durationDays?: number;
+  /** @minimum 0 */
+  quotaUsers?: number;
+  /** @minimum 0 */
+  quotaChannels?: number;
+  /** @minimum 0 */
+  quotaTokens?: number;
+  isActive?: boolean;
+  /** @minimum 0 */
+  sortOrder?: number;
+}
+
+/**
+ * What this add-on tops up.
+ */
+export type AddonType = typeof AddonType[keyof typeof AddonType];
+
+
+export const AddonType = {
+  token: 'token',
+  channel: 'channel',
+  user_seat: 'user_seat',
+} as const;
+
+export interface Addon {
+  id: number;
+  /** What this add-on tops up. */
+  type: AddonType;
+  name: string;
+  /** How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat). */
+  unitAmount: number;
+  /** Price for one unit, in whole Rupiah. */
+  priceIdr: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateAddonInputType = typeof CreateAddonInputType[keyof typeof CreateAddonInputType];
+
+
+export const CreateAddonInputType = {
+  token: 'token',
+  channel: 'channel',
+  user_seat: 'user_seat',
+} as const;
+
+export interface CreateAddonInput {
+  type: CreateAddonInputType;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /** @minimum 1 */
+  unitAmount: number;
+  /** @minimum 0 */
+  priceIdr: number;
+  isActive?: boolean;
+  /** @minimum 0 */
+  sortOrder?: number;
+}
+
+export type UpdateAddonInputType = typeof UpdateAddonInputType[keyof typeof UpdateAddonInputType];
+
+
+export const UpdateAddonInputType = {
+  token: 'token',
+  channel: 'channel',
+  user_seat: 'user_seat',
+} as const;
+
+/**
+ * Partial update.
+ */
+export interface UpdateAddonInput {
+  type?: UpdateAddonInputType;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  /** @minimum 1 */
+  unitAmount?: number;
+  /** @minimum 0 */
+  priceIdr?: number;
+  isActive?: boolean;
+  /** @minimum 0 */
+  sortOrder?: number;
+}
+
 export interface BillingUsage {
   /** Chat-storage footprint in bytes. */
   storageBytes: number;

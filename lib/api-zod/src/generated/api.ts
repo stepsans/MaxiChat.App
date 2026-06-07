@@ -173,6 +173,219 @@ export const AdminDeleteUserResponse = zod.object({
 
 
 /**
+ * @summary List subscription plans (admin only)
+ */
+export const AdminListPlansResponseItem = zod.object({
+  "id": zod.number(),
+  "key": zod.string().describe('Stable machine key; matches users.plan. Cannot be changed after creation.'),
+  "name": zod.string(),
+  "description": zod.string().nullable(),
+  "priceIdr": zod.number().describe('Prepaid price for one period, in whole Rupiah.'),
+  "durationDays": zod.number().describe('How many days one paid period lasts.'),
+  "quotaUsers": zod.number().describe('Included team-member seats (parent excluded).'),
+  "quotaChannels": zod.number().describe('Included channels.'),
+  "quotaTokens": zod.number().describe('Included AI tokens per period.'),
+  "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const AdminListPlansResponse = zod.array(AdminListPlansResponseItem)
+
+
+/**
+ * @summary Create a subscription plan (admin only)
+ */
+export const adminCreatePlanBodyKeyMax = 40;
+
+
+export const adminCreatePlanBodyKeyRegExp = new RegExp('^[a-z0-9_]+$');
+export const adminCreatePlanBodyNameMax = 80;
+
+export const adminCreatePlanBodyDescriptionMax = 400;
+
+export const adminCreatePlanBodyPriceIdrMin = 0;
+
+
+export const adminCreatePlanBodyQuotaUsersMin = 0;
+
+export const adminCreatePlanBodyQuotaChannelsMin = 0;
+
+export const adminCreatePlanBodyQuotaTokensMin = 0;
+
+export const adminCreatePlanBodySortOrderMin = 0;
+
+
+
+export const AdminCreatePlanBody = zod.object({
+  "key": zod.string().min(1).max(adminCreatePlanBodyKeyMax).regex(adminCreatePlanBodyKeyRegExp).describe('Lowercase letters, digits and underscore only. Unique.'),
+  "name": zod.string().min(1).max(adminCreatePlanBodyNameMax),
+  "description": zod.string().max(adminCreatePlanBodyDescriptionMax).optional(),
+  "priceIdr": zod.number().min(adminCreatePlanBodyPriceIdrMin),
+  "durationDays": zod.number().min(1),
+  "quotaUsers": zod.number().min(adminCreatePlanBodyQuotaUsersMin),
+  "quotaChannels": zod.number().min(adminCreatePlanBodyQuotaChannelsMin),
+  "quotaTokens": zod.number().min(adminCreatePlanBodyQuotaTokensMin),
+  "isActive": zod.boolean().optional(),
+  "sortOrder": zod.number().min(adminCreatePlanBodySortOrderMin).optional()
+})
+
+
+/**
+ * @summary Update a subscription plan (admin only)
+ */
+export const AdminUpdatePlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const adminUpdatePlanBodyNameMax = 80;
+
+export const adminUpdatePlanBodyDescriptionMax = 400;
+
+export const adminUpdatePlanBodyPriceIdrMin = 0;
+
+
+export const adminUpdatePlanBodyQuotaUsersMin = 0;
+
+export const adminUpdatePlanBodyQuotaChannelsMin = 0;
+
+export const adminUpdatePlanBodyQuotaTokensMin = 0;
+
+export const adminUpdatePlanBodySortOrderMin = 0;
+
+
+
+export const AdminUpdatePlanBody = zod.object({
+  "name": zod.string().min(1).max(adminUpdatePlanBodyNameMax).optional(),
+  "description": zod.string().max(adminUpdatePlanBodyDescriptionMax).nullish(),
+  "priceIdr": zod.number().min(adminUpdatePlanBodyPriceIdrMin).optional(),
+  "durationDays": zod.number().min(1).optional(),
+  "quotaUsers": zod.number().min(adminUpdatePlanBodyQuotaUsersMin).optional(),
+  "quotaChannels": zod.number().min(adminUpdatePlanBodyQuotaChannelsMin).optional(),
+  "quotaTokens": zod.number().min(adminUpdatePlanBodyQuotaTokensMin).optional(),
+  "isActive": zod.boolean().optional(),
+  "sortOrder": zod.number().min(adminUpdatePlanBodySortOrderMin).optional()
+}).describe('Partial update. The plan key is immutable and cannot be changed here.')
+
+export const AdminUpdatePlanResponse = zod.object({
+  "id": zod.number(),
+  "key": zod.string().describe('Stable machine key; matches users.plan. Cannot be changed after creation.'),
+  "name": zod.string(),
+  "description": zod.string().nullable(),
+  "priceIdr": zod.number().describe('Prepaid price for one period, in whole Rupiah.'),
+  "durationDays": zod.number().describe('How many days one paid period lasts.'),
+  "quotaUsers": zod.number().describe('Included team-member seats (parent excluded).'),
+  "quotaChannels": zod.number().describe('Included channels.'),
+  "quotaTokens": zod.number().describe('Included AI tokens per period.'),
+  "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a subscription plan (admin only)
+ */
+export const AdminDeletePlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminDeletePlanResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List add-ons / top-ups (admin only)
+ */
+export const AdminListAddonsResponseItem = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['token', 'channel', 'user_seat']).describe('What this add-on tops up.'),
+  "name": zod.string(),
+  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).'),
+  "priceIdr": zod.number().describe('Price for one unit, in whole Rupiah.'),
+  "isActive": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const AdminListAddonsResponse = zod.array(AdminListAddonsResponseItem)
+
+
+/**
+ * @summary Create an add-on / top-up (admin only)
+ */
+export const adminCreateAddonBodyNameMax = 80;
+
+
+export const adminCreateAddonBodyPriceIdrMin = 0;
+
+export const adminCreateAddonBodySortOrderMin = 0;
+
+
+
+export const AdminCreateAddonBody = zod.object({
+  "type": zod.enum(['token', 'channel', 'user_seat']),
+  "name": zod.string().min(1).max(adminCreateAddonBodyNameMax),
+  "unitAmount": zod.number().min(1),
+  "priceIdr": zod.number().min(adminCreateAddonBodyPriceIdrMin),
+  "isActive": zod.boolean().optional(),
+  "sortOrder": zod.number().min(adminCreateAddonBodySortOrderMin).optional()
+})
+
+
+/**
+ * @summary Update an add-on / top-up (admin only)
+ */
+export const AdminUpdateAddonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const adminUpdateAddonBodyNameMax = 80;
+
+
+export const adminUpdateAddonBodyPriceIdrMin = 0;
+
+export const adminUpdateAddonBodySortOrderMin = 0;
+
+
+
+export const AdminUpdateAddonBody = zod.object({
+  "type": zod.enum(['token', 'channel', 'user_seat']).optional(),
+  "name": zod.string().min(1).max(adminUpdateAddonBodyNameMax).optional(),
+  "unitAmount": zod.number().min(1).optional(),
+  "priceIdr": zod.number().min(adminUpdateAddonBodyPriceIdrMin).optional(),
+  "isActive": zod.boolean().optional(),
+  "sortOrder": zod.number().min(adminUpdateAddonBodySortOrderMin).optional()
+}).describe('Partial update.')
+
+export const AdminUpdateAddonResponse = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['token', 'channel', 'user_seat']).describe('What this add-on tops up.'),
+  "name": zod.string(),
+  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).'),
+  "priceIdr": zod.number().describe('Price for one unit, in whole Rupiah.'),
+  "isActive": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete an add-on / top-up (admin only)
+ */
+export const AdminDeleteAddonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdminDeleteAddonResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary AI token usage per super admin for the current billing period (admin only)
  */
 export const AdminListAiUsageResponseItem = zod.object({

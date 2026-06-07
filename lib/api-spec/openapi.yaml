@@ -293,6 +293,256 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/plans:
+    get:
+      operationId: adminListPlans
+      tags: [admin]
+      summary: List subscription plans (admin only)
+      responses:
+        "200":
+          description: All plans (active and archived), ordered by sortOrder
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: adminCreatePlan
+      tags: [admin]
+      summary: Create a subscription plan (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanInput"
+      responses:
+        "201":
+          description: Created plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A plan with this key already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/plans/{id}:
+    patch:
+      operationId: adminUpdatePlan
+      tags: [admin]
+      summary: Update a subscription plan (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlanInput"
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: adminDeletePlan
+      tags: [admin]
+      summary: Delete a subscription plan (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/addons:
+    get:
+      operationId: adminListAddons
+      tags: [admin]
+      summary: List add-ons / top-ups (admin only)
+      responses:
+        "200":
+          description: All add-ons (active and archived), ordered by sortOrder
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Addon"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: adminCreateAddon
+      tags: [admin]
+      summary: Create an add-on / top-up (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAddonInput"
+      responses:
+        "201":
+          description: Created add-on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Addon"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/addons/{id}:
+    patch:
+      operationId: adminUpdateAddon
+      tags: [admin]
+      summary: Update an add-on / top-up (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAddonInput"
+      responses:
+        "200":
+          description: Updated add-on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Addon"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Add-on not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: adminDeleteAddon
+      tags: [admin]
+      summary: Delete an add-on / top-up (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Add-on not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/ai-usage:
     get:
       operationId: adminListAiUsage
@@ -5026,6 +5276,208 @@ components:
           type: integer
           minimum: 0
         aiPricePer100Tokens:
+          type: integer
+          minimum: 0
+
+    Plan:
+      type: object
+      required:
+        [
+          id,
+          key,
+          name,
+          description,
+          priceIdr,
+          durationDays,
+          quotaUsers,
+          quotaChannels,
+          quotaTokens,
+          isActive,
+          sortOrder,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+          description: Stable machine key; matches users.plan. Cannot be changed after creation.
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        priceIdr:
+          type: integer
+          description: Prepaid price for one period, in whole Rupiah.
+        durationDays:
+          type: integer
+          description: How many days one paid period lasts.
+        quotaUsers:
+          type: integer
+          description: Included team-member seats (parent excluded).
+        quotaChannels:
+          type: integer
+          description: Included channels.
+        quotaTokens:
+          type: integer
+          description: Included AI tokens per period.
+        isActive:
+          type: boolean
+          description: Inactive plans are hidden from self-serve checkout but kept for existing tenants.
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePlanInput:
+      type: object
+      required:
+        [key, name, priceIdr, durationDays, quotaUsers, quotaChannels, quotaTokens]
+      properties:
+        key:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: "^[a-z0-9_]+$"
+          description: Lowercase letters, digits and underscore only. Unique.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 400
+        priceIdr:
+          type: integer
+          minimum: 0
+        durationDays:
+          type: integer
+          minimum: 1
+        quotaUsers:
+          type: integer
+          minimum: 0
+        quotaChannels:
+          type: integer
+          minimum: 0
+        quotaTokens:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+          minimum: 0
+
+    UpdatePlanInput:
+      type: object
+      description: Partial update. The plan key is immutable and cannot be changed here.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        description:
+          type: ["string", "null"]
+          maxLength: 400
+        priceIdr:
+          type: integer
+          minimum: 0
+        durationDays:
+          type: integer
+          minimum: 1
+        quotaUsers:
+          type: integer
+          minimum: 0
+        quotaChannels:
+          type: integer
+          minimum: 0
+        quotaTokens:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+          minimum: 0
+
+    Addon:
+      type: object
+      required:
+        [id, type, name, unitAmount, priceIdr, isActive, sortOrder, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [token, channel, user_seat]
+          description: What this add-on tops up.
+        name:
+          type: string
+        unitAmount:
+          type: integer
+          description: How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).
+        priceIdr:
+          type: integer
+          description: Price for one unit, in whole Rupiah.
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAddonInput:
+      type: object
+      required: [type, name, unitAmount, priceIdr]
+      properties:
+        type:
+          type: string
+          enum: [token, channel, user_seat]
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        unitAmount:
+          type: integer
+          minimum: 1
+        priceIdr:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+        sortOrder:
+          type: integer
+          minimum: 0
+
+    UpdateAddonInput:
+      type: object
+      description: Partial update.
+      properties:
+        type:
+          type: string
+          enum: [token, channel, user_seat]
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        unitAmount:
+          type: integer
+          minimum: 1
+        priceIdr:
+          type: integer
+          minimum: 0
+        isActive:
+          type: boolean
+        sortOrder:
           type: integer
           minimum: 0
 
