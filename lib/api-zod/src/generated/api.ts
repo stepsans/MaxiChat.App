@@ -386,6 +386,44 @@ export const AdminDeleteAddonResponse = zod.object({
 
 
 /**
+ * @summary Get masked payment gateway (Xendit) config status (admin only)
+ */
+export const AdminGetPaymentConfigResponse = zod.object({
+  "provider": zod.string(),
+  "isActive": zod.boolean(),
+  "secretKeyConfigured": zod.boolean(),
+  "callbackTokenConfigured": zod.boolean(),
+  "secretKeySource": zod.union([zod.literal('db'),zod.literal('env'),zod.literal(null)]).nullish(),
+  "callbackTokenSource": zod.union([zod.literal('db'),zod.literal('env'),zod.literal(null)]).nullish(),
+  "secretKeyLast4": zod.string().nullish(),
+  "updatedAt": zod.string().nullish()
+}).describe('Masked payment-gateway (Xendit) configuration status. Never includes the raw secret key or callback token — only whether each is set, where it resolves from, and the last 4 chars of the secret key.')
+
+
+/**
+ * @summary Update payment gateway (Xendit) credentials (admin only)
+ */
+export const AdminUpdatePaymentConfigBody = zod.object({
+  "secretKey": zod.string().optional(),
+  "callbackToken": zod.string().optional(),
+  "clearSecretKey": zod.boolean().optional(),
+  "clearCallbackToken": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
+}).describe('Update the platform Xendit credentials. Provide a non-empty value to set\/replace a credential; omit it to leave it unchanged. Use the clear\* flags to remove a stored value (falls back to the env var).')
+
+export const AdminUpdatePaymentConfigResponse = zod.object({
+  "provider": zod.string(),
+  "isActive": zod.boolean(),
+  "secretKeyConfigured": zod.boolean(),
+  "callbackTokenConfigured": zod.boolean(),
+  "secretKeySource": zod.union([zod.literal('db'),zod.literal('env'),zod.literal(null)]).nullish(),
+  "callbackTokenSource": zod.union([zod.literal('db'),zod.literal('env'),zod.literal(null)]).nullish(),
+  "secretKeyLast4": zod.string().nullish(),
+  "updatedAt": zod.string().nullish()
+}).describe('Masked payment-gateway (Xendit) configuration status. Never includes the raw secret key or callback token — only whether each is set, where it resolves from, and the last 4 chars of the secret key.')
+
+
+/**
  * @summary AI token usage per super admin for the current billing period (admin only)
  */
 export const AdminListAiUsageResponseItem = zod.object({

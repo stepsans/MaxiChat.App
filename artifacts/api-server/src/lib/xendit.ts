@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { logger } from "./logger";
+import { getXenditCredentials } from "./payment-config";
 
 // Thin Xendit client for the Hybrid subscription system (FASE 2). We use the
 // hosted Invoice API (https://developers.xendit.co/api-reference/#create-invoice)
@@ -7,29 +8,29 @@ import { logger } from "./logger";
 // ever touches our server. Auth is HTTP Basic with the secret API key as the
 // username and an empty password.
 //
-// Two secrets drive this module (requested from the operator, never hardcoded):
-//   - XENDIT_SECRET_KEY    : creates invoices (Basic auth)
-//   - XENDIT_CALLBACK_TOKEN : verifies inbound webhooks (x-callback-token)
+// Two credentials drive this module — resolved DB-first (admin-configured from
+// the admin app) with env vars as a fallback (see payment-config.ts):
+//   - secret key     : creates invoices (Basic auth)        [XENDIT_SECRET_KEY]
+//   - callback token : verifies inbound webhooks (x-callback-token)
+//                                                       [XENDIT_CALLBACK_TOKEN]
 //
 // The API base is a fixed constant — there is no user-controlled URL here, so
 // no SSRF surface.
 
 const XENDIT_API_BASE = "https://api.xendit.co";
 
-export function getXenditSecretKey(): string | null {
-  const k = process.env.XENDIT_SECRET_KEY?.trim();
-  return k ? k : null;
+export async function getXenditSecretKey(): Promise<string | null> {
+  return (await getXenditCredentials()).secretKey;
 }
 
-export function getXenditCallbackToken(): string | null {
-  const t = process.env.XENDIT_CALLBACK_TOKEN?.trim();
-  return t ? t : null;
+export async function getXenditCallbackToken(): Promise<string | null> {
+  return (await getXenditCredentials()).callbackToken;
 }
 
 // True only when invoice creation is possible (the webhook can still be
 // verified independently as long as the callback token is set).
-export function isXenditConfigured(): boolean {
-  return getXenditSecretKey() !== null;
+export async function isXenditConfigured(): Promise<boolean> {
+  return (await getXenditCredentials()).secretKey !== null;
 }
 
 export interface CreateInvoiceParams {
@@ -55,9 +56,9 @@ export interface CreateInvoiceResult {
 export async function createXenditInvoice(
   params: CreateInvoiceParams
 ): Promise<CreateInvoiceResult> {
-  const secretKey = getXenditSecretKey();
+  const secretKey = await getXenditSecretKey();
   if (!secretKey) {
-    throw new Error("XENDIT_SECRET_KEY is not configured");
+    throw new Error("Xendit secret key is not configured");
   }
 
   const auth = Buffer.from(`${secretKey}:`).toString("base64");
@@ -115,8 +116,10 @@ export async function createXenditInvoice(
 // Constant-time comparison of the inbound x-callback-token against the
 // configured token. Returns false (never throws) on length mismatch or when
 // the token is unset, so the webhook handler can reject uniformly.
-export function verifyXenditCallbackToken(provided: string | undefined): boolean {
-  const expected = getXenditCallbackToken();
+export async function verifyXenditCallbackToken(
+  provided: string | undefined
+): Promise<boolean> {
+  const expected = await getXenditCallbackToken();
   if (!expected || !provided) return false;
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);

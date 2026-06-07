@@ -11,6 +11,7 @@ import {
   Wallet,
   TrendingUp,
   Package,
+  CreditCard,
 } from "lucide-react";
 import Login from "./pages/Login";
 import Users from "./pages/Users";
@@ -19,6 +20,7 @@ import Pricing from "./pages/Pricing";
 import Plans from "./pages/Plans";
 import Billing from "./pages/Billing";
 import Analytics from "./pages/Analytics";
+import PaymentGateway from "./pages/PaymentGateway";
 import { useLogoutMutation } from "./lib/useLogoutMutation";
 
 const queryClient = new QueryClient();
@@ -28,6 +30,7 @@ type AdminTab =
   | "usage"
   | "pricing"
   | "plans"
+  | "gateway"
   | "billing"
   | "analytics";
 
@@ -137,6 +140,7 @@ function Shell() {
             { key: "analytics", label: "Analitik Pendapatan", Icon: TrendingUp },
             { key: "billing", label: "Tagihan Tenant", Icon: Wallet },
             { key: "plans", label: "Paket & Add-on", Icon: Package },
+            { key: "gateway", label: "Gateway Pembayaran", Icon: CreditCard },
             { key: "pricing", label: "Harga Pemakaian", Icon: Tag },
             { key: "usage", label: "Pemakaian Token", Icon: Cpu },
           ] as const
@@ -161,6 +165,7 @@ function Shell() {
         {tab === "analytics" && <Analytics />}
         {tab === "billing" && <Billing />}
         {tab === "plans" && <Plans />}
+        {tab === "gateway" && <PaymentGateway />}
         {tab === "pricing" && <Pricing />}
         {tab === "usage" && <TokenUsage />}
       </main>

@@ -213,7 +213,7 @@ router.post("/checkout", async (req, res): Promise<void> => {
     const { kind, refId } = parsed.data;
     const quantity = kind === "addon" ? parsed.data.quantity ?? 1 : 1;
 
-    if (!isXenditConfigured()) {
+    if (!(await isXenditConfigured())) {
       res.status(503).json({
         error: "Payment gateway belum dikonfigurasi. Hubungi admin.",
         code: "gateway_unconfigured",

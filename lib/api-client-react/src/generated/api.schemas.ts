@@ -355,6 +355,57 @@ export interface SuccessResponse {
   success: boolean;
 }
 
+/**
+ * @nullable
+ */
+export type PaymentGatewayConfigSecretKeySource = typeof PaymentGatewayConfigSecretKeySource[keyof typeof PaymentGatewayConfigSecretKeySource] | null;
+
+
+export const PaymentGatewayConfigSecretKeySource = {
+  db: 'db',
+  env: 'env',
+} as const;
+
+/**
+ * @nullable
+ */
+export type PaymentGatewayConfigCallbackTokenSource = typeof PaymentGatewayConfigCallbackTokenSource[keyof typeof PaymentGatewayConfigCallbackTokenSource] | null;
+
+
+export const PaymentGatewayConfigCallbackTokenSource = {
+  db: 'db',
+  env: 'env',
+} as const;
+
+/**
+ * Masked payment-gateway (Xendit) configuration status. Never includes the raw secret key or callback token — only whether each is set, where it resolves from, and the last 4 chars of the secret key.
+ */
+export interface PaymentGatewayConfig {
+  provider: string;
+  isActive: boolean;
+  secretKeyConfigured: boolean;
+  callbackTokenConfigured: boolean;
+  /** @nullable */
+  secretKeySource?: PaymentGatewayConfigSecretKeySource;
+  /** @nullable */
+  callbackTokenSource?: PaymentGatewayConfigCallbackTokenSource;
+  /** @nullable */
+  secretKeyLast4?: string | null;
+  /** @nullable */
+  updatedAt?: string | null;
+}
+
+/**
+ * Update the platform Xendit credentials. Provide a non-empty value to set/replace a credential; omit it to leave it unchanged. Use the clear* flags to remove a stored value (falls back to the env var).
+ */
+export interface UpdatePaymentConfigInput {
+  secretKey?: string;
+  callbackToken?: string;
+  clearSecretKey?: boolean;
+  clearCallbackToken?: boolean;
+  isActive?: boolean;
+}
+
 export type WhatsappStatusStatus = typeof WhatsappStatusStatus[keyof typeof WhatsappStatusStatus];
 
 

@@ -14,6 +14,7 @@ import shortcutsRouter from "./shortcuts";
 import flowsRouter from "./flows";
 import adminRouter from "./admin";
 import plansAdminRouter from "./plans";
+import paymentConfigAdminRouter from "./payment-config";
 import credentialsRouter from "./credentials";
 import productsSyncRouter from "./products-sync";
 import salesOrdersRouter from "./sales-orders";
@@ -90,5 +91,6 @@ router.use("/billing", billingRouter);
 // mid-session loses admin access on their next /admin/* call.
 router.use("/admin", requireAdmin, adminRouter);
 router.use("/admin", requireAdmin, plansAdminRouter);
+router.use("/admin", requireAdmin, paymentConfigAdminRouter);
 
 export default router;

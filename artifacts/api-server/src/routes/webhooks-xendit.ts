@@ -27,7 +27,7 @@ const router = Router();
 // delivered twice applies its effect exactly once.
 router.post("/", async (req, res): Promise<void> => {
   const token = req.header("x-callback-token");
-  if (!verifyXenditCallbackToken(token)) {
+  if (!(await verifyXenditCallbackToken(token))) {
     res.status(403).json({ error: "Bad callback token" });
     return;
   }

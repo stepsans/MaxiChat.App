@@ -16,3 +16,4 @@ export * from "./usage-snapshots";
 export * from "./plans";
 export * from "./tenant-quota";
 export * from "./payments";
+export * from "./payment-gateway";

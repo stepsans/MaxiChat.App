@@ -543,6 +543,54 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/payment-config:
+    get:
+      operationId: adminGetPaymentConfig
+      tags: [admin]
+      summary: Get masked payment gateway (Xendit) config status (admin only)
+      responses:
+        "200":
+          description: Masked gateway config status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentGatewayConfig"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: adminUpdatePaymentConfig
+      tags: [admin]
+      summary: Update payment gateway (Xendit) credentials (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePaymentConfigInput"
+      responses:
+        "200":
+          description: Updated masked gateway config status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentGatewayConfig"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/ai-usage:
     get:
       operationId: adminListAiUsage
@@ -4299,6 +4347,55 @@ components:
         success:
           type: boolean
       required: [success]
+
+    PaymentGatewayConfig:
+      type: object
+      description: >-
+        Masked payment-gateway (Xendit) configuration status. Never includes the
+        raw secret key or callback token — only whether each is set, where it
+        resolves from, and the last 4 chars of the secret key.
+      required:
+        - provider
+        - isActive
+        - secretKeyConfigured
+        - callbackTokenConfigured
+      properties:
+        provider:
+          type: string
+        isActive:
+          type: boolean
+        secretKeyConfigured:
+          type: boolean
+        callbackTokenConfigured:
+          type: boolean
+        secretKeySource:
+          type: ["string", "null"]
+          enum: [db, env, null]
+        callbackTokenSource:
+          type: ["string", "null"]
+          enum: [db, env, null]
+        secretKeyLast4:
+          type: ["string", "null"]
+        updatedAt:
+          type: ["string", "null"]
+
+    UpdatePaymentConfigInput:
+      type: object
+      description: >-
+        Update the platform Xendit credentials. Provide a non-empty value to
+        set/replace a credential; omit it to leave it unchanged. Use the clear*
+        flags to remove a stored value (falls back to the env var).
+      properties:
+        secretKey:
+          type: string
+        callbackToken:
+          type: string
+        clearSecretKey:
+          type: boolean
+        clearCallbackToken:
+          type: boolean
+        isActive:
+          type: boolean
 
     WhatsappStatus:
       type: object

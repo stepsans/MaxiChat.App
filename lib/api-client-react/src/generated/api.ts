@@ -120,6 +120,7 @@ import type {
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
   OwnerTrend,
+  PaymentGatewayConfig,
   PaymentRecord,
   PermissionMatrix,
   PinMessageBody,
@@ -175,6 +176,7 @@ import type {
   UpdateAddonInput,
   UpdateAgentInput,
   UpdateCustomerLabelInput,
+  UpdatePaymentConfigInput,
   UpdatePlanInput,
   UpdatePricingInput,
   UpdateUserChannelAccessRequest,
@@ -1504,6 +1506,154 @@ export const useAdminDeleteAddon = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getAdminDeleteAddonMutationOptions(options));
+    }
+
+export const getAdminGetPaymentConfigUrl = () => {
+
+
+
+
+  return `/api/admin/payment-config`
+}
+
+/**
+ * @summary Get masked payment gateway (Xendit) config status (admin only)
+ */
+export const adminGetPaymentConfig = async ( options?: RequestInit): Promise<PaymentGatewayConfig> => {
+
+  return customFetch<PaymentGatewayConfig>(getAdminGetPaymentConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetPaymentConfigQueryKey = () => {
+    return [
+    `/api/admin/payment-config`
+    ] as const;
+    }
+
+
+export const getAdminGetPaymentConfigQueryOptions = <TData = Awaited<ReturnType<typeof adminGetPaymentConfig>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetPaymentConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetPaymentConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetPaymentConfig>>> = ({ signal }) => adminGetPaymentConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetPaymentConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetPaymentConfigQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetPaymentConfig>>>
+export type AdminGetPaymentConfigQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get masked payment gateway (Xendit) config status (admin only)
+ */
+
+export function useAdminGetPaymentConfig<TData = Awaited<ReturnType<typeof adminGetPaymentConfig>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetPaymentConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetPaymentConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdatePaymentConfigUrl = () => {
+
+
+
+
+  return `/api/admin/payment-config`
+}
+
+/**
+ * @summary Update payment gateway (Xendit) credentials (admin only)
+ */
+export const adminUpdatePaymentConfig = async (updatePaymentConfigInput: UpdatePaymentConfigInput, options?: RequestInit): Promise<PaymentGatewayConfig> => {
+
+  return customFetch<PaymentGatewayConfig>(getAdminUpdatePaymentConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updatePaymentConfigInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdatePaymentConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePaymentConfig>>, TError,{data: BodyType<UpdatePaymentConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePaymentConfig>>, TError,{data: BodyType<UpdatePaymentConfigInput>}, TContext> => {
+
+const mutationKey = ['adminUpdatePaymentConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdatePaymentConfig>>, {data: BodyType<UpdatePaymentConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminUpdatePaymentConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdatePaymentConfigMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdatePaymentConfig>>>
+    export type AdminUpdatePaymentConfigMutationBody = BodyType<UpdatePaymentConfigInput>
+    export type AdminUpdatePaymentConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update payment gateway (Xendit) credentials (admin only)
+ */
+export const useAdminUpdatePaymentConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePaymentConfig>>, TError,{data: BodyType<UpdatePaymentConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdatePaymentConfig>>,
+        TError,
+        {data: BodyType<UpdatePaymentConfigInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdatePaymentConfigMutationOptions(options));
     }
 
 export const getAdminListAiUsageUrl = () => {
