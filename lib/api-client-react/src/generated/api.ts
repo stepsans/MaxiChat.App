@@ -122,6 +122,7 @@ import type {
   OpenChatByPhoneResult,
   OwnerTrend,
   PaymentGatewayConfig,
+  PaymentMethodSettings,
   PaymentRecord,
   PermissionMatrix,
   PinMessageBody,
@@ -171,6 +172,7 @@ import type {
   TeamSettingsResponse,
   TelegramConnect,
   TenantBilling,
+  TenantPaymentMethod,
   TenantQuotaInfo,
   TextShortcut,
   TextShortcutInput,
@@ -178,6 +180,7 @@ import type {
   UpdateAgentInput,
   UpdateCustomerLabelInput,
   UpdatePaymentConfigInput,
+  UpdatePaymentMethodInput,
   UpdatePlanInput,
   UpdatePricingInput,
   UpdateUserChannelAccessRequest,
@@ -1657,6 +1660,154 @@ export const useAdminUpdatePaymentConfig = <TError = ErrorType<ErrorResponse>,
       return useMutation(getAdminUpdatePaymentConfigMutationOptions(options));
     }
 
+export const getAdminGetPaymentMethodUrl = () => {
+
+
+
+
+  return `/api/admin/payment-method`
+}
+
+/**
+ * @summary Get the active payment provider + manual-transfer config (admin only)
+ */
+export const adminGetPaymentMethod = async ( options?: RequestInit): Promise<PaymentMethodSettings> => {
+
+  return customFetch<PaymentMethodSettings>(getAdminGetPaymentMethodUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetPaymentMethodQueryKey = () => {
+    return [
+    `/api/admin/payment-method`
+    ] as const;
+    }
+
+
+export const getAdminGetPaymentMethodQueryOptions = <TData = Awaited<ReturnType<typeof adminGetPaymentMethod>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetPaymentMethod>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetPaymentMethodQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetPaymentMethod>>> = ({ signal }) => adminGetPaymentMethod({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetPaymentMethod>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetPaymentMethodQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetPaymentMethod>>>
+export type AdminGetPaymentMethodQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the active payment provider + manual-transfer config (admin only)
+ */
+
+export function useAdminGetPaymentMethod<TData = Awaited<ReturnType<typeof adminGetPaymentMethod>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetPaymentMethod>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetPaymentMethodQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdatePaymentMethodUrl = () => {
+
+
+
+
+  return `/api/admin/payment-method`
+}
+
+/**
+ * @summary Update the active provider + manual bank / verification sheet (admin only)
+ */
+export const adminUpdatePaymentMethod = async (updatePaymentMethodInput: UpdatePaymentMethodInput, options?: RequestInit): Promise<PaymentMethodSettings> => {
+
+  return customFetch<PaymentMethodSettings>(getAdminUpdatePaymentMethodUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updatePaymentMethodInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdatePaymentMethodMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePaymentMethod>>, TError,{data: BodyType<UpdatePaymentMethodInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePaymentMethod>>, TError,{data: BodyType<UpdatePaymentMethodInput>}, TContext> => {
+
+const mutationKey = ['adminUpdatePaymentMethod'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdatePaymentMethod>>, {data: BodyType<UpdatePaymentMethodInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminUpdatePaymentMethod(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdatePaymentMethodMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdatePaymentMethod>>>
+    export type AdminUpdatePaymentMethodMutationBody = BodyType<UpdatePaymentMethodInput>
+    export type AdminUpdatePaymentMethodMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the active provider + manual bank / verification sheet (admin only)
+ */
+export const useAdminUpdatePaymentMethod = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdatePaymentMethod>>, TError,{data: BodyType<UpdatePaymentMethodInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdatePaymentMethod>>,
+        TError,
+        {data: BodyType<UpdatePaymentMethodInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdatePaymentMethodMutationOptions(options));
+    }
+
 export const getAdminListAiUsageUrl = () => {
 
 
@@ -2040,6 +2191,84 @@ export function useGetBillingCatalog<TData = Awaited<ReturnType<typeof getBillin
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetBillingCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetBillingPaymentMethodUrl = () => {
+
+
+
+
+  return `/api/billing/payment-method`
+}
+
+/**
+ * Lets the tenant checkout UI know whether payments go through Xendit (hosted invoice redirect) or a manual bank transfer, and in the manual case exposes the operator's bank account to display. Never returns any secret.
+ * @summary The active payment provider + (for manual) the bank transfer details
+ */
+export const getBillingPaymentMethod = async ( options?: RequestInit): Promise<TenantPaymentMethod> => {
+
+  return customFetch<TenantPaymentMethod>(getGetBillingPaymentMethodUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBillingPaymentMethodQueryKey = () => {
+    return [
+    `/api/billing/payment-method`
+    ] as const;
+    }
+
+
+export const getGetBillingPaymentMethodQueryOptions = <TData = Awaited<ReturnType<typeof getBillingPaymentMethod>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingPaymentMethod>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBillingPaymentMethodQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBillingPaymentMethod>>> = ({ signal }) => getBillingPaymentMethod({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBillingPaymentMethod>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBillingPaymentMethodQueryResult = NonNullable<Awaited<ReturnType<typeof getBillingPaymentMethod>>>
+export type GetBillingPaymentMethodQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The active payment provider + (for manual) the bank transfer details
+ */
+
+export function useGetBillingPaymentMethod<TData = Awaited<ReturnType<typeof getBillingPaymentMethod>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingPaymentMethod>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBillingPaymentMethodQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

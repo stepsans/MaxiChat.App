@@ -5,6 +5,7 @@ import { startShortcutSyncScheduler } from "./routes/shortcuts-sync";
 import { startSalesOrderSyncScheduler } from "./routes/sales-orders";
 import { startAiReviewScheduler } from "./lib/ai-review";
 import { startUsageSnapshotScheduler } from "./lib/billing";
+import { startManualPaymentPoller } from "./lib/manual-payment-poller";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -112,6 +113,7 @@ async function main(): Promise<void> {
     startSalesOrderSyncScheduler();
     startAiReviewScheduler();
     startUsageSnapshotScheduler();
+    startManualPaymentPoller();
   });
 }
 

@@ -5,13 +5,40 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { CheckoutResultMode } from './checkoutResultMode';
 
+/**
+ * Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to redirect to; "manual" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it).
+ */
 export interface CheckoutResult {
   paymentId: number;
-  /** Hosted Xendit checkout page to redirect the tenant to. */
-  invoiceUrl: string;
-  /** Xendit invoice id stored for webhook reconciliation. */
-  externalId: string;
+  mode: CheckoutResultMode;
   /** Charged amount in whole Rupiah (computed server-side). */
   amountIdr: number;
+  /**
+     * Hosted Xendit checkout page to redirect to (xendit mode only).
+     * @nullable
+     */
+  invoiceUrl?: string | null;
+  /**
+     * Xendit invoice id (xendit) or the payment code (manual).
+     * @nullable
+     */
+  externalId?: string | null;
+  /**
+     * Manual payment code the customer cites on transfer (manual mode).
+     * @nullable
+     */
+  code?: string | null;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  bankAccountNumber?: string | null;
+  /** @nullable */
+  bankAccountHolder?: string | null;
+  /**
+     * Optional extra instructions shown on the manual transfer panel.
+     * @nullable
+     */
+  manualInstructions?: string | null;
 }

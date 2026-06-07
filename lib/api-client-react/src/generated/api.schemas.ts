@@ -1749,14 +1749,139 @@ export interface CheckoutInput {
   successRedirectUrl?: string;
 }
 
+export type CheckoutResultMode = typeof CheckoutResultMode[keyof typeof CheckoutResultMode];
+
+
+export const CheckoutResultMode = {
+  xendit: 'xendit',
+  manual: 'manual',
+} as const;
+
+/**
+ * Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to redirect to; "manual" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it).
+ */
 export interface CheckoutResult {
   paymentId: number;
-  /** Hosted Xendit checkout page to redirect the tenant to. */
-  invoiceUrl: string;
-  /** Xendit invoice id stored for webhook reconciliation. */
-  externalId: string;
+  mode: CheckoutResultMode;
   /** Charged amount in whole Rupiah (computed server-side). */
   amountIdr: number;
+  /**
+     * Hosted Xendit checkout page to redirect to (xendit mode only).
+     * @nullable
+     */
+  invoiceUrl?: string | null;
+  /**
+     * Xendit invoice id (xendit) or the payment code (manual).
+     * @nullable
+     */
+  externalId?: string | null;
+  /**
+     * Manual payment code the customer cites on transfer (manual mode).
+     * @nullable
+     */
+  code?: string | null;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  bankAccountNumber?: string | null;
+  /** @nullable */
+  bankAccountHolder?: string | null;
+  /**
+     * Optional extra instructions shown on the manual transfer panel.
+     * @nullable
+     */
+  manualInstructions?: string | null;
+}
+
+export type PaymentMethodSettingsActiveProvider = typeof PaymentMethodSettingsActiveProvider[keyof typeof PaymentMethodSettingsActiveProvider];
+
+
+export const PaymentMethodSettingsActiveProvider = {
+  xendit: 'xendit',
+  manual: 'manual',
+} as const;
+
+/**
+ * Active payment provider plus the manual bank-transfer + verification Google Sheet configuration. Bank details are not secret (shown to customers). Admin-only.
+ */
+export interface PaymentMethodSettings {
+  activeProvider: PaymentMethodSettingsActiveProvider;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  bankAccountNumber?: string | null;
+  /** @nullable */
+  bankAccountHolder?: string | null;
+  /** @nullable */
+  manualInstructions?: string | null;
+  /** @nullable */
+  verificationCredentialId?: number | null;
+  /** @nullable */
+  verificationSpreadsheetId?: string | null;
+  /** @nullable */
+  verificationSpreadsheetName?: string | null;
+  /** @nullable */
+  verificationSheetTab?: string | null;
+  manualBankConfigured: boolean;
+  verificationConfigured: boolean;
+  /** @nullable */
+  lastPolledAt?: string | null;
+  /** @nullable */
+  updatedAt?: string | null;
+}
+
+export type UpdatePaymentMethodInputActiveProvider = typeof UpdatePaymentMethodInputActiveProvider[keyof typeof UpdatePaymentMethodInputActiveProvider];
+
+
+export const UpdatePaymentMethodInputActiveProvider = {
+  xendit: 'xendit',
+  manual: 'manual',
+} as const;
+
+/**
+ * Update the active provider and/or manual config. Omit a field to leave it unchanged; send null or an empty string to clear it.
+ */
+export interface UpdatePaymentMethodInput {
+  activeProvider?: UpdatePaymentMethodInputActiveProvider;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  bankAccountNumber?: string | null;
+  /** @nullable */
+  bankAccountHolder?: string | null;
+  /** @nullable */
+  manualInstructions?: string | null;
+  /** @nullable */
+  verificationCredentialId?: number | null;
+  /** @nullable */
+  verificationSpreadsheetId?: string | null;
+  /** @nullable */
+  verificationSpreadsheetName?: string | null;
+  /** @nullable */
+  verificationSheetTab?: string | null;
+}
+
+export type TenantPaymentMethodActiveProvider = typeof TenantPaymentMethodActiveProvider[keyof typeof TenantPaymentMethodActiveProvider];
+
+
+export const TenantPaymentMethodActiveProvider = {
+  xendit: 'xendit',
+  manual: 'manual',
+} as const;
+
+/**
+ * The active payment method as the tenant checkout UI needs it. For manual mode the operator's bank account is included; no secrets are ever returned.
+ */
+export interface TenantPaymentMethod {
+  activeProvider: TenantPaymentMethodActiveProvider;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  bankAccountNumber?: string | null;
+  /** @nullable */
+  bankAccountHolder?: string | null;
+  /** @nullable */
+  manualInstructions?: string | null;
 }
 
 export type PaymentRecordKind = typeof PaymentRecordKind[keyof typeof PaymentRecordKind];

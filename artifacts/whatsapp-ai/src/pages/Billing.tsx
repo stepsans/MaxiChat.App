@@ -23,6 +23,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
+import CheckoutSection from "@/components/CheckoutSection";
 import {
   Wallet,
   Database,
@@ -194,6 +195,8 @@ export default function Billing() {
           </div>
         </CardHeader>
       </Card>
+
+      <CheckoutSection />
 
       <Card>
         <CardHeader>

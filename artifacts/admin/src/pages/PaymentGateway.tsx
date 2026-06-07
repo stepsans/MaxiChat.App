@@ -1,10 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useAdminGetPaymentConfig,
   useAdminUpdatePaymentConfig,
   getAdminGetPaymentConfigQueryKey,
+  useAdminGetPaymentMethod,
+  useAdminUpdatePaymentMethod,
+  getAdminGetPaymentMethodQueryKey,
+  useListCredentials,
+  useCreateCredential,
+  useStartCredentialOauth,
+  useListCredentialSpreadsheets,
+  useListCredentialSpreadsheetTabs,
+  getListCredentialsQueryKey,
+  getListCredentialSpreadsheetsQueryKey,
+  getListCredentialSpreadsheetTabsQueryKey,
   type PaymentGatewayConfig,
+  type PaymentMethodSettings,
+  type Credential,
 } from "@workspace/api-client-react";
 import {
   Loader2,
@@ -18,7 +31,12 @@ import {
   Copy,
   Check,
   ShieldCheck,
+  Landmark,
+  Banknote,
+  Table2,
+  Link2,
 } from "lucide-react";
+import { SiGoogle } from "react-icons/si";
 
 function StatusPill({
   configured,
@@ -75,6 +93,441 @@ function CopyField({ value, testId }: { value: string; testId: string }) {
   );
 }
 
+const inputCls =
+  "h-9 px-2.5 rounded-md border border-border bg-input text-sm outline-none focus:ring-2 focus:ring-primary/40";
+
+// --- Manual bank-transfer + verification Google Sheet config -------------
+function ManualConfigSection({
+  status,
+  onError,
+  onOk,
+}: {
+  status: PaymentMethodSettings | undefined;
+  onError: (m: string) => void;
+  onOk: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+
+  const [bankName, setBankName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankAccountHolder, setBankAccountHolder] = useState("");
+  const [manualInstructions, setManualInstructions] = useState("");
+  const [credentialId, setCredentialId] = useState<number | null>(null);
+  const [spreadsheetId, setSpreadsheetId] = useState("");
+  const [sheetTab, setSheetTab] = useState("");
+
+  // Hydrate the draft from the server once loaded.
+  useEffect(() => {
+    if (!status) return;
+    setBankName(status.bankName ?? "");
+    setBankAccountNumber(status.bankAccountNumber ?? "");
+    setBankAccountHolder(status.bankAccountHolder ?? "");
+    setManualInstructions(status.manualInstructions ?? "");
+    setCredentialId(status.verificationCredentialId ?? null);
+    setSpreadsheetId(status.verificationSpreadsheetId ?? "");
+    setSheetTab(status.verificationSheetTab ?? "");
+  }, [
+    status?.bankName,
+    status?.bankAccountNumber,
+    status?.bankAccountHolder,
+    status?.manualInstructions,
+    status?.verificationCredentialId,
+    status?.verificationSpreadsheetId,
+    status?.verificationSheetTab,
+  ]);
+
+  const { data: credResp } = useListCredentials();
+  const credentials: Credential[] = useMemo(
+    () =>
+      (credResp ?? []).filter(
+        (c) =>
+          c.type === "googleSheetsOAuth2Api" ||
+          c.type === "googleSheetsTriggerOAuth2Api"
+      ),
+    [credResp]
+  );
+  const selectedCred = credentials.find((c) => c.id === credentialId) ?? null;
+  const credReady = !!selectedCred && selectedCred.status === "connected";
+
+  const { data: sheets, isFetching: sheetsLoading } =
+    useListCredentialSpreadsheets(credentialId ?? 0, {
+      query: {
+        queryKey: getListCredentialSpreadsheetsQueryKey(credentialId ?? 0),
+        enabled: !!credentialId && credReady,
+      },
+    });
+  const { data: tabs, isFetching: tabsLoading } =
+    useListCredentialSpreadsheetTabs(credentialId ?? 0, spreadsheetId, {
+      query: {
+        queryKey: getListCredentialSpreadsheetTabsQueryKey(
+          credentialId ?? 0,
+          spreadsheetId
+        ),
+        enabled: !!credentialId && credReady && !!spreadsheetId,
+      },
+    });
+
+  // --- Inline Google connect (create credential + OAuth popup) -----------
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const createCred = useCreateCredential();
+  const startOauth = useStartCredentialOauth();
+  const redirectUrl =
+    typeof window !== "undefined"
+      ? `${window.location.protocol}//${window.location.host}/api/credentials/oauth/callback`
+      : "";
+
+  // Refresh credential list when the OAuth popup reports success.
+  useEffect(() => {
+    const handler = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const m = ev.data;
+      if (m?.type !== "vjchat:oauth") return;
+      qc.invalidateQueries({ queryKey: getListCredentialsQueryKey() });
+      if (m.ok) {
+        if (typeof m.credentialId === "number") setCredentialId(m.credentialId);
+        onOk("Akun Google terhubung.");
+      } else {
+        onError(m.error || "OAuth gagal");
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [qc, onOk, onError]);
+
+  async function connectGoogle() {
+    onError("");
+    if (!clientId.trim() || !clientSecret.trim()) {
+      onError("Client ID dan Client Secret wajib diisi untuk menghubungkan Google.");
+      return;
+    }
+    try {
+      const created = await createCred.mutateAsync({
+        data: {
+          name: "MaxiChat verifikasi pembayaran",
+          type: "googleSheetsOAuth2Api",
+          clientId: clientId.trim(),
+          clientSecret: clientSecret.trim(),
+        },
+      });
+      setCredentialId(created.id);
+      const res = await startOauth.mutateAsync({ id: created.id });
+      window.open(
+        res.url,
+        "vjchat-oauth",
+        "width=520,height=640,menubar=no,toolbar=no"
+      );
+      setClientSecret("");
+    } catch (e: unknown) {
+      const err = e as { data?: { error?: string }; message?: string };
+      onError(err?.data?.error || err?.message || "Gagal menghubungkan Google");
+    }
+  }
+
+  async function reconnect(id: number) {
+    try {
+      const res = await startOauth.mutateAsync({ id });
+      window.open(
+        res.url,
+        "vjchat-oauth",
+        "width=520,height=640,menubar=no,toolbar=no"
+      );
+    } catch (e: unknown) {
+      const err = e as { data?: { error?: string }; message?: string };
+      onError(err?.data?.error || err?.message || "Gagal menghubungkan ulang");
+    }
+  }
+
+  const save = useAdminUpdatePaymentMethod({
+    mutation: {
+      onSuccess: () => {
+        onOk("Konfigurasi pembayaran manual tersimpan.");
+        qc.invalidateQueries({ queryKey: getAdminGetPaymentMethodQueryKey() });
+      },
+      onError: (err: any) =>
+        onError(err?.data?.error ?? "Gagal menyimpan konfigurasi manual"),
+    },
+  });
+
+  function submitManual(e: React.FormEvent) {
+    e.preventDefault();
+    onError("");
+    const selectedName =
+      sheets?.find((s) => s.id === spreadsheetId)?.name ?? null;
+    save.mutate({
+      data: {
+        bankName: bankName.trim() || null,
+        bankAccountNumber: bankAccountNumber.trim() || null,
+        bankAccountHolder: bankAccountHolder.trim() || null,
+        manualInstructions: manualInstructions.trim() || null,
+        verificationCredentialId: credentialId,
+        verificationSpreadsheetId: spreadsheetId || null,
+        verificationSpreadsheetName: selectedName,
+        verificationSheetTab: sheetTab || null,
+      },
+    });
+  }
+
+  return (
+    <form
+      onSubmit={submitManual}
+      className="border border-border rounded-lg bg-card p-4 space-y-5"
+    >
+      <div>
+        <h2 className="text-sm font-semibold flex items-center gap-1.5">
+          <Banknote className="w-4 h-4 text-muted-foreground" />
+          Rekening tujuan transfer
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Ditampilkan ke pelanggan saat checkout manual. Bukan data rahasia.
+        </p>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">Nama Bank</span>
+          <input
+            value={bankName}
+            onChange={(e) => setBankName(e.target.value)}
+            placeholder="BCA / Mandiri / BRI"
+            data-testid="input-bank-name"
+            className={inputCls}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">No. Rekening</span>
+          <input
+            value={bankAccountNumber}
+            onChange={(e) => setBankAccountNumber(e.target.value)}
+            placeholder="1234567890"
+            data-testid="input-bank-account"
+            className={`${inputCls} font-mono`}
+          />
+        </label>
+        <label className="flex flex-col gap-1 sm:col-span-2">
+          <span className="text-[11px] text-muted-foreground">
+            Nama Pemilik Rekening
+          </span>
+          <input
+            value={bankAccountHolder}
+            onChange={(e) => setBankAccountHolder(e.target.value)}
+            placeholder="PT Maxi Chat Indonesia"
+            data-testid="input-bank-holder"
+            className={inputCls}
+          />
+        </label>
+        <label className="flex flex-col gap-1 sm:col-span-2">
+          <span className="text-[11px] text-muted-foreground">
+            Instruksi tambahan (opsional)
+          </span>
+          <textarea
+            value={manualInstructions}
+            onChange={(e) => setManualInstructions(e.target.value)}
+            placeholder="Contoh: cantumkan Kode Pembayaran pada berita transfer."
+            data-testid="input-manual-instructions"
+            rows={2}
+            className="px-2.5 py-2 rounded-md border border-border bg-input text-sm outline-none focus:ring-2 focus:ring-primary/40 resize-y"
+          />
+        </label>
+      </div>
+
+      {/* Verification Google Sheet */}
+      <div className="border-t border-border pt-4 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold flex items-center gap-1.5">
+            <Table2 className="w-4 h-4 text-muted-foreground" />
+            Sheet verifikasi (mode Otomatis)
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Setiap pesanan manual otomatis ditulis ke Sheet ini. Ubah kolom{" "}
+            <span className="font-medium text-foreground">Status</span> menjadi{" "}
+            <span className="font-mono text-emerald-400">LUNAS</span> untuk
+            mengaktifkan langganan pelanggan (dicek tiap menit).
+          </p>
+        </div>
+
+        {/* Credential picker / connect */}
+        {credentials.length === 0 ? (
+          <div className="border border-border rounded-md p-3 space-y-3 bg-muted/30">
+            <p className="text-xs text-muted-foreground">
+              Hubungkan satu akun Google (milik operator) untuk menulis ke
+              Spreadsheet. Buat OAuth Client di Google Cloud Console, lalu
+              tambahkan redirect URI berikut:
+            </p>
+            <CopyField value={redirectUrl} testId="copy-oauth-redirect" />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-muted-foreground">
+                  Google Client ID
+                </span>
+                <input
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="xxxxx.apps.googleusercontent.com"
+                  data-testid="input-google-client-id"
+                  className={`${inputCls} font-mono`}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-muted-foreground">
+                  Google Client Secret
+                </span>
+                <input
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder="GOCSPX-..."
+                  data-testid="input-google-client-secret"
+                  className={`${inputCls} font-mono`}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={connectGoogle}
+              disabled={createCred.isPending || startOauth.isPending}
+              data-testid="connect-google"
+              className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+            >
+              {createCred.isPending || startOauth.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <SiGoogle className="w-4 h-4" />
+              )}
+              Hubungkan Google
+            </button>
+          </div>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted-foreground">
+                Akun Google
+              </span>
+              <select
+                value={credentialId ?? ""}
+                onChange={(e) => {
+                  setCredentialId(e.target.value ? Number(e.target.value) : null);
+                  setSpreadsheetId("");
+                  setSheetTab("");
+                }}
+                data-testid="select-credential"
+                className={inputCls}
+              >
+                <option value="">— Pilih akun —</option>
+                {credentials.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.accountEmail ? ` (${c.accountEmail})` : ""} —{" "}
+                    {c.status === "connected" ? "terhubung" : "belum terhubung"}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedCred && !credReady && (
+              <button
+                type="button"
+                onClick={() => reconnect(selectedCred.id)}
+                data-testid="reconnect-google"
+                className="h-8 px-3 rounded-md bg-muted text-xs font-medium flex items-center gap-1.5 hover-elevate"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                Hubungkan ulang akun ini
+              </button>
+            )}
+
+            {credReady && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                    Spreadsheet
+                    {sheetsLoading && (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    )}
+                  </span>
+                  <select
+                    value={spreadsheetId}
+                    onChange={(e) => {
+                      setSpreadsheetId(e.target.value);
+                      setSheetTab("");
+                    }}
+                    data-testid="select-spreadsheet"
+                    className={inputCls}
+                  >
+                    <option value="">— Pilih spreadsheet —</option>
+                    {(sheets ?? []).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                    Tab / Sheet
+                    {tabsLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                  </span>
+                  <select
+                    value={sheetTab}
+                    onChange={(e) => setSheetTab(e.target.value)}
+                    disabled={!spreadsheetId}
+                    data-testid="select-tab"
+                    className={`${inputCls} disabled:opacity-50`}
+                  >
+                    <option value="">— Pilih tab —</option>
+                    {(tabs ?? []).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Column guide */}
+        <div className="text-[11px] text-muted-foreground border border-border rounded-md p-3 bg-muted/20">
+          <p className="font-medium text-foreground mb-1">
+            Kolom yang akan ditulis (baris 1 = header otomatis):
+          </p>
+          <code className="block font-mono text-[10px] leading-relaxed break-words">
+            Kode Pembayaran | Tanggal | Nama Tenant | Email | Item | Jumlah (Rp)
+            | Status | Catatan
+          </code>
+          <p className="mt-1.5">
+            Cukup ubah kolom <span className="font-medium">Status</span> ke{" "}
+            <span className="font-mono">LUNAS</span>. Kolom lain jangan diubah.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={save.isPending}
+          data-testid="save-manual-config"
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+        >
+          {save.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          Simpan konfigurasi manual
+        </button>
+        {status && (
+          <span className="text-[11px] text-muted-foreground flex items-center gap-2">
+            <StatusPill configured={status.manualBankConfigured} /> Rekening
+            <StatusPill configured={status.verificationConfigured} /> Sheet
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
 export default function PaymentGateway() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +542,15 @@ export default function PaymentGateway() {
   });
   const status = statusQuery.data as PaymentGatewayConfig | undefined;
 
+  const methodQuery = useAdminGetPaymentMethod({
+    query: { queryKey: getAdminGetPaymentMethodQueryKey() },
+  });
+  const method = methodQuery.data as PaymentMethodSettings | undefined;
+  const [provider, setProvider] = useState<"xendit" | "manual">("xendit");
+  useEffect(() => {
+    if (method) setProvider(method.activeProvider);
+  }, [method?.activeProvider]);
+
   // Keep the active toggle in sync with the server once loaded.
   useEffect(() => {
     if (status) setIsActive(status.isActive);
@@ -98,8 +560,31 @@ export default function PaymentGateway() {
     document.title = "MaxiChat Admin — Gateway Pembayaran";
   }, []);
 
+  function flashOk(m: string) {
+    setOkMsg(m);
+    if (m) setTimeout(() => setOkMsg(null), 2500);
+  }
+
   function invalidate() {
     qc.invalidateQueries({ queryKey: getAdminGetPaymentConfigQueryKey() });
+  }
+
+  const updateProvider = useAdminUpdatePaymentMethod({
+    mutation: {
+      onSuccess: () => {
+        flashOk("Metode pembayaran aktif diperbarui.");
+        qc.invalidateQueries({ queryKey: getAdminGetPaymentMethodQueryKey() });
+      },
+      onError: (err: any) =>
+        setError(err?.data?.error ?? "Gagal mengubah metode aktif"),
+    },
+  });
+
+  function chooseProvider(next: "xendit" | "manual") {
+    if (next === provider) return;
+    setProvider(next);
+    setError(null);
+    updateProvider.mutate({ data: { activeProvider: next } });
   }
 
   const update = useAdminUpdatePaymentConfig({
@@ -107,8 +592,7 @@ export default function PaymentGateway() {
       onSuccess: () => {
         setSecretKey("");
         setCallbackToken("");
-        setOkMsg("Konfigurasi gateway tersimpan.");
-        setTimeout(() => setOkMsg(null), 2500);
+        flashOk("Konfigurasi gateway tersimpan.");
         invalidate();
       },
       onError: (err: any) =>
@@ -129,9 +613,6 @@ export default function PaymentGateway() {
     });
   }
 
-  // Webhook URL the operator pastes into the Xendit dashboard. The API is
-  // served under /api by the shared proxy; the inbound webhook route is
-  // /api/webhooks/xendit.
   const webhookUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/api/webhooks/xendit`
@@ -146,20 +627,24 @@ export default function PaymentGateway() {
             Gateway Pembayaran
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
-            Kredensial Xendit milik operator (satu akun untuk semua tenant).
-            Secret key & callback token dienkripsi dan tidak pernah ditampilkan
-            kembali. Jika kosong, sistem memakai variabel environment sebagai
-            cadangan.
+            Pilih metode pembayaran aktif untuk seluruh tenant: gateway otomatis
+            (Xendit) atau transfer bank manual dengan verifikasi via Google
+            Sheet.
           </p>
         </div>
         <button
-          onClick={() => statusQuery.refetch()}
+          onClick={() => {
+            statusQuery.refetch();
+            methodQuery.refetch();
+          }}
           className="h-8 px-3 rounded-md bg-muted text-xs font-medium flex items-center gap-1.5 hover-elevate"
           data-testid="refresh-payment-config"
         >
           <RefreshCw
             className={`w-3.5 h-3.5 ${
-              statusQuery.isFetching ? "animate-spin" : ""
+              statusQuery.isFetching || methodQuery.isFetching
+                ? "animate-spin"
+                : ""
             }`}
           />
           Muat ulang
@@ -178,144 +663,209 @@ export default function PaymentGateway() {
         </div>
       )}
 
-      {/* Current status */}
+      {/* Active provider selector */}
       <section className="border border-border rounded-lg bg-card p-4 space-y-3">
         <h2 className="text-sm font-semibold flex items-center gap-1.5">
           <ShieldCheck className="w-4 h-4 text-muted-foreground" />
-          Status saat ini
+          Metode pembayaran aktif
         </h2>
-        {statusQuery.isLoading ? (
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat...
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-3 text-sm">
-            <div className="flex items-center justify-between gap-2 border border-border rounded-md px-3 py-2">
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <KeyRound className="w-3.5 h-3.5" /> Secret Key
-                {status?.secretKeyLast4 && (
-                  <span className="font-mono text-foreground">
-                    ••••{status.secretKeyLast4}
-                  </span>
-                )}
-              </span>
-              <StatusPill
-                configured={!!status?.secretKeyConfigured}
-                source={status?.secretKeySource}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2 border border-border rounded-md px-3 py-2">
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Webhook className="w-3.5 h-3.5" /> Callback Token
-              </span>
-              <StatusPill
-                configured={!!status?.callbackTokenConfigured}
-                source={status?.callbackTokenSource}
-              />
-            </div>
-          </div>
-        )}
-        {status && !status.isActive && (
-          <p className="text-[11px] text-amber-400">
-            Gateway sedang dinonaktifkan — kredensial DB diabaikan sampai
-            diaktifkan kembali.
-          </p>
-        )}
-      </section>
-
-      {/* Webhook URL */}
-      <section className="border border-border rounded-lg bg-card p-4 space-y-2">
-        <h2 className="text-sm font-semibold flex items-center gap-1.5">
-          <Webhook className="w-4 h-4 text-muted-foreground" />
-          URL Webhook
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Tempelkan URL ini di dashboard Xendit (Settings → Webhooks → Invoices
-          paid) dan pakai callback token yang sama di bawah.
-        </p>
-        <CopyField value={webhookUrl} testId="copy-webhook-url" />
-      </section>
-
-      {/* Edit form */}
-      <form
-        onSubmit={submit}
-        className="border border-border rounded-lg bg-card p-4 space-y-4"
-      >
-        <h2 className="text-sm font-semibold flex items-center gap-1.5">
-          <Save className="w-4 h-4 text-muted-foreground" />
-          Ubah kredensial
-        </h2>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-            <KeyRound className="w-3.5 h-3.5" /> Xendit Secret Key
-          </span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={secretKey}
-            onChange={(e) => setSecretKey(e.target.value)}
-            placeholder={
-              status?.secretKeyConfigured
-                ? "•••• (biarkan kosong untuk tidak mengubah)"
-                : "xnd_production_... atau xnd_development_..."
-            }
-            data-testid="input-secret-key"
-            className="h-9 px-2.5 rounded-md border border-border bg-input text-sm font-mono outline-none focus:ring-2 focus:ring-primary/40"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-            <Webhook className="w-3.5 h-3.5" /> Xendit Callback Token
-          </span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={callbackToken}
-            onChange={(e) => setCallbackToken(e.target.value)}
-            placeholder={
-              status?.callbackTokenConfigured
-                ? "•••• (biarkan kosong untuk tidak mengubah)"
-                : "Verification token dari dashboard Xendit"
-            }
-            data-testid="input-callback-token"
-            className="h-9 px-2.5 rounded-md border border-border bg-input text-sm font-mono outline-none focus:ring-2 focus:ring-primary/40"
-          />
-        </label>
-
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={isActive}
-            onChange={(e) => setIsActive(e.target.checked)}
-            data-testid="toggle-active"
-            className="h-4 w-4 rounded border-border"
-          />
-          <span className="text-xs text-foreground">
-            Aktifkan gateway (pakai kredensial yang tersimpan di DB)
-          </span>
-        </label>
-
-        <div className="flex items-center gap-2 pt-1">
+        <div className="grid sm:grid-cols-2 gap-3">
           <button
-            type="submit"
-            disabled={update.isPending}
-            data-testid="save-payment-config"
-            className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+            type="button"
+            onClick={() => chooseProvider("xendit")}
+            data-testid="provider-xendit"
+            className={`text-left border rounded-lg p-3 hover-elevate ${
+              provider === "xendit"
+                ? "border-primary bg-primary/10"
+                : "border-border"
+            }`}
           >
-            {update.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            Simpan
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <CreditCard className="w-4 h-4" /> Xendit (otomatis)
+              {provider === "xendit" && (
+                <CheckCircle2 className="w-4 h-4 text-primary ml-auto" />
+              )}
+            </span>
+            <span className="block text-[11px] text-muted-foreground mt-1">
+              VA / QRIS / e-wallet, langsung aktif setelah pembayaran.
+            </span>
           </button>
-          <p className="text-[11px] text-muted-foreground">
-            Kolom yang dibiarkan kosong tidak akan mengubah nilai tersimpan.
-          </p>
+          <button
+            type="button"
+            onClick={() => chooseProvider("manual")}
+            data-testid="provider-manual"
+            className={`text-left border rounded-lg p-3 hover-elevate ${
+              provider === "manual"
+                ? "border-primary bg-primary/10"
+                : "border-border"
+            }`}
+          >
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <Landmark className="w-4 h-4" /> Transfer Manual
+              {provider === "manual" && (
+                <CheckCircle2 className="w-4 h-4 text-primary ml-auto" />
+              )}
+            </span>
+            <span className="block text-[11px] text-muted-foreground mt-1">
+              Pelanggan transfer ke rekening; admin tandai LUNAS di Sheet.
+            </span>
+          </button>
         </div>
-      </form>
+        {updateProvider.isPending && (
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+            <Loader2 className="w-3 h-3 animate-spin" /> Menyimpan...
+          </p>
+        )}
+      </section>
+
+      {provider === "manual" ? (
+        <ManualConfigSection
+          status={method}
+          onError={(m) => setError(m || null)}
+          onOk={flashOk}
+        />
+      ) : (
+        <>
+          {/* Current Xendit status */}
+          <section className="border border-border rounded-lg bg-card p-4 space-y-3">
+            <h2 className="text-sm font-semibold flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+              Status Xendit
+            </h2>
+            {statusQuery.isLoading ? (
+              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat...
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                <div className="flex items-center justify-between gap-2 border border-border rounded-md px-3 py-2">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <KeyRound className="w-3.5 h-3.5" /> Secret Key
+                    {status?.secretKeyLast4 && (
+                      <span className="font-mono text-foreground">
+                        ••••{status.secretKeyLast4}
+                      </span>
+                    )}
+                  </span>
+                  <StatusPill
+                    configured={!!status?.secretKeyConfigured}
+                    source={status?.secretKeySource}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 border border-border rounded-md px-3 py-2">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Webhook className="w-3.5 h-3.5" /> Callback Token
+                  </span>
+                  <StatusPill
+                    configured={!!status?.callbackTokenConfigured}
+                    source={status?.callbackTokenSource}
+                  />
+                </div>
+              </div>
+            )}
+            {status && !status.isActive && (
+              <p className="text-[11px] text-amber-400">
+                Gateway sedang dinonaktifkan — kredensial DB diabaikan sampai
+                diaktifkan kembali.
+              </p>
+            )}
+          </section>
+
+          {/* Webhook URL */}
+          <section className="border border-border rounded-lg bg-card p-4 space-y-2">
+            <h2 className="text-sm font-semibold flex items-center gap-1.5">
+              <Webhook className="w-4 h-4 text-muted-foreground" />
+              URL Webhook
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Tempelkan URL ini di dashboard Xendit (Settings → Webhooks →
+              Invoices paid) dan pakai callback token yang sama di bawah.
+            </p>
+            <CopyField value={webhookUrl} testId="copy-webhook-url" />
+          </section>
+
+          {/* Edit form */}
+          <form
+            onSubmit={submit}
+            className="border border-border rounded-lg bg-card p-4 space-y-4"
+          >
+            <h2 className="text-sm font-semibold flex items-center gap-1.5">
+              <Save className="w-4 h-4 text-muted-foreground" />
+              Ubah kredensial
+            </h2>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5" /> Xendit Secret Key
+              </span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={secretKey}
+                onChange={(e) => setSecretKey(e.target.value)}
+                placeholder={
+                  status?.secretKeyConfigured
+                    ? "•••• (biarkan kosong untuk tidak mengubah)"
+                    : "xnd_production_... atau xnd_development_..."
+                }
+                data-testid="input-secret-key"
+                className="h-9 px-2.5 rounded-md border border-border bg-input text-sm font-mono outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <Webhook className="w-3.5 h-3.5" /> Xendit Callback Token
+              </span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={callbackToken}
+                onChange={(e) => setCallbackToken(e.target.value)}
+                placeholder={
+                  status?.callbackTokenConfigured
+                    ? "•••• (biarkan kosong untuk tidak mengubah)"
+                    : "Verification token dari dashboard Xendit"
+                }
+                data-testid="input-callback-token"
+                className="h-9 px-2.5 rounded-md border border-border bg-input text-sm font-mono outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                data-testid="toggle-active"
+                className="h-4 w-4 rounded border-border"
+              />
+              <span className="text-xs text-foreground">
+                Aktifkan gateway (pakai kredensial yang tersimpan di DB)
+              </span>
+            </label>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={update.isPending}
+                data-testid="save-payment-config"
+                className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+              >
+                {update.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                Simpan
+              </button>
+              <p className="text-[11px] text-muted-foreground">
+                Kolom yang dibiarkan kosong tidak akan mengubah nilai tersimpan.
+              </p>
+            </div>
+          </form>
+        </>
+      )}
     </div>
   );
 }

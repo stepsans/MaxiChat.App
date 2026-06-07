@@ -52,3 +52,4 @@
 - [Usage-billed SaaS billing engine](billing-engine.md) — ceil-bucket math (500MB/2ch/100tok), whole-Rupiah ints enforced at route not orval, daily snapshot upsert per (owner,date), member→owner resolution.
 - [Subscription read-only enforcement](subscription-readonly-enforcement.md) — method-based write-block (POST/PUT/PATCH/DELETE) misses mutating GETs (OAuth callback); guard those per-route + scope tenant-owner queries to role!="admin" so platform admin never counts as a paying tenant.
 - [Flow node-data zod strips unknown keys](flow-node-data-zod-strip.md) — api-server's hand-written FlowNodeSchema.data must mirror OpenAPI/FlowEditor or new node.data fields vanish on save.
+- [Manual vs Xendit settlement boundary](manual-vs-xendit-settlement-boundary.md) — shared maxichat-pay-<id> externalId means the Xendit webhook MUST scope lookups to provider='xendit'; poller is the only manual settler; manual checkout fails-fast on unconfigured Sheet/append.

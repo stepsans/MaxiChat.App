@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, paymentsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import {
@@ -49,12 +49,22 @@ router.post("/", async (req, res): Promise<void> => {
 
   // Resolve the payment row. Primary: our stored externalId == Xendit invoice
   // id. Fallback: parse the id we embedded in external_id (maxichat-pay-<id>).
+  // Scope every lookup to provider='xendit'. Manual payments also carry an
+  // externalId of the form maxichat-pay-<id> (the customer's payment code), so
+  // an unscoped fallback would let a valid Xendit callback settle a manual
+  // order that the operator never confirmed. The poller is the only path that
+  // may settle manual rows.
   let paymentId: number | null = null;
   if (invoiceId) {
     const [row] = await db
       .select({ id: paymentsTable.id })
       .from(paymentsTable)
-      .where(eq(paymentsTable.externalId, invoiceId))
+      .where(
+        and(
+          eq(paymentsTable.externalId, invoiceId),
+          eq(paymentsTable.provider, "xendit")
+        )
+      )
       .limit(1);
     if (row) paymentId = row.id;
   }
@@ -65,7 +75,12 @@ router.post("/", async (req, res): Promise<void> => {
       const [row] = await db
         .select({ id: paymentsTable.id })
         .from(paymentsTable)
-        .where(eq(paymentsTable.id, candidate))
+        .where(
+          and(
+            eq(paymentsTable.id, candidate),
+            eq(paymentsTable.provider, "xendit")
+          )
+        )
         .limit(1);
       if (row) paymentId = row.id;
     }

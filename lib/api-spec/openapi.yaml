@@ -591,6 +591,54 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/payment-method:
+    get:
+      operationId: adminGetPaymentMethod
+      tags: [admin]
+      summary: Get the active payment provider + manual-transfer config (admin only)
+      responses:
+        "200":
+          description: Payment-method settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethodSettings"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: adminUpdatePaymentMethod
+      tags: [admin]
+      summary: Update the active provider + manual bank / verification sheet (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePaymentMethodInput"
+      responses:
+        "200":
+          description: Updated payment-method settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethodSettings"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/ai-usage:
     get:
       operationId: adminListAiUsage
@@ -700,6 +748,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BillingCatalog"
+
+  /billing/payment-method:
+    get:
+      operationId: getBillingPaymentMethod
+      tags: [billing]
+      summary: The active payment provider + (for manual) the bank transfer details
+      description: >-
+        Lets the tenant checkout UI know whether payments go through Xendit
+        (hosted invoice redirect) or a manual bank transfer, and in the manual
+        case exposes the operator's bank account to display. Never returns any
+        secret.
+      responses:
+        "200":
+          description: Active payment method
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantPaymentMethod"
 
   /billing/quota:
     get:
@@ -5891,19 +5957,126 @@ components:
 
     CheckoutResult:
       type: object
-      required: [paymentId, invoiceUrl, externalId, amountIdr]
+      required: [paymentId, mode, amountIdr]
+      description: >-
+        Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to
+        redirect to; "manual" returns the bank-transfer details and a payment
+        code the customer references on transfer (the order stays pending until
+        the operator confirms it).
       properties:
         paymentId:
           type: integer
-        invoiceUrl:
+        mode:
           type: string
-          description: Hosted Xendit checkout page to redirect the tenant to.
-        externalId:
-          type: string
-          description: Xendit invoice id stored for webhook reconciliation.
+          enum: [xendit, manual]
         amountIdr:
           type: integer
           description: Charged amount in whole Rupiah (computed server-side).
+        invoiceUrl:
+          type: ["string", "null"]
+          description: Hosted Xendit checkout page to redirect to (xendit mode only).
+        externalId:
+          type: ["string", "null"]
+          description: Xendit invoice id (xendit) or the payment code (manual).
+        code:
+          type: ["string", "null"]
+          description: Manual payment code the customer cites on transfer (manual mode).
+        bankName:
+          type: ["string", "null"]
+        bankAccountNumber:
+          type: ["string", "null"]
+        bankAccountHolder:
+          type: ["string", "null"]
+        manualInstructions:
+          type: ["string", "null"]
+          description: Optional extra instructions shown on the manual transfer panel.
+
+    PaymentMethodSettings:
+      type: object
+      description: >-
+        Active payment provider plus the manual bank-transfer + verification
+        Google Sheet configuration. Bank details are not secret (shown to
+        customers). Admin-only.
+      required:
+        - activeProvider
+        - manualBankConfigured
+        - verificationConfigured
+      properties:
+        activeProvider:
+          type: string
+          enum: [xendit, manual]
+        bankName:
+          type: ["string", "null"]
+        bankAccountNumber:
+          type: ["string", "null"]
+        bankAccountHolder:
+          type: ["string", "null"]
+        manualInstructions:
+          type: ["string", "null"]
+        verificationCredentialId:
+          type: ["integer", "null"]
+        verificationSpreadsheetId:
+          type: ["string", "null"]
+        verificationSpreadsheetName:
+          type: ["string", "null"]
+        verificationSheetTab:
+          type: ["string", "null"]
+        manualBankConfigured:
+          type: boolean
+        verificationConfigured:
+          type: boolean
+        lastPolledAt:
+          type: ["string", "null"]
+          format: date-time
+        updatedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    UpdatePaymentMethodInput:
+      type: object
+      description: >-
+        Update the active provider and/or manual config. Omit a field to leave
+        it unchanged; send null or an empty string to clear it.
+      properties:
+        activeProvider:
+          type: string
+          enum: [xendit, manual]
+        bankName:
+          type: ["string", "null"]
+        bankAccountNumber:
+          type: ["string", "null"]
+        bankAccountHolder:
+          type: ["string", "null"]
+        manualInstructions:
+          type: ["string", "null"]
+        verificationCredentialId:
+          type: ["integer", "null"]
+        verificationSpreadsheetId:
+          type: ["string", "null"]
+        verificationSpreadsheetName:
+          type: ["string", "null"]
+        verificationSheetTab:
+          type: ["string", "null"]
+
+    TenantPaymentMethod:
+      type: object
+      description: >-
+        The active payment method as the tenant checkout UI needs it. For manual
+        mode the operator's bank account is included; no secrets are ever
+        returned.
+      required: [activeProvider]
+      properties:
+        activeProvider:
+          type: string
+          enum: [xendit, manual]
+        bankName:
+          type: ["string", "null"]
+        bankAccountNumber:
+          type: ["string", "null"]
+        bankAccountHolder:
+          type: ["string", "null"]
+        manualInstructions:
+          type: ["string", "null"]
 
     PaymentRecord:
       type: object

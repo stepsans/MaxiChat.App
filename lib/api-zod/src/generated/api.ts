@@ -424,6 +424,58 @@ export const AdminUpdatePaymentConfigResponse = zod.object({
 
 
 /**
+ * @summary Get the active payment provider + manual-transfer config (admin only)
+ */
+export const AdminGetPaymentMethodResponse = zod.object({
+  "activeProvider": zod.enum(['xendit', 'manual']),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish(),
+  "verificationCredentialId": zod.number().nullish(),
+  "verificationSpreadsheetId": zod.string().nullish(),
+  "verificationSpreadsheetName": zod.string().nullish(),
+  "verificationSheetTab": zod.string().nullish(),
+  "manualBankConfigured": zod.boolean(),
+  "verificationConfigured": zod.boolean(),
+  "lastPolledAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('Active payment provider plus the manual bank-transfer + verification Google Sheet configuration. Bank details are not secret (shown to customers). Admin-only.')
+
+
+/**
+ * @summary Update the active provider + manual bank / verification sheet (admin only)
+ */
+export const AdminUpdatePaymentMethodBody = zod.object({
+  "activeProvider": zod.enum(['xendit', 'manual']).optional(),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish(),
+  "verificationCredentialId": zod.number().nullish(),
+  "verificationSpreadsheetId": zod.string().nullish(),
+  "verificationSpreadsheetName": zod.string().nullish(),
+  "verificationSheetTab": zod.string().nullish()
+}).describe('Update the active provider and\/or manual config. Omit a field to leave it unchanged; send null or an empty string to clear it.')
+
+export const AdminUpdatePaymentMethodResponse = zod.object({
+  "activeProvider": zod.enum(['xendit', 'manual']),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish(),
+  "verificationCredentialId": zod.number().nullish(),
+  "verificationSpreadsheetId": zod.string().nullish(),
+  "verificationSpreadsheetName": zod.string().nullish(),
+  "verificationSheetTab": zod.string().nullish(),
+  "manualBankConfigured": zod.boolean(),
+  "verificationConfigured": zod.boolean(),
+  "lastPolledAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().nullish()
+}).describe('Active payment provider plus the manual bank-transfer + verification Google Sheet configuration. Bank details are not secret (shown to customers). Admin-only.')
+
+
+/**
  * @summary AI token usage per super admin for the current billing period (admin only)
  */
 export const AdminListAiUsageResponseItem = zod.object({
@@ -551,6 +603,19 @@ export const GetBillingCatalogResponse = zod.object({
 
 
 /**
+ * Lets the tenant checkout UI know whether payments go through Xendit (hosted invoice redirect) or a manual bank transfer, and in the manual case exposes the operator's bank account to display. Never returns any secret.
+ * @summary The active payment provider + (for manual) the bank transfer details
+ */
+export const GetBillingPaymentMethodResponse = zod.object({
+  "activeProvider": zod.enum(['xendit', 'manual']),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish()
+}).describe('The active payment method as the tenant checkout UI needs it. For manual mode the operator\'s bank account is included; no secrets are ever returned.')
+
+
+/**
  * Returns the caller tenant's quota limits (plan baseline + add-on top-ups) alongside live usage. Team members resolve to their owner.
  * @summary The tenant's current prepaid limits (plafon) and live usage
  */
@@ -589,10 +654,16 @@ export const CreateCheckoutBody = zod.object({
 
 export const CreateCheckoutResponse = zod.object({
   "paymentId": zod.number(),
-  "invoiceUrl": zod.string().describe('Hosted Xendit checkout page to redirect the tenant to.'),
-  "externalId": zod.string().describe('Xendit invoice id stored for webhook reconciliation.'),
-  "amountIdr": zod.number().describe('Charged amount in whole Rupiah (computed server-side).')
-})
+  "mode": zod.enum(['xendit', 'manual']),
+  "amountIdr": zod.number().describe('Charged amount in whole Rupiah (computed server-side).'),
+  "invoiceUrl": zod.string().nullish().describe('Hosted Xendit checkout page to redirect to (xendit mode only).'),
+  "externalId": zod.string().nullish().describe('Xendit invoice id (xendit) or the payment code (manual).'),
+  "code": zod.string().nullish().describe('Manual payment code the customer cites on transfer (manual mode).'),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish().describe('Optional extra instructions shown on the manual transfer panel.')
+}).describe('Checkout outcome. Branch on `mode`: \"xendit\" returns an invoiceUrl to redirect to; \"manual\" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it).')
 
 
 /**

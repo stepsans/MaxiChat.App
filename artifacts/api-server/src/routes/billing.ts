@@ -22,6 +22,14 @@ import {
   createXenditInvoice,
   isXenditConfigured,
 } from "../lib/xendit";
+import {
+  getPaymentMethodRow,
+  getActiveProvider,
+  isManualBankConfigured,
+  isVerificationConfigured,
+  manualPaymentCode,
+} from "../lib/manual-payment-config";
+import { appendManualOrderRow } from "../lib/manual-payment-sheet";
 
 const router = Router();
 
@@ -141,6 +149,35 @@ router.get("/catalog", async (req, res): Promise<void> => {
   }
 });
 
+// GET /billing/payment-method — tells the tenant checkout UI whether payments
+// go through Xendit (invoice redirect) or a manual bank transfer, and in the
+// manual case exposes the operator's bank account to display. No secrets.
+router.get("/payment-method", async (req, res): Promise<void> => {
+  try {
+    const row = await getPaymentMethodRow();
+    if (row.activeProvider === "manual") {
+      res.json({
+        activeProvider: "manual",
+        bankName: row.bankName,
+        bankAccountNumber: row.bankAccountNumber,
+        bankAccountHolder: row.bankAccountHolder,
+        manualInstructions: row.manualInstructions,
+      });
+      return;
+    }
+    res.json({
+      activeProvider: "xendit",
+      bankName: null,
+      bankAccountNumber: null,
+      bankAccountHolder: null,
+      manualInstructions: null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "getBillingPaymentMethod failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /billing/quota — the tenant's current prepaid limits (plafon) + live
 // usage. Limits come from tenant_quota (plan baseline + add-on top-ups); usage
 // is computed live so it never drifts.
@@ -213,13 +250,19 @@ router.post("/checkout", async (req, res): Promise<void> => {
     const { kind, refId } = parsed.data;
     const quantity = kind === "addon" ? parsed.data.quantity ?? 1 : 1;
 
-    if (!(await isXenditConfigured())) {
-      res.status(503).json({
-        error: "Payment gateway belum dikonfigurasi. Hubungi admin.",
-        code: "gateway_unconfigured",
-      });
+    // OpenAPI `integer` codegens to zod.number() (accepts decimals), so a
+    // fractional quantity/refId would slip through and make amountIdr
+    // non-integer. Money must stay whole-Rupiah; reject non-integers here.
+    if (!Number.isInteger(refId) || refId < 1) {
+      res.status(400).json({ error: "refId tidak valid" });
       return;
     }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      res.status(400).json({ error: "Jumlah harus bilangan bulat ≥ 1" });
+      return;
+    }
+
+    const provider = await getActiveProvider();
 
     const ownerUserId = await resolveOwnerUserId(userId);
 
@@ -260,12 +303,114 @@ router.post("/checkout", async (req, res): Promise<void> => {
       return;
     }
 
-    // Owner email is the invoice payer (notifications + receipt).
+    // Owner email + name identify the payer (invoice receipt / Sheet row).
     const [owner] = await db
-      .select({ email: usersTable.email })
+      .select({ email: usersTable.email, name: usersTable.name })
       .from(usersTable)
       .where(eq(usersTable.id, ownerUserId))
       .limit(1);
+
+    // --- Manual bank-transfer checkout ------------------------------------
+    // The operator collects payment off-platform and confirms it by flipping
+    // the order's Status cell to LUNAS in their verification Sheet; a poller
+    // then settles it. We write a PENDING order row here and return the bank
+    // details + payment code for the customer to reference on transfer.
+    if (provider === "manual") {
+      const methodRow = await getPaymentMethodRow();
+      // Manual mode is "Otomatis": every order MUST land in the verification
+      // Sheet, because flipping its Status cell to LUNAS is the only path that
+      // settles the payment. Without bank details the customer can't pay, and
+      // without a configured Sheet there is no settlement path — so require
+      // both up front rather than creating an orphan pending payment.
+      if (!isManualBankConfigured(methodRow)) {
+        res.status(503).json({
+          error: "Pembayaran manual belum dikonfigurasi. Hubungi admin.",
+          code: "manual_unconfigured",
+        });
+        return;
+      }
+      if (!isVerificationConfigured(methodRow)) {
+        res.status(503).json({
+          error:
+            "Sheet verifikasi pembayaran belum dikonfigurasi. Hubungi admin.",
+          code: "verification_unconfigured",
+        });
+        return;
+      }
+
+      const [payment] = await db
+        .insert(paymentsTable)
+        .values({
+          userId: ownerUserId,
+          kind,
+          refId,
+          quantity,
+          amountIdr,
+          status: "pending",
+          provider: "manual",
+          externalId: null,
+        })
+        .returning();
+
+      const code = manualPaymentCode(payment.id);
+      await db
+        .update(paymentsTable)
+        .set({ externalId: code, updatedAt: new Date() })
+        .where(eq(paymentsTable.id, payment.id));
+
+      // The Sheet row is mandatory (it's the settlement surface). If the append
+      // fails, fail the order fast and mark the pending row `failed` so it isn't
+      // left dangling and the customer can retry, rather than transferring money
+      // against an order the operator will never see.
+      try {
+        await appendManualOrderRow(
+          {
+            paymentId: payment.id,
+            tenantName: owner?.name ?? owner?.email ?? `User #${ownerUserId}`,
+            email: owner?.email ?? "",
+            item: description,
+            amountIdr,
+          },
+          methodRow
+        );
+      } catch (err) {
+        await db
+          .update(paymentsTable)
+          .set({ status: "failed", updatedAt: new Date() })
+          .where(eq(paymentsTable.id, payment.id));
+        req.log.error(
+          { err, paymentId: payment.id },
+          "manual order row append failed"
+        );
+        res.status(502).json({
+          error: "Gagal mencatat pesanan. Coba lagi atau hubungi admin.",
+          code: "sheet_append_failed",
+        });
+        return;
+      }
+
+      res.json({
+        paymentId: payment.id,
+        mode: "manual",
+        amountIdr,
+        code,
+        externalId: code,
+        bankName: methodRow.bankName,
+        bankAccountNumber: methodRow.bankAccountNumber,
+        bankAccountHolder: methodRow.bankAccountHolder,
+        manualInstructions: methodRow.manualInstructions,
+      });
+      return;
+    }
+
+    // --- Xendit hosted-invoice checkout -----------------------------------
+    if (!(await isXenditConfigured())) {
+      res.status(503).json({
+        error: "Payment gateway belum dikonfigurasi. Hubungi admin.",
+        code: "gateway_unconfigured",
+      });
+      return;
+    }
 
     // 1) Insert the pending payment so the webhook always has a row to find.
     const [payment] = await db
@@ -317,6 +462,7 @@ router.post("/checkout", async (req, res): Promise<void> => {
 
     res.json({
       paymentId: payment.id,
+      mode: "xendit",
       invoiceUrl: invoice.invoiceUrl,
       externalId: invoice.id,
       amountIdr,
