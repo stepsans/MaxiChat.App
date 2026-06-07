@@ -16,11 +16,24 @@ import { usersTable } from "./auth";
 // for idempotent webhook reconciliation — a webhook that arrives twice must
 // find the row already `paid` and do nothing. `rawPayload` stores the last
 // provider payload for audit/debugging.
-export const paymentKinds = ["plan", "addon", "renewal"] as const;
+export const paymentKinds = ["plan", "addon", "renewal", "cart"] as const;
 export type PaymentKind = (typeof paymentKinds)[number];
 
 export const paymentStatuses = ["pending", "paid", "expired", "failed"] as const;
 export type PaymentStatus = (typeof paymentStatuses)[number];
+
+// A single line in a cart checkout. Stored in payments.line_items (jsonb) when
+// kind="cart". Prices are snapshotted at checkout (whole Rupiah) so the invoice
+// PDF and settlement reflect what the customer actually agreed to pay even if
+// the catalog price later changes.
+export type PaymentLineItem = {
+  kind: "plan" | "addon";
+  refId: number;
+  quantity: number;
+  name: string;
+  unitPriceIdr: number;
+  lineAmountIdr: number;
+};
 
 export const paymentsTable = pgTable(
   "payments",
@@ -43,6 +56,8 @@ export const paymentsTable = pgTable(
     invoiceUrl: text("invoice_url"),
     // Last provider webhook payload, for audit.
     rawPayload: jsonb("raw_payload"),
+    // Cart line items (kind="cart"); null for legacy single-item payments.
+    lineItems: jsonb("line_items").$type<PaymentLineItem[]>(),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

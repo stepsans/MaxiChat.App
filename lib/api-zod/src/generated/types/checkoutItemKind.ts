@@ -7,12 +7,12 @@
  */
 
 /**
- * Whether the purchase is a plan or an add-on top-up.
+ * Whether the line is a plan or an add-on top-up.
  */
-export type CheckoutInputKind = typeof CheckoutInputKind[keyof typeof CheckoutInputKind];
+export type CheckoutItemKind = typeof CheckoutItemKind[keyof typeof CheckoutItemKind];
 
 
-export const CheckoutInputKind = {
+export const CheckoutItemKind = {
   plan: 'plan',
   addon: 'addon',
 } as const;

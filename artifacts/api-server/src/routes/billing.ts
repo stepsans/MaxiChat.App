@@ -7,6 +7,7 @@ import {
   addonsTable,
   paymentsTable,
   tenantQuotaTable,
+  type PaymentLineItem,
 } from "@workspace/db";
 import { CreateCheckoutBody } from "@workspace/api-zod";
 import { getSessionUserId } from "../lib/auth";
@@ -30,6 +31,7 @@ import {
   manualPaymentCode,
 } from "../lib/manual-payment-config";
 import { appendManualOrderRow } from "../lib/manual-payment-sheet";
+import { buildInvoicePdf, type InvoiceBank } from "../lib/invoice-pdf";
 
 const router = Router();
 
@@ -247,53 +249,96 @@ router.post("/checkout", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid input" });
       return;
     }
-    const { kind, refId } = parsed.data;
-    const quantity = kind === "addon" ? parsed.data.quantity ?? 1 : 1;
-
-    // OpenAPI `integer` codegens to zod.number() (accepts decimals), so a
-    // fractional quantity/refId would slip through and make amountIdr
-    // non-integer. Money must stay whole-Rupiah; reject non-integers here.
-    if (!Number.isInteger(refId) || refId < 1) {
-      res.status(400).json({ error: "refId tidak valid" });
+    const items = parsed.data.items;
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "Keranjang kosong" });
       return;
     }
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      res.status(400).json({ error: "Jumlah harus bilangan bulat ≥ 1" });
+
+    // A cart may contain at most ONE plan (always quantity 1). OpenAPI `integer`
+    // codegens to zod.number() (accepts decimals), so re-check Number.isInteger
+    // on refId + quantity — money must stay whole-Rupiah.
+    const planCount = items.filter((it) => it.kind === "plan").length;
+    if (planCount > 1) {
+      res.status(400).json({
+        error: "Hanya boleh memilih 1 paket dalam satu keranjang.",
+        code: "too_many_plans",
+      });
       return;
+    }
+    for (const it of items) {
+      if (!Number.isInteger(it.refId) || it.refId < 1) {
+        res.status(400).json({ error: "refId tidak valid" });
+        return;
+      }
+      const qty = it.kind === "addon" ? it.quantity ?? 1 : 1;
+      if (!Number.isInteger(qty) || qty < 1) {
+        res.status(400).json({ error: "Jumlah harus bilangan bulat ≥ 1" });
+        return;
+      }
     }
 
     const provider = await getActiveProvider();
 
     const ownerUserId = await resolveOwnerUserId(userId);
 
-    // Resolve the catalog item, compute amount + description server-side.
-    let amountIdr: number;
-    let description: string;
-    if (kind === "plan") {
-      const [plan] = await db
-        .select()
-        .from(plansTable)
-        .where(and(eq(plansTable.id, refId), eq(plansTable.isActive, true)))
-        .limit(1);
-      if (!plan) {
-        res.status(404).json({ error: "Paket tidak ditemukan / tidak aktif" });
-        return;
+    // Resolve each catalog item, snapshot its price + compute the cart total
+    // server-side (the client never sends a price).
+    const lineItems: PaymentLineItem[] = [];
+    for (const it of items) {
+      if (it.kind === "plan") {
+        const [plan] = await db
+          .select()
+          .from(plansTable)
+          .where(and(eq(plansTable.id, it.refId), eq(plansTable.isActive, true)))
+          .limit(1);
+        if (!plan) {
+          res
+            .status(404)
+            .json({ error: "Paket tidak ditemukan / tidak aktif" });
+          return;
+        }
+        lineItems.push({
+          kind: "plan",
+          refId: plan.id,
+          quantity: 1,
+          name: `Paket ${plan.name}`,
+          unitPriceIdr: plan.priceIdr,
+          lineAmountIdr: plan.priceIdr,
+        });
+      } else {
+        const qty = it.quantity ?? 1;
+        const [addon] = await db
+          .select()
+          .from(addonsTable)
+          .where(
+            and(eq(addonsTable.id, it.refId), eq(addonsTable.isActive, true))
+          )
+          .limit(1);
+        if (!addon) {
+          res
+            .status(404)
+            .json({ error: "Add-on tidak ditemukan / tidak aktif" });
+          return;
+        }
+        lineItems.push({
+          kind: "addon",
+          refId: addon.id,
+          quantity: qty,
+          name: `Add-on ${addon.name}`,
+          unitPriceIdr: addon.priceIdr,
+          lineAmountIdr: addon.priceIdr * qty,
+        });
       }
-      amountIdr = plan.priceIdr;
-      description = `Paket ${plan.name}`;
-    } else {
-      const [addon] = await db
-        .select()
-        .from(addonsTable)
-        .where(and(eq(addonsTable.id, refId), eq(addonsTable.isActive, true)))
-        .limit(1);
-      if (!addon) {
-        res.status(404).json({ error: "Add-on tidak ditemukan / tidak aktif" });
-        return;
-      }
-      amountIdr = addon.priceIdr * quantity;
-      description = `Add-on ${addon.name}${quantity > 1 ? ` x${quantity}` : ""}`;
     }
+
+    const amountIdr = lineItems.reduce((sum, li) => sum + li.lineAmountIdr, 0);
+    const description =
+      lineItems.length === 1
+        ? `${lineItems[0].name}${
+            lineItems[0].quantity > 1 ? ` x${lineItems[0].quantity}` : ""
+          }`
+        : `Pembelian ${lineItems.length} item MaxiChat`;
 
     if (amountIdr <= 0) {
       res.status(400).json({
@@ -342,10 +387,11 @@ router.post("/checkout", async (req, res): Promise<void> => {
         .insert(paymentsTable)
         .values({
           userId: ownerUserId,
-          kind,
-          refId,
-          quantity,
+          kind: "cart",
+          refId: null,
+          quantity: 1,
           amountIdr,
+          lineItems,
           status: "pending",
           provider: "manual",
           externalId: null,
@@ -417,10 +463,11 @@ router.post("/checkout", async (req, res): Promise<void> => {
       .insert(paymentsTable)
       .values({
         userId: ownerUserId,
-        kind,
-        refId,
-        quantity,
+        kind: "cart",
+        refId: null,
+        quantity: 1,
         amountIdr,
+        lineItems,
         status: "pending",
         provider: "xendit",
       })
@@ -494,6 +541,7 @@ router.get("/payments", async (req, res): Promise<void> => {
         provider: paymentsTable.provider,
         externalId: paymentsTable.externalId,
         invoiceUrl: paymentsTable.invoiceUrl,
+        lineItems: paymentsTable.lineItems,
         paidAt: paymentsTable.paidAt,
         createdAt: paymentsTable.createdAt,
       })
@@ -504,6 +552,78 @@ router.get("/payments", async (req, res): Promise<void> => {
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "listMyPayments failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/payments/:id/invoice — a downloadable PDF invoice for one of the
+// caller's payments. Owner-scoped (a payment belonging to another tenant 404s
+// rather than 403, so ids aren't enumerable). Built on demand with pdf-lib.
+router.get("/payments/:id/invoice", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+
+    const paymentId = Number(req.params.id);
+    if (!Number.isInteger(paymentId) || paymentId < 1) {
+      res.status(400).json({ error: "ID pembayaran tidak valid" });
+      return;
+    }
+
+    const [payment] = await db
+      .select()
+      .from(paymentsTable)
+      .where(
+        and(
+          eq(paymentsTable.id, paymentId),
+          eq(paymentsTable.userId, ownerUserId)
+        )
+      )
+      .limit(1);
+    if (!payment) {
+      res.status(404).json({ error: "Pembayaran tidak ditemukan" });
+      return;
+    }
+
+    const [owner] = await db
+      .select({ email: usersTable.email, name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, ownerUserId))
+      .limit(1);
+
+    // Manual transfer details are shown on a still-pending bank-transfer
+    // invoice so the customer has the account to pay into. Bank fields are not
+    // secret (returned to customers elsewhere too).
+    let bank: InvoiceBank | null = null;
+    if (payment.provider === "manual" && payment.status === "pending") {
+      const methodRow = await getPaymentMethodRow();
+      bank = {
+        bankName: methodRow.bankName,
+        bankAccountNumber: methodRow.bankAccountNumber,
+        bankAccountHolder: methodRow.bankAccountHolder,
+      };
+    }
+
+    const pdf = await buildInvoicePdf({
+      payment,
+      lineItems: payment.lineItems ?? [],
+      ownerName: owner?.name ?? "",
+      ownerEmail: owner?.email ?? "",
+      bank,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="invoice-INV-${payment.id}.pdf"`
+    );
+    res.send(Buffer.from(pdf));
+  } catch (err) {
+    req.log.error({ err }, "getPaymentInvoice failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -171,6 +171,39 @@ export async function applyPaidPayment(
     return;
   }
 
+  if (payment.kind === "cart") {
+    const items = payment.lineItems ?? [];
+    if (items.length === 0) {
+      throw new Error(`cart payment ${payment.id} has no line items`);
+    }
+    // Apply plans before add-ons: activating a plan RESETS quota to the plan
+    // baseline, so any add-on top-ups bought in the same cart must be applied
+    // afterwards or they'd be wiped out.
+    const plans = items.filter((it) => it.kind === "plan");
+    if (plans.length > 1) {
+      throw new Error(`cart payment ${payment.id} has more than one plan`);
+    }
+    for (const plan of plans) {
+      const [row] = await exec
+        .select()
+        .from(plansTable)
+        .where(eq(plansTable.id, plan.refId))
+        .limit(1);
+      if (!row) throw new Error(`cart plan ${plan.refId} not found`);
+      await activatePlanForOwner(payment.userId, row, exec);
+    }
+    for (const item of items.filter((it) => it.kind === "addon")) {
+      const [row] = await exec
+        .select()
+        .from(addonsTable)
+        .where(eq(addonsTable.id, item.refId))
+        .limit(1);
+      if (!row) throw new Error(`cart addon ${item.refId} not found`);
+      await addAddonToQuota(payment.userId, row, item.quantity, exec);
+    }
+    return;
+  }
+
   if (payment.kind === "renewal") {
     // A plain renewal re-activates the owner's current plan (extends the
     // period + resets quota to the plan baseline). If no plan is on file we

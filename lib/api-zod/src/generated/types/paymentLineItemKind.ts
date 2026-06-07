@@ -6,12 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type PaymentRecordKind = typeof PaymentRecordKind[keyof typeof PaymentRecordKind];
+export type PaymentLineItemKind = typeof PaymentLineItemKind[keyof typeof PaymentLineItemKind];
 
 
-export const PaymentRecordKind = {
+export const PaymentLineItemKind = {
   plan: 'plan',
   addon: 'addon',
-  renewal: 'renewal',
-  cart: 'cart',
 } as const;

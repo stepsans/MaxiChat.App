@@ -1724,19 +1724,19 @@ export interface TenantQuotaInfo {
 }
 
 /**
- * Whether the purchase is a plan or an add-on top-up.
+ * Whether the line is a plan or an add-on top-up.
  */
-export type CheckoutInputKind = typeof CheckoutInputKind[keyof typeof CheckoutInputKind];
+export type CheckoutItemKind = typeof CheckoutItemKind[keyof typeof CheckoutItemKind];
 
 
-export const CheckoutInputKind = {
+export const CheckoutItemKind = {
   plan: 'plan',
   addon: 'addon',
 } as const;
 
-export interface CheckoutInput {
-  /** Whether the purchase is a plan or an add-on top-up. */
-  kind: CheckoutInputKind;
+export interface CheckoutItem {
+  /** Whether the line is a plan or an add-on top-up. */
+  kind: CheckoutItemKind;
   /** plans.id when kind=plan, addons.id when kind=addon. */
   refId: number;
   /**
@@ -1745,6 +1745,14 @@ export interface CheckoutInput {
      * @maximum 1000
      */
   quantity?: number;
+}
+
+/**
+ * A cart checkout. The cart may contain at most ONE plan (quantity 1) plus any number of add-on lines. The server computes the total from the catalog and creates a single payment / invoice for the whole cart.
+ */
+export interface CheckoutInput {
+  /** @minItems 1 */
+  items: CheckoutItem[];
   /** Absolute URL to return the tenant to after a successful payment. Must be on an allowed app host; ignored otherwise. */
   successRedirectUrl?: string;
 }
@@ -1891,6 +1899,7 @@ export const PaymentRecordKind = {
   plan: 'plan',
   addon: 'addon',
   renewal: 'renewal',
+  cart: 'cart',
 } as const;
 
 export type PaymentRecordStatus = typeof PaymentRecordStatus[keyof typeof PaymentRecordStatus];
@@ -1902,6 +1911,23 @@ export const PaymentRecordStatus = {
   expired: 'expired',
   failed: 'failed',
 } as const;
+
+export type PaymentLineItemKind = typeof PaymentLineItemKind[keyof typeof PaymentLineItemKind];
+
+
+export const PaymentLineItemKind = {
+  plan: 'plan',
+  addon: 'addon',
+} as const;
+
+export interface PaymentLineItem {
+  kind: PaymentLineItemKind;
+  refId: number;
+  quantity: number;
+  name: string;
+  unitPriceIdr: number;
+  lineAmountIdr: number;
+}
 
 export interface PaymentRecord {
   id: number;
@@ -1916,6 +1942,11 @@ export interface PaymentRecord {
   externalId: string | null;
   /** @nullable */
   invoiceUrl: string | null;
+  /**
+     * Cart line items (kind="cart"); null for legacy single-item rows.
+     * @nullable
+     */
+  lineItems?: PaymentLineItem[] | null;
   /** @nullable */
   paidAt: string | null;
   createdAt: string;

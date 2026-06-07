@@ -5933,14 +5933,14 @@ components:
         usage:
           $ref: "#/components/schemas/BillingUsage"
 
-    CheckoutInput:
+    CheckoutItem:
       type: object
       required: [kind, refId]
       properties:
         kind:
           type: string
           enum: [plan, addon]
-          description: Whether the purchase is a plan or an add-on top-up.
+          description: Whether the line is a plan or an add-on top-up.
         refId:
           type: integer
           description: plans.id when kind=plan, addons.id when kind=addon.
@@ -5949,6 +5949,20 @@ components:
           minimum: 1
           maximum: 1000
           description: Units to buy (add-ons only; plans are always 1). Default 1.
+
+    CheckoutInput:
+      type: object
+      required: [items]
+      description: >-
+        A cart checkout. The cart may contain at most ONE plan (quantity 1) plus
+        any number of add-on lines. The server computes the total from the
+        catalog and creates a single payment / invoice for the whole cart.
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CheckoutItem"
         successRedirectUrl:
           type: string
           description: >-
@@ -6099,7 +6113,7 @@ components:
           type: integer
         kind:
           type: string
-          enum: [plan, addon, renewal]
+          enum: [plan, addon, renewal, cart]
         refId:
           type: ["integer", "null"]
         quantity:
@@ -6115,12 +6129,35 @@ components:
           type: ["string", "null"]
         invoiceUrl:
           type: ["string", "null"]
+        lineItems:
+          type: ["array", "null"]
+          description: Cart line items (kind="cart"); null for legacy single-item rows.
+          items:
+            $ref: "#/components/schemas/PaymentLineItem"
         paidAt:
           type: ["string", "null"]
           format: date-time
         createdAt:
           type: string
           format: date-time
+
+    PaymentLineItem:
+      type: object
+      required: [kind, refId, quantity, name, unitPriceIdr, lineAmountIdr]
+      properties:
+        kind:
+          type: string
+          enum: [plan, addon]
+        refId:
+          type: integer
+        quantity:
+          type: integer
+        name:
+          type: string
+        unitPriceIdr:
+          type: integer
+        lineAmountIdr:
+          type: integer
 
     RevenueSummary:
       type: object

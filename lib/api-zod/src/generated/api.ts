@@ -641,16 +641,19 @@ export const GetMyQuotaResponse = zod.object({
  * Creates a pending payment and a hosted Xendit invoice, returning the invoice URL to redirect the tenant to. The amount is computed server-side from the catalog — the client never sends a price. Reachable even by an expired tenant so they can renew.
  * @summary Start a Xendit checkout for a plan or add-on purchase
  */
-export const createCheckoutBodyQuantityMax = 1000;
+export const createCheckoutBodyItemsItemQuantityMax = 1000;
+
 
 
 
 export const CreateCheckoutBody = zod.object({
-  "kind": zod.enum(['plan', 'addon']).describe('Whether the purchase is a plan or an add-on top-up.'),
+  "items": zod.array(zod.object({
+  "kind": zod.enum(['plan', 'addon']).describe('Whether the line is a plan or an add-on top-up.'),
   "refId": zod.number().describe('plans.id when kind=plan, addons.id when kind=addon.'),
-  "quantity": zod.number().min(1).max(createCheckoutBodyQuantityMax).optional().describe('Units to buy (add-ons only; plans are always 1). Default 1.'),
+  "quantity": zod.number().min(1).max(createCheckoutBodyItemsItemQuantityMax).optional().describe('Units to buy (add-ons only; plans are always 1). Default 1.')
+})).min(1),
   "successRedirectUrl": zod.string().optional().describe('Absolute URL to return the tenant to after a successful payment. Must be on an allowed app host; ignored otherwise.')
-})
+}).describe('A cart checkout. The cart may contain at most ONE plan (quantity 1) plus any number of add-on lines. The server computes the total from the catalog and creates a single payment \/ invoice for the whole cart.')
 
 export const CreateCheckoutResponse = zod.object({
   "paymentId": zod.number(),
@@ -671,7 +674,7 @@ export const CreateCheckoutResponse = zod.object({
  */
 export const ListMyPaymentsResponseItem = zod.object({
   "id": zod.number(),
-  "kind": zod.enum(['plan', 'addon', 'renewal']),
+  "kind": zod.enum(['plan', 'addon', 'renewal', 'cart']),
   "refId": zod.number().nullable(),
   "quantity": zod.number(),
   "amountIdr": zod.number(),
@@ -679,6 +682,14 @@ export const ListMyPaymentsResponseItem = zod.object({
   "provider": zod.string(),
   "externalId": zod.string().nullable(),
   "invoiceUrl": zod.string().nullable(),
+  "lineItems": zod.array(zod.object({
+  "kind": zod.enum(['plan', 'addon']),
+  "refId": zod.number(),
+  "quantity": zod.number(),
+  "name": zod.string(),
+  "unitPriceIdr": zod.number(),
+  "lineAmountIdr": zod.number()
+})).nullish().describe('Cart line items (kind=\"cart\"); null for legacy single-item rows.'),
   "paidAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
 })

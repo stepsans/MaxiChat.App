@@ -5,6 +5,7 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
+import type { PaymentLineItem } from './paymentLineItem';
 import type { PaymentRecordKind } from './paymentRecordKind';
 import type { PaymentRecordStatus } from './paymentRecordStatus';
 
@@ -21,6 +22,11 @@ export interface PaymentRecord {
   externalId: string | null;
   /** @nullable */
   invoiceUrl: string | null;
+  /**
+     * Cart line items (kind="cart"); null for legacy single-item rows.
+     * @nullable
+     */
+  lineItems?: PaymentLineItem[] | null;
   /** @nullable */
   paidAt: Date | null;
   createdAt: Date;

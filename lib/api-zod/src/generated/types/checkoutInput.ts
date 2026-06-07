@@ -5,19 +5,14 @@
  * AI WhatsApp Automation Assistant API
  * OpenAPI spec version: 0.1.0
  */
-import type { CheckoutInputKind } from './checkoutInputKind';
+import type { CheckoutItem } from './checkoutItem';
 
+/**
+ * A cart checkout. The cart may contain at most ONE plan (quantity 1) plus any number of add-on lines. The server computes the total from the catalog and creates a single payment / invoice for the whole cart.
+ */
 export interface CheckoutInput {
-  /** Whether the purchase is a plan or an add-on top-up. */
-  kind: CheckoutInputKind;
-  /** plans.id when kind=plan, addons.id when kind=addon. */
-  refId: number;
-  /**
-     * Units to buy (add-ons only; plans are always 1). Default 1.
-     * @minimum 1
-     * @maximum 1000
-     */
-  quantity?: number;
+  /** @minItems 1 */
+  items: CheckoutItem[];
   /** Absolute URL to return the tenant to after a successful payment. Must be on an allowed app host; ignored otherwise. */
   successRedirectUrl?: string;
 }
