@@ -5,25 +5,41 @@ import fs from "fs/promises";
 import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { and, eq, ne, or, sql } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, plansTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { touchHeartbeat } from "../lib/round-robin";
 import { MEDIA_DIR } from "./whatsapp";
 
 const router = Router();
 
-// Hard-coded SaaS plan limits — number of *invited* team members
-// (supervisor + agent rows) a super_admin may have. The super_admin itself
-// is not counted toward the limit.
-const PLAN_LIMITS = {
+// SaaS plan limits — number of *invited* team members (supervisor + agent
+// rows) a super_admin may have. The super_admin itself is not counted toward
+// the limit. The authoritative cap now lives in the DB `plans` table
+// (quota_users), keyed by the plan key; this hardcoded map is only a fallback
+// for when the row is missing (e.g. a custom key, or before the catalog seed).
+const FALLBACK_PLAN_LIMITS = {
   basic: 2,
   pro: 5,
   business: 15,
   enterprise: 100,
 } as const satisfies Record<string, number>;
 
-type Plan = keyof typeof PLAN_LIMITS;
-const PLANS = Object.keys(PLAN_LIMITS) as Plan[];
+type Plan = keyof typeof FALLBACK_PLAN_LIMITS;
+
+// Resolve the invited-member cap for a plan key from the DB catalog, falling
+// back to the hardcoded map (then to basic) so behavior never breaks if the
+// `plans` row is absent.
+async function planUserLimit(planKey: string): Promise<number> {
+  const [row] = await db
+    .select({ quotaUsers: plansTable.quotaUsers })
+    .from(plansTable)
+    .where(and(eq(plansTable.key, planKey), eq(plansTable.isActive, true)))
+    .limit(1);
+  if (row) return row.quotaUsers;
+  return (
+    FALLBACK_PLAN_LIMITS[planKey as Plan] ?? FALLBACK_PLAN_LIMITS.basic
+  );
+}
 
 function normalizeEmail(raw: unknown): string {
   return String(raw ?? "").trim().toLowerCase();
@@ -79,7 +95,10 @@ const UpdateBody = z.object({
 async function resolveOwner(userId: number): Promise<{
   ownerId: number;
   teamRole: "super_admin" | "supervisor" | "agent";
-  plan: Plan;
+  // Raw users.plan key — passed straight to planUserLimit, which does the DB
+  // catalog lookup and only falls back to the hardcoded map when the row is
+  // missing. Never narrowed here, so custom/future plan keys resolve correctly.
+  plan: string;
 } | null> {
   const [me] = await db
     .select({
@@ -97,23 +116,18 @@ async function resolveOwner(userId: number): Promise<{
       ? me.teamRole
       : "super_admin";
   if (teamRole === "super_admin") {
-    const plan = (PLANS as string[]).includes(me.plan) ? (me.plan as Plan) : "basic";
-    return { ownerId: me.id, teamRole, plan };
+    return { ownerId: me.id, teamRole, plan: me.plan };
   }
   if (me.parentUserId == null) {
     // Orphaned invited account — treat as self for safety.
-    return { ownerId: me.id, teamRole, plan: "basic" };
+    return { ownerId: me.id, teamRole, plan: me.plan };
   }
   const [parent] = await db
     .select({ id: usersTable.id, plan: usersTable.plan })
     .from(usersTable)
     .where(eq(usersTable.id, me.parentUserId))
     .limit(1);
-  const plan =
-    parent && (PLANS as string[]).includes(parent.plan)
-      ? (parent.plan as Plan)
-      : "basic";
-  return { ownerId: parent?.id ?? me.id, teamRole, plan };
+  return { ownerId: parent?.id ?? me.id, teamRole, plan: parent?.plan ?? me.plan };
 }
 
 async function countTeam(ownerId: number): Promise<number> {
@@ -171,7 +185,7 @@ router.get("/", async (req, res): Promise<void> => {
       : rows.map(serialize);
     res.json({
       plan: owner.plan,
-      maxAgents: PLAN_LIMITS[owner.plan],
+      maxAgents: await planUserLimit(owner.plan),
       usedAgents: rows.length,
       teamRole: owner.teamRole,
       assignmentMode,
@@ -209,9 +223,10 @@ router.post("/", async (req, res): Promise<void> => {
 
     // Plan-limit gate — count *current* members and compare to plan cap.
     const used = await countTeam(owner.ownerId);
-    if (used >= PLAN_LIMITS[owner.plan]) {
+    const maxAgents = await planUserLimit(owner.plan);
+    if (used >= maxAgents) {
       res.status(409).json({
-        error: `Kuota paket ${owner.plan} sudah penuh (${used}/${PLAN_LIMITS[owner.plan]}). Upgrade paket untuk menambah agen.`,
+        error: `Kuota paket ${owner.plan} sudah penuh (${used}/${maxAgents}). Upgrade paket untuk menambah agen.`,
       });
       return;
     }

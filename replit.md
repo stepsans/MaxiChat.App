@@ -38,6 +38,13 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 - AI token usage is tracked per tenant owner (super admin). Each owner uses their own AI quota; usage by team members rolls up to the owner. The monthly reporting period is anchored on the owner's join date (day-of-month), not the 1st. Visible in the admin app (all owners) and the whatsapp-ai dashboard (each owner's own). No historical backfill — usage accrues forward only.
 - Customer labels are **contact-level**, not per-chat: a label is keyed by (owner, phone number) in `contact_labels`, so labeling a number "High Risk" in one channel makes it show on the same number in every other channel of that owner — and on chats created later for that number. The Chat list shows each chat's label chips + a label filter; Dashboard and Analytics show chat counts per label (a contact present in 2 channels counts as 2 chats). Telegram chats use a `tg:<id>` phone key so they never cross-link with WhatsApp numbers.
 
+## Subscription (Hybrid model — in progress)
+
+- Self-serve **Hybrid** subscription: prepaid base **plan** + paid **add-ons/top-ups** (extra users, channels, AI tokens). Gateway = **Xendit** (VA/QRIS/e-wallet). Add-ons may exceed plan quotas.
+- Plans & add-ons are **admin-configurable DB catalog rows**, never hardcoded: `plans` (`key` UNIQUE = `users.plan`, name, priceIdr, durationDays, quotaUsers/Channels/Tokens, isActive, sortOrder) + `addons` (type token/channel/user_seat, unitAmount, priceIdr). `tenant_quota` holds per-owner **limits only** (plafon = plan quota + add-on top-ups); actual usage is computed live (reuses the metered billing engine). `payments` is the purchase ledger (`external_id` = Xendit ref for idempotent webhooks). All money is whole-integer Rupiah.
+- Per-plan invited-seat cap (`agents.ts`) reads `plans.quotaUsers` by the owner's raw `plan` key; the old hardcoded `basic/pro/business/enterprise` map is a fallback only.
+- Migrations applied via raw `psql` (repo keeps no drizzle migration history); never `drizzle-kit push`.
+
 ## User preferences
 
 _Populate as you build — explicit user instructions worth remembering across sessions._

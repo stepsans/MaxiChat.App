@@ -13,3 +13,6 @@ export * from "./user-channel-access";
 export * from "./pricing";
 export * from "./subscriptions";
 export * from "./usage-snapshots";
+export * from "./plans";
+export * from "./tenant-quota";
+export * from "./payments";
