@@ -159,7 +159,8 @@ export default function Billing() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto py-6 space-y-6">
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="max-w-4xl mx-auto py-6 px-6 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
           Langganan &amp; Tagihan
@@ -330,6 +331,7 @@ export default function Billing() {
         bergabung). Penyimpanan, jumlah user, dan channel dihitung dari kondisi
         saat ini. Tagihan ini bersifat estimasi.
       </p>
+      </div>
     </div>
   );
 }
