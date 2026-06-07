@@ -2005,6 +2005,50 @@ export interface LoginInput {
   password: string;
 }
 
+export interface MobileLoginInput {
+  email: string;
+  /** @minLength 1 */
+  password: string;
+  /**
+     * Optional human label for the device (e.g. 'iPhone 15').
+     * @nullable
+     */
+  deviceLabel?: string | null;
+}
+
+export interface MobileSession {
+  /** Opaque bearer token. Send as `Authorization: Bearer <token>`. */
+  token: string;
+  user: AuthUser;
+}
+
+/**
+ * @nullable
+ */
+export type PushRegisterInputPlatform = typeof PushRegisterInputPlatform[keyof typeof PushRegisterInputPlatform] | null;
+
+
+export const PushRegisterInputPlatform = {
+  ios: 'ios',
+  android: 'android',
+  web: 'web',
+} as const;
+
+export interface PushRegisterInput {
+  /** Expo push token, e.g. ExponentPushToken[...]. */
+  token: string;
+  /** @nullable */
+  platform?: PushRegisterInputPlatform;
+}
+
+export interface PushUnregisterInput {
+  token: string;
+}
+
+export interface OkResponse {
+  ok: boolean;
+}
+
 export interface TextShortcut {
   id: number;
   shortcut: string;

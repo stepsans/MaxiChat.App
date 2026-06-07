@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { sendVerificationEmail, emailSenderConfigured } from "../lib/email";
 import { createTrialSubscription } from "../lib/billing";
+import { createMobileToken, revokeMobileToken } from "../lib/mobile-auth";
 import {
   loginLimiter,
   signupLimiter,
@@ -170,7 +171,92 @@ router.post("/login", loginLimiter, async (req, res): Promise<void> => {
   }
 });
 
-router.post("/logout", (req, res): void => {
+// Mobile login. Same credential + verification checks as /login, but instead
+// of establishing a cookie session it issues an opaque bearer token the mobile
+// app stores in secure storage and sends as `Authorization: Bearer <token>`.
+router.post("/mobile-login", loginLimiter, async (req, res): Promise<void> => {
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password ?? "");
+    if (!email || !password) {
+      res.status(400).json({ error: "Email dan password wajib diisi" });
+      return;
+    }
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email))
+      .limit(1);
+    if (!user) {
+      res.status(401).json({ error: "Email atau password salah" });
+      return;
+    }
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      res.status(401).json({ error: "Email atau password salah" });
+      return;
+    }
+    if (user.status === "pending" && !user.emailVerifiedAt) {
+      res.status(403).json({
+        error: "Email belum diverifikasi. Cek inbox Anda atau minta link baru.",
+        reason: "email_not_verified",
+        email: user.email,
+      });
+      return;
+    }
+    if (user.status === "pending") {
+      res.status(403).json({
+        error:
+          "Akun Anda masih menunggu persetujuan admin. Silakan hubungi admin.",
+      });
+      return;
+    }
+    if (user.status !== "active") {
+      res.status(403).json({ error: "Akun Anda dinonaktifkan." });
+      return;
+    }
+    const teamRole =
+      user.teamRole === "supervisor" || user.teamRole === "agent"
+        ? user.teamRole
+        : "super_admin";
+    const label =
+      typeof req.body?.deviceLabel === "string"
+        ? req.body.deviceLabel.slice(0, 80)
+        : null;
+    const token = await createMobileToken(user.id, label);
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        teamRole,
+        name: user.name,
+        plan: user.plan,
+        parentUserId: user.parentUserId,
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "Mobile login failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/logout", async (req, res): Promise<void> => {
+  // Mobile (bearer) logout: revoke the token and return. There's no cookie
+  // session to destroy in that path (the synthetic session's destroy is a
+  // no-op).
+  const header = req.headers.authorization;
+  if (header && header.startsWith("Bearer ")) {
+    try {
+      await revokeMobileToken(header.slice(7).trim());
+    } catch (err) {
+      req.log.error({ err }, "Mobile logout (token revoke) failed");
+    }
+    res.json({ success: true });
+    return;
+  }
   req.session.destroy((err) => {
     if (err) {
       req.log.error({ err }, "Logout failed");

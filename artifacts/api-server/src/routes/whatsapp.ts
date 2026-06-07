@@ -43,6 +43,7 @@ import {
   listOwnedChannels,
 } from "../lib/channel-context";
 import { readClearUpTo } from "../lib/chat-read-sync";
+import { notifyInboundMessage } from "../lib/push";
 import {
   FLOW_REPHRASE_SYSTEM_PROMPT,
   cleanRephrasedText,
@@ -697,6 +698,88 @@ export async function postTextStatus(
       mediaUrl: null,
       mediaMimeType: null,
       caption: null,
+      waMessageId,
+      isMine: true,
+      postedAt,
+      expiresAt: new Date(postedAt.getTime() + STATUS_TTL_MS),
+    })
+    .onConflictDoNothing({
+      target: [
+        whatsappStatusesTable.channelId,
+        whatsappStatusesTable.waMessageId,
+      ],
+    })
+    .returning();
+  if (inserted[0]) return inserted[0];
+  if (waMessageId) {
+    const existing = await db
+      .select()
+      .from(whatsappStatusesTable)
+      .where(
+        sql`${whatsappStatusesTable.channelId} = ${channelId}
+            AND ${whatsappStatusesTable.waMessageId} = ${waMessageId}`,
+      )
+      .limit(1);
+    if (existing[0]) return existing[0];
+  }
+  throw new Error("Status sent but local row could not be persisted");
+}
+
+export async function postImageStatus(
+  userId: number,
+  channelId: number,
+  filePath: string,
+  mimeType: string,
+  mediaUrl: string,
+  caption: string | null,
+): Promise<typeof whatsappStatusesTable.$inferSelect> {
+  const ctx = getCtxByChannel(channelId, userId);
+  const sock = ctx.sock;
+  if (!sock) throw new Error("WhatsApp is not connected");
+  const ownerPhone = ctx.ownerPhone;
+  const dmChats = await db
+    .select({ phoneNumber: chatsTable.phoneNumber })
+    .from(chatsTable)
+    .where(
+      sql`${chatsTable.channelId} = ${channelId}
+          AND ${chatsTable.phoneNumber} NOT LIKE '%@g.us'`,
+    );
+  const statusJidList = dmChats
+    .map((c) => c.phoneNumber.replace(/^\+/, "").replace(/[^0-9]/g, ""))
+    .filter((d) => d.length >= 7)
+    .map((d) => `${d}@s.whatsapp.net`);
+
+  const buffer = await fs.readFile(filePath);
+  const sent = await sock.sendMessage(
+    "status@broadcast",
+    {
+      image: buffer,
+      caption: caption ?? undefined,
+      mimetype: mimeType,
+    } as any,
+    { statusJidList } as any,
+  );
+  const ownerJid =
+    sock.user?.id ?? (ownerPhone ? `${ownerPhone}@s.whatsapp.net` : "");
+  const ownerDigits = ownerJid
+    .split("@")[0]
+    .split(":")[0]
+    .replace(/[^0-9]/g, "");
+  const postedAt = new Date();
+  const waMessageId = sent?.key?.id ?? null;
+  const inserted = await db
+    .insert(whatsappStatusesTable)
+    .values({
+      channelId,
+      authorJid: ownerJid,
+      authorPhone: ownerDigits,
+      authorName: "Saya",
+      statusType: "image",
+      textContent: null,
+      backgroundColor: null,
+      mediaUrl,
+      mediaMimeType: mimeType,
+      caption,
       waMessageId,
       isMine: true,
       postedAt,
@@ -1769,6 +1852,17 @@ async function persistWaMessage(
     updateSet.contactName = sql`CASE WHEN ${chatsTable.contactName} = ${parsed.rawNumber} OR ${chatsTable.contactName} IS NULL THEN ${parsed.pushName} ELSE ${chatsTable.contactName} END`;
   }
   await db.update(chatsTable).set(updateSet).where(eq(chatsTable.id, chat.id));
+
+  // Push notify allowed mobile users about genuinely new inbound messages
+  // (skip own/outbound and history-sync back-fills). Fire-and-forget.
+  if (opts.incrementUnread && !parsed.fromMe) {
+    void notifyInboundMessage({
+      channelId,
+      chatId: chat.id,
+      title: chat.contactName || phoneNumber,
+      body: preview,
+    });
+  }
 
   // Lazily refresh profile picture in the background via THIS user's socket.
   void refreshChatProfilePic(userId, chat).catch(() => {});

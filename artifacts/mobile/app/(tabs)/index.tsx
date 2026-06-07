@@ -1,0 +1,335 @@
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import {
+  useListChats,
+  useListCustomerLabels,
+  getListChatsQueryKey,
+  type Chat,
+  type CustomerLabel,
+} from "@workspace/api-client-react";
+
+import { Avatar } from "@/components/Avatar";
+import { ChannelSwitcher } from "@/components/ChannelSwitcher";
+import { useChannel } from "@/contexts/ChannelContext";
+import { useColors } from "@/hooks/useColors";
+
+function timeLabel(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Kemarin";
+  return d.toLocaleDateString([], { day: "2-digit", month: "2-digit" });
+}
+
+export default function ChatListScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { activeChannelId } = useChannel();
+
+  const [search, setSearch] = useState("");
+  const [labelFilter, setLabelFilter] = useState<number | null>(null);
+
+  const {
+    data: chats,
+    isLoading,
+    isRefetching,
+    refetch,
+  } = useListChats(undefined, {
+    query: {
+      queryKey: getListChatsQueryKey(),
+      enabled: activeChannelId != null,
+      refetchInterval: 5000,
+    },
+  });
+
+  const { data: labels } = useListCustomerLabels();
+
+  const filtered = useMemo(() => {
+    let list = chats ?? [];
+    if (labelFilter != null) {
+      list = list.filter((c) => c.labels.some((l) => l.id === labelFilter));
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.contactName.toLowerCase().includes(q) ||
+          c.phoneNumber.toLowerCase().includes(q) ||
+          (c.nickname ?? "").toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [chats, labelFilter, search]);
+
+  const renderItem = ({ item }: { item: Chat }) => (
+    <TouchableOpacity
+      style={styles.row}
+      activeOpacity={0.6}
+      onPress={() => router.push(`/chat/${item.id}`)}
+    >
+      <Avatar name={item.contactName} uri={item.profilePicUrl} size={52} />
+      <View style={styles.rowBody}>
+        <View style={styles.rowTop}>
+          <Text
+            style={[styles.name, { color: colors.foreground }]}
+            numberOfLines={1}
+          >
+            {item.nickname || item.contactName}
+          </Text>
+          <Text style={[styles.time, { color: colors.mutedForeground }]}>
+            {timeLabel(item.lastMessageAt)}
+          </Text>
+        </View>
+        <View style={styles.rowBottom}>
+          <Text
+            style={[styles.preview, { color: colors.mutedForeground }]}
+            numberOfLines={1}
+          >
+            {item.lastMessage || "Belum ada pesan"}
+          </Text>
+          {item.unreadCount > 0 ? (
+            <View
+              style={[styles.badge, { backgroundColor: colors.unreadBadge }]}
+            >
+              <Text style={styles.badgeText}>
+                {item.unreadCount > 99 ? "99+" : item.unreadCount}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        {item.labels.length > 0 ? (
+          <View style={styles.labelRow}>
+            {item.labels.slice(0, 3).map((l: CustomerLabel) => (
+              <View
+                key={l.id}
+                style={[styles.labelChip, { backgroundColor: l.color + "22" }]}
+              >
+                <View style={[styles.labelDot, { backgroundColor: l.color }]} />
+                <Text style={[styles.labelText, { color: colors.foreground }]}>
+                  {l.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + 8,
+            backgroundColor: colors.header,
+          },
+        ]}
+      >
+        <Text style={[styles.headerTitle, { color: colors.headerForeground }]}>
+          MaxiChat
+        </Text>
+        <ChannelSwitcher />
+      </View>
+
+      <View style={[styles.searchWrap, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.searchBox,
+            { backgroundColor: colors.secondary, borderColor: colors.border },
+          ]}
+        >
+          <Feather name="search" size={18} color={colors.mutedForeground} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.foreground }]}
+            placeholder="Cari chat"
+            placeholderTextColor={colors.mutedForeground}
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+      </View>
+
+      {labels && labels.length > 0 ? (
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={[{ id: -1, name: "Semua", color: colors.primary } as CustomerLabel, ...labels]}
+          keyExtractor={(l) => String(l.id)}
+          style={styles.filterStrip}
+          contentContainerStyle={styles.filterContent}
+          renderItem={({ item }) => {
+            const isAll = item.id === -1;
+            const active = isAll ? labelFilter == null : labelFilter === item.id;
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.filterPill,
+                  {
+                    backgroundColor: active ? colors.primary : colors.secondary,
+                    borderColor: active ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setLabelFilter(isAll ? null : item.id)}
+              >
+                {!isAll ? (
+                  <View
+                    style={[styles.labelDot, { backgroundColor: item.color }]}
+                  />
+                ) : null}
+                <Text
+                  style={[
+                    styles.filterText,
+                    {
+                      color: active
+                        ? colors.primaryForeground
+                        : colors.foreground,
+                    },
+                  ]}
+                >
+                  {item.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      ) : null}
+
+      {isLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(c) => String(c.id)}
+          renderItem={renderItem}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+          ItemSeparatorComponent={() => (
+            <View
+              style={[styles.sep, { backgroundColor: colors.border }]}
+            />
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Feather
+                name="message-square"
+                size={40}
+                color={colors.mutedForeground}
+              />
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                {search || labelFilter != null
+                  ? "Tidak ada chat yang cocok."
+                  : "Belum ada chat di channel ini."}
+              </Text>
+            </View>
+          }
+        />
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20 },
+  searchWrap: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    height: 42,
+    borderRadius: 21,
+    paddingHorizontal: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 15,
+    padding: 0,
+  },
+  filterStrip: { flexGrow: 0, paddingVertical: 8 },
+  filterContent: { paddingHorizontal: 12, gap: 8 },
+  filterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  filterText: { fontFamily: "Inter_500Medium", fontSize: 13 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 48, gap: 12 },
+  emptyText: { fontFamily: "Inter_400Regular", fontSize: 15, textAlign: "center" },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  rowBody: { flex: 1, gap: 3 },
+  rowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  name: { fontFamily: "Inter_600SemiBold", fontSize: 16, flex: 1, marginRight: 8 },
+  time: { fontFamily: "Inter_400Regular", fontSize: 12 },
+  rowBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  preview: { fontFamily: "Inter_400Regular", fontSize: 14, flex: 1, marginRight: 8 },
+  badge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: { color: "#ffffff", fontFamily: "Inter_600SemiBold", fontSize: 11 },
+  labelRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
+  labelChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  labelDot: { width: 8, height: 8, borderRadius: 4 },
+  labelText: { fontFamily: "Inter_500Medium", fontSize: 11 },
+  sep: { height: StyleSheet.hairlineWidth, marginLeft: 80 },
+});

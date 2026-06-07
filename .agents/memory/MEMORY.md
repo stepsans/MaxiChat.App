@@ -44,6 +44,7 @@
 - [api-server test runner](test-runner-setup.md) — node:test via tsx (`pnpm --filter @workspace/api-server run test`); unit-tested logic must stay in db-free modules since @workspace/db connects eagerly.
 - [LID-chat merge collision](lid-chat-merge-collision.md) — stale-LID→canonical chat merge that blindly reassigns chat_id aborts on duplicate wa_message_id, then silently drops EVERY later 1:1 message; move non-colliding rows + cascade-delete + best-effort try/catch.
 - [AI auto-reply context anchoring](ai-reply-context-anchoring.md) — order history AND anchor to triggering msg id (delay race); few-shot examples w/ real product codes become answer anchors.
+- [Push token ownership & recipient scoping](push-token-ownership.md) — delete-by-token must be owner-scoped (else cross-account DoS); inbound push fan-out must filter users.status="active".
 - [Cart single-payment settlement](cart-single-payment-settlement.md) — billing cart = ONE payments row (kind=cart + line_items jsonb); apply plans BEFORE add-ons (plan activation resets quota); PDF invoice endpoint is binary, not in OpenAPI.
 - [Profile-pic refresh staleness](profile-pic-refresh-staleness.md) — WA pic URLs expire; chat-list opportunistic refresh must gate on TTL predicate (isProfilePicRefreshDue), not `profilePicUrl==null`, or avatars decay to fallback icons.
 - [Admin-configurable encrypted secrets](admin-configurable-secrets.md) — moving an operator secret env→DB: encrypt at rest, DB-first+env fallback, masked reads, async getters, atomic ON CONFLICT upsert for singleton rows.

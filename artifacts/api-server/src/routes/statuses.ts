@@ -1,7 +1,12 @@
 import { Router } from "express";
+import fs from "node:fs/promises";
+import path from "node:path";
+import multer from "multer";
+import mime from "mime-types";
+import { randomUUID } from "node:crypto";
 import { db, whatsappStatusesTable, chatsTable } from "@workspace/db";
 import { sql, inArray, desc } from "drizzle-orm";
-import { postTextStatus, refreshChatProfilePic } from "./whatsapp";
+import { postTextStatus, postImageStatus, refreshChatProfilePic, MEDIA_DIR } from "./whatsapp";
 import { requireNotAgent } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import {
@@ -11,10 +16,27 @@ import {
 
 const router = Router();
 
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, cb) => {
+      try {
+        await fs.mkdir(MEDIA_DIR, { recursive: true });
+      } catch {}
+      cb(null, MEDIA_DIR);
+    },
+    filename: (_req, file, cb) => {
+      const ext = mime.extension(file.mimetype || "");
+      cb(null, `${randomUUID()}${ext ? "." + ext : ""}`);
+    },
+  }),
+  limits: { fileSize: 16 * 1024 * 1024 },
+});
+
 // Matrix gates layered on top of the legacy requireNotAgent gate that the
 // DELETE handler already declares — both must pass.
 router.get("/", requirePermission("statuses", "view"));
 router.post("/", requirePermission("statuses", "create"));
+router.post("/media", requirePermission("statuses", "create"));
 router.delete("/:id", requirePermission("statuses", "delete"));
 
 // Group statuses by author and order most recent first. Filter out anything
@@ -193,6 +215,63 @@ router.post("/", async (req, res): Promise<void> => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to post status");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Image status (multipart). Not in OpenAPI (binary upload), called from the
+// mobile app via raw multipart fetch — mirrors the chat-media precedent.
+router.post("/media", upload.single("file"), async (req, res): Promise<void> => {
+  try {
+    const channel = await requireConnectedChannel(req, res);
+    if (!channel) {
+      if (req.file) await fs.unlink(req.file.path).catch(() => {});
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: "Missing file" });
+      return;
+    }
+    const mimeType = req.file.mimetype || "application/octet-stream";
+    if (!mimeType.startsWith("image/")) {
+      await fs.unlink(req.file.path).catch(() => {});
+      res.status(400).json({ error: "Only image status is supported" });
+      return;
+    }
+    const rawCaption = (req.body?.caption as string | undefined)?.trim();
+    const caption = rawCaption && rawCaption.length > 0 ? rawCaption.slice(0, 700) : null;
+    const mediaUrl = `/api/media/${path.basename(req.file.path)}`;
+    let row;
+    try {
+      row = await postImageStatus(
+        req.session.userId!,
+        channel.id,
+        req.file.path,
+        mimeType,
+        mediaUrl,
+        caption
+      );
+    } catch (err) {
+      req.log.error({ err }, "Failed to post image status");
+      await fs.unlink(req.file.path).catch(() => {});
+      res.status(500).json({ error: "Failed to post status" });
+      return;
+    }
+    res.json({
+      id: row.id,
+      statusType: row.statusType,
+      textContent: row.textContent,
+      backgroundColor: row.backgroundColor,
+      mediaUrl: row.mediaUrl,
+      caption: row.caption,
+      isMine: row.isMine,
+      authorName: "Status Saya",
+      postedAt: row.postedAt.toISOString(),
+      expiresAt: row.expiresAt.toISOString(),
+    });
+  } catch (err) {
+    if (req.file) await fs.unlink(req.file.path).catch(() => {});
+    req.log.error({ err }, "Failed to post image status");
     res.status(500).json({ error: "Internal server error" });
   }
 });

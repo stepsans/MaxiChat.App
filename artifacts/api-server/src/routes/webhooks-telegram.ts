@@ -18,6 +18,7 @@ import {
 import { generateAiReply } from "./whatsapp";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
 import { isOwnerReadOnly } from "../lib/billing";
+import { notifyInboundMessage } from "../lib/push";
 
 const router = Router();
 
@@ -153,6 +154,15 @@ async function processUpdate(
     .returning();
 
   if (insertedRows.length === 0) return; // duplicate, skip AI
+
+  // Push notify allowed mobile users about the new inbound telegram message.
+  void notifyInboundMessage({
+    channelId,
+    chatId: chat.id,
+    title: parsed.contactName || chat.contactName || "Telegram",
+    body: parsed.text || "Pesan baru",
+  });
+
   if (chat.isHumanTakeover) return; // operator is driving
 
   // Subscription gate: an expired/suspended tenant's bot stays silent. The

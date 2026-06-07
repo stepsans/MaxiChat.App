@@ -31,6 +31,7 @@ import linkPreviewRouter from "./link-preview";
 import telegramWebhookRouter from "./webhooks-telegram";
 import xenditWebhookRouter from "./webhooks-xendit";
 import billingRouter from "./billing";
+import pushRouter from "./push";
 import { requireAuth, requireAdmin } from "../lib/auth";
 import { enforceSubscription } from "../lib/enforce-subscription";
 
@@ -86,6 +87,7 @@ router.use("/ai-review", aiReviewRouter);
 router.use("/customer-labels", customerLabelsRouter);
 router.use("/link-preview", linkPreviewRouter);
 router.use("/billing", billingRouter);
+router.use("/push", pushRouter);
 
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.

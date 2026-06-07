@@ -18,3 +18,4 @@ export * from "./tenant-quota";
 export * from "./payments";
 export * from "./payment-gateway";
 export * from "./payment-method-settings";
+export * from "./mobile";

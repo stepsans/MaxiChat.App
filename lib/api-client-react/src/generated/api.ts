@@ -118,6 +118,9 @@ import type {
   ListTeamMemberPermissions200,
   LoginInput,
   ManualReplyInput,
+  MobileLoginInput,
+  MobileSession,
+  OkResponse,
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
   OwnerTrend,
@@ -133,6 +136,8 @@ import type {
   ProductInput,
   ProductSyncConfigInput,
   PurgeChatsResult,
+  PushRegisterInput,
+  PushUnregisterInput,
   ReactionInput,
   RefreshChatAvatar200,
   RenewSubscriptionInput,
@@ -281,6 +286,219 @@ export const useLogin = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getLoginMutationOptions(options));
+    }
+
+export const getMobileLoginUrl = () => {
+
+
+
+
+  return `/api/auth/mobile-login`
+}
+
+/**
+ * @summary Sign in from the mobile app and receive a bearer token
+ */
+export const mobileLogin = async (mobileLoginInput: MobileLoginInput, options?: RequestInit): Promise<MobileSession> => {
+
+  return customFetch<MobileSession>(getMobileLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      mobileLoginInput,)
+  }
+);}
+
+
+
+
+export const getMobileLoginMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mobileLogin>>, TError,{data: BodyType<MobileLoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mobileLogin>>, TError,{data: BodyType<MobileLoginInput>}, TContext> => {
+
+const mutationKey = ['mobileLogin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mobileLogin>>, {data: BodyType<MobileLoginInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  mobileLogin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MobileLoginMutationResult = NonNullable<Awaited<ReturnType<typeof mobileLogin>>>
+    export type MobileLoginMutationBody = BodyType<MobileLoginInput>
+    export type MobileLoginMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Sign in from the mobile app and receive a bearer token
+ */
+export const useMobileLogin = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mobileLogin>>, TError,{data: BodyType<MobileLoginInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mobileLogin>>,
+        TError,
+        {data: BodyType<MobileLoginInput>},
+        TContext
+      > => {
+      return useMutation(getMobileLoginMutationOptions(options));
+    }
+
+export const getRegisterPushTokenUrl = () => {
+
+
+
+
+  return `/api/push/register`
+}
+
+/**
+ * @summary Register this device's Expo push token
+ */
+export const registerPushToken = async (pushRegisterInput: PushRegisterInput, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getRegisterPushTokenUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      pushRegisterInput,)
+  }
+);}
+
+
+
+
+export const getRegisterPushTokenMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,{data: BodyType<PushRegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,{data: BodyType<PushRegisterInput>}, TContext> => {
+
+const mutationKey = ['registerPushToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerPushToken>>, {data: BodyType<PushRegisterInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerPushToken(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterPushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof registerPushToken>>>
+    export type RegisterPushTokenMutationBody = BodyType<PushRegisterInput>
+    export type RegisterPushTokenMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Register this device's Expo push token
+ */
+export const useRegisterPushToken = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,{data: BodyType<PushRegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof registerPushToken>>,
+        TError,
+        {data: BodyType<PushRegisterInput>},
+        TContext
+      > => {
+      return useMutation(getRegisterPushTokenMutationOptions(options));
+    }
+
+export const getUnregisterPushTokenUrl = () => {
+
+
+
+
+  return `/api/push/unregister`
+}
+
+/**
+ * @summary Unregister a device's Expo push token
+ */
+export const unregisterPushToken = async (pushUnregisterInput: PushUnregisterInput, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getUnregisterPushTokenUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      pushUnregisterInput,)
+  }
+);}
+
+
+
+
+export const getUnregisterPushTokenMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unregisterPushToken>>, TError,{data: BodyType<PushUnregisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unregisterPushToken>>, TError,{data: BodyType<PushUnregisterInput>}, TContext> => {
+
+const mutationKey = ['unregisterPushToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unregisterPushToken>>, {data: BodyType<PushUnregisterInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  unregisterPushToken(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnregisterPushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof unregisterPushToken>>>
+    export type UnregisterPushTokenMutationBody = BodyType<PushUnregisterInput>
+    export type UnregisterPushTokenMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Unregister a device's Expo push token
+ */
+export const useUnregisterPushToken = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unregisterPushToken>>, TError,{data: BodyType<PushUnregisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unregisterPushToken>>,
+        TError,
+        {data: BodyType<PushUnregisterInput>},
+        TContext
+      > => {
+      return useMutation(getUnregisterPushTokenMutationOptions(options));
     }
 
 export const getLogoutUrl = () => {

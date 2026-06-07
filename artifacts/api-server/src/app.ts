@@ -4,8 +4,10 @@ import pinoHttp from "pino-http";
 import path from "node:path";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import type { RequestHandler } from "express";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { resolveMobileToken, touchMobileToken } from "./lib/mobile-auth";
 
 const app: Express = express();
 
@@ -46,29 +48,88 @@ if (!DATABASE_URL) {
 app.set("trust proxy", 1);
 
 const PgStore = connectPgSimple(session);
-app.use(
-  session({
-    name: "vjchat.sid",
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    store: new PgStore({
-      conString: DATABASE_URL,
-      tableName: "user_sessions",
-      // The session table is created at boot by `ensureSessionTable()` in
-      // seed.ts. We can't use connect-pg-simple's built-in auto-create here
-      // because esbuild bundles the JS but not the .sql resource it ships.
-      createTableIfMissing: false,
-    }),
-    cookie: {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false, // Replit's proxy terminates TLS; the cookie still rides on HTTPS to the browser.
-      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
-    },
-  })
-);
+const sessionMiddleware: RequestHandler = session({
+  name: "vjchat.sid",
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  store: new PgStore({
+    conString: DATABASE_URL,
+    tableName: "user_sessions",
+    // The session table is created at boot by `ensureSessionTable()` in
+    // seed.ts. We can't use connect-pg-simple's built-in auto-create here
+    // because esbuild bundles the JS but not the .sql resource it ships.
+    createTableIfMissing: false,
+  }),
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false, // Replit's proxy terminates TLS; the cookie still rides on HTTPS to the browser.
+    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+  },
+});
+
+// Bearer-token auth for the mobile app. The mobile client has no cookie jar,
+// so it sends `Authorization: Bearer <token>`. When a valid token is present
+// we attach a SYNTHETIC in-memory session (no DB row, no Set-Cookie) carrying
+// the resolved user, so every handler that reads `req.session.userId` works
+// unchanged. Requests without a bearer token fall through to the real
+// cookie-backed express-session middleware, leaving web auth untouched.
+const bearerAuth: RequestHandler = (req, res, next) => {
+  const header = req.headers.authorization;
+  if (header && header.startsWith("Bearer ")) {
+    const raw = header.slice(7).trim();
+    resolveMobileToken(raw)
+      .then((user) => {
+        if (user) {
+          touchMobileToken(raw);
+          // Minimal Session-shaped object: only the fields handlers read plus
+          // no-op lifecycle methods so code paths that call save/destroy/etc.
+          // don't crash. We never persist it.
+          const synthetic = {
+            userId: user.userId,
+            userEmail: user.email,
+            userRole: user.role,
+            teamRole: user.teamRole,
+            id: "mobile-bearer",
+            cookie: {} as session.Cookie,
+            regenerate: (cb: (err?: unknown) => void) => {
+              cb();
+              return synthetic;
+            },
+            destroy: (cb: (err?: unknown) => void) => {
+              cb();
+              return synthetic;
+            },
+            reload: (cb: (err?: unknown) => void) => {
+              cb();
+              return synthetic;
+            },
+            save: (cb?: (err?: unknown) => void) => {
+              cb?.();
+              return synthetic;
+            },
+            touch: () => synthetic,
+          };
+          (req as unknown as { session: typeof synthetic }).session = synthetic;
+          next();
+          return;
+        }
+        // Invalid/expired bearer token → fall through unauthenticated. We
+        // still attach a session so downstream code has the object shape;
+        // requireAuth will then reject with 401.
+        sessionMiddleware(req, res, next);
+      })
+      .catch((err) => {
+        req.log?.error?.({ err }, "bearer auth resolution failed");
+        res.status(500).json({ error: "Internal server error" });
+      });
+    return;
+  }
+  sessionMiddleware(req, res, next);
+};
+app.use(bearerAuth);
 
 // Serve uploaded/downloaded media files. Force download for anything that
 // isn't a safe inline-displayable type to prevent stored-XSS from uploaded

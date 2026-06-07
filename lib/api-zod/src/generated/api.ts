@@ -34,6 +34,60 @@ export const LoginResponse = zod.object({
 
 
 /**
+ * @summary Sign in from the mobile app and receive a bearer token
+ */
+
+
+
+export const MobileLoginBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string().min(1),
+  "deviceLabel": zod.string().nullish().describe('Optional human label for the device (e.g. \'iPhone 15\').')
+})
+
+export const MobileLoginResponse = zod.object({
+  "token": zod.string().describe('Opaque bearer token. Send as `Authorization: Bearer <token>`.'),
+  "user": zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "name": zod.string().nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
+  "parentUserId": zod.number().nullish(),
+  "profilePhotoUrl": zod.string().nullish(),
+  "companyName": zod.string().nullish()
+})
+})
+
+
+/**
+ * @summary Register this device's Expo push token
+ */
+export const RegisterPushTokenBody = zod.object({
+  "token": zod.string().describe('Expo push token, e.g. ExponentPushToken[...].'),
+  "platform": zod.union([zod.literal('ios'),zod.literal('android'),zod.literal('web'),zod.literal(null)]).nullish()
+})
+
+export const RegisterPushTokenResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Unregister a device's Expo push token
+ */
+export const UnregisterPushTokenBody = zod.object({
+  "token": zod.string()
+})
+
+export const UnregisterPushTokenResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * @summary Sign out current session
  */
 export const LogoutResponse = zod.object({
