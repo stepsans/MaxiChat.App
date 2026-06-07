@@ -640,6 +640,39 @@ function EditorInner({ flowId }: { flowId: number }) {
   );
 }
 
+// Keyword editor with its own raw-text state so the user can freely type
+// commas and spaces while building the list. Parsing into the array happens
+// on every keystroke, but the visible value stays the literal text the user
+// typed — feeding the re-joined array back as the value (the old approach)
+// stripped the trailing comma instantly, so a second keyword could never be
+// started. `key={node.id}` on the call site remounts this per selected node so
+// the local text resets when switching nodes.
+function KeywordsField({
+  keywords,
+  onChange,
+}: {
+  keywords: string[];
+  onChange: (keywords: string[]) => void;
+}) {
+  const [text, setText] = useState(keywords.join(", "));
+  return (
+    <Input
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(
+          e.target.value
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        );
+      }}
+      placeholder="halo, hi, info"
+      data-testid="input-keywords"
+    />
+  );
+}
+
 function Inspector({
   node,
   onChange,
@@ -684,18 +717,10 @@ function Inspector({
           {(node.data.matchType ?? "keyword") === "keyword" && (
             <div>
               <Label className="text-xs">Kata kunci (pisah koma)</Label>
-              <Input
-                value={(node.data.keywords ?? []).join(", ")}
-                onChange={(e) =>
-                  onChange({
-                    keywords: e.target.value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  })
-                }
-                placeholder="halo, hi, info"
-                data-testid="input-keywords"
+              <KeywordsField
+                key={node.id}
+                keywords={node.data.keywords ?? []}
+                onChange={(keywords) => onChange({ keywords })}
               />
               <p className="text-[11px] text-muted-foreground mt-1">
                 Cocok jika pesan pelanggan mengandung salah satu kata
