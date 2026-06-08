@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,7 +16,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useListChats,
   useListCustomerLabels,
+  useSearchChatContent,
   getListChatsQueryKey,
+  getSearchChatContentQueryKey,
   type Chat,
   type CustomerLabel,
 } from "@workspace/api-client-react";
@@ -47,7 +49,16 @@ export default function ChatListScreen() {
   const { activeChannelId } = useChannel();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [labelFilter, setLabelFilter] = useState<number | null>(null);
+  const [scope, setScope] = useState<"personal" | "group">("personal");
+
+  // Debounce the search term used for the server-side content lookup so we
+  // don't fire a request on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const {
     data: chats,
@@ -64,22 +75,46 @@ export default function ChatListScreen() {
 
   const { data: labels } = useListCustomerLabels();
 
+  // Server-side message-content search: ids of chats whose messages contain the
+  // query. Combined with the instant name/phone/nickname filter so the search
+  // box also matches words inside conversations (mirrors the web app).
+  const { data: contentMatch } = useSearchChatContent(
+    { q: debouncedSearch },
+    {
+      query: {
+        queryKey: getSearchChatContentQueryKey({ q: debouncedSearch }),
+        enabled: debouncedSearch.length >= 2,
+      },
+    },
+  );
+
+  const isGroupChat = (c: Chat) => c.phoneNumber.endsWith("@g.us");
+
+  const counts = useMemo(() => {
+    const all = chats ?? [];
+    const group = all.filter(isGroupChat).length;
+    return { personal: all.length - group, group };
+  }, [chats]);
+
   const filtered = useMemo(() => {
     let list = chats ?? [];
+    list = list.filter((c) => (scope === "group" ? isGroupChat(c) : !isGroupChat(c)));
     if (labelFilter != null) {
       list = list.filter((c) => c.labels.some((l) => l.id === labelFilter));
     }
     const q = search.trim().toLowerCase();
     if (q) {
+      const contentIds = new Set(contentMatch?.chatIds ?? []);
       list = list.filter(
         (c) =>
           c.contactName.toLowerCase().includes(q) ||
           c.phoneNumber.toLowerCase().includes(q) ||
-          (c.nickname ?? "").toLowerCase().includes(q),
+          (c.nickname ?? "").toLowerCase().includes(q) ||
+          contentIds.has(c.id),
       );
     }
     return list;
-  }, [chats, labelFilter, search]);
+  }, [chats, labelFilter, search, scope, contentMatch]);
 
   const renderItem = ({ item }: { item: Chat }) => (
     <TouchableOpacity
@@ -169,6 +204,37 @@ export default function ChatListScreen() {
             onChangeText={setSearch}
           />
         </View>
+      </View>
+
+      <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
+        {(["personal", "group"] as const).map((s) => {
+          const active = scope === s;
+          const label = s === "personal" ? "Personal" : "Grup";
+          const count = s === "personal" ? counts.personal : counts.group;
+          return (
+            <TouchableOpacity
+              key={s}
+              style={styles.tab}
+              activeOpacity={0.7}
+              onPress={() => setScope(s)}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: active ? colors.primary : colors.mutedForeground },
+                ]}
+              >
+                {label} ({count})
+              </Text>
+              <View
+                style={[
+                  styles.tabUnderline,
+                  { backgroundColor: active ? colors.primary : "transparent" },
+                ]}
+              />
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {labels && labels.length > 0 ? (
@@ -283,6 +349,21 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 15,
     padding: 0,
+  },
+  tabBar: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    marginTop: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  tab: { flex: 1, alignItems: "center", paddingTop: 8 },
+  tabText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  tabUnderline: {
+    height: 3,
+    alignSelf: "stretch",
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    marginTop: 8,
   },
   filterStrip: { flexGrow: 0, paddingVertical: 8 },
   filterContent: { paddingHorizontal: 12, gap: 8 },

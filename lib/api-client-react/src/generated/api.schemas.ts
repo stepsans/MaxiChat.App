@@ -95,6 +95,14 @@ export interface ForwardTargetsBody {
   targetChatIds: number[];
 }
 
+export interface EditMessageTextBody {
+  /**
+     * New text for the message.
+     * @minLength 1
+     */
+  content: string;
+}
+
 export interface CommonGroup {
   groupJid: string;
   subject: string;
@@ -560,6 +568,11 @@ export interface ChatMessage {
      * @nullable
      */
   pinnedAt?: string | null;
+  /**
+     * When this message's text was last edited via MaxiChat. Null when never edited.
+     * @nullable
+     */
+  editedAt?: string | null;
 }
 
 export interface LinkPreview {

@@ -55,4 +55,9 @@ export interface ChatMessage {
      * @nullable
      */
   pinnedAt?: string | null;
+  /**
+     * When this message's text was last edited via MaxiChat. Null when never edited.
+     * @nullable
+     */
+  editedAt?: string | null;
 }

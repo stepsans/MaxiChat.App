@@ -210,6 +210,10 @@ export const chatMessagesTable = pgTable(
     // over Baileys, so this is dashboard-local: pinning surfaces the message in
     // a pinned bar at the top of the conversation. Null = not pinned.
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    // When this message's text was last edited via MaxiChat (channel edit +
+    // local content overwrite). Null = never edited. The UI shows a "diedit"
+    // badge when set.
+    editedAt: timestamp("edited_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

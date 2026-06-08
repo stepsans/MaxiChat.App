@@ -1,6 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import React from "react";
+import * as ImagePicker from "expo-image-picker";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -13,13 +15,53 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChannel } from "@/contexts/ChannelContext";
+import { type ThemePreference, useTheme } from "@/contexts/ThemeContext";
 import { useColors } from "@/hooks/useColors";
+import { resolveMediaUrl, uploadProfilePhoto } from "@/lib/api";
+
+const THEME_OPTIONS: { value: ThemePreference; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+  { value: "light", label: "Terang", icon: "sun" },
+  { value: "dark", label: "Gelap", icon: "moon" },
+  { value: "system", label: "Sistem", icon: "smartphone" },
+];
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshUser } = useAuth();
   const { channels, activeChannel, setActiveChannelId } = useChannel();
+  const { preference, setPreference } = useTheme();
+  const [uploading, setUploading] = useState(false);
+
+  const onChangePhoto = async () => {
+    if (uploading) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Izin diperlukan", "Beri akses galeri untuk mengganti foto.");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    setUploading(true);
+    try {
+      await uploadProfilePhoto({
+        uri: asset.uri,
+        name: asset.fileName || `avatar-${Date.now()}.jpg`,
+        type: asset.mimeType || "image/jpeg",
+      });
+      await refreshUser();
+    } catch (e: any) {
+      Alert.alert("Gagal mengunggah", e?.message ?? "Coba lagi.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const confirmSignOut = () => {
     Alert.alert("Keluar", "Anda yakin ingin keluar dari akun ini?", [
@@ -43,11 +85,24 @@ export default function SettingsScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}>
         <View style={styles.profile}>
-          <Avatar
-            name={user?.name || user?.email || "?"}
-            uri={user?.profilePhotoUrl}
-            size={72}
-          />
+          <TouchableOpacity
+            onPress={onChangePhoto}
+            disabled={uploading}
+            activeOpacity={0.8}
+          >
+            <Avatar
+              name={user?.name || user?.email || "?"}
+              uri={resolveMediaUrl(user?.profilePhotoUrl)}
+              size={72}
+            />
+            <View style={[styles.photoBadge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
+              {uploading ? (
+                <ActivityIndicator size="small" color={colors.primaryForeground} />
+              ) : (
+                <Feather name="camera" size={14} color={colors.primaryForeground} />
+              )}
+            </View>
+          </TouchableOpacity>
           <Text style={[styles.profileName, { color: colors.foreground }]}>
             {user?.name || "Pengguna"}
           </Text>
@@ -62,6 +117,44 @@ export default function SettingsScreen() {
               </Text>
             </View>
           ) : null}
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          TAMPILAN
+        </Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.themeRow}>
+            {THEME_OPTIONS.map((opt) => {
+              const active = preference === opt.value;
+              return (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.themeOption,
+                    {
+                      backgroundColor: active ? colors.primary : colors.secondary,
+                      borderColor: active ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setPreference(opt.value)}
+                >
+                  <Feather
+                    name={opt.icon}
+                    size={18}
+                    color={active ? colors.primaryForeground : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.themeLabel,
+                      { color: active ? colors.primaryForeground : colors.foreground },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
@@ -119,6 +212,17 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 12 },
   headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20 },
   profile: { alignItems: "center", paddingVertical: 28, gap: 6 },
+  photoBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   profileName: { fontFamily: "Inter_700Bold", fontSize: 20, marginTop: 8 },
   profileEmail: { fontFamily: "Inter_400Regular", fontSize: 14 },
   companyChip: {
@@ -167,4 +271,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   logoutText: { fontFamily: "Inter_600SemiBold", fontSize: 16 },
+  themeRow: { flexDirection: "row", gap: 8, padding: 12 },
+  themeOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  themeLabel: { fontFamily: "Inter_500Medium", fontSize: 13 },
 });

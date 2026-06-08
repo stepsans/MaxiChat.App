@@ -1,83 +1,84 @@
 /**
  * Semantic design tokens for MaxiChat Mobile.
  *
- * WhatsApp-inspired palette so the mobile app matches the product's identity:
- * teal-green primary, soft chat surfaces, dark mode tuned to WhatsApp dark.
+ * Orange brand palette: warm orange primary with WhatsApp-style chat surfaces.
+ * Dark mode is tuned to a deep neutral with an orange accent so contrast stays
+ * readable on dark backgrounds.
  */
 
 const colors = {
   light: {
-    text: "#0b141a",
-    tint: "#128c7e",
+    text: "#1c1410",
+    tint: "#f97316",
 
     background: "#ffffff",
-    foreground: "#0b141a",
+    foreground: "#1c1410",
 
     card: "#ffffff",
-    cardForeground: "#0b141a",
+    cardForeground: "#1c1410",
 
-    primary: "#128c7e",
+    primary: "#f97316",
     primaryForeground: "#ffffff",
 
-    secondary: "#f0f2f5",
-    secondaryForeground: "#0b141a",
+    secondary: "#f5f0ec",
+    secondaryForeground: "#1c1410",
 
-    muted: "#f0f2f5",
-    mutedForeground: "#667781",
+    muted: "#f5f0ec",
+    mutedForeground: "#7a6e64",
 
-    accent: "#25d366",
-    accentForeground: "#06140d",
+    accent: "#fb923c",
+    accentForeground: "#1c1410",
 
     destructive: "#ef4444",
     destructiveForeground: "#ffffff",
 
-    border: "#e9edef",
-    input: "#e9edef",
+    border: "#ece5df",
+    input: "#ece5df",
 
     bubbleIn: "#ffffff",
-    bubbleOut: "#d9fdd3",
-    bubbleOutForeground: "#0b141a",
-    chatBg: "#efeae2",
-    header: "#075e54",
+    bubbleOut: "#ffe8d2",
+    bubbleOutForeground: "#1c1410",
+    chatBg: "#f4ece3",
+    header: "#ea580c",
     headerForeground: "#ffffff",
-    unreadBadge: "#25d366",
+    unreadBadge: "#f97316",
   },
 
   dark: {
-    text: "#e9edef",
-    tint: "#25d366",
+    text: "#f1e9e3",
+    tint: "#fb923c",
 
-    background: "#0b141a",
-    foreground: "#e9edef",
+    background: "#16110d",
+    foreground: "#f1e9e3",
 
-    card: "#111b21",
-    cardForeground: "#e9edef",
+    card: "#1f1813",
+    cardForeground: "#f1e9e3",
 
-    primary: "#00a884",
-    primaryForeground: "#06140d",
+    primary: "#fb923c",
+    primaryForeground: "#1a1209",
 
-    secondary: "#202c33",
-    secondaryForeground: "#e9edef",
+    secondary: "#2a221b",
+    secondaryForeground: "#f1e9e3",
 
-    muted: "#202c33",
-    mutedForeground: "#8696a0",
+    muted: "#2a221b",
+    mutedForeground: "#a8998c",
 
-    accent: "#25d366",
-    accentForeground: "#06140d",
+    accent: "#fdba74",
+    accentForeground: "#1a1209",
 
     destructive: "#f15c6d",
     destructiveForeground: "#ffffff",
 
-    border: "#222d34",
-    input: "#2a3942",
+    border: "#332a22",
+    input: "#332a22",
 
-    bubbleIn: "#202c33",
-    bubbleOut: "#005c4b",
-    bubbleOutForeground: "#e9edef",
-    chatBg: "#0b141a",
-    header: "#1f2c33",
-    headerForeground: "#e9edef",
-    unreadBadge: "#00a884",
+    bubbleIn: "#241c16",
+    bubbleOut: "#6b3f1d",
+    bubbleOutForeground: "#f7ede4",
+    chatBg: "#16110d",
+    header: "#2a1d12",
+    headerForeground: "#f1e9e3",
+    unreadBadge: "#fb923c",
   },
 
   radius: 12,

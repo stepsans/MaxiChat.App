@@ -105,6 +105,7 @@ export * from './deleteKnowledgeType404';
 export * from './deleteKnowledgeType409';
 export * from './deleteMessageForMe200';
 export * from './driveFolderRef';
+export * from './editMessageTextBody';
 export * from './effectivePermissions';
 export * from './effectivePermissionsTeamRole';
 export * from './emailVerificationResult';

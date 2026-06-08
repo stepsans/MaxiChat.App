@@ -34,6 +34,10 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       name: "Pesan masuk",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
+      // Show full message content on the lock screen.
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      sound: "default",
+      enableVibrate: true,
     });
   }
 
@@ -48,4 +52,17 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   } catch {
     return null;
   }
+}
+
+/**
+ * Pull the chat id out of a notification's data payload (server sends
+ * `{ chatId, channelId }`). Returns null when absent or malformed.
+ */
+export function chatIdFromNotificationData(
+  data: unknown,
+): number | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = (data as Record<string, unknown>).chatId;
+  const n = typeof raw === "string" ? Number(raw) : raw;
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
 }

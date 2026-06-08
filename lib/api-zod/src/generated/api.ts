@@ -1022,7 +1022,8 @@ export const GetChatHistoryResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })).describe('Older messages, ordered oldest-first.'),
   "hasMore": zod.boolean().describe('True when still older messages exist before this page.')
 })
@@ -1099,7 +1100,8 @@ export const GetChatResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })),
   "hasMoreMessages": zod.boolean().optional().describe('True when older messages exist beyond the returned window. The conversation loads only the most recent page; pass the oldest returned message id as `before` to fetch the previous page.\n')
 })
@@ -1194,7 +1196,8 @@ export const SendProductToChatResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -1231,7 +1234,8 @@ export const SendShortcutToChatResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -1272,7 +1276,8 @@ export const SendQuotationToChatResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -1327,7 +1332,8 @@ export const SendManualReplyResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -3992,7 +3998,8 @@ export const GetStarredMessagesResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 }))
 })
 
@@ -4033,7 +4040,8 @@ export const ReactMessageResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -4071,7 +4079,8 @@ export const SetMessagePinResponse = zod.object({
   "senderName": zod.string().nullish(),
   "senderPhoneDigits": zod.string().nullish()
 })).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
-  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.')
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -4119,6 +4128,50 @@ export const RevokeMessageParams = zod.object({
 
 export const RevokeMessageResponse = zod.object({
   "success": zod.boolean()
+})
+
+
+/**
+ * Edits the text of a message the operator previously sent, on the underlying channel (WhatsApp/Telegram), then overwrites the local content and stamps editedAt. Only outbound text messages can be edited, within the channel's time window.
+
+ * @summary Edit the text of an outbound message
+ */
+export const EditMessageParams = zod.object({
+  "id": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+
+
+
+export const EditMessageBody = zod.object({
+  "content": zod.string().min(1).describe('New text for the message.')
+})
+
+export const EditMessageResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 

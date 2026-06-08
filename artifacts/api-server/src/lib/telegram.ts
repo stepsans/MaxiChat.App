@@ -101,6 +101,22 @@ export async function deleteMessage(
   });
 }
 
+// Edit the text of a message the bot previously sent. Telegram allows editing
+// the bot's own outgoing messages (no fixed time window for text). Throws on
+// failure (e.g. message too old / identical text) so callers can surface it.
+export async function editMessageText(
+  token: string,
+  chatId: number | string,
+  messageId: number,
+  text: string
+): Promise<void> {
+  await call(token, "editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+  });
+}
+
 // Send a file as a document. Telegram's sendDocument requires
 // multipart/form-data (the JSON `call` helper above can't carry the binary),
 // so we build a FormData with the file as a Blob and POST it directly.

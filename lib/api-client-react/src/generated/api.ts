@@ -81,6 +81,7 @@ import type {
   DeleteKnowledgeType409,
   DeleteMessageForMe200,
   DriveFolderRef,
+  EditMessageTextBody,
   EffectivePermissions,
   EmailVerificationResult,
   ErrorResponse,
@@ -13199,6 +13200,82 @@ export const useRevokeMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRevokeMessageMutationOptions(options));
+    }
+
+export const getEditMessageUrl = (id: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/chats/${id}/messages/${messageId}/edit`
+}
+
+/**
+ * Edits the text of a message the operator previously sent, on the underlying channel (WhatsApp/Telegram), then overwrites the local content and stamps editedAt. Only outbound text messages can be edited, within the channel's time window.
+
+ * @summary Edit the text of an outbound message
+ */
+export const editMessage = async (id: number,
+    messageId: number,
+    editMessageTextBody: EditMessageTextBody, options?: RequestInit): Promise<ChatMessage> => {
+
+  return customFetch<ChatMessage>(getEditMessageUrl(id,messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      editMessageTextBody,)
+  }
+);}
+
+
+
+
+export const getEditMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editMessage>>, TError,{id: number;messageId: number;data: BodyType<EditMessageTextBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof editMessage>>, TError,{id: number;messageId: number;data: BodyType<EditMessageTextBody>}, TContext> => {
+
+const mutationKey = ['editMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof editMessage>>, {id: number;messageId: number;data: BodyType<EditMessageTextBody>}> = (props) => {
+          const {id,messageId,data} = props ?? {};
+
+          return  editMessage(id,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EditMessageMutationResult = NonNullable<Awaited<ReturnType<typeof editMessage>>>
+    export type EditMessageMutationBody = BodyType<EditMessageTextBody>
+    export type EditMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Edit the text of an outbound message
+ */
+export const useEditMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof editMessage>>, TError,{id: number;messageId: number;data: BodyType<EditMessageTextBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof editMessage>>,
+        TError,
+        {id: number;messageId: number;data: BodyType<EditMessageTextBody>},
+        TContext
+      > => {
+      return useMutation(getEditMessageMutationOptions(options));
     }
 
 export const getForwardMessageUrl = (id: number,

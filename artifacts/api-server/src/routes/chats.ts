@@ -25,6 +25,7 @@ import {
   sendDocument as tgSendDocument,
   sendPhoto as tgSendPhoto,
   deleteMessage as tgDeleteMessage,
+  editMessageText as tgEditMessageText,
 } from "../lib/telegram";
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import { eq, desc, and, sql, inArray, ilike } from "drizzle-orm";
@@ -48,6 +49,7 @@ import {
   ReactMessageBody,
   SetMessagePinBody,
   ForwardMessageBody,
+  EditMessageBody,
   AddGroupParticipantsBody,
 } from "@workspace/api-zod";
 import {
@@ -769,6 +771,7 @@ function serializeChatMessage(m: ChatMessageRow) {
     isStarred: m.isStarred ?? false,
     reactions: Array.isArray(m.reactions) ? m.reactions : [],
     pinnedAt: m.pinnedAt ? m.pinnedAt.toISOString() : null,
+    editedAt: m.editedAt ? m.editedAt.toISOString() : null,
   };
 }
 
@@ -1174,6 +1177,124 @@ router.post("/:id/messages/:messageId/revoke", async (req, res): Promise<void> =
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to revoke message");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /:id/messages/:messageId/edit — edit the text of an outbound message.
+// WhatsApp and Telegram only allow editing our OWN (outbound) messages, and
+// only text messages, within a time window. On success we overwrite the local
+// content and stamp editedAt so the UI shows a "diedit" badge.
+router.post("/:id/messages/:messageId/edit", async (req, res): Promise<void> => {
+  try {
+    const chatId = Number(req.params.id);
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(chatId) || !Number.isInteger(messageId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const bodyParsed = EditMessageBody.safeParse(req.body);
+    if (!bodyParsed.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+    const newContent = bodyParsed.data.content.trim();
+    if (!newContent) {
+      res.status(400).json({ error: "Pesan baru tidak boleh kosong." });
+      return;
+    }
+
+    const chat = await loadOwnedChat(req, res, chatId);
+    if (!chat) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [message] = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .limit(1);
+    if (!message) { res.status(404).json({ error: "Message not found" }); return; }
+
+    if (message.direction !== "outbound") {
+      res.status(400).json({
+        error: "Hanya pesan yang Anda kirim yang bisa diedit.",
+      });
+      return;
+    }
+    if (message.mediaType) {
+      res.status(400).json({
+        error: "Pesan dengan media tidak bisa diedit, hanya pesan teks.",
+      });
+      return;
+    }
+    if (!message.waMessageId) {
+      res.status(400).json({
+        error: "Pesan ini tidak punya ID dari WhatsApp/Telegram, tidak bisa diedit.",
+      });
+      return;
+    }
+
+    const [channel] = await db
+      .select()
+      .from(channelsTable)
+      .where(eq(channelsTable.id, chat.channelId))
+      .limit(1);
+
+    if (channel?.kind === "telegram") {
+      const meta =
+        (channel.metadata as Record<string, unknown> | null)?.["telegram"] as
+          | { botToken?: string }
+          | undefined;
+      const parts = message.waMessageId.split(":");
+      const tgChatId = Number.parseInt(parts[1] ?? "", 10);
+      const tgMessageId = Number.parseInt(parts[2] ?? "", 10);
+      if (!meta?.botToken || !Number.isFinite(tgChatId) || !Number.isFinite(tgMessageId)) {
+        res.status(400).json({ error: "Channel Telegram tidak valid untuk edit pesan." });
+        return;
+      }
+      try {
+        await tgEditMessageText(meta.botToken, tgChatId, tgMessageId, newContent);
+      } catch (err) {
+        req.log.error({ err, chatId, messageId }, "Telegram edit failed");
+        res.status(400).json({
+          error: "Gagal mengedit pesan di Telegram (mungkin sudah terlalu lama).",
+        });
+        return;
+      }
+    } else {
+      const sock = getSockForChannel(chat.channelId);
+      if (!sock) { res.status(409).json({ error: "WhatsApp tidak terhubung" }); return; }
+      const jid = chat.phoneNumber.includes("@")
+        ? chat.phoneNumber
+        : `${chat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+      try {
+        await sock.sendMessage(jid, {
+          text: newContent,
+          edit: {
+            remoteJid: jid,
+            fromMe: true,
+            id: message.waMessageId,
+            ...(jid.endsWith("@g.us") && sock.user?.id
+              ? { participant: sock.user.id }
+              : {}),
+          },
+        });
+      } catch (err) {
+        req.log.error({ err, chatId, messageId }, "WhatsApp edit failed");
+        res.status(400).json({
+          error: "Gagal mengedit pesan di WhatsApp (mungkin sudah terlalu lama).",
+        });
+        return;
+      }
+    }
+
+    const [updated] = await db
+      .update(chatMessagesTable)
+      .set({ content: newContent, editedAt: new Date() })
+      .where(and(eq(chatMessagesTable.id, messageId), eq(chatMessagesTable.chatId, chat.id)))
+      .returning();
+    res.json(serializeChatMessage(updated));
+  } catch (err) {
+    req.log.error({ err }, "Failed to edit message");
     res.status(500).json({ error: "Internal server error" });
   }
 });

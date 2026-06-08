@@ -3939,6 +3939,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /chats/{id}/messages/{messageId}/edit:
+    post:
+      operationId: editMessage
+      tags: [chats]
+      summary: Edit the text of an outbound message
+      description: >
+        Edits the text of a message the operator previously sent, on the
+        underlying channel (WhatsApp/Telegram), then overwrites the local
+        content and stamps editedAt. Only outbound text messages can be
+        edited, within the channel's time window.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditMessageTextBody"
+      responses:
+        "200":
+          description: The updated message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "400":
+          description: Message cannot be edited (inbound, has media, or too old)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/{id}/messages/{messageId}/forward:
     post:
       operationId: forwardMessage
@@ -4232,6 +4277,14 @@ components:
           type: array
           items: { type: integer }
           minItems: 1
+    EditMessageTextBody:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: New text for the message.
     CommonGroup:
       type: object
       required: [groupJid, subject]
@@ -4678,6 +4731,9 @@ components:
         pinnedAt:
           type: ["string", "null"]
           description: When this message was pinned (MaxiChat-internal). Null when not pinned.
+        editedAt:
+          type: ["string", "null"]
+          description: When this message's text was last edited via MaxiChat. Null when never edited.
 
     MessageReaction:
       type: object

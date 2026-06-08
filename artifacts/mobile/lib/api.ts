@@ -111,6 +111,32 @@ export async function uploadImageStatus(
   await rawUpload(`/api/statuses/media`, fd);
 }
 
+/**
+ * Upload a new profile picture and persist it on the current user. Mirrors the
+ * web flow: POST the bytes to /agents/upload-photo (→ {url}), then PATCH that
+ * url onto /auth/me/photo. Neither endpoint is in OpenAPI (binary multipart /
+ * raw patch), so both go through raw fetch. Returns the new public URL.
+ */
+export async function uploadProfilePhoto(file: UploadFile): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file as unknown as Blob);
+  const up = await rawUpload<{ url: string }>("/api/agents/upload-photo", fd);
+  const newUrl = up?.url;
+  if (!newUrl) throw new Error("Upload gagal");
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (currentToken) headers["authorization"] = `Bearer ${currentToken}`;
+  if (currentChannelId) headers["x-channel-id"] = currentChannelId;
+  const res = await fetch(`${API_BASE}/api/auth/me/photo`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ profilePhotoUrl: newUrl }),
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return newUrl;
+}
+
 /** Resolve a possibly-relative media path into an absolute URL. */
 export function resolveMediaUrl(pathOrUrl: string | null | undefined): string | null {
   if (!pathOrUrl) return null;
