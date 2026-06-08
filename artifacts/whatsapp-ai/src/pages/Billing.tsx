@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
 import CheckoutSection from "@/components/CheckoutSection";
+import InvoiceHistory from "@/components/InvoiceHistory";
 import {
   Wallet,
   Database,
@@ -385,6 +386,8 @@ export default function Billing() {
       </p>
         </>
       )}
+
+      <InvoiceHistory />
       </div>
     </div>
   );
