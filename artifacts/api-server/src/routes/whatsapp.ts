@@ -48,7 +48,11 @@ import {
   readClearUpTo,
   ownReadFromReceiptUpdate,
   ownReadFromMessageUpdate,
+  outboundStatusFromReceiptUpdate,
+  outboundStatusFromMessageUpdate,
+  OUTBOUND_STATUS_RANK,
   type OwnReadSignal,
+  type OutboundStatusSignal,
 } from "../lib/chat-read-sync";
 import { notifyInboundMessage } from "../lib/push";
 import {
@@ -1005,6 +1009,41 @@ async function applyOwnReadSignal(
   }
   if (!readUpTo) return;
   await clearUnreadUpTo(channelId, key, readUpTo);
+}
+
+// Mirror WhatsApp's blue ticks: apply a customer delivery/read state to the
+// outbound message it references. Forward-only — the SQL guard only advances
+// the status when the new state ranks higher than the stored one (sent <
+// delivered < read), so an out-of-order "delivered" can never undo a "read".
+// Scoped to the chat's own channel + the message's wa id; no-op when the
+// message isn't ours / isn't found.
+async function applyOutboundStatusSignal(
+  channelId: number,
+  signal: OutboundStatusSignal,
+): Promise<void> {
+  const key = keyForChatId(signal.remoteJid);
+  if (!key) return;
+  const newRank = OUTBOUND_STATUS_RANK[signal.status] ?? 0;
+  await db
+    .update(chatMessagesTable)
+    .set({ status: signal.status })
+    .where(
+      sql`${chatMessagesTable.waMessageId} = ${signal.messageId}
+        AND ${chatMessagesTable.direction} = 'outbound'
+        AND ${chatMessagesTable.chatId} IN (
+          SELECT ${chatsTable.id} FROM ${chatsTable}
+          WHERE ${chatsTable.channelId} = ${channelId}
+            AND ${chatsTable.phoneNumber} = ${key}
+        )
+        AND COALESCE(
+          CASE ${chatMessagesTable.status}
+            WHEN 'read' THEN 2
+            WHEN 'delivered' THEN 1
+            WHEN 'sent' THEN 0
+            ELSE 0
+          END, 0
+        ) < ${newRank}`,
+    );
 }
 
 export async function getOrCreateChat(
@@ -3368,8 +3407,11 @@ async function startBaileys(userId: number, channelId: number) {
       for (const item of updates) {
         try {
           const signal = ownReadFromReceiptUpdate(item);
-          if (!signal) continue;
-          await applyOwnReadSignal(channelId, signal);
+          if (signal) await applyOwnReadSignal(channelId, signal);
+          // Outbound direction: a fromMe receipt carries the CUSTOMER's
+          // delivery/read state for a message we sent — mirror it onto the row.
+          const outbound = outboundStatusFromReceiptUpdate(item);
+          if (outbound) await applyOutboundStatusSignal(channelId, outbound);
         } catch (err) {
           logger.error({ err }, "Failed to apply read receipt");
         }
@@ -3383,8 +3425,11 @@ async function startBaileys(userId: number, channelId: number) {
       for (const item of updates) {
         try {
           const signal = ownReadFromMessageUpdate(item);
-          if (!signal) continue;
-          await applyOwnReadSignal(channelId, signal);
+          if (signal) await applyOwnReadSignal(channelId, signal);
+          // Outbound direction: a fromMe status raise (DELIVERY_ACK/READ/PLAYED)
+          // is the customer's delivery/read state for a message we sent.
+          const outbound = outboundStatusFromMessageUpdate(item);
+          if (outbound) await applyOutboundStatusSignal(channelId, outbound);
         } catch (err) {
           logger.error({ err }, "Failed to apply message status update");
         }

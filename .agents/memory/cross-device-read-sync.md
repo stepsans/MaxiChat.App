@@ -30,7 +30,19 @@ through the shared clear helper so the guard can't be bypassed.
   timestamp-less reads because it is already filtered to READ/PLAYED status. The causal
   guard still prevents over-clearing.
 
-## Scope guard (out of scope = blue ticks)
-Skip `key.fromMe`. A receipt on a fromMe (outbound) message means the *customer* read what
-we sent (blue double-check) — explicitly out of scope. We only clear MaxiChat's own unread
-for INBOUND (customer) messages that *we* read on some device.
+## Scope guard (inbound clear only follows `key.fromMe` === false)
+The unread-CLEAR path skips `key.fromMe`. We only clear MaxiChat's own unread for INBOUND
+(customer) messages that *we* read on some device.
+
+## Outbound counterpart: blue-tick mirroring (now in scope)
+The SAME two events, with `key.fromMe === true`, drive a SEPARATE outbound feature: storing
+the customer's delivery/read state per outbound message (`chat_messages.status` =
+sent|delivered|read) so the chat UI shows single/double/blue ticks. db-free parsers
+`outboundStatusFromMessageUpdate` (DELIVERY_ACK→delivered, READ/PLAYED→read) +
+`outboundStatusFromReceiptUpdate` (read/playedTimestamp→read, receiptTimestamp→delivered)
+sit alongside the inbound `ownRead*` parsers in `chat-read-sync.ts`. The route applies them
+forward-only via a SQL rank guard (sent<delivered<read) so an out-of-order delivered can't
+undo a read. Both directions are wired into the same `message-receipt.update` /
+`messages.update` listeners — inbound and outbound parsers run on each item independently.
+**Why:** a single event can be relevant to exactly one direction (fromMe gates it), so the
+two parser families are mutually exclusive by `key.fromMe` and never conflict.

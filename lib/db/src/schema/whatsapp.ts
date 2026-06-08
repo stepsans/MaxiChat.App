@@ -163,6 +163,13 @@ export const chatMessagesTable = pgTable(
     mediaMimeType: text("media_mime_type"),
     mediaFilename: text("media_filename"),
     waMessageId: text("wa_message_id"),
+    // Outbound delivery/read status, mirroring WhatsApp's ticks. Only
+    // meaningful for outbound messages: "sent" (single tick), "delivered"
+    // (double grey tick), "read" (double blue tick). Null for inbound rows
+    // and for outbound rows whose status hasn't been observed yet (the UI
+    // treats null outbound as "sent"). Advanced forward-only by the
+    // fromMe receipt/status listeners; never downgraded.
+    status: text("status"),
     // Sender identity for inbound group messages so the UI can show
     // "who said what". Null for 1:1 chats (the chat header already
     // identifies the speaker) and for outbound messages.

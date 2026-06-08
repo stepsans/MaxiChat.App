@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ChatMessageDirection } from './chatMessageDirection';
+import type { ChatMessageStatus } from './chatMessageStatus';
 import type { MessageReaction } from './messageReaction';
 
 export interface ChatMessage {
@@ -14,6 +15,11 @@ export interface ChatMessage {
   direction: ChatMessageDirection;
   content: string;
   isAiGenerated: boolean;
+  /**
+     * Outbound delivery/read state mirroring WhatsApp's ticks ("sent"=single, "delivered"=double grey, "read"=double blue). Null for inbound messages and outbound messages whose status hasn't been observed yet (treated as "sent" by the UI).
+     * @nullable
+     */
+  status?: ChatMessageStatus;
   createdAt: string;
   /**
      * pushName of the participant who sent this message; only populated for inbound group messages.

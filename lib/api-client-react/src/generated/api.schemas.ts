@@ -511,6 +511,19 @@ export const ChatMessageDirection = {
   outbound: 'outbound',
 } as const;
 
+/**
+ * Outbound delivery/read state mirroring WhatsApp's ticks ("sent"=single, "delivered"=double grey, "read"=double blue). Null for inbound messages and outbound messages whose status hasn't been observed yet (treated as "sent" by the UI).
+ * @nullable
+ */
+export type ChatMessageStatus = typeof ChatMessageStatus[keyof typeof ChatMessageStatus] | null;
+
+
+export const ChatMessageStatus = {
+  sent: 'sent',
+  delivered: 'delivered',
+  read: 'read',
+} as const;
+
 export interface MessageReaction {
   emoji: string;
   /** True when the reaction is the operator's own (sent from MaxiChat / the connected account). */
@@ -527,6 +540,11 @@ export interface ChatMessage {
   direction: ChatMessageDirection;
   content: string;
   isAiGenerated: boolean;
+  /**
+     * Outbound delivery/read state mirroring WhatsApp's ticks ("sent"=single, "delivered"=double grey, "read"=double blue). Null for inbound messages and outbound messages whose status hasn't been observed yet (treated as "sent" by the UI).
+     * @nullable
+     */
+  status?: ChatMessageStatus;
   createdAt: string;
   /**
      * pushName of the participant who sent this message; only populated for inbound group messages.

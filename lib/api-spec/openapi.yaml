@@ -4767,6 +4767,10 @@ components:
           type: string
         isAiGenerated:
           type: boolean
+        status:
+          type: ["string", "null"]
+          enum: [sent, delivered, read, null]
+          description: Outbound delivery/read state mirroring WhatsApp's ticks ("sent"=single, "delivered"=double grey, "read"=double blue). Null for inbound messages and outbound messages whose status hasn't been observed yet (treated as "sent" by the UI).
         createdAt:
           type: string
         senderName:

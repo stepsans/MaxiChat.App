@@ -5,6 +5,8 @@ import {
   readClearUpTo,
   ownReadFromReceiptUpdate,
   ownReadFromMessageUpdate,
+  outboundStatusFromMessageUpdate,
+  outboundStatusFromReceiptUpdate,
 } from "./chat-read-sync";
 
 test("toUnixSeconds accepts positive numbers", () => {
@@ -173,6 +175,114 @@ test("ownReadFromMessageUpdate ignores non-read statuses and our outbound update
     ownReadFromMessageUpdate({
       key: { fromMe: false, remoteJid: "628111@s.whatsapp.net", id: "N1" },
       update: {},
+    }),
+    null,
+  );
+});
+
+// ---- outboundStatusFromMessageUpdate (messages.update, fromMe) ----
+
+test("outboundStatusFromMessageUpdate maps DELIVERY_ACK to delivered", () => {
+  const sig = outboundStatusFromMessageUpdate({
+    key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "O1" },
+    update: { status: 3 },
+  });
+  assert.ok(sig);
+  assert.equal(sig?.remoteJid, "628111@s.whatsapp.net");
+  assert.equal(sig?.messageId, "O1");
+  assert.equal(sig?.status, "delivered");
+});
+
+test("outboundStatusFromMessageUpdate maps READ/PLAYED (numeric + string) to read", () => {
+  for (const status of [4, 5, "READ", "PLAYED", "delivery_ack"]) {
+    const sig = outboundStatusFromMessageUpdate({
+      key: { fromMe: true, remoteJid: "g@g.us", id: "O2" },
+      update: { status },
+    });
+    assert.ok(sig, `status ${status} should yield a signal`);
+  }
+  assert.equal(
+    outboundStatusFromMessageUpdate({
+      key: { fromMe: true, remoteJid: "g@g.us", id: "O2" },
+      update: { status: 4 },
+    })?.status,
+    "read",
+  );
+});
+
+test("outboundStatusFromMessageUpdate ignores inbound msgs, SERVER_ACK, and missing id", () => {
+  // inbound (customer's message read by us) — handled by ownRead*, not here
+  assert.equal(
+    outboundStatusFromMessageUpdate({
+      key: { fromMe: false, remoteJid: "628111@s.whatsapp.net", id: "I1" },
+      update: { status: 4 },
+    }),
+    null,
+  );
+  // SERVER_ACK (just sent) carries no delivered/read progress
+  assert.equal(
+    outboundStatusFromMessageUpdate({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "S1" },
+      update: { status: 2 },
+    }),
+    null,
+  );
+  // missing message id — can't key the per-message update
+  assert.equal(
+    outboundStatusFromMessageUpdate({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "" },
+      update: { status: 4 },
+    }),
+    null,
+  );
+});
+
+// ---- outboundStatusFromReceiptUpdate (message-receipt.update, fromMe) ----
+
+test("outboundStatusFromReceiptUpdate: read timestamp -> read", () => {
+  const sig = outboundStatusFromReceiptUpdate({
+    key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "R1" },
+    receipt: { readTimestamp: 1717600000 },
+  });
+  assert.equal(sig?.status, "read");
+  assert.equal(sig?.messageId, "R1");
+});
+
+test("outboundStatusFromReceiptUpdate: played timestamp -> read", () => {
+  assert.equal(
+    outboundStatusFromReceiptUpdate({
+      key: { fromMe: true, remoteJid: "g@g.us", id: "R2" },
+      receipt: { playedTimestamp: 1717600000 },
+    })?.status,
+    "read",
+  );
+});
+
+test("outboundStatusFromReceiptUpdate: receipt timestamp only -> delivered", () => {
+  assert.equal(
+    outboundStatusFromReceiptUpdate({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "R3" },
+      receipt: { receiptTimestamp: 1717600000 },
+    })?.status,
+    "delivered",
+  );
+});
+
+test("outboundStatusFromReceiptUpdate: inbound or no usable timestamp -> null", () => {
+  // inbound receipt — that's the customer reading our... no, fromMe:false is the
+  // reverse direction handled by ownReadFromReceiptUpdate
+  assert.equal(
+    outboundStatusFromReceiptUpdate({
+      key: { fromMe: false, remoteJid: "628111@s.whatsapp.net", id: "R4" },
+      receipt: { readTimestamp: 1717600000 },
+    }),
+    null,
+  );
+  // no timestamp at all
+  assert.equal(
+    outboundStatusFromReceiptUpdate({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "R5" },
+      receipt: {},
     }),
     null,
   );

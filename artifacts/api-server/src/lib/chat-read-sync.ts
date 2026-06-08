@@ -149,3 +149,117 @@ export function ownReadFromMessageUpdate(item: {
     messageId: parts.messageId,
   };
 }
+
+// ---------------------------------------------------------------------------
+// OUTBOUND direction: mirror WhatsApp's blue ticks on messages WE sent.
+//
+// This is the reverse of the inbound read-sync above. A receipt/status event on
+// one of OUR OWN (`key.fromMe`) outbound messages tells us the CUSTOMER's
+// delivery/read state for that message — the single/double/blue tick the
+// operator sees. We store this per outbound message so the chat UI can show it.
+// ---------------------------------------------------------------------------
+
+// The delivery/read state of an outbound message, in strictly increasing order
+// of progress. We never downgrade (a "read" message can't go back to
+// "delivered"); the caller enforces forward-only advancement.
+export type OutboundStatus = "delivered" | "read";
+
+// Numeric rank used to compare progress. Higher = further along. "sent" is the
+// implicit baseline (rank 0) every outbound message starts at, so it isn't a
+// signal we ever emit — only delivered/read advance the stored state.
+export const OUTBOUND_STATUS_RANK: Record<string, number> = {
+  sent: 0,
+  delivered: 1,
+  read: 2,
+};
+
+// A normalized "the customer's delivery/read state for an outbound message I
+// sent" signal, derived from a fromMe receipt/status event.
+export interface OutboundStatusSignal {
+  // The chat JID the message belongs to (group @g.us or 1:1 @s.whatsapp.net).
+  remoteJid: string;
+  // The WA id of the outbound message whose status changed. Required — we key
+  // the per-message update on this, so a signal without one is useless.
+  messageId: string;
+  // The new delivery/read state.
+  status: OutboundStatus;
+}
+
+// Extract the remoteJid + REQUIRED messageId from a Baileys message key for our
+// OWN outbound messages (the mirror image of inboundKeyParts). Returns null for
+// inbound messages and for keys missing a usable remoteJid or id.
+function outboundKeyParts(
+  key: WaKeyLike,
+): { remoteJid: string; messageId: string } | null {
+  if (!key) return null;
+  if (!key.fromMe) return null;
+  const remoteJid = key.remoteJid;
+  if (typeof remoteJid !== "string" || remoteJid === "") return null;
+  if (typeof key.id !== "string" || key.id === "") return null;
+  return { remoteJid, messageId: key.id };
+}
+
+// WA proto message statuses (proto.WebMessageInfo.Status):
+// PENDING=0/1, SERVER_ACK=2 (sent), DELIVERY_ACK=3 (delivered), READ=4, PLAYED=5.
+const WA_STATUS_DELIVERY_ACK = 3;
+
+// Map a Baileys message status (number or enum string) to our outbound state,
+// or null when it carries no delivered/read progress (sent/pending/error).
+function outboundStatusFromCode(status: unknown): OutboundStatus | null {
+  if (isReadStatus(status)) return "read";
+  if (typeof status === "number") {
+    return status === WA_STATUS_DELIVERY_ACK ? "delivered" : null;
+  }
+  if (typeof status === "string") {
+    return status.toUpperCase() === "DELIVERY_ACK" ? "delivered" : null;
+  }
+  return null;
+}
+
+// Derive an outbound-status signal from a Baileys `messages.update` item when
+// the update raises one of OUR OWN messages to DELIVERY_ACK/READ/PLAYED. Returns
+// null for inbound messages, our own SERVER_ACK/pending updates, and non-status
+// updates (edits, revokes, etc.).
+export function outboundStatusFromMessageUpdate(item: {
+  key?: WaKeyLike;
+  update?: { status?: unknown } | null | undefined;
+}): OutboundStatusSignal | null {
+  const parts = outboundKeyParts(item?.key);
+  if (!parts) return null;
+  const status = outboundStatusFromCode(item?.update?.status);
+  if (!status) return null;
+  return { remoteJid: parts.remoteJid, messageId: parts.messageId, status };
+}
+
+// Derive an outbound-status signal from a Baileys `message-receipt.update` item
+// for our OWN messages. A read/played timestamp means the customer READ it; a
+// receipt timestamp alone means it was DELIVERED. Returns null when the receipt
+// carries no usable delivery/read timestamp.
+export function outboundStatusFromReceiptUpdate(item: {
+  key?: WaKeyLike;
+  receipt?:
+    | {
+        readTimestamp?: unknown;
+        playedTimestamp?: unknown;
+        receiptTimestamp?: unknown;
+      }
+    | null
+    | undefined;
+}): OutboundStatusSignal | null {
+  const parts = outboundKeyParts(item?.key);
+  if (!parts) return null;
+  const r = item?.receipt;
+  const readSecs =
+    toUnixSeconds(r?.readTimestamp) ?? toUnixSeconds(r?.playedTimestamp);
+  if (readSecs !== null) {
+    return { remoteJid: parts.remoteJid, messageId: parts.messageId, status: "read" };
+  }
+  if (toUnixSeconds(r?.receiptTimestamp) !== null) {
+    return {
+      remoteJid: parts.remoteJid,
+      messageId: parts.messageId,
+      status: "delivered",
+    };
+  }
+  return null;
+}

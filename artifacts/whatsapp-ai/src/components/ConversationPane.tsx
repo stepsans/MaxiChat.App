@@ -2130,12 +2130,23 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                           <span className="text-[11px] text-[hsl(var(--wa-meta))] tabular-nums">
                             {format(new Date(msg.createdAt), "HH:mm")}
                           </span>
-                          {isOutbound && (
-                            <CheckCheck
-                              className="w-3.5 h-3.5 text-[hsl(var(--wa-tick-read))]"
-                              aria-label="Sent"
-                            />
-                          )}
+                          {isOutbound &&
+                            (msg.status === "read" ? (
+                              <CheckCheck
+                                className="w-3.5 h-3.5 text-[hsl(var(--wa-tick-read))]"
+                                aria-label="Dibaca"
+                              />
+                            ) : msg.status === "delivered" ? (
+                              <CheckCheck
+                                className="w-3.5 h-3.5 text-[hsl(var(--wa-tick))]"
+                                aria-label="Terkirim"
+                              />
+                            ) : (
+                              <Check
+                                className="w-3.5 h-3.5 text-[hsl(var(--wa-tick))]"
+                                aria-label="Terkirim ke server"
+                              />
+                            ))}
                         </div>
                         {reactionTarget === msg.id && (
                           <div

@@ -63,6 +63,7 @@ export * from './chatLabelsResult';
 export * from './chatLinkItem';
 export * from './chatMessage';
 export * from './chatMessageDirection';
+export * from './chatMessageStatus';
 export * from './chatStatus';
 export * from './chatTag';
 export * from './chatUpdate';
