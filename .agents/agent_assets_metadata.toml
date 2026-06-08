@@ -18,3 +18,9 @@ id = "914doBklc8GmA5drE5o2i"
 uri = "file://docs/billing-architecture-review.md"
 type = "text"
 title = "MaxiChat — Enterprise Billing & Subscription Architecture Review"
+
+[[outputs]]
+id = "IhFWV2O5bdB_gw5Ngpv-M"
+uri = "file://docs/billing-fase-fdeh-plan.md"
+type = "text"
+title = "Rencana Detail Billing: FASE F, D, E, H + Overage/Wallet/Credit"
