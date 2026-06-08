@@ -3801,3 +3801,16 @@ export const ListOpportunitiesStatus = {
   lost: 'lost',
 } as const;
 
+export type ListSalesAuditEventsParams = {
+/**
+ * Filter to a single opportunity the caller can access.
+ */
+opportunityId?: number;
+/**
+ * Max events to return (default 100).
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
+

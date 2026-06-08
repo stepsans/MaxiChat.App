@@ -684,4 +684,85 @@ router.get(
   }
 );
 
+// GET /sales/audit — list recent sales audit events for the tenant, scoped to
+// the caller's visibility. Always tenant-owner-scoped; an agent only sees
+// events for opportunities they can access (or tenant-level events with no
+// opportunity). An optional opportunityId filter is access-checked first.
+router.get(
+  "/audit",
+  requirePermission("opportunities", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const teamRole = await resolveTeamRole(uid);
+
+    let limit = 100;
+    if (req.query.limit != null) {
+      const parsed = Number(req.query.limit);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 200) {
+        res.status(400).json({ error: "limit tidak valid" });
+        return;
+      }
+      limit = parsed;
+    }
+
+    let opportunityFilter: number | null = null;
+    if (req.query.opportunityId != null) {
+      const parsed = Number(req.query.opportunityId);
+      if (!Number.isInteger(parsed)) {
+        res.status(400).json({ error: "opportunityId tidak valid" });
+        return;
+      }
+      const [opp] = await db
+        .select()
+        .from(opportunitiesTable)
+        .where(eq(opportunitiesTable.id, parsed))
+        .limit(1);
+      if (!opp || !canAccessOpportunity(opp, ownerId, teamRole, uid)) {
+        res.status(404).json({ error: "Opportunity tidak ditemukan" });
+        return;
+      }
+      opportunityFilter = parsed;
+    }
+
+    // Tenant-owner scope is always enforced. Non-privileged callers
+    // (agent) only see events tied to opportunities they own, plus
+    // tenant-level events that have no opportunity attached.
+    const conditions = [eq(salesAuditEventsTable.ownerUserId, ownerId)];
+    if (opportunityFilter != null) {
+      conditions.push(eq(salesAuditEventsTable.opportunityId, opportunityFilter));
+    } else if (teamRole === "agent") {
+      conditions.push(
+        sql`(${salesAuditEventsTable.opportunityId} IS NULL OR EXISTS (
+          SELECT 1 FROM ${opportunitiesTable}
+          WHERE ${opportunitiesTable.id} = ${salesAuditEventsTable.opportunityId}
+            AND ${opportunitiesTable.assignedUserId} = ${uid}
+        ))`
+      );
+    }
+
+    const rows = await db
+      .select()
+      .from(salesAuditEventsTable)
+      .where(and(...conditions))
+      .orderBy(desc(salesAuditEventsTable.createdAt), desc(salesAuditEventsTable.id))
+      .limit(limit);
+
+    res.json(
+      rows.map((e) => ({
+        id: e.id,
+        opportunityId: e.opportunityId,
+        actorUserId: e.actorUserId,
+        eventType: e.eventType,
+        detail: e.detail ?? {},
+        createdAt: e.createdAt.toISOString(),
+      }))
+    );
+  }
+);
+
 export default router;

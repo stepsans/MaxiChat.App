@@ -4957,3 +4957,26 @@ export const GetSalesInsightsResponse = zod.object({
 }).describe('Aggregate pipeline metrics scoped to the caller\'s visibility.')
 
 
+/**
+ * @summary List recent sales audit events (scoped to caller)
+ */
+export const listSalesAuditEventsQueryLimitMax = 200;
+
+
+
+export const ListSalesAuditEventsQueryParams = zod.object({
+  "opportunityId": zod.coerce.number().optional().describe('Filter to a single opportunity the caller can access.'),
+  "limit": zod.coerce.number().min(1).max(listSalesAuditEventsQueryLimitMax).optional().describe('Max events to return (default 100).')
+})
+
+export const ListSalesAuditEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "opportunityId": zod.number().nullable(),
+  "actorUserId": zod.number().nullable().describe('Who triggered it; null = AI\/system.'),
+  "eventType": zod.string(),
+  "detail": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}).describe('An append-only AI\/sales activity log entry.')
+export const ListSalesAuditEventsResponse = zod.array(ListSalesAuditEventsResponseItem)
+
+

@@ -170,6 +170,7 @@ export * from './listChatsStatus';
 export * from './listChatsTag';
 export * from './listOpportunitiesParams';
 export * from './listOpportunitiesStatus';
+export * from './listSalesAuditEventsParams';
 export * from './listSalesOrdersParams';
 export * from './listTeamMemberPermissions200';
 export * from './loginInput';

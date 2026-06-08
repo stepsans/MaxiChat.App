@@ -122,6 +122,7 @@ import type {
   LinkPreview,
   ListChatsParams,
   ListOpportunitiesParams,
+  ListSalesAuditEventsParams,
   ListSalesOrdersParams,
   ListTeamMemberPermissions200,
   LoginInput,
@@ -168,6 +169,7 @@ import type {
   RunProductSync200,
   RunSalesOrderSync200,
   RunShortcutSync200,
+  SalesAuditEvent,
   SalesOrder,
   SalesOrderInput,
   SalesOrderSyncConfigInput,
@@ -15752,6 +15754,90 @@ export function useGetSalesInsights<TData = Awaited<ReturnType<typeof getSalesIn
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSalesInsightsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListSalesAuditEventsUrl = (params?: ListSalesAuditEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sales/audit?${stringifiedParams}` : `/api/sales/audit`
+}
+
+/**
+ * @summary List recent sales audit events (scoped to caller)
+ */
+export const listSalesAuditEvents = async (params?: ListSalesAuditEventsParams, options?: RequestInit): Promise<SalesAuditEvent[]> => {
+
+  return customFetch<SalesAuditEvent[]>(getListSalesAuditEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSalesAuditEventsQueryKey = (params?: ListSalesAuditEventsParams,) => {
+    return [
+    `/api/sales/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSalesAuditEventsQueryOptions = <TData = Awaited<ReturnType<typeof listSalesAuditEvents>>, TError = ErrorType<ErrorResponse>>(params?: ListSalesAuditEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSalesAuditEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSalesAuditEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSalesAuditEvents>>> = ({ signal }) => listSalesAuditEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSalesAuditEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSalesAuditEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listSalesAuditEvents>>>
+export type ListSalesAuditEventsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List recent sales audit events (scoped to caller)
+ */
+
+export function useListSalesAuditEvents<TData = Awaited<ReturnType<typeof listSalesAuditEvents>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListSalesAuditEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSalesAuditEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSalesAuditEventsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

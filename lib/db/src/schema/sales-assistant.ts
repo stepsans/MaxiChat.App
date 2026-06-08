@@ -17,7 +17,8 @@ import { chatsTable } from "./whatsapp";
 import { channelsTable } from "./channels";
 
 // ===========================================================================
-// AI Sales Assistant (marketing name — internally an AI-assisted sales CRM).
+// AI Sales Assistant (Enterprise-only). The marketing/user-facing name is
+// always "AI Sales Assistant" — never "CRM".
 // Enterprise-only substrate. Every table is keyed on the tenant OWNER's user
 // id (`ownerUserId`) for multi-tenant isolation and so the existing
 // self-delete cascade (users.parent_user_id) and tenant-reset flow can wipe
