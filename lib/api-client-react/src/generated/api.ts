@@ -15612,6 +15612,76 @@ export const useUpdateOpportunity = <TError = ErrorType<ErrorResponse>,
       return useMutation(getUpdateOpportunityMutationOptions(options));
     }
 
+export const getDeleteOpportunityUrl = (id: number,) => {
+
+
+
+
+  return `/api/sales/opportunities/${id}`
+}
+
+/**
+ * @summary Delete an opportunity (follow-ups cascade with it)
+ */
+export const deleteOpportunity = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteOpportunityUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteOpportunityMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOpportunity>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteOpportunity>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteOpportunity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteOpportunity>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteOpportunity(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteOpportunityMutationResult = NonNullable<Awaited<ReturnType<typeof deleteOpportunity>>>
+
+    export type DeleteOpportunityMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete an opportunity (follow-ups cascade with it)
+ */
+export const useDeleteOpportunity = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOpportunity>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteOpportunity>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteOpportunityMutationOptions(options));
+    }
+
 export const getListOpportunityFollowUpsUrl = (id: number,) => {
 
 

@@ -4919,6 +4919,18 @@ export const UpdateOpportunityResponse = zod.object({
 
 
 /**
+ * @summary Delete an opportunity (follow-ups cascade with it)
+ */
+export const DeleteOpportunityParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteOpportunityResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary List scheduled follow-ups for an opportunity
  */
 export const ListOpportunityFollowUpsParams = zod.object({

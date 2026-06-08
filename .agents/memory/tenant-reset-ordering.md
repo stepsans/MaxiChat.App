@@ -31,15 +31,17 @@ single DB transaction for every row delete plus the audit/ledger write. Restrict
 deletes to the documented operational set; never touch the account, subscription,
 plan, quota, channels, settings, or products.
 
-## AI Sales Assistant tables are all wiped (stages included)
+## AI Sales Assistant data is fully wiped on reset (stages too)
 
-All four AI Sales Assistant tables (pipeline_stages, opportunities,
-opportunity_follow_ups, sales_audit_events) are treated as operational data and
-wiped by the reset — including pipeline_stages, even though stages feel like
-config. **Why:** the default stages re-seed idempotently on the tenant's next
-AI Sales Assistant access, so wiping them is non-destructive and the reset
-contract is "no AI Sales Assistant rows survive a reset." Delete order: audit +
-opportunities (which cascade their follow_ups) BEFORE stages, since
-opportunities reference stage_id (SET NULL). After the tx, call
-`markOwnerStagesUnseeded(ownerId)` to clear the per-process seed cache so the
-next access actually re-seeds.
+**Rule:** the tenant reset wipes ALL AI Sales Assistant tables, including
+pipeline_stages — even though stages otherwise behave like config (products,
+flows, settings are KEPT). The reset contract is "no AI Sales Assistant rows
+survive."
+**Why:** the seven default stages are idempotently re-seeded on the tenant's
+next AI Sales Assistant access, so wiping them is non-destructive — unlike
+products/flows/settings, which have no re-seed and so must be preserved.
+**How to apply:** when first access (any `/sales/*` request) re-seeds defaults,
+they become safe to wipe. Pair any such "wipe-and-reseed-on-next-access" data
+with a per-process seed-cache invalidation after the reset commits, or the
+in-memory "already seeded" guard suppresses the re-seed. Anything WITHOUT a
+re-seed path (true config) stays on the keep-list.

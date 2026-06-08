@@ -557,6 +557,61 @@ router.patch(
   }
 );
 
+// DELETE /sales/opportunities/:id — delete (role-scoped). Follow-ups and
+// opportunity-anchored audit events cascade with the row; the deletion itself
+// is recorded as an owner-scoped audit event (opportunityId NULL so it survives
+// the cascade) with the deleted id + phone captured in detail.
+router.delete(
+  "/opportunities/:id",
+  requirePermission("opportunities", "delete"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const teamRole = await resolveTeamRole(uid);
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "id tidak valid" });
+      return;
+    }
+
+    // Delete + authorize in one statement so a concurrent change between a
+    // pre-read and the write can't let the caller remove a row they no longer
+    // control (TOCTOU). opportunityScopeWhere restricts agents to their own.
+    // The delete and its audit row share one transaction so the deletion is
+    // never recorded as having happened without the row actually going (or
+    // vice-versa).
+    const deleted = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .delete(opportunitiesTable)
+        .where(
+          and(
+            eq(opportunitiesTable.id, id),
+            opportunityScopeWhere(ownerId, teamRole, uid)
+          )
+        )
+        .returning();
+      if (!row) return null;
+      await tx.insert(salesAuditEventsTable).values({
+        ownerUserId: ownerId,
+        opportunityId: null,
+        actorUserId: uid,
+        eventType: "opportunity_deleted",
+        detail: { opportunityId: id, contactPhone: row.contactPhone ?? null },
+      });
+      return row;
+    });
+    if (!deleted) {
+      res.status(404).json({ error: "Opportunity tidak ditemukan" });
+      return;
+    }
+    res.json({ success: true });
+  }
+);
+
 // GET /sales/opportunities/:id/follow-ups — list follow-ups (role-scoped via
 // the parent opportunity).
 router.get(
