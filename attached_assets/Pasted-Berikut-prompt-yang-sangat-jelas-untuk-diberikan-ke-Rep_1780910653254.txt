@@ -1,0 +1,232 @@
+Berikut prompt yang sangat jelas untuk diberikan ke Replit AI / Claude Code agar AI melakukan audit sistem token MaxiChat tanpa mengubah apa pun.
+
+---
+
+# PROMPT UNTUK REPLIT AI
+
+Saya ingin melakukan audit sistem penggunaan token AI di MaxiChat.
+
+⚠️ IMPORTANT:
+JANGAN mengubah kode apa pun.
+JANGAN membuat migration database.
+JANGAN mengubah schema.
+JANGAN mengubah logic aplikasi.
+
+Mode hanya ANALISIS dan LAPORAN.
+
+## Tujuan
+
+Saya ingin memahami secara detail bagaimana token AI dihitung dan dicatat di dalam aplikasi MaxiChat.
+
+Tolong periksa seluruh source code dan buat laporan lengkap mengenai:
+
+### 1. Sumber Data Token
+
+Untuk menu penggunaan token yang saat ini menampilkan:
+
+* Total Token
+* Prompt Token
+* Completion / Response Token
+* Jumlah Panggilan AI (AI Calls)
+
+Jelaskan:
+
+* Data tersebut berasal dari mana
+* File mana yang menghitungnya
+* API mana yang mengirim data tersebut
+* Database tabel mana yang menyimpannya
+* Apakah data tersebut real dari vendor AI atau estimasi internal
+
+---
+
+### 2. Apakah Token Development Ikut Terhitung?
+
+Periksa apakah penggunaan AI berikut ikut masuk statistik token:
+
+* AI yang digunakan developer saat membangun aplikasi
+* AI yang digunakan Replit Agent
+* AI yang digunakan Claude Code
+* AI internal untuk debugging
+* AI internal untuk testing
+
+atau
+
+Apakah hanya penggunaan AI dari end-user MaxiChat yang dihitung.
+
+Buat kesimpulan yang jelas:
+
+✅ Hanya User Tenant
+
+atau
+
+⚠️ Campur antara User dan Development
+
+---
+
+### 3. Tenant Isolation
+
+Periksa apakah token usage sudah terikat dengan tenant masing-masing.
+
+Contoh:
+
+Tenant A:
+
+* 10.000 token
+
+Tenant B:
+
+* 25.000 token
+
+Apakah sistem saat ini:
+
+A. Menyimpan token berdasarkan tenant_id
+
+atau
+
+B. Semua token tercampur global
+
+Jelaskan:
+
+* Field database yang digunakan
+* Query yang digunakan
+* Risiko jika saat ini belum terisolasi
+
+---
+
+### 4. Akurasi Perhitungan
+
+Periksa apakah token dihitung berdasarkan data asli dari provider AI.
+
+Contoh:
+
+OpenAI Response:
+
+```json
+{
+  "usage": {
+    "prompt_tokens": 120,
+    "completion_tokens": 80,
+    "total_tokens": 200
+  }
+}
+```
+
+Apakah MaxiChat:
+
+* Mengambil angka asli dari provider
+* Mengestimasi sendiri
+* Menggunakan library tokenizer
+
+Jelaskan secara detail.
+
+---
+
+### 5. Vendor AI yang Digunakan
+
+Identifikasi:
+
+* OpenAI
+* Anthropic
+* Gemini
+* DeepSeek
+* OpenRouter
+* Lainnya
+
+Lalu jelaskan model apa saja yang saat ini aktif.
+
+Contoh:
+
+* GPT-5
+* GPT-4.1
+* Claude Sonnet
+* Gemini 2.5 Pro
+
+---
+
+### 6. Cost Calculation
+
+Untuk setiap model yang ditemukan:
+
+Tampilkan:
+
+* Harga input token vendor
+* Harga output token vendor
+* Per 1 juta token
+* Per 100.000 token
+* Per 1.000 token
+
+Gunakan harga terbaru yang ditemukan di konfigurasi aplikasi atau provider yang digunakan.
+
+---
+
+### 7. Simulasi Harga Jual Token
+
+Misalkan saya ingin menjual token ke customer dengan margin 10%.
+
+Hitungkan:
+
+Untuk setiap model:
+
+* Harga vendor
+* Harga jual +10%
+* Harga per token
+* Harga per 1.000 token
+* Harga per 10.000 token
+* Harga per 100.000 token
+* Harga per 1 juta token
+
+Gunakan mata uang:
+
+* USD
+* IDR
+
+Asumsi kurs:
+1 USD = Rp 16.500
+
+---
+
+### 8. Rekomendasi Bisnis SaaS
+
+Berikan rekomendasi:
+
+Mana yang lebih baik:
+
+A. Menjual per token
+
+atau
+
+B. Menjual per paket
+
+Contoh:
+
+Starter:
+100.000 token
+
+Growth:
+500.000 token
+
+Business:
+2.000.000 token
+
+Enterprise:
+Custom
+
+Berikan alasan teknis dan bisnis.
+
+---
+
+### 9. Ringkasan Eksekutif
+
+Buat tabel:
+
+| Item                                  | Status   |
+| ------------------------------------- | -------- |
+| Token terisolasi per tenant           | Ya/Tidak |
+| Token development ikut terhitung      | Ya/Tidak |
+| Data token berasal dari provider asli | Ya/Tidak |
+| Siap untuk billing customer           | Ya/Tidak |
+| Risiko utama                          | ...      |
+
+---
+
+Output yang saya inginkan adalah laporan audit lengkap, bukan perubahan kode. Saya hanya ingin memahami sistem penggunaan token MaxiChat saat ini sebelum membuat sistem billing token untuk customer.
