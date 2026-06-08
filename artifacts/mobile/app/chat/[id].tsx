@@ -32,6 +32,11 @@ import {
 } from "@workspace/api-client-react";
 
 import { Avatar } from "@/components/Avatar";
+import {
+  LinkifiedText,
+  LinkPreviewCard,
+  firstLink,
+} from "@/components/MessageBody";
 import { ChatInfoPanel } from "@/components/chat-info/ChatInfoPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -165,6 +170,7 @@ export default function ConversationScreen() {
       media && (media.mediaType === "image" || media.mediaMimeType?.startsWith("image/"))
         ? resolveMediaUrl(media.mediaUrl)
         : null;
+    const link = item.content ? firstLink(item.content) : null;
 
     // The list is inverted (index 0 = newest, rendered at the bottom). Show the
     // avatar on the newest message of each consecutive same-sender run — i.e.
@@ -219,15 +225,14 @@ export default function ConversationScreen() {
           {mediaUri ? (
             <Image source={{ uri: mediaUri }} style={styles.bubbleImage} />
           ) : null}
+          {link ? <LinkPreviewCard url={link} isOutbound={out} /> : null}
           {item.content ? (
-            <Text
-              style={[
-                styles.bubbleText,
-                { color: out ? colors.bubbleOutForeground : colors.foreground },
-              ]}
-            >
-              {item.content}
-            </Text>
+            <LinkifiedText
+              content={item.content}
+              color={out ? colors.bubbleOutForeground : colors.foreground}
+              linkColor={out ? colors.bubbleOutForeground : colors.primary}
+              style={styles.bubbleText}
+            />
           ) : null}
           <View style={styles.metaRow}>
             {item.isAiGenerated ? (
