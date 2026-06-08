@@ -16,8 +16,9 @@ ALTER TABLE plans
 -- operator who later disables it on enterprise is respected.
 UPDATE plans SET has_ai_sales_assistant = true WHERE key = 'enterprise';
 
--- A tenant's customizable sales pipeline stages (kanban columns). CONFIG data
--- (kept across tenant-reset).
+-- A tenant's customizable sales pipeline stages (kanban columns). Wiped by
+-- tenant-reset along with the rest of the AI Sales Assistant data; the seven
+-- defaults re-seed on the tenant's next access.
 CREATE TABLE IF NOT EXISTS pipeline_stages (
   id            serial PRIMARY KEY,
   owner_user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,

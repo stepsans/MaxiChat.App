@@ -20,9 +20,10 @@ export interface TenantResetSummary {
   logs: number;
   media: number;
   files: number;
-  // AI Sales Assistant operational data wiped alongside the rest. Pipeline
-  // stages are CONFIGURATION (like products/flows) and are deliberately KEPT,
-  // so they are not counted here.
+  // AI Sales Assistant data wiped alongside the rest. All four tables are
+  // cleared (stages re-seed on next access), matching the tenant-reset
+  // contract that no AI Sales Assistant rows survive a reset.
+  pipelineStages: number;
   opportunities: number;
   salesAuditEvents: number;
 }

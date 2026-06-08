@@ -11,11 +11,13 @@ import {
   tenantResetAuditTable,
   opportunitiesTable,
   salesAuditEventsTable,
+  pipelineStagesTable,
   type TenantResetSummary,
 } from "@workspace/db";
 import { eq, inArray, sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { ObjectStorageService } from "./objectStorage";
+import { markOwnerStagesUnseeded } from "./sales-assistant";
 
 const objectStorage = new ObjectStorageService();
 
@@ -105,11 +107,12 @@ export async function resetTenant(
       .where(eq(mediaObjectsTable.ownerUserId, ownerId))
       .returning({ id: mediaObjectsTable.id });
 
-    // AI Sales Assistant operational data. Pipeline stages are CONFIGURATION
-    // (like products/flows/settings) and are deliberately KEPT. Deleting the
-    // opportunities cascades their follow-ups; sales_audit_events that point at
-    // an opportunity also cascade, but owner-scoped events with no opportunity
-    // (or whose cascade we don't want to rely on) are swept explicitly here.
+    // AI Sales Assistant data. The tenant-reset contract is that NO AI Sales
+    // Assistant rows survive a reset, so all four tables are wiped (the default
+    // stages re-seed on the tenant's next access). Order: sweep audit + the
+    // opportunities (which cascade their follow-ups) first, then the stages —
+    // opportunities reference stage_id (SET NULL), so they must go before the
+    // stages they point at.
     const deletedSalesAudit = await tx
       .delete(salesAuditEventsTable)
       .where(eq(salesAuditEventsTable.ownerUserId, ownerId))
@@ -118,6 +121,10 @@ export async function resetTenant(
       .delete(opportunitiesTable)
       .where(eq(opportunitiesTable.ownerUserId, ownerId))
       .returning({ id: opportunitiesTable.id });
+    const deletedStages = await tx
+      .delete(pipelineStagesTable)
+      .where(eq(pipelineStagesTable.ownerUserId, ownerId))
+      .returning({ id: pipelineStagesTable.id });
 
     const s: TenantResetSummary = {
       chats,
@@ -128,6 +135,7 @@ export async function resetTenant(
       logs: deletedLogs.length,
       media: deletedMedia.length,
       files,
+      pipelineStages: deletedStages.length,
       opportunities: deletedOpportunities.length,
       salesAuditEvents: deletedSalesAudit.length,
     };
@@ -140,6 +148,10 @@ export async function resetTenant(
 
     return s;
   });
+
+  // Stages were wiped inside the tx; clear the per-process seed cache so this
+  // tenant's next AI Sales Assistant access re-seeds the defaults.
+  markOwnerStagesUnseeded(ownerId);
 
   logger.info({ ownerId, performedByUserId, ...summary }, "tenant database reset");
   return summary;

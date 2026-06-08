@@ -30,3 +30,16 @@ shape — external-resource cleanup first (best-effort, accurate count), then a
 single DB transaction for every row delete plus the audit/ledger write. Restrict
 deletes to the documented operational set; never touch the account, subscription,
 plan, quota, channels, settings, or products.
+
+## AI Sales Assistant tables are all wiped (stages included)
+
+All four AI Sales Assistant tables (pipeline_stages, opportunities,
+opportunity_follow_ups, sales_audit_events) are treated as operational data and
+wiped by the reset — including pipeline_stages, even though stages feel like
+config. **Why:** the default stages re-seed idempotently on the tenant's next
+AI Sales Assistant access, so wiping them is non-destructive and the reset
+contract is "no AI Sales Assistant rows survive a reset." Delete order: audit +
+opportunities (which cascade their follow_ups) BEFORE stages, since
+opportunities reference stage_id (SET NULL). After the tx, call
+`markOwnerStagesUnseeded(ownerId)` to clear the per-process seed cache so the
+next access actually re-seeds.

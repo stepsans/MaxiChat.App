@@ -56,11 +56,30 @@ export async function requireSalesAssistant(
       });
       return;
     }
+    // Seed the default pipeline stages on the tenant's first AI Sales Assistant
+    // access — ANY /sales/* endpoint, not just GET /sales/stages. seedDefaultStages
+    // is idempotent; the per-process cache avoids re-querying on every request.
+    if (!seededOwners.has(ownerId)) {
+      await seedDefaultStages(ownerId);
+      seededOwners.add(ownerId);
+    }
     next();
   } catch (err) {
     req.log.error({ err }, "requireSalesAssistant check failed");
     res.status(500).json({ error: "Internal server error" });
   }
+}
+
+// Per-process cache of owners whose default stages have been ensured this boot.
+// seedDefaultStages itself is idempotent against the DB; this just skips the
+// extra read on the hot path. Cleared for an owner by tenant-reset (which wipes
+// their stages) so the next access re-seeds.
+const seededOwners = new Set<number>();
+
+// Called by tenant-reset after it wipes a tenant's pipeline stages, so the
+// next AI Sales Assistant access re-seeds the defaults.
+export function markOwnerStagesUnseeded(ownerId: number): void {
+  seededOwners.delete(ownerId);
 }
 
 // The seven default pipeline stages every tenant starts with. Order is stable

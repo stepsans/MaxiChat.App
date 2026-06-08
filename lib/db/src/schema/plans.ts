@@ -44,7 +44,7 @@ export const plansTable = pgTable(
     // retention is clamped to this cap; it is never a floor.
     retentionLimitDays: integer("retention_limit_days"),
     // Entitlement flag: does this plan include the AI Sales Assistant
-    // (Enterprise-only sales CRM)? Default false; only the enterprise plan
+    // (Enterprise-only)? Default false; only the enterprise plan
     // turns it on. Infinity owners always pass regardless of this flag.
     hasAiSalesAssistant: boolean("has_ai_sales_assistant")
       .notNull()

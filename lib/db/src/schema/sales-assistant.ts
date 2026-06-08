@@ -28,7 +28,8 @@ import { channelsTable } from "./channels";
 // A tenant's customizable sales pipeline stages (kanban columns). Seeded with
 // seven defaults on first access (New Lead → Inquiry → Quotation Sent → Follow
 // Up → Negotiation → Won → Lost); the tenant may later add/remove/reorder.
-// Stages are CONFIGURATION (like products/flows), so tenant-reset KEEPS them.
+// Tenant-reset wipes stages along with the rest of the AI Sales Assistant data;
+// the seven defaults re-seed on the tenant's next access.
 export const pipelineStagesTable = pgTable(
   "pipeline_stages",
   {
