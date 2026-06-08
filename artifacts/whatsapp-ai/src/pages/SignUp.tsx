@@ -107,8 +107,8 @@ export default function SignUp() {
   return (
     <AuthShell
       eyebrow="Get started"
-      title="Maximizing Your Chat"
-      subtitle="Buat akun MaxiChat — otomasi balasan WhatsApp dengan AI dalam hitungan menit."
+      title="Maxichat.app"
+      subtitle="Buat akun Maxichat.app — otomasi balasan WhatsApp dengan AI dalam hitungan menit."
       wide
     >
       <form onSubmit={onSubmit} data-testid="signup-form" className="space-y-4">
@@ -244,7 +244,7 @@ export default function SignUp() {
             <a href="#" className="font-semibold text-orange-600 hover:underline">
               Kebijakan Privasi
             </a>{" "}
-            MaxiChat.
+            Maxichat.app.
           </span>
         </label>
 

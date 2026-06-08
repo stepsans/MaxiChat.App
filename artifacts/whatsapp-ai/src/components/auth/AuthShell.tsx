@@ -32,7 +32,7 @@ export default function AuthShell({
         <div className={`w-full ${wide ? "max-w-xl" : "max-w-md"}`}>
           <div className="md:hidden flex items-center gap-2 mb-6">
             <Logo />
-            <span className="font-bold text-slate-900 text-lg">MaxiChat</span>
+            <span className="font-bold text-slate-900 text-lg">Maxichat.app</span>
           </div>
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 p-6 sm:p-8">
             <div className="mb-6">
@@ -53,7 +53,7 @@ export default function AuthShell({
             {children}
           </div>
           <p className="text-center text-[11px] text-slate-400 mt-6">
-            © {new Date().getFullYear()} MaxiChat. Maximizing Your Chat.
+            © {new Date().getFullYear()} Maxichat.app.
           </p>
         </div>
       </div>
@@ -78,14 +78,12 @@ function BrandPanel() {
 
       <div className="relative z-10 flex items-center gap-2.5">
         <Logo />
-        <span className="font-bold text-lg tracking-tight">MaxiChat</span>
+        <span className="font-bold text-lg tracking-tight">Maxichat.app</span>
       </div>
 
       <div className="relative z-10 my-8">
         <h2 className="text-4xl font-bold leading-tight tracking-tight">
-          Maximizing
-          <br />
-          Your Chat.
+          Maxichat.app
         </h2>
         <p className="mt-4 text-sm text-orange-50 max-w-sm leading-relaxed">
           Otomasi balasan WhatsApp, kelola tim agent, dan analisa percakapan —

@@ -104,7 +104,7 @@ export default function Flows() {
       onError: () => {
         toast({
           title: "Gagal impor flow",
-          description: "File tidak valid atau bukan ekspor flow MaxiChat.",
+          description: "File tidak valid atau bukan ekspor flow Maxichat.app.",
           variant: "destructive",
         });
       },

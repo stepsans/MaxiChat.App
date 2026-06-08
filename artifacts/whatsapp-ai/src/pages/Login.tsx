@@ -57,8 +57,8 @@ export default function Login() {
   return (
     <AuthShell
       eyebrow="Welcome back"
-      title="Sign in to MaxiChat"
-      subtitle="Maximizing Your Chat — kelola semua percakapan WhatsApp dari satu dashboard."
+      title="Sign in to Maxichat.app"
+      subtitle="Maxichat.app — kelola semua percakapan WhatsApp dari satu dashboard."
     >
       <form onSubmit={onSubmit} data-testid="login-form" className="space-y-4">
         <SocialAuthButtons mode="login" />
