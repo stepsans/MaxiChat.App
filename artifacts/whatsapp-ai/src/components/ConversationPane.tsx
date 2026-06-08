@@ -35,6 +35,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChatAvatar } from "@/components/ChatAvatar";
+import { MessageAvatar } from "@/components/MessageAvatar";
 import { ChatInfoSidebar } from "@/components/ChatInfoSidebar";
 import {
   Select,
@@ -1181,6 +1182,26 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     return SENDER_COLOURS[h % SENDER_COLOURS.length];
   };
 
+  // ── Per-message avatar identity (left = customer, right = agent) ──────────
+  // The signed-in agent is the best available attribution for outbound
+  // bubbles — the message pipeline doesn't store a per-message sender user.
+  const meUser = me?.user ?? null;
+  const roleLabel = (tr?: string | null): string =>
+    tr === "super_admin" ? "Admin" : tr === "supervisor" ? "Supervisor" : "Agen";
+  // Turn a raw JID / digit string into a friendly "+62..." number. Returns
+  // null for group JIDs or empty input so the tooltip just omits the line.
+  const formatJidPhone = (raw?: string | null): string | null => {
+    if (!raw) return null;
+    const local = raw.split("@")[0];
+    const digits = local.replace(/\D/g, "");
+    if (!digits) return null;
+    return `+${digits}`;
+  };
+  const agentName = meUser?.name?.trim() || "Agen";
+  const agentPicUrl = meUser?.profilePhotoUrl ?? null;
+  const agentRole = roleLabel(meUser?.teamRole);
+  const oneToOnePhone = isGroup ? null : formatJidPhone(chat.phoneNumber);
+
   // Names from the live group roster (groupMetadata + contacts), keyed by the
   // digits that appear inside an "@<digits>" token — both the JID local part
   // and the resolved real phone — so a mention we just sent renders as a name
@@ -1725,10 +1746,16 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                   const curName = (msg.senderName ?? null) as string | null;
                   const bothNoSender =
                     !prevDigits && !curDigits && !prevName && !curName;
+                  // The "no sender info on either row" fallback is safe for
+                  // outbound rows (agent sends never carry per-sender info) and
+                  // for any 1:1 chat, but must NEVER collapse two inbound GROUP
+                  // rows whose senders are simply unresolved — that would hide a
+                  // distinct member's avatar behind the previous one's run.
+                  const allowNoSenderFallback = isOutbound || !isGroup;
                   const sameSenderAsPrev =
                     !!prev &&
                     prev.direction === msg.direction &&
-                    (bothNoSender ||
+                    ((allowNoSenderFallback && bothNoSender) ||
                       (!!curDigits && curDigits === prevDigits) ||
                       (!!curName && curName === prevName));
                   const isCont = prev && prev.direction === msg.direction;
@@ -1757,7 +1784,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                         selectMode ? () => toggleSelected(msg.id) : undefined
                       }
                       className={cn(
-                        "group flex mb-0.5 items-center gap-2",
+                        "group flex mb-0.5 items-start gap-2",
                         selectMode && "cursor-pointer",
                         isOutbound ? "justify-end pl-12" : "justify-start pr-12",
                         isCont && sameSenderAsPrev ? "mt-0.5" : "mt-2"
@@ -1771,6 +1798,23 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                           data-testid={`select-message-${msg.id}`}
                           className="w-4 h-4 accent-[hsl(var(--wa-accent))] flex-shrink-0"
                         />
+                      )}
+                      {!isOutbound && (
+                        <div className="w-8 md:w-10 flex-shrink-0">
+                          {!sameSenderAsPrev ? (
+                            <MessageAvatar
+                              name={isGroup ? senderLabel : displayName}
+                              profilePicUrl={isGroup ? null : chat.profilePicUrl}
+                              role="Customer"
+                              phoneNumber={
+                                isGroup
+                                  ? formatJidPhone(msg.senderPhoneDigits)
+                                  : oneToOnePhone
+                              }
+                              colorKey={isGroup ? senderKey : chat.phoneNumber}
+                            />
+                          ) : null}
+                        </div>
                       )}
                       <div
                         className={cn(
@@ -1786,11 +1830,6 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                             className="flex items-center gap-1.5 mb-0.5"
                             data-testid={`sender-${senderKey}`}
                           >
-                            <ChatAvatar
-                              name={senderLabel}
-                              profilePicUrl={null}
-                              size={20}
-                            />
                             <span
                               className="text-[12.5px] font-medium truncate"
                               style={{ color: colourForSender(senderKey) }}
@@ -2118,6 +2157,18 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                         )}
                         <div className="clear-both" />
                       </div>
+                      {isOutbound && (
+                        <div className="w-8 md:w-10 flex-shrink-0">
+                          {!sameSenderAsPrev ? (
+                            <MessageAvatar
+                              name={agentName}
+                              profilePicUrl={agentPicUrl}
+                              role={agentRole}
+                              colorKey={`agent-${meUser?.id ?? "me"}`}
+                            />
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
