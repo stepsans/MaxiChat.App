@@ -38,6 +38,7 @@ import {
   MessageSquare,
   Trash2,
   Pin,
+  Star,
   Archive,
   Users,
   User,
@@ -370,7 +371,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                   href={`/chats/${chat.id}`}
                   data-testid={`chat-list-item-${chat.id}`}
                   className={cn(
-                    "group flex items-center gap-3 px-3 py-2.5 cursor-pointer border-l-[3px] transition-colors",
+                    "group flex items-center gap-3 px-3 cursor-pointer border-l-[3px] transition-colors min-h-[72px]",
                     isSelected
                       ? "bg-[hsl(var(--wa-panel-header))] border-l-[hsl(var(--wa-accent))]"
                       : "border-l-transparent hover:bg-[hsl(var(--wa-panel-header))]/60"
@@ -383,51 +384,62 @@ export default function ChatListPane({ selectedChatId }: Props) {
                     isUnknown={chat.isLid && !chat.nickname?.trim()}
                     size={49}
                   />
-                  <div className="flex-1 min-w-0 border-b border-[hsl(var(--wa-divider))] group-last:border-b-0 py-1.5">
-                    <div className="flex items-baseline gap-2 mb-0.5">
+                  <div className="flex-1 min-w-0 py-2.5">
+                    {/* Top row: name + meta */}
+                    <div className="flex items-center gap-2">
                       {chatChannel && (
                         <span
-                          className="inline-block w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-background self-center"
+                          className="inline-block w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-background"
                           style={{ backgroundColor: chatChannel.color }}
                           title={chatChannel.label}
                           aria-label={`Channel: ${chatChannel.label}`}
                           data-testid={`chat-channel-dot-${chat.id}`}
                         />
                       )}
-                      <span className="text-[15px] font-normal text-foreground truncate flex-1">
+                      <span className="text-[15px] font-normal text-foreground truncate flex-1 min-w-0">
                         {displayName}
                       </span>
-                      {chat.lastMessageAt && (
-                        <span
-                          className={cn(
-                            "text-[11px] tabular-nums flex-shrink-0",
-                            (chat.unreadCount ?? 0) > 0
-                              ? "text-[hsl(var(--wa-accent))]"
-                              : "text-[hsl(var(--wa-meta))]"
-                          )}
-                          title={format(new Date(chat.lastMessageAt), "d MMMM yyyy HH:mm", {
-                            locale: idLocale,
-                          })}
-                        >
-                          {formatChatTimestamp(chat.lastMessageAt)}
-                        </span>
-                      )}
+                      {/* Fixed-width meta area: star + timestamp */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0 min-w-[70px] justify-end">
+                        {chat.isStarred && (
+                          <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+                        )}
+                        {chat.lastMessageAt && (
+                          <span
+                            className={cn(
+                              "text-[11px] tabular-nums flex-shrink-0",
+                              (chat.unreadCount ?? 0) > 0
+                                ? "text-[hsl(var(--wa-accent))] font-medium"
+                                : "text-[hsl(var(--wa-meta))]"
+                            )}
+                            title={format(new Date(chat.lastMessageAt), "d MMMM yyyy HH:mm", {
+                              locale: idLocale,
+                            })}
+                          >
+                            {formatChatTimestamp(chat.lastMessageAt)}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      {chat.pinnedAt && (
-                        <Pin className="w-3 h-3 text-[hsl(var(--wa-meta))] flex-shrink-0" />
-                      )}
-                      {chat.isArchived && (
-                        <Archive className="w-3 h-3 text-[hsl(var(--wa-meta))] flex-shrink-0" />
-                      )}
-                      <p className="text-[13px] text-[hsl(var(--wa-meta))] truncate flex-1">
-                        {chat.lastMessage ?? subtitle}
-                      </p>
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* Bottom row: preview + status/unread */}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        {chat.pinnedAt && (
+                          <Pin className="w-3 h-3 text-[hsl(var(--wa-meta))] flex-shrink-0" />
+                        )}
+                        {chat.isArchived && (
+                          <Archive className="w-3 h-3 text-[hsl(var(--wa-meta))] flex-shrink-0" />
+                        )}
+                        <p className="text-[13px] text-[hsl(var(--wa-meta))] truncate min-w-0">
+                          {chat.lastMessage ?? subtitle}
+                        </p>
+                      </div>
+                      {/* Fixed-width right area: badges + unread */}
+                      <div className="flex items-center gap-1 flex-shrink-0 min-w-[70px] justify-end">
                         {chat.status === "needs_human" && (
                           <Badge
                             variant="outline"
-                            className="text-[9px] h-4 px-1 bg-yellow-500/15 text-yellow-300 border-yellow-500/30 gap-0.5"
+                            className="text-[9px] h-4 px-1 bg-yellow-500/15 text-yellow-300 border-yellow-500/30 gap-0.5 flex-shrink-0"
                           >
                             <UserCheck className="w-2.5 h-2.5" />
                           </Badge>
@@ -435,7 +447,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                         {chat.status === "ai_handled" && (
                           <Badge
                             variant="outline"
-                            className="text-[9px] h-4 px-1 bg-[hsl(var(--wa-accent))]/15 text-[hsl(var(--wa-accent))] border-[hsl(var(--wa-accent))]/30 gap-0.5"
+                            className="text-[9px] h-4 px-1 bg-[hsl(var(--wa-accent))]/15 text-[hsl(var(--wa-accent))] border-[hsl(var(--wa-accent))]/30 gap-0.5 flex-shrink-0"
                           >
                             <Bot className="w-2.5 h-2.5" />
                           </Badge>
@@ -444,7 +456,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[9px] h-4 w-4 p-0 flex items-center justify-center",
+                              "text-[9px] h-4 w-4 p-0 flex items-center justify-center flex-shrink-0",
                               tagColors[chat.tag]
                             )}
                           >
@@ -452,7 +464,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                           </Badge>
                         )}
                         {(chat.unreadCount ?? 0) > 0 && (
-                          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[hsl(var(--wa-accent))] text-white text-[11px] flex items-center justify-center font-medium">
+                          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[hsl(var(--wa-accent))] text-white text-[11px] flex items-center justify-center font-medium flex-shrink-0">
                             {chat.unreadCount > 99 ? "99+" : chat.unreadCount}
                           </span>
                         )}
@@ -461,16 +473,17 @@ export default function ChatListPane({ selectedChatId }: Props) {
                           data-testid={`delete-chat-${chat.id}`}
                           onClick={(e) => handleDelete(e, chat.id, chat.contactName)}
                           disabled={deleteChat.isPending}
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-[hsl(var(--wa-meta))] hover:text-red-400 transition-opacity disabled:opacity-50"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded text-[hsl(var(--wa-meta))] hover:text-red-400 transition-opacity disabled:opacity-50 flex-shrink-0"
                           aria-label="Delete chat"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
+                    {/* Labels row */}
                     {(chat.labels?.length ?? 0) > 0 && (
                       <div
-                        className="flex flex-wrap items-center gap-1"
+                        className="flex flex-wrap items-center gap-1 mt-1"
                         data-testid={`chat-labels-${chat.id}`}
                       >
                         {chat.labels.map((label) => (

@@ -1,0 +1,328 @@
+Berikut AI Prompt yang bisa langsung Anda berikan ke AI Developer (Claude Code, Replit AI, Cursor, Windsurf, dll):
+
+---
+
+# UI/UX Improvement Prompt – Chat List Layout Optimization
+
+Analisa dan perbaiki tampilan Chat List pada aplikasi MaxiChat agar lebih rapi, modern, dan nyaman dilihat pada berbagai ukuran layar.
+
+## Masalah Saat Ini
+
+1. Jarak antara icon ⭐ Star dan timestamp (jam) terlalu jauh sehingga terlihat tidak proporsional.
+2. Pada beberapa kondisi, icon ⭐ Star bertabrakan atau bertumpuk dengan preview pesan terakhir.
+3. Bubble/chat item terlihat terlalu pendek sehingga ketika terdapat:
+
+   * Star
+   * Unread badge
+   * Preview pesan panjang
+   * Timestamp
+
+   maka elemen-elemen menjadi terlalu padat dan saling menimpa.
+4. Vertical spacing antar elemen kurang konsisten.
+5. Layout terlihat sempit ketika nama kontak panjang.
+
+---
+
+## Tujuan Perbaikan
+
+Buat layout seperti aplikasi modern:
+
+* WhatsApp Business
+* Telegram
+* Intercom Inbox
+* Front
+* Zendesk Messaging
+
+Dengan fokus pada:
+
+* Visual hierarchy yang jelas
+* Tidak ada overlap antar elemen
+* Responsive pada desktop dan mobile
+* Lebih enak dibaca dalam jumlah chat yang banyak
+
+---
+
+## Layout yang Diinginkan
+
+### Baris Atas
+
+Kiri:
+
+* Avatar
+* Nama kontak
+
+Kanan:
+
+* Star icon (jika ada)
+* Timestamp
+
+Contoh:
+
+```
+John Doe                    ⭐ 14:35
+```
+
+### Baris Bawah
+
+Kiri:
+
+* Preview pesan terakhir
+
+Kanan:
+
+* Unread badge
+
+Contoh:
+
+```
+Halo kak, saya mau tanya...      [12]
+```
+
+---
+
+## Perbaikan Detail
+
+### 1. Kurangi Gap Star dan Timestamp
+
+Saat ini terlalu jauh.
+
+Ubah menjadi:
+
+```css
+gap: 4px;
+```
+
+atau maksimal:
+
+```css
+gap: 6px;
+```
+
+Tujuan:
+
+```
+⭐ 14:35
+```
+
+terlihat sebagai satu grup informasi.
+
+---
+
+### 2. Cegah Overlap Star Dengan Text
+
+Pastikan:
+
+* Star tidak pernah menimpa nama kontak.
+* Star tidak pernah menimpa preview pesan.
+* Star memiliki fixed area sendiri.
+
+Gunakan:
+
+```css
+flex-shrink: 0;
+```
+
+untuk:
+
+* star icon
+* timestamp
+* unread badge
+
+Contoh:
+
+```css
+.star-icon {
+  flex-shrink: 0;
+}
+
+.timestamp {
+  flex-shrink: 0;
+}
+```
+
+---
+
+### 3. Tinggikan Chat Item
+
+Saat ini terlalu pendek.
+
+Tambahkan tinggi minimum:
+
+```css
+min-height: 72px;
+```
+
+atau
+
+```css
+padding-top: 10px;
+padding-bottom: 10px;
+```
+
+Target:
+
+* lebih lega
+* tidak terasa sesak
+* tidak ada elemen yang bertumpuk
+
+---
+
+### 4. Batasi Panjang Preview Message
+
+Gunakan:
+
+```css
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+```
+
+Contoh hasil:
+
+```
+Halo kak saya mau tanya mengenai...
+```
+
+bukan:
+
+```
+Halo kak saya mau tanya mengenai produk...
+⭐⭐⭐
+```
+
+yang dapat merusak layout.
+
+---
+
+### 5. Batasi Nama Kontak
+
+Jika nama terlalu panjang:
+
+```css
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+```
+
+Contoh:
+
+```
+PT Okeprint Kreatif Indonesia...
+```
+
+---
+
+### 6. Buat Area Kanan Fixed Width
+
+Buat container:
+
+```css
+.chat-meta
+```
+
+yang berisi:
+
+* star
+* timestamp
+* unread badge
+
+dengan width tetap.
+
+Contoh:
+
+```css
+width: 70px;
+```
+
+atau
+
+```css
+min-width: 70px;
+```
+
+Tujuan:
+
+* teks tidak masuk ke area metadata
+* mencegah tabrakan layout
+
+---
+
+### 7. Perbaiki Vertical Alignment
+
+Gunakan:
+
+```css
+display: flex;
+align-items: center;
+```
+
+untuk:
+
+* star
+* timestamp
+* badge
+
+agar semua sejajar secara vertikal.
+
+---
+
+### 8. Responsive Check
+
+Pastikan tidak terjadi overlap pada:
+
+#### Desktop
+
+* 1920px
+* 1440px
+* 1366px
+
+#### Tablet
+
+* 1024px
+* 768px
+
+#### Mobile
+
+* 390px
+* 430px
+
+---
+
+### 9. Hover & Selected State
+
+Tambahkan UX modern:
+
+Hover:
+
+```css
+background: var(--hover-bg);
+```
+
+Selected:
+
+```css
+background: var(--selected-bg);
+border-left: 3px solid var(--primary);
+```
+
+---
+
+## Acceptance Criteria
+
+✅ Star icon tidak pernah bertumpuk dengan teks
+
+✅ Timestamp selalu terlihat jelas
+
+✅ Nama panjang tidak merusak layout
+
+✅ Preview pesan panjang tidak merusak layout
+
+✅ Chat item terasa lebih lega
+
+✅ Jarak star dan timestamp lebih proporsional
+
+✅ Tidak ada overlap pada desktop maupun mobile
+
+✅ Tampilan setara kualitas WhatsApp Business dan Intercom Inbox
+
+Sebelum implementasi, lakukan analisis struktur HTML/CSS saat ini dan identifikasi akar penyebab overlap. Prioritaskan perbaikan layout menggunakan Flexbox/Grid yang scalable, bukan patch sementara menggunakan margin negatif atau posisi absolut.
