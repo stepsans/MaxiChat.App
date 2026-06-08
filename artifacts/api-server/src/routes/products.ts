@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { Request, Response } from "express";
 import { resolveOwnerUserId } from "../lib/seed";
 import { saveTenantMedia } from "../lib/tenant-storage";
+import { checkStorageQuota } from "../lib/storage-enforce";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
@@ -304,6 +305,10 @@ router.post("/upload-image", imageUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) { res.status(400).json({ error: "Missing file" }); return; }
     const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+    // FASE C: block the upload if the tenant is over its storage plafon (no-op
+    // unless the operator has enabled enforcement).
+    const storageCheck = await checkStorageQuota(ownerUserId, req.file.buffer.length);
+    if (!storageCheck.ok) { res.status(413).json({ error: storageCheck.message }); return; }
     const { url } = await saveTenantMedia({
       ownerUserId,
       buffer: req.file.buffer,

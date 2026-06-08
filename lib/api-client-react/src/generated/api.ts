@@ -171,6 +171,7 @@ import type {
   SpreadsheetRef,
   StarMessageBody,
   StartCredentialOauth200,
+  StorageConfig,
   StorageUsage,
   SubscriptionInfo,
   SuccessResponse,
@@ -196,6 +197,7 @@ import type {
   UpdatePaymentMethodInput,
   UpdatePlanInput,
   UpdatePricingInput,
+  UpdateStorageConfigInput,
   UpdateTaxConfigInput,
   UpdateUserChannelAccessRequest,
   UpdateUserPermissionRequest,
@@ -2181,6 +2183,154 @@ export const useAdminUpdateTaxConfig = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getAdminUpdateTaxConfigMutationOptions(options));
+    }
+
+export const getAdminGetStorageConfigUrl = () => {
+
+
+
+
+  return `/api/admin/storage-config`
+}
+
+/**
+ * @summary Get the platform storage-enforcement configuration (admin only)
+ */
+export const adminGetStorageConfig = async ( options?: RequestInit): Promise<StorageConfig> => {
+
+  return customFetch<StorageConfig>(getAdminGetStorageConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetStorageConfigQueryKey = () => {
+    return [
+    `/api/admin/storage-config`
+    ] as const;
+    }
+
+
+export const getAdminGetStorageConfigQueryOptions = <TData = Awaited<ReturnType<typeof adminGetStorageConfig>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetStorageConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetStorageConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetStorageConfig>>> = ({ signal }) => adminGetStorageConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetStorageConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetStorageConfigQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetStorageConfig>>>
+export type AdminGetStorageConfigQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the platform storage-enforcement configuration (admin only)
+ */
+
+export function useAdminGetStorageConfig<TData = Awaited<ReturnType<typeof adminGetStorageConfig>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetStorageConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetStorageConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdateStorageConfigUrl = () => {
+
+
+
+
+  return `/api/admin/storage-config`
+}
+
+/**
+ * @summary Update the platform storage-enforcement configuration (admin only)
+ */
+export const adminUpdateStorageConfig = async (updateStorageConfigInput: UpdateStorageConfigInput, options?: RequestInit): Promise<StorageConfig> => {
+
+  return customFetch<StorageConfig>(getAdminUpdateStorageConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateStorageConfigInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateStorageConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateStorageConfig>>, TError,{data: BodyType<UpdateStorageConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateStorageConfig>>, TError,{data: BodyType<UpdateStorageConfigInput>}, TContext> => {
+
+const mutationKey = ['adminUpdateStorageConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateStorageConfig>>, {data: BodyType<UpdateStorageConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminUpdateStorageConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateStorageConfigMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateStorageConfig>>>
+    export type AdminUpdateStorageConfigMutationBody = BodyType<UpdateStorageConfigInput>
+    export type AdminUpdateStorageConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the platform storage-enforcement configuration (admin only)
+ */
+export const useAdminUpdateStorageConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateStorageConfig>>, TError,{data: BodyType<UpdateStorageConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateStorageConfig>>,
+        TError,
+        {data: BodyType<UpdateStorageConfigInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateStorageConfigMutationOptions(options));
     }
 
 export const getAdminListAiUsageUrl = () => {

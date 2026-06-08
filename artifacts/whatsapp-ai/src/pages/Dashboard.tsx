@@ -99,6 +99,8 @@ function QuotaBar({
   unit,
   testId,
   unlimited = false,
+  warnPercent = 80,
+  enforced = false,
 }: {
   label: string;
   icon: React.ElementType;
@@ -108,11 +110,15 @@ function QuotaBar({
   unit?: string;
   testId: string;
   unlimited?: boolean;
+  warnPercent?: number;
+  enforced?: boolean;
 }) {
   // Owner Infinity: render ∞ with no progress bar / near-limit warning.
   const hasLimit = !unlimited && limit > 0;
   const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const warn = hasLimit && pct >= 80;
+  // Near-limit threshold; for storage this is operator-configured (FASE C).
+  const threshold = warnPercent > 0 && warnPercent <= 100 ? warnPercent : 80;
+  const warn = hasLimit && pct >= threshold;
   const barColor = warn ? "bg-amber-500" : "bg-cyan-500";
   return (
     <div data-testid={testId}>
@@ -153,7 +159,11 @@ function QuotaBar({
               )}
             >
               {pct}% terpakai
-              {warn ? " — mendekati batas kuota" : ""}
+              {warn
+                ? enforced
+                  ? " — mendekati batas, unggahan baru akan diblokir"
+                  : " — mendekati batas kuota"
+                : ""}
             </p>
           )}
         </>
@@ -448,6 +458,8 @@ export default function Dashboard() {
                   format={(n) => formatBytes(n)}
                   testId="quota-storage"
                   unlimited={quota.unlimited}
+                  warnPercent={quota.storageWarnPercent ?? 80}
+                  enforced={quota.storageEnforcementEnabled ?? false}
                 />
                 <QuotaBar
                   label="Pengguna"

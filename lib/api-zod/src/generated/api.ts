@@ -573,6 +573,32 @@ export const AdminUpdateTaxConfigResponse = zod.object({
 
 
 /**
+ * @summary Get the platform storage-enforcement configuration (admin only)
+ */
+export const AdminGetStorageConfigResponse = zod.object({
+  "enforcementEnabled": zod.boolean().describe('When true, user-initiated uploads over the plafon are blocked.'),
+  "gracePercent": zod.number().describe('Slack above the plafon before blocking (percent; 0 = block at limit).'),
+  "warnPercent": zod.number().describe('Display-only \"near limit\" threshold (percent of the plafon).')
+}).describe('Platform storage-enforcement policy (FASE C). Defaults are inert (enforcementEnabled=false) so uploads are never blocked until turned on. Inbound WhatsApp media ingestion is never blocked regardless.')
+
+
+/**
+ * @summary Update the platform storage-enforcement configuration (admin only)
+ */
+export const AdminUpdateStorageConfigBody = zod.object({
+  "enforcementEnabled": zod.boolean().optional(),
+  "gracePercent": zod.number().optional(),
+  "warnPercent": zod.number().optional()
+}).describe('Update the platform storage policy. Omitted fields are left unchanged.')
+
+export const AdminUpdateStorageConfigResponse = zod.object({
+  "enforcementEnabled": zod.boolean().describe('When true, user-initiated uploads over the plafon are blocked.'),
+  "gracePercent": zod.number().describe('Slack above the plafon before blocking (percent; 0 = block at limit).'),
+  "warnPercent": zod.number().describe('Display-only \"near limit\" threshold (percent of the plafon).')
+}).describe('Platform storage-enforcement policy (FASE C). Defaults are inert (enforcementEnabled=false) so uploads are never blocked until turned on. Inbound WhatsApp media ingestion is never blocked regardless.')
+
+
+/**
  * @summary AI token usage per super admin for the current billing period (admin only)
  */
 export const AdminListAiUsageResponseItem = zod.object({
@@ -738,7 +764,9 @@ export const GetMyQuotaResponse = zod.object({
   "channelCount": zod.number(),
   "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
 }),
-  "unlimited": zod.boolean().describe('True for an Owner Infinity account: every limit is unlimited. The client renders ∞ and skips progress bars \/ near-limit warnings.')
+  "unlimited": zod.boolean().describe('True for an Owner Infinity account: every limit is unlimited. The client renders ∞ and skips progress bars \/ near-limit warnings.'),
+  "storageEnforcementEnabled": zod.boolean().optional().describe('FASE C: whether the operator enforces the storage plafon (blocks user uploads over the limit). Monitoring only — the client uses it to phrase the near-limit warning.'),
+  "storageWarnPercent": zod.number().optional().describe('FASE C: percent of the storage plafon at which the dashboard shows a near-limit warning (e.g. 80).')
 })
 
 

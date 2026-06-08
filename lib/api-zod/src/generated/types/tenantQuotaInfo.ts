@@ -30,4 +30,8 @@ export interface TenantQuotaInfo {
   usage: BillingUsage;
   /** True for an Owner Infinity account: every limit is unlimited. The client renders ∞ and skips progress bars / near-limit warnings. */
   unlimited: boolean;
+  /** FASE C: whether the operator enforces the storage plafon (blocks user uploads over the limit). Monitoring only — the client uses it to phrase the near-limit warning. */
+  storageEnforcementEnabled?: boolean;
+  /** FASE C: percent of the storage plafon at which the dashboard shows a near-limit warning (e.g. 80). */
+  storageWarnPercent?: number;
 }

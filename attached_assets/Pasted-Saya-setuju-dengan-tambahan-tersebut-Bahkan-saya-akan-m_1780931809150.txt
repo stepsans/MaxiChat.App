@@ -1,0 +1,448 @@
+Saya setuju dengan tambahan tersebut. Bahkan saya akan mempertegas positioning bisnisnya:
+
+### Paket Basic / Growth / Business
+
+✅ Omnichannel
+
+✅ AI Recap
+
+✅ AI Assistant
+
+❌ CRM
+
+❌ Opportunity Pipeline
+
+❌ AI Auto Follow Up
+
+---
+
+### Paket Enterprise
+
+✅ AI CRM
+
+✅ AI Opportunity Detection
+
+✅ AI Lead Scoring
+
+✅ Kanban Pipeline
+
+✅ AI Follow Up
+
+✅ Revenue Forecast
+
+✅ AI Sales Assistant
+
+Dengan begitu ada alasan kuat customer upgrade ke Enterprise.
+
+Berikut prompt yang bisa langsung diberikan ke Replit AI / Claude Code.
+
+# MaxiChat Enterprise AI CRM & AI Follow Up System
+
+IMPORTANT
+
+Jangan langsung membuat kode.
+
+Jangan membuat migration.
+
+Jangan mengubah database.
+
+Mode saat ini adalah:
+
+ANALISIS
+ARSITEKTUR
+IMPLEMENTATION PLAN
+
+Saya ingin mendesain fitur premium baru untuk MaxiChat:
+
+AI CRM + AI Opportunity Detection + AI Follow Up Engine
+
+Fitur ini HANYA tersedia untuk paket Enterprise.
+
+---
+
+# BUSINESS GOAL
+
+Saat ini MaxiChat adalah Omnichannel + AI.
+
+Saya ingin mengembangkan MaxiChat menjadi:
+
+Omnichannel + AI + CRM + AI Sales Assistant
+
+Tujuannya:
+
+* Meningkatkan closing rate customer
+* Mengurangi lead yang terlupakan
+* Mengurangi follow up manual
+* Meningkatkan nilai paket Enterprise
+* Meningkatkan customer retention
+
+---
+
+# PACKAGE RESTRICTION
+
+CRM dan Auto Follow Up hanya tersedia pada:
+
+Enterprise Plan
+
+Jika tenant bukan Enterprise:
+
+* Menu CRM tidak muncul
+* Kanban tidak muncul
+* Auto Follow Up tidak muncul
+* Opportunity Detection tidak aktif
+
+Namun sistem tetap harus siap jika tenant upgrade ke Enterprise.
+
+---
+
+# AI OPPORTUNITY DETECTION
+
+AI harus membaca percakapan secara otomatis.
+
+Contoh intent:
+
+* tanya harga
+* minta katalog
+* minta quotation
+* tanya stok
+* tanya spesifikasi
+* tanya demo
+* tanya mesin
+* tanya produk
+
+AI harus memberikan skor.
+
+Contoh:
+
+Lead Score:
+88 / 100
+
+Kategori:
+
+* Low
+* Medium
+* High
+
+AI harus menjelaskan alasan skor tersebut.
+
+Contoh:
+
+High Intent karena:
+
+* menanyakan harga
+* meminta katalog
+* meminta spesifikasi
+
+---
+
+# TOGGLE 1
+
+# AUTO MASUK CRM
+
+Pada sidebar kanan percakapan.
+
+Tambahkan toggle:
+
+Auto Create CRM Opportunity
+
+OFF / ON
+
+Jika ON:
+
+Saat AI mendeteksi lead dengan score tertentu (misal >70)
+
+Maka otomatis membuat Opportunity CRM.
+
+Jika OFF:
+
+AI hanya memberikan rekomendasi.
+
+Contoh:
+
+AI menemukan peluang penjualan.
+
+Produk:
+Mesin UV DTF
+
+Lead Score:
+88
+
+[Create Opportunity]
+
+---
+
+# CRM OPPORTUNITY
+
+Data yang dapat diisi AI:
+
+* Customer Name
+* WhatsApp Number
+* Company Name
+* Product Interest
+* Lead Score
+* Estimated Value
+* Notes
+* Owner
+
+AI boleh mengisi otomatis berdasarkan isi percakapan.
+
+Semua hasil AI harus dapat diedit user.
+
+---
+
+# CRM PIPELINE
+
+Gunakan tampilan Kanban seperti Trello.
+
+Default Stage:
+
+1. New Lead
+2. Inquiry
+3. Quotation Sent
+4. Follow Up
+5. Negotiation
+6. Won
+7. Lost
+
+Stage harus dapat dikustomisasi tenant.
+
+Drag and Drop wajib didukung.
+
+---
+
+# AI PIPELINE ANALYSIS
+
+AI harus membaca:
+
+* Stage
+* Aktivitas terakhir
+* Histori percakapan
+* Follow Up terakhir
+
+Kemudian memberikan insight.
+
+Contoh:
+
+Lead Score:
+88
+
+Stage:
+Quotation Sent
+
+Last Activity:
+5 hari lalu
+
+AI Insight:
+
+Customer belum merespon selama 5 hari.
+
+Disarankan melakukan follow up.
+
+---
+
+# TOGGLE 2
+
+# AUTO FOLLOW UP
+
+Pada sidebar kanan percakapan.
+
+Tambahkan toggle:
+
+Auto Follow Up
+
+OFF / ON
+
+Jika OFF:
+
+AI hanya memberikan saran follow up.
+
+Tidak pernah mengirim pesan.
+
+Jika ON:
+
+AI dapat membuat dan menjadwalkan follow up otomatis.
+
+---
+
+# FOLLOW UP RULES
+
+AI tidak boleh follow up jika:
+
+* customer sudah membalas
+* opportunity sudah Won
+* opportunity sudah Lost
+* sales masih memiliki tugas yang belum dijawab
+* customer meminta stop kontak
+* customer meminta tidak dihubungi
+
+---
+
+# FOLLOW UP TIMING
+
+Tenant dapat memilih:
+
+24 jam
+
+48 jam
+
+72 jam
+
+7 hari
+
+atau custom.
+
+AI harus menghitung berdasarkan:
+
+Last Meaningful Interaction
+
+Bukan hanya timestamp pesan terakhir.
+
+---
+
+# FOLLOW UP MESSAGE
+
+AI harus membuat pesan personal.
+
+Berdasarkan:
+
+* produk yang dibahas
+* histori percakapan
+* stage CRM
+* nama customer
+
+Contoh:
+
+Halo Pak Budi,
+
+Saya ingin follow up terkait mesin UV DTF yang sempat Bapak tanyakan beberapa hari lalu.
+
+Apakah ada pertanyaan tambahan yang bisa kami bantu?
+
+---
+
+AI tidak boleh menggunakan template generik yang sama untuk semua customer.
+
+---
+
+# FOLLOW UP SEQUENCE
+
+Maksimum:
+
+Follow Up 1
+Follow Up 2
+Follow Up 3
+
+Setelah itu berhenti.
+
+AI harus menghindari spam.
+
+---
+
+# WAITING STATUS DETECTION
+
+AI harus memahami:
+
+Waiting Customer
+
+atau
+
+Waiting Company
+
+Contoh:
+
+Jika sales terakhir yang mengirim pesan.
+
+Status:
+
+Waiting Customer
+
+Jika customer terakhir yang mengirim pesan.
+
+Status:
+
+Waiting Company
+
+Follow up hanya boleh berjalan pada status Waiting Customer.
+
+---
+
+# AI SALES INSIGHT PANEL
+
+Sidebar kanan harus menampilkan:
+
+Lead Score
+
+Opportunity Stage
+
+Estimated Value
+
+Last Activity
+
+Waiting Status
+
+Follow Up Recommendation
+
+AI Notes
+
+---
+
+# AI REVENUE FORECAST
+
+Untuk Enterprise.
+
+AI dapat menghitung:
+
+Pipeline Value
+
+Expected Revenue
+
+Won Rate
+
+Lost Rate
+
+Forecast Revenue
+
+berdasarkan seluruh opportunity.
+
+---
+
+# AUDIT & SAFETY
+
+Semua tindakan AI harus dicatat.
+
+Simpan:
+
+* AI Recommendation
+* AI Generated Message
+* Auto Follow Up Sent
+* Opportunity Created
+* Opportunity Updated
+
+User harus dapat melihat histori keputusan AI.
+
+---
+
+# OUTPUT YANG SAYA INGINKAN
+
+Analisa dan desain:
+
+1. Database Design
+2. CRM Architecture
+3. Opportunity Detection Engine
+4. Lead Scoring Engine
+5. Kanban Architecture
+6. Follow Up Engine
+7. Scheduling Architecture
+8. AI Insight Engine
+9. Revenue Forecast Architecture
+10. Audit Trail Design
+11. Tenant Permission Design
+12. Enterprise Package Restriction
+13. Risks and Mitigation
+14. Roadmap Implementation
+
+Jangan membuat kode terlebih dahulu.
+
+Fokus membuat AI CRM dan AI Follow Up System yang dapat menjadi fitur unggulan paket Enterprise MaxiChat.
+
+Menurut saya fitur ini berpotensi menjadi salah satu alasan utama perusahaan upgrade ke Enterprise, karena manfaat bisnisnya langsung terasa: lead tidak hilang, follow-up lebih konsisten, dan peluang closing lebih tinggi.

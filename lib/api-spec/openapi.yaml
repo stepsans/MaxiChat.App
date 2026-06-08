@@ -762,6 +762,54 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/storage-config:
+    get:
+      operationId: adminGetStorageConfig
+      tags: [admin]
+      summary: Get the platform storage-enforcement configuration (admin only)
+      responses:
+        "200":
+          description: Storage configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageConfig"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: adminUpdateStorageConfig
+      tags: [admin]
+      summary: Update the platform storage-enforcement configuration (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStorageConfigInput"
+      responses:
+        "200":
+          description: Updated storage configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageConfig"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/ai-usage:
     get:
       operationId: adminListAiUsage
@@ -4808,6 +4856,36 @@ components:
         label:
           type: string
 
+    StorageConfig:
+      type: object
+      required: [enforcementEnabled, gracePercent, warnPercent]
+      description: >-
+        Platform storage-enforcement policy (FASE C). Defaults are inert
+        (enforcementEnabled=false) so uploads are never blocked until turned on.
+        Inbound WhatsApp media ingestion is never blocked regardless.
+      properties:
+        enforcementEnabled:
+          type: boolean
+          description: When true, user-initiated uploads over the plafon are blocked.
+        gracePercent:
+          type: integer
+          description: Slack above the plafon before blocking (percent; 0 = block at limit).
+        warnPercent:
+          type: integer
+          description: Display-only "near limit" threshold (percent of the plafon).
+
+    UpdateStorageConfigInput:
+      type: object
+      description: >-
+        Update the platform storage policy. Omitted fields are left unchanged.
+      properties:
+        enforcementEnabled:
+          type: boolean
+        gracePercent:
+          type: integer
+        warnPercent:
+          type: integer
+
     WhatsappStatus:
       type: object
       required: [status]
@@ -6366,6 +6444,17 @@ components:
           description: >-
             True for an Owner Infinity account: every limit is unlimited. The
             client renders ∞ and skips progress bars / near-limit warnings.
+        storageEnforcementEnabled:
+          type: boolean
+          description: >-
+            FASE C: whether the operator enforces the storage plafon (blocks
+            user uploads over the limit). Monitoring only — the client uses it to
+            phrase the near-limit warning.
+        storageWarnPercent:
+          type: integer
+          description: >-
+            FASE C: percent of the storage plafon at which the dashboard shows a
+            near-limit warning (e.g. 80).
 
     RetentionInput:
       type: object

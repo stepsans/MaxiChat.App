@@ -437,6 +437,27 @@ export interface UpdateTaxConfigInput {
   label?: string;
 }
 
+/**
+ * Platform storage-enforcement policy (FASE C). Defaults are inert (enforcementEnabled=false) so uploads are never blocked until turned on. Inbound WhatsApp media ingestion is never blocked regardless.
+ */
+export interface StorageConfig {
+  /** When true, user-initiated uploads over the plafon are blocked. */
+  enforcementEnabled: boolean;
+  /** Slack above the plafon before blocking (percent; 0 = block at limit). */
+  gracePercent: number;
+  /** Display-only "near limit" threshold (percent of the plafon). */
+  warnPercent: number;
+}
+
+/**
+ * Update the platform storage policy. Omitted fields are left unchanged.
+ */
+export interface UpdateStorageConfigInput {
+  enforcementEnabled?: boolean;
+  gracePercent?: number;
+  warnPercent?: number;
+}
+
 export type WhatsappStatusStatus = typeof WhatsappStatusStatus[keyof typeof WhatsappStatusStatus];
 
 
@@ -1833,6 +1854,10 @@ export interface TenantQuotaInfo {
   usage: BillingUsage;
   /** True for an Owner Infinity account: every limit is unlimited. The client renders ∞ and skips progress bars / near-limit warnings. */
   unlimited: boolean;
+  /** FASE C: whether the operator enforces the storage plafon (blocks user uploads over the limit). Monitoring only — the client uses it to phrase the near-limit warning. */
+  storageEnforcementEnabled?: boolean;
+  /** FASE C: percent of the storage plafon at which the dashboard shows a near-limit warning (e.g. 80). */
+  storageWarnPercent?: number;
 }
 
 /**

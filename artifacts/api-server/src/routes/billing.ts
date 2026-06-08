@@ -24,6 +24,7 @@ import {
   INFINITY_PLAN_KEY,
 } from "../lib/infinity-owner";
 import { getOrCreateTenantQuota } from "../lib/subscription-purchase";
+import { getStorageConfig } from "../lib/storage-config";
 import {
   listInvoicesForOwner,
   getInvoiceForOwner,
@@ -239,6 +240,10 @@ router.get("/quota", async (req, res): Promise<void> => {
 
     const usage = await computeOwnerUsage(ownerUserId);
 
+    // FASE C: surface the storage policy so the dashboard can render an accurate
+    // near-limit warning (and phrase it as a hard block vs a soft heads-up).
+    const storageConfig = await getStorageConfig();
+
     res.json({
       planId: quota.planId,
       planKey,
@@ -253,6 +258,8 @@ router.get("/quota", async (req, res): Promise<void> => {
       // True only for the Owner Infinity account; the client renders ∞ and
       // skips progress bars / near-limit warnings.
       unlimited,
+      storageEnforcementEnabled: storageConfig.enforcementEnabled,
+      storageWarnPercent: storageConfig.warnPercent,
     });
   } catch (err) {
     req.log.error({ err }, "getMyQuota failed");

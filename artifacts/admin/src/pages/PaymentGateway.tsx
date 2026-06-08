@@ -18,10 +18,14 @@ import {
   useAdminGetTaxConfig,
   useAdminUpdateTaxConfig,
   getAdminGetTaxConfigQueryKey,
+  useAdminGetStorageConfig,
+  useAdminUpdateStorageConfig,
+  getAdminGetStorageConfigQueryKey,
   type PaymentGatewayConfig,
   type PaymentMethodSettings,
   type Credential,
   type TaxConfig,
+  type StorageConfig,
 } from "@workspace/api-client-react";
 import {
   Loader2,
@@ -40,6 +44,7 @@ import {
   Table2,
   Link2,
   Percent,
+  HardDrive,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 
@@ -680,6 +685,145 @@ function TaxConfigSection({
   );
 }
 
+function StorageEnforcementSection({
+  onError,
+  onOk,
+}: {
+  onError: (m: string) => void;
+  onOk: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+  const storageQuery = useAdminGetStorageConfig({
+    query: { queryKey: getAdminGetStorageConfigQueryKey() },
+  });
+  const storage = storageQuery.data as StorageConfig | undefined;
+
+  const [enabled, setEnabled] = useState(false);
+  const [gracePercent, setGracePercent] = useState("0");
+  const [warnPercent, setWarnPercent] = useState("80");
+
+  useEffect(() => {
+    if (!storage) return;
+    setEnabled(storage.enforcementEnabled);
+    setGracePercent(String(storage.gracePercent));
+    setWarnPercent(String(storage.warnPercent));
+  }, [storage?.enforcementEnabled, storage?.gracePercent, storage?.warnPercent]);
+
+  const save = useAdminUpdateStorageConfig({
+    mutation: {
+      onSuccess: () => {
+        onOk("Konfigurasi penyimpanan tersimpan.");
+        qc.invalidateQueries({ queryKey: getAdminGetStorageConfigQueryKey() });
+      },
+      onError: (err: any) =>
+        onError(err?.data?.error ?? "Gagal menyimpan konfigurasi penyimpanan"),
+    },
+  });
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    onError("");
+    const grace = Number(gracePercent.replace(",", "."));
+    if (!Number.isInteger(grace) || grace < 0 || grace > 1000) {
+      onError("Kelonggaran (grace) harus bilangan bulat antara 0 dan 1000 persen.");
+      return;
+    }
+    const warn = Number(warnPercent.replace(",", "."));
+    if (!Number.isInteger(warn) || warn < 0 || warn > 100) {
+      onError("Ambang peringatan harus bilangan bulat antara 0 dan 100 persen.");
+      return;
+    }
+    save.mutate({
+      data: { enforcementEnabled: enabled, gracePercent: grace, warnPercent: warn },
+    });
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="border border-border rounded-lg bg-card p-4 space-y-4"
+    >
+      <div>
+        <h2 className="text-sm font-semibold flex items-center gap-1.5">
+          <HardDrive className="w-4 h-4 text-muted-foreground" />
+          Penyimpanan Media
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
+          Nonaktif = unggahan tidak pernah diblokir (perilaku default). Aktif =
+          unggahan tenant yang melebihi kuota penyimpanan ditolak. Media masuk
+          dari WhatsApp tidak pernah diblokir.
+        </p>
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          data-testid="toggle-storage-enforcement"
+          className="h-4 w-4 rounded border-border"
+        />
+        <span className="text-xs text-foreground">
+          Aktifkan pembatasan penyimpanan
+        </span>
+      </label>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">
+            Kelonggaran / grace (%)
+          </span>
+          <input
+            value={gracePercent}
+            onChange={(e) => setGracePercent(e.target.value)}
+            inputMode="numeric"
+            placeholder="0"
+            disabled={!enabled}
+            data-testid="input-storage-grace"
+            className={`${inputCls} disabled:opacity-50`}
+          />
+          <span className="text-[10px] text-muted-foreground">
+            Kelebihan di atas kuota sebelum diblokir. 0 = blokir tepat di batas.
+          </span>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">
+            Ambang peringatan (%)
+          </span>
+          <input
+            value={warnPercent}
+            onChange={(e) => setWarnPercent(e.target.value)}
+            inputMode="numeric"
+            placeholder="80"
+            data-testid="input-storage-warn"
+            className={inputCls}
+          />
+          <span className="text-[10px] text-muted-foreground">
+            Dashboard tenant menampilkan peringatan "hampir penuh" di persen ini.
+          </span>
+        </label>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={save.isPending}
+          data-testid="save-storage-config"
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+        >
+          {save.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          Simpan penyimpanan
+        </button>
+        {storage && <StatusPill configured={storage.enforcementEnabled} />}
+      </div>
+    </form>
+  );
+}
+
 export default function PaymentGateway() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -1020,6 +1164,11 @@ export default function PaymentGateway() {
       )}
 
       <TaxConfigSection onError={(m) => setError(m || null)} onOk={flashOk} />
+
+      <StorageEnforcementSection
+        onError={(m) => setError(m || null)}
+        onOk={flashOk}
+      />
     </div>
   );
 }
