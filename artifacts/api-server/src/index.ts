@@ -8,6 +8,7 @@ import { startUsageSnapshotScheduler } from "./lib/billing";
 import { startManualPaymentPoller } from "./lib/manual-payment-poller";
 import { startRetentionPurger } from "./lib/retention-purge";
 import { backfillInvoicesFromPayments } from "./lib/invoices";
+import { startMonthlyCloseScheduler } from "./lib/monthly-close";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -117,6 +118,10 @@ async function main(): Promise<void> {
     startUsageSnapshotScheduler();
     startManualPaymentPoller();
     startRetentionPurger();
+    // Billing v2 (FASE B): raise recurring monthly_close invoices per active
+    // tenant per period (idempotent per (owner, period) via the deterministic
+    // invoice number + unique index).
+    startMonthlyCloseScheduler();
     // Billing v2 (FASE A): backfill immutable invoices for any already-paid
     // payments that predate the invoices table. Idempotent + best-effort, so it
     // never blocks boot (the NOT EXISTS filter makes it a no-op once caught up).
