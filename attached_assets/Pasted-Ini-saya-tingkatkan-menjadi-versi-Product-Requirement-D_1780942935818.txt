@@ -1,0 +1,657 @@
+Ini saya tingkatkan menjadi versi **Product Requirement Document (PRD) + System Architecture + Business Rules** sehingga Replit AI tidak perlu menebak-nebak lagi dan meminimalkan revisi.
+
+# MAXICHAT ENTERPRISE AI CRM & AI SALES ASSISTANT
+
+## MASTER PRODUCT REQUIREMENT DOCUMENT (PRD)
+
+IMPORTANT
+
+Sebelum melakukan coding, migration, schema update, atau perubahan UI:
+
+LAKUKAN ANALISIS MENYELURUH TERLEBIH DAHULU.
+
+Output yang diharapkan:
+
+* Architecture Review
+* Database Design
+* API Design
+* Queue Design
+* AI Design
+* UX Design
+* Security Review
+* Scalability Review
+* Risk Analysis
+* Implementation Roadmap
+
+JANGAN LANGSUNG MENULIS KODE.
+
+==================================================
+VISION
+======
+
+MaxiChat tidak hanya menjadi Omnichannel.
+
+MaxiChat harus berevolusi menjadi:
+
+Omnichannel
++
+AI
++
+CRM
++
+AI Sales Assistant
+
+Tujuan utama:
+
+1. Mengurangi lead hilang
+2. Mengurangi lupa follow up
+3. Membantu sales closing lebih cepat
+4. Memberikan pipeline penjualan visual
+5. Memberikan insight penjualan berbasis AI
+6. Menjadi alasan utama customer upgrade ke Enterprise
+
+==================================================
+PACKAGE POSITIONING
+===================
+
+BASIC
+
+* Omnichannel
+* AI Assistant
+* AI Recap
+
+Tidak memiliki:
+
+* CRM
+* Kanban
+* Opportunity
+* Lead Scoring
+* Auto Follow Up
+
+---
+
+GROWTH
+
+* Omnichannel
+* AI Assistant
+* AI Recap
+
+Tidak memiliki:
+
+* CRM
+* Kanban
+* Opportunity
+* Lead Scoring
+* Auto Follow Up
+
+---
+
+BUSINESS
+
+* Omnichannel
+* AI Assistant
+* AI Recap
+
+Tidak memiliki:
+
+* CRM
+* Kanban
+* Opportunity
+* Lead Scoring
+* Auto Follow Up
+
+---
+
+ENTERPRISE
+
+Memiliki seluruh fitur:
+
+* AI CRM
+* Opportunity Detection
+* Lead Scoring
+* Kanban Pipeline
+* AI Sales Insight
+* Auto Follow Up
+* Revenue Forecast
+* Pipeline Analytics
+
+==================================================
+HIGH LEVEL FLOW
+===============
+
+WhatsApp
+
+↓
+
+Conversation
+
+↓
+
+AI Analyze
+
+↓
+
+Opportunity Detection
+
+↓
+
+CRM Opportunity
+
+↓
+
+Pipeline Stage
+
+↓
+
+Follow Up
+
+↓
+
+Negotiation
+
+↓
+
+Won / Lost
+
+==================================================
+CRM ARCHITECTURE
+================
+
+CRM HARUS MENYATU DENGAN CHAT.
+
+JANGAN MEMBUAT CRM TERPISAH YANG KOMPLEKS.
+
+Inspirasi:
+
+* Trello
+* Pipedrive
+* Monday
+* ClickUp
+
+CRM harus ringan dan mudah dipahami.
+
+==================================================
+CRM STAGES
+==========
+
+Default:
+
+1. New Lead
+2. Inquiry
+3. Quotation Sent
+4. Follow Up
+5. Negotiation
+6. Won
+7. Lost
+
+Tenant dapat:
+
+* menambah stage
+* menghapus stage
+* mengubah urutan stage
+
+Drag and Drop wajib tersedia.
+
+==================================================
+OPPORTUNITY DETECTION ENGINE
+============================
+
+AI harus membaca percakapan secara otomatis.
+
+Deteksi:
+
+* harga
+* quotation
+* penawaran
+* katalog
+* spesifikasi
+* stok
+* demo
+* produk
+* mesin
+* pembelian
+* investasi
+* budget
+
+AI harus menghasilkan:
+
+Lead Score
+
+0 - 100
+
+Kategori:
+
+0-39 = Low
+40-69 = Medium
+70-100 = High
+
+==================================================
+LEAD SCORING FACTORS
+====================
+
+Contoh sinyal positif:
+
+* meminta harga
+* meminta quotation
+* meminta katalog
+* menyebut budget
+* menyebut perusahaan
+* meminta demo
+* bertanya stok
+
+Contoh sinyal negatif:
+
+* tidak tertarik
+* hanya survei
+* salah sambung
+* tidak ada kebutuhan
+
+AI harus menjelaskan alasan skor.
+
+==================================================
+TOGGLE 1
+AUTO CREATE CRM OPPORTUNITY
+===========================
+
+Lokasi:
+
+Sidebar kanan percakapan.
+
+OFF / ON
+
+Jika ON:
+
+Lead score >= threshold
+
+otomatis membuat opportunity.
+
+Threshold dapat diubah tenant.
+
+Default:
+
+70
+
+Jika OFF:
+
+AI hanya memberikan rekomendasi.
+
+==================================================
+CRM OPPORTUNITY DATA
+====================
+
+AI boleh mengisi otomatis:
+
+* Customer Name
+* WhatsApp Number
+* Company Name
+* Product Interest
+* Lead Score
+* Estimated Value
+* Notes
+* Source Channel
+* Owner
+* Last Activity
+
+Semua field harus editable.
+
+==================================================
+SIDEBAR AI SALES INSIGHT
+========================
+
+Sidebar kanan percakapan.
+
+Menampilkan:
+
+Lead Score
+
+Intent Level
+
+Product Interest
+
+Estimated Value
+
+Opportunity Stage
+
+Waiting Status
+
+Last Activity
+
+Follow Up Recommendation
+
+AI Notes
+
+==================================================
+WAITING STATUS ENGINE
+=====================
+
+AI harus menentukan:
+
+WAITING CUSTOMER
+
+atau
+
+WAITING COMPANY
+
+Contoh:
+
+Sales terakhir mengirim pesan
+
+↓
+
+WAITING CUSTOMER
+
+---
+
+Customer terakhir mengirim pesan
+
+↓
+
+WAITING COMPANY
+
+Follow up hanya berjalan pada:
+
+WAITING CUSTOMER
+
+==================================================
+TOGGLE 2
+AUTO FOLLOW UP
+==============
+
+Sidebar kanan.
+
+OFF / ON
+
+Jika OFF:
+
+AI hanya memberi rekomendasi.
+
+Tidak mengirim pesan.
+
+---
+
+Jika ON:
+
+AI dapat membuat follow up otomatis.
+
+==================================================
+FOLLOW UP TIMING
+================
+
+Pilihan:
+
+24 jam
+
+48 jam
+
+72 jam
+
+7 hari
+
+Custom
+
+AI harus menghitung berdasarkan:
+
+Last Meaningful Interaction
+
+Bukan timestamp terakhir.
+
+==================================================
+LAST MEANINGFUL INTERACTION
+===========================
+
+Contoh:
+
+Customer:
+
+"Baik pak saya pelajari dulu"
+
+↓
+
+Meaningful Interaction
+
+---
+
+Customer:
+
+"ok"
+
+Tidak selalu meaningful.
+
+AI harus memahami konteks.
+
+==================================================
+FOLLOW UP SEQUENCE
+==================
+
+Maksimum:
+
+Follow Up 1
+
+Follow Up 2
+
+Follow Up 3
+
+Setelah Follow Up 3:
+
+STOP
+
+Tidak boleh spam.
+
+==================================================
+FOLLOW UP RULES
+===============
+
+JANGAN FOLLOW UP JIKA:
+
+* customer membalas
+* opportunity Won
+* opportunity Lost
+* customer meminta stop kontak
+* customer meminta unsubscribe
+* customer meminta tidak dihubungi
+* sales memiliki tugas yang belum selesai
+
+==================================================
+FOLLOW UP MESSAGE GENERATOR
+===========================
+
+AI harus membuat pesan personal.
+
+Mempertimbangkan:
+
+* produk
+* histori chat
+* nama customer
+* stage
+* perusahaan
+
+Dilarang:
+
+menggunakan template generik yang sama.
+
+==================================================
+PIPELINE HEALTH ENGINE
+======================
+
+AI harus memonitor seluruh pipeline.
+
+Contoh:
+
+Opportunity:
+PT Maju Jaya
+
+Value:
+Rp 85.000.000
+
+Tidak ada aktivitas:
+14 hari
+
+Muncul alert:
+
+High Risk Opportunity
+
+==================================================
+KANBAN DASHBOARD
+================
+
+Contoh:
+
+New Lead (25)
+
+Inquiry (15)
+
+Quotation Sent (12)
+
+Follow Up (8)
+
+Negotiation (5)
+
+Won (3)
+
+Lost (7)
+
+Drag and Drop.
+
+==================================================
+REVENUE FORECAST ENGINE
+=======================
+
+Hitung:
+
+Pipeline Value
+
+Expected Revenue
+
+Won Rate
+
+Lost Rate
+
+Forecast Revenue
+
+Average Deal Size
+
+Sales Velocity
+
+==================================================
+AI SALES ASSISTANT
+==================
+
+AI dapat memberikan:
+
+* rekomendasi follow up
+* rekomendasi next action
+* rekomendasi stage
+* rekomendasi closing strategy
+
+berdasarkan histori percakapan.
+
+==================================================
+AUDIT TRAIL
+===========
+
+Semua aktivitas AI harus dicatat.
+
+Contoh:
+
+* AI Recommendation
+* Lead Score Generated
+* Opportunity Created
+* Opportunity Updated
+* Follow Up Generated
+* Follow Up Sent
+* Stage Recommendation
+
+User dapat melihat histori AI.
+
+==================================================
+PERMISSIONS
+===========
+
+Parent:
+
+Akses penuh.
+
+Supervisor:
+
+Akses sesuai izin.
+
+Agent:
+
+Hanya opportunity miliknya.
+
+==================================================
+MULTI TENANT
+============
+
+Semua data harus terisolasi.
+
+Tidak boleh ada data lintas tenant.
+
+Semua query wajib tenant-scoped.
+
+==================================================
+SCALABILITY
+===========
+
+Desain harus mampu menangani:
+
+* 10.000+ tenant
+* 1.000.000+ opportunity
+* 100.000.000+ message
+
+Gunakan arsitektur queue untuk:
+
+* AI analysis
+* follow up scheduler
+* revenue forecast
+
+==================================================
+RISKS TO ANALYZE
+================
+
+Analisa dan mitigasi:
+
+* spam follow up
+* duplicate opportunity
+* salah lead scoring
+* AI hallucination
+* duplicate scheduling
+* revenue forecast error
+* pipeline inconsistency
+* race condition
+* multi tenant leakage
+
+==================================================
+EXPECTED OUTPUT
+===============
+
+Berikan laporan lengkap:
+
+1. Product Architecture
+2. UX Architecture
+3. CRM Architecture
+4. Opportunity Detection Design
+5. Lead Scoring Design
+6. Follow Up Engine Design
+7. Queue & Scheduler Design
+8. Revenue Forecast Design
+9. Database Design
+10. Permission Design
+11. Multi Tenant Design
+12. Audit Trail Design
+13. Risk Analysis
+14. Scaling Strategy
+15. Implementation Phases
+
+Jangan membuat kode terlebih dahulu.
+
+Fokus pada desain Enterprise-grade AI CRM dan AI Sales Assistant yang menjadi fitur unggulan MaxiChat Enterprise.
+
+Satu tambahan strategis yang saya sarankan: **jangan menamai fitur ini "CRM" di marketing**. Nama yang lebih menjual adalah:
+
+* AI Sales Assistant
+* AI Sales Pipeline
+* AI Opportunity Engine
+* AI Closing Assistant
+
+Karena customer membeli hasil akhirnya (lebih banyak closing), bukan membeli CRM. Ini juga menjadi pembeda MaxiChat dari omnichannel lain yang hanya menambahkan CRM biasa.
