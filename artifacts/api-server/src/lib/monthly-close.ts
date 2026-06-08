@@ -13,7 +13,8 @@ import { logger } from "./logger";
 import { computeBillingPeriod } from "./billing-period";
 import { computeEffectiveStatus } from "./billing-engine";
 import { isInfinityOwner } from "./infinity-owner";
-import { invoiceTotals } from "./invoice-build";
+import { computeInvoiceTotals } from "./invoice-build";
+import { getTaxConfig } from "./tax-config";
 import {
   buildMonthlyCloseLines,
   monthlyCloseInvoiceNumber,
@@ -102,7 +103,14 @@ export async function runMonthlyCloseForOwner(
     },
     byType
   );
-  const { subtotalIdr, taxIdr, totalIdr } = invoiceTotals(lines);
+  // Tax (FASE G): monthly_close is an UNPAID bill, so honor the operator's
+  // inclusive/exclusive choice — exclusive adds PPN on top of the recurring
+  // charge. Disabled → tax 0 (unchanged behavior).
+  const taxConfig = await getTaxConfig();
+  const { subtotalIdr, taxIdr, totalIdr } = computeInvoiceTotals(
+    lines,
+    taxConfig
+  );
   const invoiceNumber = monthlyCloseInvoiceNumber(ownerId, start);
 
   // Invoice + its line items are all-or-nothing in one transaction. The unique

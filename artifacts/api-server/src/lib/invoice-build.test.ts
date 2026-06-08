@@ -5,6 +5,9 @@ import {
   invoiceNumberForPayment,
   invoiceLinesFromPayment,
   invoiceTotals,
+  computeInvoiceTotals,
+  TAX_DISABLED,
+  type InvoiceLineInput,
 } from "./invoice-build";
 
 // Minimal PaymentRow factory — only the fields the builders read matter; the
@@ -127,4 +130,103 @@ test("invoiceTotals: empty lines yield zeros", () => {
     taxIdr: 0,
     totalIdr: 0,
   });
+});
+
+const taxLines: InvoiceLineInput[] = [
+  {
+    lineType: "plan",
+    refId: 1,
+    description: "Paket",
+    quantity: 1,
+    unitPriceIdr: 111_000,
+    amountIdr: 111_000,
+  },
+];
+
+test("computeInvoiceTotals: disabled tax is a no-op (total == subtotal)", () => {
+  assert.deepEqual(computeInvoiceTotals(taxLines, TAX_DISABLED), {
+    subtotalIdr: 111_000,
+    taxIdr: 0,
+    totalIdr: 111_000,
+  });
+  // Default arg also means disabled.
+  assert.deepEqual(computeInvoiceTotals(taxLines), {
+    subtotalIdr: 111_000,
+    taxIdr: 0,
+    totalIdr: 111_000,
+  });
+});
+
+test("computeInvoiceTotals: enabled but zero rate stays inert", () => {
+  assert.deepEqual(
+    computeInvoiceTotals(taxLines, {
+      enabled: true,
+      rateBps: 0,
+      inclusive: true,
+      label: "PPN",
+    }),
+    { subtotalIdr: 111_000, taxIdr: 0, totalIdr: 111_000 }
+  );
+});
+
+test("computeInvoiceTotals: inclusive 11% decomposes without changing total", () => {
+  const r = computeInvoiceTotals(taxLines, {
+    enabled: true,
+    rateBps: 1100,
+    inclusive: true,
+    label: "PPN",
+  });
+  // 111000 / 1.11 = 100000 exactly.
+  assert.deepEqual(r, { subtotalIdr: 100_000, taxIdr: 11_000, totalIdr: 111_000 });
+  // The collected total is preserved (key invariant for paid invoices).
+  assert.equal(r.subtotalIdr + r.taxIdr, 111_000);
+});
+
+test("computeInvoiceTotals: exclusive 11% adds tax on top", () => {
+  const r = computeInvoiceTotals(
+    [
+      {
+        lineType: "plan",
+        refId: 1,
+        description: "Paket",
+        quantity: 1,
+        unitPriceIdr: 100_000,
+        amountIdr: 100_000,
+      },
+    ],
+    { enabled: true, rateBps: 1100, inclusive: false, label: "PPN" }
+  );
+  assert.deepEqual(r, { subtotalIdr: 100_000, taxIdr: 11_000, totalIdr: 111_000 });
+});
+
+test("computeInvoiceTotals: whole-Rupiah rounding (no fractional cents)", () => {
+  const r = computeInvoiceTotals(
+    [
+      {
+        lineType: "addon",
+        refId: 2,
+        description: "Add-on",
+        quantity: 1,
+        unitPriceIdr: 99_999,
+        amountIdr: 99_999,
+      },
+    ],
+    { enabled: true, rateBps: 1100, inclusive: true, label: "PPN" }
+  );
+  assert.ok(Number.isInteger(r.subtotalIdr));
+  assert.ok(Number.isInteger(r.taxIdr));
+  assert.equal(r.totalIdr, 99_999);
+  assert.equal(r.subtotalIdr + r.taxIdr, 99_999);
+});
+
+test("computeInvoiceTotals: zero gross stays zero regardless of rate", () => {
+  assert.deepEqual(
+    computeInvoiceTotals([], {
+      enabled: true,
+      rateBps: 1100,
+      inclusive: false,
+      label: "PPN",
+    }),
+    { subtotalIdr: 0, taxIdr: 0, totalIdr: 0 }
+  );
 });

@@ -544,6 +544,35 @@ export const AdminUpdatePaymentMethodResponse = zod.object({
 
 
 /**
+ * @summary Get the platform tax (PPN) configuration (admin only)
+ */
+export const AdminGetTaxConfigResponse = zod.object({
+  "enabled": zod.boolean(),
+  "rateBps": zod.number().describe('Tax rate in basis points (1100 = 11%).'),
+  "inclusive": zod.boolean().describe('true = prices already include tax (decomposed; total unchanged); false = tax added on top (monthly_close bills only).'),
+  "label": zod.string().describe('Display label, e.g. \"PPN\".')
+}).describe('Platform tax (PPN) policy applied to invoices at issue. Defaults are inert (enabled=false, rateBps=0) so behavior is unchanged until turned on.')
+
+
+/**
+ * @summary Update the platform tax (PPN) configuration (admin only)
+ */
+export const AdminUpdateTaxConfigBody = zod.object({
+  "enabled": zod.boolean().optional(),
+  "rateBps": zod.number().optional(),
+  "inclusive": zod.boolean().optional(),
+  "label": zod.string().optional()
+}).describe('Update the platform tax policy. Omitted fields are left unchanged.')
+
+export const AdminUpdateTaxConfigResponse = zod.object({
+  "enabled": zod.boolean(),
+  "rateBps": zod.number().describe('Tax rate in basis points (1100 = 11%).'),
+  "inclusive": zod.boolean().describe('true = prices already include tax (decomposed; total unchanged); false = tax added on top (monthly_close bills only).'),
+  "label": zod.string().describe('Display label, e.g. \"PPN\".')
+}).describe('Platform tax (PPN) policy applied to invoices at issue. Defaults are inert (enabled=false, rateBps=0) so behavior is unchanged until turned on.')
+
+
+/**
  * @summary AI token usage per super admin for the current billing period (admin only)
  */
 export const AdminListAiUsageResponseItem = zod.object({

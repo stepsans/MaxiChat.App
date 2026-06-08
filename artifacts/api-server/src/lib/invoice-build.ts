@@ -71,3 +71,49 @@ export function invoiceTotals(
   const subtotalIdr = lines.reduce((sum, l) => sum + l.amountIdr, 0);
   return { subtotalIdr, taxIdr, totalIdr: subtotalIdr + taxIdr };
 }
+
+// Tax (PPN) policy applied at invoice issue (Billing v2 — FASE G). Mirrors the
+// tax_settings singleton row but kept as a plain type so this module stays
+// db-free and unit-testable.
+export type TaxConfig = {
+  enabled: boolean;
+  rateBps: number; // basis points, e.g. 1100 = 11%
+  inclusive: boolean;
+  label: string;
+};
+
+// The inert default: tax fully off, behavior identical to pre-FASE-G.
+export const TAX_DISABLED: TaxConfig = {
+  enabled: false,
+  rateBps: 0,
+  inclusive: true,
+  label: "PPN",
+};
+
+// Compute subtotal/tax/total from line amounts under a tax policy, with
+// whole-Rupiah rounding. Three regimes:
+//
+//   1. Disabled (or zero rate / zero gross): tax = 0, total = subtotal = sum.
+//      Byte-for-byte the pre-FASE-G result.
+//   2. Inclusive: the line amounts ALREADY include tax. Decompose so the total
+//      is UNCHANGED (net = round(gross / (1 + rate))) — the customer pays
+//      exactly the same; tax is only a breakdown. This is what payment-derived
+//      invoices always use (the paid amount is the source of truth).
+//   3. Exclusive: tax is ADDED on top of the net line amounts (total grows).
+//      Only valid for unpaid bills (monthly_close), never for a collected
+//      payment, where it would diverge from the ledgered amount.
+export function computeInvoiceTotals(
+  lines: InvoiceLineInput[],
+  tax: TaxConfig = TAX_DISABLED
+): { subtotalIdr: number; taxIdr: number; totalIdr: number } {
+  const grossSum = lines.reduce((sum, l) => sum + l.amountIdr, 0);
+  if (!tax.enabled || tax.rateBps <= 0 || grossSum <= 0) {
+    return { subtotalIdr: grossSum, taxIdr: 0, totalIdr: grossSum };
+  }
+  if (tax.inclusive) {
+    const net = Math.round((grossSum * 10000) / (10000 + tax.rateBps));
+    return { subtotalIdr: net, taxIdr: grossSum - net, totalIdr: grossSum };
+  }
+  const taxIdr = Math.round((grossSum * tax.rateBps) / 10000);
+  return { subtotalIdr: grossSum, taxIdr, totalIdr: grossSum + taxIdr };
+}

@@ -15,9 +15,13 @@ import {
   getListCredentialsQueryKey,
   getListCredentialSpreadsheetsQueryKey,
   getListCredentialSpreadsheetTabsQueryKey,
+  useAdminGetTaxConfig,
+  useAdminUpdateTaxConfig,
+  getAdminGetTaxConfigQueryKey,
   type PaymentGatewayConfig,
   type PaymentMethodSettings,
   type Credential,
+  type TaxConfig,
 } from "@workspace/api-client-react";
 import {
   Loader2,
@@ -35,6 +39,7 @@ import {
   Banknote,
   Table2,
   Link2,
+  Percent,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 
@@ -528,6 +533,153 @@ function ManualConfigSection({
   );
 }
 
+// --- Tax (PPN) configuration --------------------------------------------
+function TaxConfigSection({
+  onError,
+  onOk,
+}: {
+  onError: (m: string) => void;
+  onOk: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+  const taxQuery = useAdminGetTaxConfig({
+    query: { queryKey: getAdminGetTaxConfigQueryKey() },
+  });
+  const tax = taxQuery.data as TaxConfig | undefined;
+
+  const [enabled, setEnabled] = useState(false);
+  const [ratePct, setRatePct] = useState("11");
+  const [inclusive, setInclusive] = useState(true);
+  const [label, setLabel] = useState("PPN");
+
+  useEffect(() => {
+    if (!tax) return;
+    setEnabled(tax.enabled);
+    setRatePct(String(tax.rateBps / 100));
+    setInclusive(tax.inclusive);
+    setLabel(tax.label);
+  }, [tax?.enabled, tax?.rateBps, tax?.inclusive, tax?.label]);
+
+  const save = useAdminUpdateTaxConfig({
+    mutation: {
+      onSuccess: () => {
+        onOk("Konfigurasi pajak tersimpan.");
+        qc.invalidateQueries({ queryKey: getAdminGetTaxConfigQueryKey() });
+      },
+      onError: (err: any) =>
+        onError(err?.data?.error ?? "Gagal menyimpan konfigurasi pajak"),
+    },
+  });
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    onError("");
+    // Percent → basis points (whole integer). 11 → 1100. Reject malformed input.
+    const pct = Number(ratePct.replace(",", "."));
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      onError("Tarif pajak harus antara 0 dan 100 persen.");
+      return;
+    }
+    const rateBps = Math.round(pct * 100);
+    save.mutate({
+      data: { enabled, rateBps, inclusive, label: label.trim() || "PPN" },
+    });
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="border border-border rounded-lg bg-card p-4 space-y-4"
+    >
+      <div>
+        <h2 className="text-sm font-semibold flex items-center gap-1.5">
+          <Percent className="w-4 h-4 text-muted-foreground" />
+          Pajak (PPN)
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
+          Berlaku untuk semua invoice. Nonaktif = invoice tanpa pajak (perilaku
+          default). Tarif dikunci saat invoice diterbitkan, jadi perubahan tidak
+          mengubah invoice lama.
+        </p>
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          data-testid="toggle-tax-enabled"
+          className="h-4 w-4 rounded border-border"
+        />
+        <span className="text-xs text-foreground">Aktifkan pajak (PPN)</span>
+      </label>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">Tarif (%)</span>
+          <input
+            value={ratePct}
+            onChange={(e) => setRatePct(e.target.value)}
+            inputMode="decimal"
+            placeholder="11"
+            disabled={!enabled}
+            data-testid="input-tax-rate"
+            className={`${inputCls} disabled:opacity-50`}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">Label</span>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="PPN"
+            disabled={!enabled}
+            data-testid="input-tax-label"
+            className={`${inputCls} disabled:opacity-50`}
+          />
+        </label>
+      </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-[11px] text-muted-foreground">Metode</span>
+        <select
+          value={inclusive ? "inclusive" : "exclusive"}
+          onChange={(e) => setInclusive(e.target.value === "inclusive")}
+          disabled={!enabled}
+          data-testid="select-tax-mode"
+          className={`${inputCls} disabled:opacity-50`}
+        >
+          <option value="inclusive">
+            Termasuk dalam harga (total tetap, pajak dipecah)
+          </option>
+          <option value="exclusive">
+            Ditambahkan di atas harga (hanya tagihan bulanan)
+          </option>
+        </select>
+      </label>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={save.isPending}
+          data-testid="save-tax-config"
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+        >
+          {save.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          Simpan pajak
+        </button>
+        {tax && (
+          <StatusPill configured={tax.enabled && tax.rateBps > 0} />
+        )}
+      </div>
+    </form>
+  );
+}
+
 export default function PaymentGateway() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -866,6 +1018,8 @@ export default function PaymentGateway() {
           </form>
         </>
       )}
+
+      <TaxConfigSection onError={(m) => setError(m || null)} onOk={flashOk} />
     </div>
   );
 }

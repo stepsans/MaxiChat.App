@@ -47,6 +47,11 @@ export interface InvoiceData {
   ownerEmail: string;
   bank?: InvoiceBank | null;
   businessName?: string;
+  // Tax breakdown (FASE G). When taxIdr > 0 the PDF shows a Subtotal + tax line
+  // above Total; otherwise it renders exactly as before (Total only).
+  subtotalIdr?: number;
+  taxIdr?: number;
+  taxLabel?: string;
 }
 
 // Build a downloadable PDF invoice for a single payment (cart or legacy single
@@ -183,6 +188,28 @@ export async function buildInvoicePdf(data: InvoiceData): Promise<Uint8Array> {
       thickness: 0.5,
       color: lineColor,
     });
+  }
+
+  // --- Subtotal + tax (FASE G) ------------------------------------------
+  // Shown only when a non-zero tax was snapshotted; otherwise behavior is
+  // unchanged (Total alone). The amounts are an inclusive decomposition of the
+  // collected total, matching the on-screen invoice.
+  const taxIdr = data.taxIdr ?? 0;
+  if (taxIdr > 0) {
+    y -= 6;
+    text("Subtotal", COL_PRICE, y, 10, font, muted);
+    textRight(
+      IDR.format(data.subtotalIdr ?? data.payment.amountIdr - taxIdr),
+      PRICE_RIGHT - 8,
+      y,
+      10,
+      font,
+      ink
+    );
+    y -= 18;
+    text(data.taxLabel || "PPN", COL_PRICE, y, 10, font, muted);
+    textRight(IDR.format(taxIdr), PRICE_RIGHT - 8, y, 10, font, ink);
+    y -= 4;
   }
 
   // --- Total ------------------------------------------------------------

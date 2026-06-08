@@ -15,6 +15,7 @@ import flowsRouter from "./flows";
 import adminRouter from "./admin";
 import plansAdminRouter from "./plans";
 import paymentConfigAdminRouter from "./payment-config";
+import taxConfigAdminRouter from "./tax-config";
 import credentialsRouter from "./credentials";
 import productsSyncRouter from "./products-sync";
 import salesOrdersRouter from "./sales-orders";
@@ -101,5 +102,6 @@ router.use(storageRouter);
 router.use("/admin", requireAdmin, adminRouter);
 router.use("/admin", requireAdmin, plansAdminRouter);
 router.use("/admin", requireAdmin, paymentConfigAdminRouter);
+router.use("/admin", requireAdmin, taxConfigAdminRouter);
 
 export default router;

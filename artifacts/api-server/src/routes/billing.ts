@@ -27,6 +27,7 @@ import { getOrCreateTenantQuota } from "../lib/subscription-purchase";
 import {
   listInvoicesForOwner,
   getInvoiceForOwner,
+  getInvoiceByPaymentId,
 } from "../lib/invoices";
 import {
   createXenditInvoice,
@@ -41,6 +42,11 @@ import {
 } from "../lib/manual-payment-config";
 import { appendManualOrderRow } from "../lib/manual-payment-sheet";
 import { buildInvoicePdf, type InvoiceBank } from "../lib/invoice-pdf";
+import {
+  computeInvoiceTotals,
+  invoiceLinesFromPayment,
+} from "../lib/invoice-build";
+import { getTaxConfig } from "../lib/tax-config";
 
 const router = Router();
 
@@ -681,12 +687,38 @@ router.get("/payments/:id/invoice", async (req, res): Promise<void> => {
       };
     }
 
+    // Tax breakdown (FASE G): the PDF must reproduce the IMMUTABLE invoice
+    // snapshot, never recompute from live config — otherwise editing the tax
+    // rate (or disabling tax) would silently rewrite historical PDFs and
+    // diverge from the formal stored invoice. So for any settled payment with
+    // an invoice we read the frozen subtotal/tax. Only pending rows (no invoice
+    // yet — e.g. an unpaid manual transfer) fall back to a live preview, which
+    // forces inclusive so the previewed total still equals the amount due.
+    const invoice = await getInvoiceByPaymentId(ownerUserId, payment.id);
+    const taxConfig = await getTaxConfig();
+    let subtotalIdr: number;
+    let taxIdr: number;
+    if (invoice) {
+      subtotalIdr = invoice.subtotalIdr;
+      taxIdr = invoice.taxIdr;
+    } else {
+      const preview = computeInvoiceTotals(invoiceLinesFromPayment(payment), {
+        ...taxConfig,
+        inclusive: true,
+      });
+      subtotalIdr = preview.subtotalIdr;
+      taxIdr = preview.taxIdr;
+    }
+
     const pdf = await buildInvoicePdf({
       payment,
       lineItems: payment.lineItems ?? [],
       ownerName: owner?.name ?? "",
       ownerEmail: owner?.email ?? "",
       bank,
+      subtotalIdr,
+      taxIdr,
+      taxLabel: taxConfig.label,
     });
 
     res.setHeader("Content-Type", "application/pdf");

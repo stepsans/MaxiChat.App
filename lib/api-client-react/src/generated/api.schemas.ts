@@ -414,6 +414,29 @@ export interface UpdatePaymentConfigInput {
   isActive?: boolean;
 }
 
+/**
+ * Platform tax (PPN) policy applied to invoices at issue. Defaults are inert (enabled=false, rateBps=0) so behavior is unchanged until turned on.
+ */
+export interface TaxConfig {
+  enabled: boolean;
+  /** Tax rate in basis points (1100 = 11%). */
+  rateBps: number;
+  /** true = prices already include tax (decomposed; total unchanged); false = tax added on top (monthly_close bills only). */
+  inclusive: boolean;
+  /** Display label, e.g. "PPN". */
+  label: string;
+}
+
+/**
+ * Update the platform tax policy. Omitted fields are left unchanged.
+ */
+export interface UpdateTaxConfigInput {
+  enabled?: boolean;
+  rateBps?: number;
+  inclusive?: boolean;
+  label?: string;
+}
+
 export type WhatsappStatusStatus = typeof WhatsappStatusStatus[keyof typeof WhatsappStatusStatus];
 
 

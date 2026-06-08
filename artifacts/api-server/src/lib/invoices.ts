@@ -10,8 +10,9 @@ import { logger } from "./logger";
 import {
   invoiceNumberForPayment,
   invoiceLinesFromPayment,
-  invoiceTotals,
+  computeInvoiceTotals,
 } from "./invoice-build";
+import { getTaxConfig } from "./tax-config";
 
 // A db handle that may be the root connection OR an open transaction, so
 // invoice creation can run inside the settlement transaction (atomic with the
@@ -37,7 +38,15 @@ export async function createInvoiceForPayment(
   const issuedAt = payment.paidAt ?? payment.createdAt ?? new Date();
   const invoiceNumber = invoiceNumberForPayment(payment.id, issuedAt);
   const lines = invoiceLinesFromPayment(payment);
-  const { subtotalIdr, taxIdr, totalIdr } = invoiceTotals(lines);
+  // Tax (FASE G): the amount was ALREADY collected, so it is the gross total —
+  // force INCLUSIVE decomposition so the invoice total stays == amountIdr (the
+  // financial-consistency guard below still holds). When tax is disabled this is
+  // a no-op (tax 0). Read via `exec` so it's consistent with the settlement tx.
+  const taxConfig = await getTaxConfig(exec);
+  const { subtotalIdr, taxIdr, totalIdr } = computeInvoiceTotals(lines, {
+    ...taxConfig,
+    inclusive: true,
+  });
 
   // Financial-consistency guard: the snapshot is the source of truth, so we
   // still issue the invoice, but a divergence from the paid ledger amount means
@@ -134,6 +143,27 @@ export async function listInvoicesForOwner(
     .from(invoicesTable)
     .where(eq(invoicesTable.userId, ownerUserId))
     .orderBy(desc(invoicesTable.issuedAt), desc(invoicesTable.id));
+}
+
+// The immutable invoice snapshot raised from a settled payment, owner-scoped.
+// Returns null for payments with no invoice yet (e.g. still-pending rows) or a
+// foreign owner. Used by the PDF endpoint to render the FROZEN tax breakdown
+// (subtotal/tax snapshotted at issue) instead of recomputing from live config.
+export async function getInvoiceByPaymentId(
+  ownerUserId: number,
+  paymentId: number
+): Promise<typeof invoicesTable.$inferSelect | null> {
+  const [invoice] = await db
+    .select()
+    .from(invoicesTable)
+    .where(
+      and(
+        eq(invoicesTable.paymentId, paymentId),
+        eq(invoicesTable.userId, ownerUserId)
+      )
+    )
+    .limit(1);
+  return invoice ?? null;
 }
 
 // One owner-scoped invoice with its line items, or null if not found / foreign.

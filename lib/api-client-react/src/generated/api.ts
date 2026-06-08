@@ -176,6 +176,7 @@ import type {
   SuccessResponse,
   SyncSalesOrderToSheet200,
   TakeoverInput,
+  TaxConfig,
   TeamAgent,
   TeamListing,
   TeamSettingsInput,
@@ -195,6 +196,7 @@ import type {
   UpdatePaymentMethodInput,
   UpdatePlanInput,
   UpdatePricingInput,
+  UpdateTaxConfigInput,
   UpdateUserChannelAccessRequest,
   UpdateUserPermissionRequest,
   UploadPhotoResponse,
@@ -2031,6 +2033,154 @@ export const useAdminUpdatePaymentMethod = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getAdminUpdatePaymentMethodMutationOptions(options));
+    }
+
+export const getAdminGetTaxConfigUrl = () => {
+
+
+
+
+  return `/api/admin/tax-config`
+}
+
+/**
+ * @summary Get the platform tax (PPN) configuration (admin only)
+ */
+export const adminGetTaxConfig = async ( options?: RequestInit): Promise<TaxConfig> => {
+
+  return customFetch<TaxConfig>(getAdminGetTaxConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetTaxConfigQueryKey = () => {
+    return [
+    `/api/admin/tax-config`
+    ] as const;
+    }
+
+
+export const getAdminGetTaxConfigQueryOptions = <TData = Awaited<ReturnType<typeof adminGetTaxConfig>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetTaxConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetTaxConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetTaxConfig>>> = ({ signal }) => adminGetTaxConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetTaxConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetTaxConfigQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetTaxConfig>>>
+export type AdminGetTaxConfigQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the platform tax (PPN) configuration (admin only)
+ */
+
+export function useAdminGetTaxConfig<TData = Awaited<ReturnType<typeof adminGetTaxConfig>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetTaxConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetTaxConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdateTaxConfigUrl = () => {
+
+
+
+
+  return `/api/admin/tax-config`
+}
+
+/**
+ * @summary Update the platform tax (PPN) configuration (admin only)
+ */
+export const adminUpdateTaxConfig = async (updateTaxConfigInput: UpdateTaxConfigInput, options?: RequestInit): Promise<TaxConfig> => {
+
+  return customFetch<TaxConfig>(getAdminUpdateTaxConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateTaxConfigInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateTaxConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateTaxConfig>>, TError,{data: BodyType<UpdateTaxConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateTaxConfig>>, TError,{data: BodyType<UpdateTaxConfigInput>}, TContext> => {
+
+const mutationKey = ['adminUpdateTaxConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateTaxConfig>>, {data: BodyType<UpdateTaxConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminUpdateTaxConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateTaxConfigMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateTaxConfig>>>
+    export type AdminUpdateTaxConfigMutationBody = BodyType<UpdateTaxConfigInput>
+    export type AdminUpdateTaxConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the platform tax (PPN) configuration (admin only)
+ */
+export const useAdminUpdateTaxConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateTaxConfig>>, TError,{data: BodyType<UpdateTaxConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateTaxConfig>>,
+        TError,
+        {data: BodyType<UpdateTaxConfigInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateTaxConfigMutationOptions(options));
     }
 
 export const getAdminListAiUsageUrl = () => {

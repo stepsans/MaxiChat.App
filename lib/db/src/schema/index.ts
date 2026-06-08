@@ -23,3 +23,4 @@ export * from "./mobile";
 export * from "./media-objects";
 export * from "./retention-settings";
 export * from "./tenant-reset-audit";
+export * from "./tax-settings";
