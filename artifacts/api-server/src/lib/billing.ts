@@ -9,8 +9,14 @@ import {
   chatMessagesTable,
   aiUsageEventsTable,
   mediaObjectsTable,
+  invoicesTable,
 } from "@workspace/db";
 import { and, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import {
+  mrrFromInvoices,
+  dailyRevenueTrendFromInvoices,
+  type RevenueTrendPoint,
+} from "./revenue-build";
 import {
   computeMonthlyBill,
   computeEffectiveStatus,
@@ -473,19 +479,14 @@ export function startUsageSnapshotScheduler(): void {
   }, 30_000);
 }
 
-// ----- Revenue analytics (Fase 5) -----
+// ----- Revenue analytics (Fase 5; rewired to invoices in Billing v2 FASE H) -----
 
-export interface RevenueTrendPoint {
-  date: string; // YYYY-MM-DD
-  totalCharge: number;
-  dbCharge: number;
-  userCharge: number;
-  channelCharge: number;
-  aiCharge: number;
-}
+// Re-exported so existing importers keep resolving the type from billing.ts; the
+// canonical definition now lives in the db-free revenue-build module.
+export type { RevenueTrendPoint };
 
 export interface RevenueSummary {
-  mrr: number; // sum of latest-snapshot total for paying (active) owners
+  mrr: number; // sum of latest monthly_close invoice total per active owner
   arr: number; // mrr * 12
   arpu: number; // mrr / payingTenants (0 if none)
   totalTenants: number;
@@ -494,14 +495,16 @@ export interface RevenueSummary {
   expiredTenants: number;
   suspendedTenants: number;
   payingTenants: number; // active only — what MRR is based on
-  trend: RevenueTrendPoint[]; // daily total across all tenants, oldest-first
+  trend: RevenueTrendPoint[]; // daily invoiced revenue across tenants, oldest-first
 }
 
-// Platform-wide revenue. MRR is the sum of each owner's LATEST daily snapshot
-// total, counting only owners whose EFFECTIVE status is "active" (trial is not
-// revenue; expired/suspended pay nothing). Effective status is computed live so
-// a just-lapsed owner drops out of MRR immediately. The trend series sums every
-// owner's snapshot per day (cheap; snapshots are pre-aggregated).
+// Platform-wide revenue, sourced from the immutable `invoices` (Billing v2
+// FASE H). MRR is the sum of each EFFECTIVE-active owner's LATEST monthly_close
+// invoice total — the recurring obligation per billing period — so financials
+// are snapshot-correct (a later catalog price edit never rewrites history).
+// Effective status is computed live so a just-lapsed owner drops out of MRR
+// immediately. The trend series sums every invoice (one-off + recurring) by the
+// day it was issued. Tenant counts still derive from subscription status.
 export async function computeRevenue(trendDays = 30): Promise<RevenueSummary> {
   const now = new Date();
 
@@ -551,58 +554,52 @@ export async function computeRevenue(trendDays = 30): Promise<RevenueSummary> {
     }
   }
 
-  // MRR = sum of the latest snapshot total per ACTIVE owner.
+  // MRR = sum of each ACTIVE owner's LATEST monthly_close invoice total. Pull
+  // every monthly_close invoice for the active owners (newest periods are few
+  // per owner) and let the pure aggregator pick the latest per owner.
   let mrr = 0;
   if (activeOwnerIds.length > 0) {
-    const latest = await db
+    const mcRows = await db
       .select({
-        userId: usageSnapshotsTable.userId,
-        totalCharge: usageSnapshotsTable.totalCharge,
-        snapshotDate: usageSnapshotsTable.snapshotDate,
+        userId: invoicesTable.userId,
+        source: invoicesTable.source,
+        totalIdr: invoicesTable.totalIdr,
+        issuedAt: invoicesTable.issuedAt,
       })
-      .from(usageSnapshotsTable)
-      .where(inArray(usageSnapshotsTable.userId, activeOwnerIds))
-      .orderBy(
-        usageSnapshotsTable.userId,
-        sql`${usageSnapshotsTable.snapshotDate} desc`
+      .from(invoicesTable)
+      .where(
+        and(
+          inArray(invoicesTable.userId, activeOwnerIds),
+          eq(invoicesTable.source, "monthly_close")
+        )
       );
-    const seen = new Set<number>();
-    for (const row of latest) {
-      if (seen.has(row.userId)) continue; // first row per user is the newest
-      seen.add(row.userId);
-      mrr += row.totalCharge;
-    }
+    mrr = mrrFromInvoices(mcRows, activeOwnerIds);
   }
 
   const payingTenants = activeTenants;
   const arpu = payingTenants > 0 ? Math.round(mrr / payingTenants) : 0;
 
-  // Daily total across all tenants for the trend chart.
+  // Daily invoiced revenue for the trend chart: every tenant owner's invoices
+  // (one-off + recurring) summed by the day they were issued. Excludes the
+  // platform admin's rows (admins are not tenants and never invoiced).
   const sinceDate = new Date(now.getTime() - trendDays * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
-  const trendRows = await db
+  const invoiceRows = await db
     .select({
-      date: usageSnapshotsTable.snapshotDate,
-      totalCharge: sql<number>`cast(coalesce(sum(${usageSnapshotsTable.totalCharge}), 0) as bigint)`,
-      dbCharge: sql<number>`cast(coalesce(sum(${usageSnapshotsTable.dbCharge}), 0) as bigint)`,
-      userCharge: sql<number>`cast(coalesce(sum(${usageSnapshotsTable.userCharge}), 0) as bigint)`,
-      channelCharge: sql<number>`cast(coalesce(sum(${usageSnapshotsTable.channelCharge}), 0) as bigint)`,
-      aiCharge: sql<number>`cast(coalesce(sum(${usageSnapshotsTable.aiCharge}), 0) as bigint)`,
+      issuedAt: invoicesTable.issuedAt,
+      totalIdr: invoicesTable.totalIdr,
     })
-    .from(usageSnapshotsTable)
-    .where(gte(usageSnapshotsTable.snapshotDate, sinceDate))
-    .groupBy(usageSnapshotsTable.snapshotDate)
-    .orderBy(usageSnapshotsTable.snapshotDate);
+    .from(invoicesTable)
+    .innerJoin(usersTable, eq(usersTable.id, invoicesTable.userId))
+    .where(
+      and(
+        gte(invoicesTable.issuedAt, new Date(`${sinceDate}T00:00:00.000Z`)),
+        ne(usersTable.role, "admin")
+      )
+    );
 
-  const trend: RevenueTrendPoint[] = trendRows.map((r) => ({
-    date: r.date,
-    totalCharge: Number(r.totalCharge),
-    dbCharge: Number(r.dbCharge),
-    userCharge: Number(r.userCharge),
-    channelCharge: Number(r.channelCharge),
-    aiCharge: Number(r.aiCharge),
-  }));
+  const trend = dailyRevenueTrendFromInvoices(invoiceRows, sinceDate);
 
   return {
     mrr,

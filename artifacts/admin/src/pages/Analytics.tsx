@@ -244,9 +244,9 @@ export default function Analytics() {
       </div>
 
       <p className="text-[11px] text-muted-foreground">
-        MRR dihitung dari snapshot tagihan terbaru tiap tenant yang berstatus
-        efektif aktif (termasuk trial). Tren harian memakai snapshot pemakaian
-        yang tersimpan.
+        MRR dihitung dari invoice penagihan bulanan (monthly close) terbaru tiap
+        tenant yang berstatus efektif aktif. Tren harian menjumlahkan seluruh
+        invoice (langganan + pembelian) berdasarkan tanggal terbit.
       </p>
     </div>
   );

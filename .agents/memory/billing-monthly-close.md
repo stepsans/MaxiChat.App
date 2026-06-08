@@ -44,5 +44,7 @@ recurring-revenue record, raised independently of one-off payment invoices.
 - Pure builders live in db-free `lib/monthly-close-build.ts` (unit-tested);
   db orchestration + the daily scheduler live in `lib/monthly-close.ts`, wired in
   `index.ts`. The run is safe to invoke ad hoc (idempotent).
-- FASE H still hasn't rewired `computeRevenue` to read invoices — monthly_close
-  rows do not yet feed MRR/ARPU reporting.
+- FASE H (done) rewired `computeRevenue` to read invoices: MRR = Σ each active
+  owner's LATEST monthly_close invoice total (pure `mrrFromInvoices` in db-free
+  `lib/revenue-build.ts`); the daily trend = Σ ALL invoices by issued day. Tenant
+  counts still come from subscription status. Pure aggregators are unit-tested.

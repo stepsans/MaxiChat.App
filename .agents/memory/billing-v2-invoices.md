@@ -38,6 +38,7 @@ MaxiChat is rebuilding billing in phases A–H. FASE A added immutable
 - Adding recurring/proration/usage billing (B–D): write new invoice lines via the
   same `createInvoiceForPayment`-style path or a sibling that reuses the immutable
   tables; keep creation inside a transaction.
-- FASE A deliberately did NOT rewire `computeRevenue` — revenue still reads the old
-  source until FASE H. Don't assume invoices feed reporting yet.
+- FASE H (done) rewired `computeRevenue` to read invoices (MRR from latest
+  monthly_close per owner; trend from all invoices by issued day). The metered
+  usage_snapshots path stays for adminListBilling + computeOwnerTrend only.
 - Migrations applied via raw `psql` (repo convention — never `drizzle-kit push`).
