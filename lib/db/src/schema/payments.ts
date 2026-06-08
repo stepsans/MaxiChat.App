@@ -16,7 +16,14 @@ import { usersTable } from "./auth";
 // for idempotent webhook reconciliation — a webhook that arrives twice must
 // find the row already `paid` and do nothing. `rawPayload` stores the last
 // provider payload for audit/debugging.
-export const paymentKinds = ["plan", "addon", "renewal", "cart"] as const;
+export const paymentKinds = [
+  "plan",
+  "addon",
+  "renewal",
+  "cart",
+  "invoice",
+  "proration",
+] as const;
 export type PaymentKind = (typeof paymentKinds)[number];
 
 export const paymentStatuses = ["pending", "paid", "expired", "failed"] as const;

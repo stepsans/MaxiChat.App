@@ -17,6 +17,9 @@ import plansAdminRouter from "./plans";
 import paymentConfigAdminRouter from "./payment-config";
 import taxConfigAdminRouter from "./tax-config";
 import storageConfigAdminRouter from "./storage-config";
+import overageRatesAdminRouter from "./overage-rates";
+import dunningSettingsAdminRouter from "./dunning-settings";
+import finopsAdminRouter from "./finops";
 import credentialsRouter from "./credentials";
 import productsSyncRouter from "./products-sync";
 import salesOrdersRouter from "./sales-orders";
@@ -105,5 +108,8 @@ router.use("/admin", requireAdmin, plansAdminRouter);
 router.use("/admin", requireAdmin, paymentConfigAdminRouter);
 router.use("/admin", requireAdmin, taxConfigAdminRouter);
 router.use("/admin", requireAdmin, storageConfigAdminRouter);
+router.use("/admin", requireAdmin, overageRatesAdminRouter);
+router.use("/admin", requireAdmin, dunningSettingsAdminRouter);
+router.use("/admin", requireAdmin, finopsAdminRouter);
 
 export default router;

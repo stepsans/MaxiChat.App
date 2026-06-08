@@ -12,4 +12,5 @@ export type CheckoutResultMode = typeof CheckoutResultMode[keyof typeof Checkout
 export const CheckoutResultMode = {
   xendit: 'xendit',
   manual: 'manual',
+  wallet: 'wallet',
 } as const;

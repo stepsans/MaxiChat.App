@@ -1,3 +1,4 @@
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -8,174 +9,228 @@ import {
   aiUsageEventsTable,
   usageSnapshotsTable,
 } from "@workspace/db";
-import { and, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { logger } from "./logger";
-import { getRetentionPolicy, getPlanRetentionCap, clampPolicy } from "./retention";
+import { getRetentionChoice, getRetentionCap } from "./retention-config";
+import { retentionCutoffs, type RetentionClass } from "./retention-build";
 import { ObjectStorageService } from "./objectStorage";
+
+// Retention purge DB layer (Billing v2 — FASE E). Deletes operational data older
+// than the EFFECTIVE per-class retention (min of the tenant's choice and the
+// plan cap; computed by the pure retention-build helpers). It NEVER touches
+// financial records (invoices, payments, wallet) — those are immutable history.
+//
+// Safety:
+//   - dryRun=true (default) only COUNTS what would be deleted, mutating nothing.
+//   - A null cutoff for a class = unlimited → that class is skipped entirely.
+//   - Media blobs are removed best-effort BEFORE their ledger rows (blob-first),
+//     so a failure leaves a recoverable orphan *ledger row*, not an orphan blob
+//     (mirrors tenant-reset's ordering rationale).
 
 const objectStorage = new ObjectStorageService();
 
-// Compute an absolute cutoff Date for a given max-age in days. null = unlimited
-// (no purge for that data class).
-function cutoffFor(days: number | null, now: number): Date | null {
-  if (days == null || days <= 0) return null;
-  return new Date(now - days * 24 * 60 * 60 * 1000);
-}
+export type RetentionPurgeResult = {
+  ownerUserId: number;
+  dryRun: boolean;
+  cutoffs: Record<RetentionClass, string | null>;
+  chatMessages: number;
+  media: number;
+  mediaBlobs: number;
+  logs: number;
+  analytics: number;
+};
 
-// Delete media_objects older than the cutoff for one owner: removes the bucket
-// files first (best-effort, idempotent) then the ledger rows. Returns count +
-// freed bytes. Old chat_messages.media_url references are intentionally left to
-// 404 — expiry of media is the whole point of retention.
-async function purgeMedia(ownerId: number, cutoff: Date): Promise<number> {
-  const stale = await db
-    .select({ id: mediaObjectsTable.id, objectPath: mediaObjectsTable.objectPath })
-    .from(mediaObjectsTable)
-    .where(
-      and(
-        eq(mediaObjectsTable.ownerUserId, ownerId),
-        lt(mediaObjectsTable.createdAt, cutoff)
-      )
-    );
-  if (stale.length === 0) return 0;
-  for (const obj of stale) {
-    try {
-      await objectStorage.deleteObjectEntity(obj.objectPath);
-    } catch (err) {
-      // Don't let one bad object block the rest; the row stays so a later run
-      // retries the file delete.
-      logger.warn({ err, objectPath: obj.objectPath }, "retention: object delete failed");
+export async function purgeTenantRetention(
+  ownerUserId: number,
+  opts: { dryRun?: boolean; now?: Date } = {}
+): Promise<RetentionPurgeResult> {
+  const dryRun = opts.dryRun ?? true;
+  const now = opts.now ?? new Date();
+
+  const choice = await getRetentionChoice(ownerUserId);
+  const cap = await getRetentionCap(ownerUserId);
+  const cutoffs = retentionCutoffs(choice, cap, now);
+
+  const result: RetentionPurgeResult = {
+    ownerUserId,
+    dryRun,
+    cutoffs: {
+      chat: cutoffs.chat ? cutoffs.chat.toISOString() : null,
+      media: cutoffs.media ? cutoffs.media.toISOString() : null,
+      log: cutoffs.log ? cutoffs.log.toISOString() : null,
+      analytics: cutoffs.analytics ? cutoffs.analytics.toISOString() : null,
+    },
+    chatMessages: 0,
+    media: 0,
+    mediaBlobs: 0,
+    logs: 0,
+    analytics: 0,
+  };
+
+  // --- Chat messages (scoped to the owner's channels) -----------------------
+  if (cutoffs.chat) {
+    const channels = await db
+      .select({ id: channelsTable.id })
+      .from(channelsTable)
+      .where(eq(channelsTable.userId, ownerUserId));
+    const channelIds = channels.map((c) => c.id);
+    if (channelIds.length > 0) {
+      const chatIdsRows = await db
+        .select({ id: chatsTable.id })
+        .from(chatsTable)
+        .where(inArray(chatsTable.channelId, channelIds));
+      const chatIds = chatIdsRows.map((c) => c.id);
+      if (chatIds.length > 0) {
+        const [cnt] = await db
+          .select({ count: sql<number>`cast(count(*) as int)` })
+          .from(chatMessagesTable)
+          .where(
+            and(
+              inArray(chatMessagesTable.chatId, chatIds),
+              lt(chatMessagesTable.createdAt, cutoffs.chat)
+            )
+          );
+        result.chatMessages = cnt?.count ?? 0;
+        if (!dryRun && result.chatMessages > 0) {
+          await db
+            .delete(chatMessagesTable)
+            .where(
+              and(
+                inArray(chatMessagesTable.chatId, chatIds),
+                lt(chatMessagesTable.createdAt, cutoffs.chat)
+              )
+            );
+        }
+      }
     }
   }
-  const ids = stale.map((o) => o.id);
-  await db.delete(mediaObjectsTable).where(inArray(mediaObjectsTable.id, ids));
-  return stale.length;
-}
 
-// Delete chat_messages older than the cutoff across all the owner's channels.
-async function purgeChatMessages(ownerId: number, cutoff: Date): Promise<number> {
-  const channels = await db
-    .select({ id: channelsTable.id })
-    .from(channelsTable)
-    .where(eq(channelsTable.userId, ownerId));
-  const channelIds = channels.map((c) => c.id);
-  if (channelIds.length === 0) return 0;
-  const chatRows = await db
-    .select({ id: chatsTable.id })
-    .from(chatsTable)
-    .where(inArray(chatsTable.channelId, channelIds));
-  const chatIds = chatRows.map((c) => c.id);
-  if (chatIds.length === 0) return 0;
-  const deleted = await db
-    .delete(chatMessagesTable)
-    .where(
-      and(
-        inArray(chatMessagesTable.chatId, chatIds),
-        lt(chatMessagesTable.createdAt, cutoff)
-      )
-    )
-    .returning({ id: chatMessagesTable.id });
-  return deleted.length;
-}
-
-async function purgeLogs(ownerId: number, cutoff: Date): Promise<number> {
-  const deleted = await db
-    .delete(aiUsageEventsTable)
-    .where(
-      and(
-        eq(aiUsageEventsTable.userId, ownerId),
-        lt(aiUsageEventsTable.createdAt, cutoff)
-      )
-    )
-    .returning({ id: aiUsageEventsTable.id });
-  return deleted.length;
-}
-
-async function purgeAnalytics(ownerId: number, cutoff: Date): Promise<number> {
-  // snapshot_date is a date string; compare against the cutoff's YYYY-MM-DD.
-  const cutoffDate = cutoff.toISOString().slice(0, 10);
-  const deleted = await db
-    .delete(usageSnapshotsTable)
-    .where(
-      and(
-        eq(usageSnapshotsTable.userId, ownerId),
-        sql`${usageSnapshotsTable.snapshotDate} < ${cutoffDate}`
-      )
-    )
-    .returning({ id: usageSnapshotsTable.id });
-  return deleted.length;
-}
-
-// Purge one owner according to their (plan-clamped) retention policy.
-async function purgeOwner(ownerId: number, now: number): Promise<void> {
-  const [policy, cap] = await Promise.all([
-    getRetentionPolicy(ownerId),
-    getPlanRetentionCap(ownerId),
-  ]);
-  const effective = clampPolicy(policy, cap);
-
-  const chatCut = cutoffFor(effective.chatDays, now);
-  const mediaCut = cutoffFor(effective.mediaDays, now);
-  const logCut = cutoffFor(effective.logDays, now);
-  const analyticsCut = cutoffFor(effective.analyticsDays, now);
-
-  if (!chatCut && !mediaCut && !logCut && !analyticsCut) return;
-
-  const result = {
-    messages: chatCut ? await purgeChatMessages(ownerId, chatCut) : 0,
-    media: mediaCut ? await purgeMedia(ownerId, mediaCut) : 0,
-    logs: logCut ? await purgeLogs(ownerId, logCut) : 0,
-    analytics: analyticsCut ? await purgeAnalytics(ownerId, analyticsCut) : 0,
-  };
-  if (result.messages || result.media || result.logs || result.analytics) {
-    logger.info({ ownerId, ...result }, "retention: purged tenant data");
+  // --- Media (ledger rows + blobs, blob-first) ------------------------------
+  if (cutoffs.media) {
+    const stale = await db
+      .select({ id: mediaObjectsTable.id, objectPath: mediaObjectsTable.objectPath })
+      .from(mediaObjectsTable)
+      .where(
+        and(
+          eq(mediaObjectsTable.ownerUserId, ownerUserId),
+          lt(mediaObjectsTable.createdAt, cutoffs.media)
+        )
+      );
+    result.media = stale.length;
+    if (!dryRun && stale.length > 0) {
+      for (const row of stale) {
+        try {
+          await objectStorage.deleteObjectEntity(row.objectPath);
+          result.mediaBlobs++;
+        } catch (err) {
+          logger.warn(
+            { err, ownerUserId, objectPath: row.objectPath },
+            "retention: blob delete failed (ledger row will still be removed)"
+          );
+        }
+      }
+      await db
+        .delete(mediaObjectsTable)
+        .where(
+          inArray(
+            mediaObjectsTable.id,
+            stale.map((r) => r.id)
+          )
+        );
+    }
   }
+
+  // --- AI usage logs --------------------------------------------------------
+  if (cutoffs.log) {
+    const [cnt] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(aiUsageEventsTable)
+      .where(
+        and(
+          eq(aiUsageEventsTable.userId, ownerUserId),
+          lt(aiUsageEventsTable.createdAt, cutoffs.log)
+        )
+      );
+    result.logs = cnt?.count ?? 0;
+    if (!dryRun && result.logs > 0) {
+      await db
+        .delete(aiUsageEventsTable)
+        .where(
+          and(
+            eq(aiUsageEventsTable.userId, ownerUserId),
+            lt(aiUsageEventsTable.createdAt, cutoffs.log)
+          )
+        );
+    }
+  }
+
+  // --- Analytics snapshots (snapshotDate is a YYYY-MM-DD text column) --------
+  if (cutoffs.analytics) {
+    const cutoffDay = cutoffs.analytics.toISOString().slice(0, 10);
+    const [cnt] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(usageSnapshotsTable)
+      .where(
+        and(
+          eq(usageSnapshotsTable.userId, ownerUserId),
+          lt(usageSnapshotsTable.snapshotDate, cutoffDay)
+        )
+      );
+    result.analytics = cnt?.count ?? 0;
+    if (!dryRun && result.analytics > 0) {
+      await db
+        .delete(usageSnapshotsTable)
+        .where(
+          and(
+            eq(usageSnapshotsTable.userId, ownerUserId),
+            lt(usageSnapshotsTable.snapshotDate, cutoffDay)
+          )
+        );
+    }
+  }
+
+  return result;
 }
 
-// Enumerate every tenant owner (parent_user_id IS NULL AND role != admin) and
-// purge each in turn.
-export async function runRetentionPurge(): Promise<void> {
-  const now = Date.now();
+// Sweep every tenant owner (real-run). Best-effort per owner; one failure does
+// not abort the rest. Returns aggregate counts.
+export async function runRetentionSweep(
+  now: Date = new Date()
+): Promise<{ owners: number; chatMessages: number; media: number; logs: number; analytics: number }> {
   const owners = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(and(isNull(usersTable.parentUserId), ne(usersTable.role, "admin")));
-  for (const owner of owners) {
+    .where(sql`${usersTable.parentUserId} is null and ${usersTable.role} <> 'admin'`);
+
+  const agg = { owners: 0, chatMessages: 0, media: 0, logs: 0, analytics: 0 };
+  for (const o of owners) {
     try {
-      await purgeOwner(owner.id, now);
+      const r = await purgeTenantRetention(o.id, { dryRun: false, now });
+      agg.owners++;
+      agg.chatMessages += r.chatMessages;
+      agg.media += r.media;
+      agg.logs += r.logs;
+      agg.analytics += r.analytics;
     } catch (err) {
-      logger.error({ err, ownerId: owner.id }, "retention: owner purge failed");
+      logger.error({ err, ownerId: o.id }, "retention sweep failed for owner");
     }
   }
+  logger.info(agg, "retention sweep complete");
+  return agg;
 }
 
-let schedulerStarted = false;
-let inFlight = false;
-let lastRunDate: string | null = null;
-
-async function tick(): Promise<void> {
-  if (inFlight) return;
-  // Run at most once per UTC day.
-  const today = new Date().toISOString().slice(0, 10);
-  if (lastRunDate === today) return;
-  inFlight = true;
-  try {
-    await runRetentionPurge();
-    lastRunDate = today;
-  } catch (err) {
-    logger.error({ err }, "retention: purge run failed");
-  } finally {
-    inFlight = false;
-  }
-}
-
-// Start the daily retention purger. Runs ~2 min after boot, then re-checks
-// hourly (the per-day guard makes the hourly tick a no-op until the date rolls).
+// Daily retention purger. Runs once shortly after boot, then every 24h. The
+// per-class cutoffs are null (skip) unless a tenant has chosen a retention age
+// AND/OR their plan sets a cap, so this is inert until retention is configured.
+let retentionTimer: NodeJS.Timeout | null = null;
 export function startRetentionPurger(): void {
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-  setTimeout(() => {
-    void tick();
-    setInterval(() => void tick(), 60 * 60 * 1000);
-  }, 120_000);
-  logger.info("retention purger started");
+  if (retentionTimer) return;
+  const DAY = 24 * 60 * 60 * 1000;
+  const run = () => {
+    runRetentionSweep().catch((err) =>
+      logger.error({ err }, "retention purger run failed")
+    );
+  };
+  // First run 5 min after boot to avoid colliding with startup work.
+  setTimeout(run, 5 * 60 * 1000);
+  retentionTimer = setInterval(run, DAY);
 }

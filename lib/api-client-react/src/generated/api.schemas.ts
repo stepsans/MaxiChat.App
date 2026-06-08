@@ -458,6 +458,190 @@ export interface UpdateStorageConfigInput {
   warnPercent?: number;
 }
 
+/**
+ * Platform metered-overage pricing (Billing v2). Inert by default (enabled=false + zero prices) so monthly-close raises no usage lines until the operator turns it on. Whole Rupiah.
+ */
+export interface OverageRates {
+  enabled: boolean;
+  /** AI-token block size charged as one unit (e.g. 100). */
+  tokenUnit: number;
+  /** Price per token block, whole Rupiah. */
+  tokenUnitPriceIdr: number;
+  /** Price per GB-day of average daily storage above plafon. */
+  storageGbDayPriceIdr: number;
+}
+
+/**
+ * Update overage rates. Omitted fields are left unchanged.
+ */
+export interface UpdateOverageRatesInput {
+  enabled?: boolean;
+  tokenUnit?: number;
+  tokenUnitPriceIdr?: number;
+  storageGbDayPriceIdr?: number;
+}
+
+/**
+ * Platform dunning (overdue-invoice escalation) policy (FASE F). Inert by default (enabled=false) so prepaid tenants are never auto-suspended until the operator turns it on. Days are counted from an invoice's due date.
+ */
+export interface DunningSettings {
+  enabled: boolean;
+  reminder0Days: number;
+  reminder3Days: number;
+  reminder7Days: number;
+  suspendDays: number;
+  terminateDays: number;
+}
+
+/**
+ * Update dunning settings. Omitted fields are left unchanged.
+ */
+export interface UpdateDunningSettingsInput {
+  enabled?: boolean;
+  reminder0Days?: number;
+  reminder3Days?: number;
+  reminder7Days?: number;
+  suspendDays?: number;
+  terminateDays?: number;
+}
+
+/**
+ * One wallet ledger entry. Positive delta = credit, negative = debit.
+ */
+export interface WalletTransaction {
+  id: number;
+  deltaIdr: number;
+  kind: string;
+  /** @nullable */
+  sourceRef?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
+  createdAt: string;
+}
+
+/**
+ * The tenant's wallet credit balance plus recent ledger history.
+ */
+export interface WalletSummary {
+  /** Live (non-expired) credit balance in whole Rupiah. */
+  balanceIdr: number;
+  transactions: WalletTransaction[];
+}
+
+/**
+ * Pay an OPEN invoice. Wallet credit is applied first; if it fully covers the invoice the payment settles immediately, otherwise a gateway/manual checkout is started for the full amount.
+ */
+export interface PayInvoiceInput {
+  successRedirectUrl?: string;
+}
+
+/**
+ * Switch the tenant's plan mid-period with proration. An upgrade raises a prorated charge (returned as a checkout to pay); a downgrade applies immediately and credits the prorated difference to the wallet.
+ */
+export interface ChangePlanInput {
+  planId: number;
+  successRedirectUrl?: string;
+}
+
+/**
+ * Add a prorated add-on top-up mid-period. Raises a prorated charge for the remaining days, returned as a checkout to pay.
+ */
+export interface ChangeQuotaInput {
+  addonId: number;
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
+  quantity: number;
+  successRedirectUrl?: string;
+}
+
+export type ProrationResultMode = typeof ProrationResultMode[keyof typeof ProrationResultMode];
+
+
+export const ProrationResultMode = {
+  charge: 'charge',
+  credit: 'credit',
+  applied: 'applied',
+} as const;
+
+export type CheckoutResultMode = typeof CheckoutResultMode[keyof typeof CheckoutResultMode];
+
+
+export const CheckoutResultMode = {
+  xendit: 'xendit',
+  manual: 'manual',
+  wallet: 'wallet',
+} as const;
+
+/**
+ * Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to redirect to; "manual" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it); "wallet" means the tenant's credit balance fully covered the amount and the order is already settled (no redirect).
+ */
+export interface CheckoutResult {
+  paymentId: number;
+  mode: CheckoutResultMode;
+  /** Charged amount in whole Rupiah (computed server-side). */
+  amountIdr: number;
+  /**
+     * Hosted Xendit checkout page to redirect to (xendit mode only).
+     * @nullable
+     */
+  invoiceUrl?: string | null;
+  /**
+     * Xendit invoice id (xendit) or the payment code (manual).
+     * @nullable
+     */
+  externalId?: string | null;
+  /**
+     * Manual payment code the customer cites on transfer (manual mode).
+     * @nullable
+     */
+  code?: string | null;
+  /** @nullable */
+  bankName?: string | null;
+  /** @nullable */
+  bankAccountNumber?: string | null;
+  /** @nullable */
+  bankAccountHolder?: string | null;
+  /**
+     * Optional extra instructions shown on the manual transfer panel.
+     * @nullable
+     */
+  manualInstructions?: string | null;
+}
+
+/**
+ * Outcome of a plan/quota change. mode="charge" → pay `checkout`; mode="credit" → `creditIdr` was added to the wallet and the change is already applied; mode="applied" → applied with no money movement.
+ */
+export interface ProrationResult {
+  mode: ProrationResultMode;
+  /** @nullable */
+  creditIdr?: number | null;
+  /** @nullable */
+  invoiceId?: number | null;
+  checkout?: CheckoutResult | null;
+}
+
+/**
+ * Invoice-grounded financial metrics (FASE H). billings = cash collected from paid invoices in the window; recognizedRevenue = revenue earned (over-time lines accrue per-day); mrr = run-rate from active plans.
+ */
+export interface FinopsSummary {
+  periodDays: number;
+  totalTenants: number;
+  activeTenants: number;
+  trialTenants: number;
+  pastDueTenants: number;
+  suspendedTenants: number;
+  expiredTenants: number;
+  mrr: number;
+  arr: number;
+  arpu: number;
+  billings: number;
+  recognizedRevenue: number;
+  churnedTenants: number;
+  churnRatePct: number;
+}
+
 export type WhatsappStatusStatus = typeof WhatsappStatusStatus[keyof typeof WhatsappStatusStatus];
 
 
@@ -1946,50 +2130,6 @@ export interface CheckoutInput {
   items: CheckoutItem[];
   /** Absolute URL to return the tenant to after a successful payment. Must be on an allowed app host; ignored otherwise. */
   successRedirectUrl?: string;
-}
-
-export type CheckoutResultMode = typeof CheckoutResultMode[keyof typeof CheckoutResultMode];
-
-
-export const CheckoutResultMode = {
-  xendit: 'xendit',
-  manual: 'manual',
-} as const;
-
-/**
- * Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to redirect to; "manual" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it).
- */
-export interface CheckoutResult {
-  paymentId: number;
-  mode: CheckoutResultMode;
-  /** Charged amount in whole Rupiah (computed server-side). */
-  amountIdr: number;
-  /**
-     * Hosted Xendit checkout page to redirect to (xendit mode only).
-     * @nullable
-     */
-  invoiceUrl?: string | null;
-  /**
-     * Xendit invoice id (xendit) or the payment code (manual).
-     * @nullable
-     */
-  externalId?: string | null;
-  /**
-     * Manual payment code the customer cites on transfer (manual mode).
-     * @nullable
-     */
-  code?: string | null;
-  /** @nullable */
-  bankName?: string | null;
-  /** @nullable */
-  bankAccountNumber?: string | null;
-  /** @nullable */
-  bankAccountHolder?: string | null;
-  /**
-     * Optional extra instructions shown on the manual transfer panel.
-     * @nullable
-     */
-  manualInstructions?: string | null;
 }
 
 export type PaymentMethodSettingsActiveProvider = typeof PaymentMethodSettingsActiveProvider[keyof typeof PaymentMethodSettingsActiveProvider];

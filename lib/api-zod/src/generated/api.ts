@@ -829,7 +829,7 @@ export const CreateCheckoutBody = zod.object({
 
 export const CreateCheckoutResponse = zod.object({
   "paymentId": zod.number(),
-  "mode": zod.enum(['xendit', 'manual']),
+  "mode": zod.enum(['xendit', 'manual', 'wallet']),
   "amountIdr": zod.number().describe('Charged amount in whole Rupiah (computed server-side).'),
   "invoiceUrl": zod.string().nullish().describe('Hosted Xendit checkout page to redirect to (xendit mode only).'),
   "externalId": zod.string().nullish().describe('Xendit invoice id (xendit) or the payment code (manual).'),
@@ -838,7 +838,7 @@ export const CreateCheckoutResponse = zod.object({
   "bankAccountNumber": zod.string().nullish(),
   "bankAccountHolder": zod.string().nullish(),
   "manualInstructions": zod.string().nullish().describe('Optional extra instructions shown on the manual transfer panel.')
-}).describe('Checkout outcome. Branch on `mode`: \"xendit\" returns an invoiceUrl to redirect to; \"manual\" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it).')
+}).describe('Checkout outcome. Branch on `mode`: \"xendit\" returns an invoiceUrl to redirect to; \"manual\" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it); \"wallet\" means the tenant\'s credit balance fully covered the amount and the order is already settled (no redirect).')
 
 
 /**
@@ -929,6 +929,191 @@ export const GetMyInvoiceResponse = zod.object({
   "calculationSource": zod.string().nullable()
 }))
 })
+
+
+/**
+ * @summary Pay an open invoice (wallet-first, then gateway)
+ */
+export const PayMyInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PayMyInvoiceBody = zod.object({
+  "successRedirectUrl": zod.string().optional()
+}).describe('Pay an OPEN invoice. Wallet credit is applied first; if it fully covers the invoice the payment settles immediately, otherwise a gateway\/manual checkout is started for the full amount.')
+
+export const PayMyInvoiceResponse = zod.object({
+  "paymentId": zod.number(),
+  "mode": zod.enum(['xendit', 'manual', 'wallet']),
+  "amountIdr": zod.number().describe('Charged amount in whole Rupiah (computed server-side).'),
+  "invoiceUrl": zod.string().nullish().describe('Hosted Xendit checkout page to redirect to (xendit mode only).'),
+  "externalId": zod.string().nullish().describe('Xendit invoice id (xendit) or the payment code (manual).'),
+  "code": zod.string().nullish().describe('Manual payment code the customer cites on transfer (manual mode).'),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish().describe('Optional extra instructions shown on the manual transfer panel.')
+}).describe('Checkout outcome. Branch on `mode`: \"xendit\" returns an invoiceUrl to redirect to; \"manual\" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it); \"wallet\" means the tenant\'s credit balance fully covered the amount and the order is already settled (no redirect).')
+
+
+/**
+ * @summary The tenant's wallet credit balance and ledger
+ */
+export const GetMyWalletResponse = zod.object({
+  "balanceIdr": zod.number().describe('Live (non-expired) credit balance in whole Rupiah.'),
+  "transactions": zod.array(zod.object({
+  "id": zod.number(),
+  "deltaIdr": zod.number(),
+  "kind": zod.string(),
+  "sourceRef": zod.string().nullish(),
+  "expiresAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+}).describe('One wallet ledger entry. Positive delta = credit, negative = debit.'))
+}).describe('The tenant\'s wallet credit balance plus recent ledger history.')
+
+
+/**
+ * @summary Switch plan mid-period with proration
+ */
+export const ChangeMyPlanBody = zod.object({
+  "planId": zod.number(),
+  "successRedirectUrl": zod.string().optional()
+}).describe('Switch the tenant\'s plan mid-period with proration. An upgrade raises a prorated charge (returned as a checkout to pay); a downgrade applies immediately and credits the prorated difference to the wallet.')
+
+export const ChangeMyPlanResponse = zod.object({
+  "mode": zod.enum(['charge', 'credit', 'applied']),
+  "creditIdr": zod.number().nullish(),
+  "invoiceId": zod.number().nullish(),
+  "checkout": zod.union([zod.object({
+  "paymentId": zod.number(),
+  "mode": zod.enum(['xendit', 'manual', 'wallet']),
+  "amountIdr": zod.number().describe('Charged amount in whole Rupiah (computed server-side).'),
+  "invoiceUrl": zod.string().nullish().describe('Hosted Xendit checkout page to redirect to (xendit mode only).'),
+  "externalId": zod.string().nullish().describe('Xendit invoice id (xendit) or the payment code (manual).'),
+  "code": zod.string().nullish().describe('Manual payment code the customer cites on transfer (manual mode).'),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish().describe('Optional extra instructions shown on the manual transfer panel.')
+}).describe('Checkout outcome. Branch on `mode`: \"xendit\" returns an invoiceUrl to redirect to; \"manual\" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it); \"wallet\" means the tenant\'s credit balance fully covered the amount and the order is already settled (no redirect).'),zod.null()]).optional()
+}).describe('Outcome of a plan\/quota change. mode=\"charge\" → pay `checkout`; mode=\"credit\" → `creditIdr` was added to the wallet and the change is already applied; mode=\"applied\" → applied with no money movement.')
+
+
+/**
+ * @summary Add a prorated add-on top-up mid-period
+ */
+export const changeMyQuotaBodyQuantityMax = 1000;
+
+
+
+export const ChangeMyQuotaBody = zod.object({
+  "addonId": zod.number(),
+  "quantity": zod.number().min(1).max(changeMyQuotaBodyQuantityMax),
+  "successRedirectUrl": zod.string().optional()
+}).describe('Add a prorated add-on top-up mid-period. Raises a prorated charge for the remaining days, returned as a checkout to pay.')
+
+export const ChangeMyQuotaResponse = zod.object({
+  "mode": zod.enum(['charge', 'credit', 'applied']),
+  "creditIdr": zod.number().nullish(),
+  "invoiceId": zod.number().nullish(),
+  "checkout": zod.union([zod.object({
+  "paymentId": zod.number(),
+  "mode": zod.enum(['xendit', 'manual', 'wallet']),
+  "amountIdr": zod.number().describe('Charged amount in whole Rupiah (computed server-side).'),
+  "invoiceUrl": zod.string().nullish().describe('Hosted Xendit checkout page to redirect to (xendit mode only).'),
+  "externalId": zod.string().nullish().describe('Xendit invoice id (xendit) or the payment code (manual).'),
+  "code": zod.string().nullish().describe('Manual payment code the customer cites on transfer (manual mode).'),
+  "bankName": zod.string().nullish(),
+  "bankAccountNumber": zod.string().nullish(),
+  "bankAccountHolder": zod.string().nullish(),
+  "manualInstructions": zod.string().nullish().describe('Optional extra instructions shown on the manual transfer panel.')
+}).describe('Checkout outcome. Branch on `mode`: \"xendit\" returns an invoiceUrl to redirect to; \"manual\" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it); \"wallet\" means the tenant\'s credit balance fully covered the amount and the order is already settled (no redirect).'),zod.null()]).optional()
+}).describe('Outcome of a plan\/quota change. mode=\"charge\" → pay `checkout`; mode=\"credit\" → `creditIdr` was added to the wallet and the change is already applied; mode=\"applied\" → applied with no money movement.')
+
+
+/**
+ * @summary Get the platform metered-overage rates (admin only)
+ */
+export const AdminGetOverageRatesResponse = zod.object({
+  "enabled": zod.boolean(),
+  "tokenUnit": zod.number().describe('AI-token block size charged as one unit (e.g. 100).'),
+  "tokenUnitPriceIdr": zod.number().describe('Price per token block, whole Rupiah.'),
+  "storageGbDayPriceIdr": zod.number().describe('Price per GB-day of average daily storage above plafon.')
+}).describe('Platform metered-overage pricing (Billing v2). Inert by default (enabled=false + zero prices) so monthly-close raises no usage lines until the operator turns it on. Whole Rupiah.')
+
+
+/**
+ * @summary Update the platform metered-overage rates (admin only)
+ */
+export const AdminUpdateOverageRatesBody = zod.object({
+  "enabled": zod.boolean().optional(),
+  "tokenUnit": zod.number().optional(),
+  "tokenUnitPriceIdr": zod.number().optional(),
+  "storageGbDayPriceIdr": zod.number().optional()
+}).describe('Update overage rates. Omitted fields are left unchanged.')
+
+export const AdminUpdateOverageRatesResponse = zod.object({
+  "enabled": zod.boolean(),
+  "tokenUnit": zod.number().describe('AI-token block size charged as one unit (e.g. 100).'),
+  "tokenUnitPriceIdr": zod.number().describe('Price per token block, whole Rupiah.'),
+  "storageGbDayPriceIdr": zod.number().describe('Price per GB-day of average daily storage above plafon.')
+}).describe('Platform metered-overage pricing (Billing v2). Inert by default (enabled=false + zero prices) so monthly-close raises no usage lines until the operator turns it on. Whole Rupiah.')
+
+
+/**
+ * @summary Get the platform dunning settings (admin only)
+ */
+export const AdminGetDunningSettingsResponse = zod.object({
+  "enabled": zod.boolean(),
+  "reminder0Days": zod.number(),
+  "reminder3Days": zod.number(),
+  "reminder7Days": zod.number(),
+  "suspendDays": zod.number(),
+  "terminateDays": zod.number()
+}).describe('Platform dunning (overdue-invoice escalation) policy (FASE F). Inert by default (enabled=false) so prepaid tenants are never auto-suspended until the operator turns it on. Days are counted from an invoice\'s due date.')
+
+
+/**
+ * @summary Update the platform dunning settings (admin only)
+ */
+export const AdminUpdateDunningSettingsBody = zod.object({
+  "enabled": zod.boolean().optional(),
+  "reminder0Days": zod.number().optional(),
+  "reminder3Days": zod.number().optional(),
+  "reminder7Days": zod.number().optional(),
+  "suspendDays": zod.number().optional(),
+  "terminateDays": zod.number().optional()
+}).describe('Update dunning settings. Omitted fields are left unchanged.')
+
+export const AdminUpdateDunningSettingsResponse = zod.object({
+  "enabled": zod.boolean(),
+  "reminder0Days": zod.number(),
+  "reminder3Days": zod.number(),
+  "reminder7Days": zod.number(),
+  "suspendDays": zod.number(),
+  "terminateDays": zod.number()
+}).describe('Platform dunning (overdue-invoice escalation) policy (FASE F). Inert by default (enabled=false) so prepaid tenants are never auto-suspended until the operator turns it on. Days are counted from an invoice\'s due date.')
+
+
+/**
+ * @summary Invoice-grounded financial metrics (admin only)
+ */
+export const AdminGetFinopsResponse = zod.object({
+  "periodDays": zod.number(),
+  "totalTenants": zod.number(),
+  "activeTenants": zod.number(),
+  "trialTenants": zod.number(),
+  "pastDueTenants": zod.number(),
+  "suspendedTenants": zod.number(),
+  "expiredTenants": zod.number(),
+  "mrr": zod.number(),
+  "arr": zod.number(),
+  "arpu": zod.number(),
+  "billings": zod.number(),
+  "recognizedRevenue": zod.number(),
+  "churnedTenants": zod.number(),
+  "churnRatePct": zod.number()
+}).describe('Invoice-grounded financial metrics (FASE H). billings = cash collected from paid invoices in the window; recognizedRevenue = revenue earned (over-time lines accrue per-day); mrr = run-rate from active plans.')
 
 
 /**

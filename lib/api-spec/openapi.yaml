@@ -1100,6 +1100,221 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /billing/invoices/{id}/pay:
+    post:
+      operationId: payMyInvoice
+      tags: [billing]
+      summary: Pay an open invoice (wallet-first, then gateway)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayInvoiceInput"
+      responses:
+        "200":
+          description: Payment outcome (settled by wallet or a gateway checkout)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResult"
+        "400":
+          description: Invalid request (invoice not open, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /billing/wallet:
+    get:
+      operationId: getMyWallet
+      tags: [billing]
+      summary: The tenant's wallet credit balance and ledger
+      responses:
+        "200":
+          description: Wallet summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletSummary"
+
+  /billing/change-plan:
+    post:
+      operationId: changeMyPlan
+      tags: [billing]
+      summary: Switch plan mid-period with proration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePlanInput"
+      responses:
+        "200":
+          description: Proration outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProrationResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /billing/change-quota:
+    post:
+      operationId: changeMyQuota
+      tags: [billing]
+      summary: Add a prorated add-on top-up mid-period
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeQuotaInput"
+      responses:
+        "200":
+          description: Proration outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProrationResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/overage-rates:
+    get:
+      operationId: adminGetOverageRates
+      tags: [admin]
+      summary: Get the platform metered-overage rates (admin only)
+      responses:
+        "200":
+          description: Overage rates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverageRates"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: adminUpdateOverageRates
+      tags: [admin]
+      summary: Update the platform metered-overage rates (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOverageRatesInput"
+      responses:
+        "200":
+          description: Updated overage rates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverageRates"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/dunning-settings:
+    get:
+      operationId: adminGetDunningSettings
+      tags: [admin]
+      summary: Get the platform dunning settings (admin only)
+      responses:
+        "200":
+          description: Dunning settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DunningSettings"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: adminUpdateDunningSettings
+      tags: [admin]
+      summary: Update the platform dunning settings (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDunningSettingsInput"
+      responses:
+        "200":
+          description: Updated dunning settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DunningSettings"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/finops:
+    get:
+      operationId: adminGetFinops
+      tags: [admin]
+      summary: Invoice-grounded financial metrics (admin only)
+      responses:
+        "200":
+          description: FinOps summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinopsSummary"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/pricing:
     get:
       operationId: adminGetPricing
@@ -4886,6 +5101,226 @@ components:
         warnPercent:
           type: integer
 
+    OverageRates:
+      type: object
+      required: [enabled, tokenUnit, tokenUnitPriceIdr, storageGbDayPriceIdr]
+      description: >-
+        Platform metered-overage pricing (Billing v2). Inert by default
+        (enabled=false + zero prices) so monthly-close raises no usage lines
+        until the operator turns it on. Whole Rupiah.
+      properties:
+        enabled:
+          type: boolean
+        tokenUnit:
+          type: integer
+          description: AI-token block size charged as one unit (e.g. 100).
+        tokenUnitPriceIdr:
+          type: integer
+          description: Price per token block, whole Rupiah.
+        storageGbDayPriceIdr:
+          type: integer
+          description: Price per GB-day of average daily storage above plafon.
+
+    UpdateOverageRatesInput:
+      type: object
+      description: Update overage rates. Omitted fields are left unchanged.
+      properties:
+        enabled:
+          type: boolean
+        tokenUnit:
+          type: integer
+        tokenUnitPriceIdr:
+          type: integer
+        storageGbDayPriceIdr:
+          type: integer
+
+    DunningSettings:
+      type: object
+      required:
+        - enabled
+        - reminder0Days
+        - reminder3Days
+        - reminder7Days
+        - suspendDays
+        - terminateDays
+      description: >-
+        Platform dunning (overdue-invoice escalation) policy (FASE F). Inert by
+        default (enabled=false) so prepaid tenants are never auto-suspended until
+        the operator turns it on. Days are counted from an invoice's due date.
+      properties:
+        enabled:
+          type: boolean
+        reminder0Days:
+          type: integer
+        reminder3Days:
+          type: integer
+        reminder7Days:
+          type: integer
+        suspendDays:
+          type: integer
+        terminateDays:
+          type: integer
+
+    UpdateDunningSettingsInput:
+      type: object
+      description: Update dunning settings. Omitted fields are left unchanged.
+      properties:
+        enabled:
+          type: boolean
+        reminder0Days:
+          type: integer
+        reminder3Days:
+          type: integer
+        reminder7Days:
+          type: integer
+        suspendDays:
+          type: integer
+        terminateDays:
+          type: integer
+
+    WalletTransaction:
+      type: object
+      required: [id, deltaIdr, kind, createdAt]
+      description: One wallet ledger entry. Positive delta = credit, negative = debit.
+      properties:
+        id:
+          type: integer
+        deltaIdr:
+          type: integer
+        kind:
+          type: string
+        sourceRef:
+          type: ["string", "null"]
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    WalletSummary:
+      type: object
+      required: [balanceIdr, transactions]
+      description: The tenant's wallet credit balance plus recent ledger history.
+      properties:
+        balanceIdr:
+          type: integer
+          description: Live (non-expired) credit balance in whole Rupiah.
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WalletTransaction"
+
+    PayInvoiceInput:
+      type: object
+      description: >-
+        Pay an OPEN invoice. Wallet credit is applied first; if it fully covers
+        the invoice the payment settles immediately, otherwise a gateway/manual
+        checkout is started for the full amount.
+      properties:
+        successRedirectUrl:
+          type: string
+
+    ChangePlanInput:
+      type: object
+      required: [planId]
+      description: >-
+        Switch the tenant's plan mid-period with proration. An upgrade raises a
+        prorated charge (returned as a checkout to pay); a downgrade applies
+        immediately and credits the prorated difference to the wallet.
+      properties:
+        planId:
+          type: integer
+        successRedirectUrl:
+          type: string
+
+    ChangeQuotaInput:
+      type: object
+      required: [addonId, quantity]
+      description: >-
+        Add a prorated add-on top-up mid-period. Raises a prorated charge for the
+        remaining days, returned as a checkout to pay.
+      properties:
+        addonId:
+          type: integer
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        successRedirectUrl:
+          type: string
+
+    ProrationResult:
+      type: object
+      required: [mode]
+      description: >-
+        Outcome of a plan/quota change. mode="charge" → pay `checkout`;
+        mode="credit" → `creditIdr` was added to the wallet and the change is
+        already applied; mode="applied" → applied with no money movement.
+      properties:
+        mode:
+          type: string
+          enum: [charge, credit, applied]
+        creditIdr:
+          type: ["integer", "null"]
+        invoiceId:
+          type: ["integer", "null"]
+        checkout:
+          oneOf:
+            - $ref: "#/components/schemas/CheckoutResult"
+            - type: "null"
+
+    FinopsSummary:
+      type: object
+      required:
+        - periodDays
+        - totalTenants
+        - activeTenants
+        - trialTenants
+        - pastDueTenants
+        - suspendedTenants
+        - expiredTenants
+        - mrr
+        - arr
+        - arpu
+        - billings
+        - recognizedRevenue
+        - churnedTenants
+        - churnRatePct
+      description: >-
+        Invoice-grounded financial metrics (FASE H). billings = cash collected
+        from paid invoices in the window; recognizedRevenue = revenue earned
+        (over-time lines accrue per-day); mrr = run-rate from active plans.
+      properties:
+        periodDays:
+          type: integer
+        totalTenants:
+          type: integer
+        activeTenants:
+          type: integer
+        trialTenants:
+          type: integer
+        pastDueTenants:
+          type: integer
+        suspendedTenants:
+          type: integer
+        expiredTenants:
+          type: integer
+        mrr:
+          type: integer
+        arr:
+          type: integer
+        arpu:
+          type: integer
+        billings:
+          type: integer
+        recognizedRevenue:
+          type: integer
+        churnedTenants:
+          type: integer
+        churnRatePct:
+          type: number
+
     WhatsappStatus:
       type: object
       required: [status]
@@ -6538,13 +6973,14 @@ components:
         Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to
         redirect to; "manual" returns the bank-transfer details and a payment
         code the customer references on transfer (the order stays pending until
-        the operator confirms it).
+        the operator confirms it); "wallet" means the tenant's credit balance
+        fully covered the amount and the order is already settled (no redirect).
       properties:
         paymentId:
           type: integer
         mode:
           type: string
-          enum: [xendit, manual]
+          enum: [xendit, manual, wallet]
         amountIdr:
           type: integer
           description: Charged amount in whole Rupiah (computed server-side).

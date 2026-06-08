@@ -3,6 +3,9 @@ import {
   getGetMyBillingQueryKey,
   useGetMyBillingTrend,
   getGetMyBillingTrendQueryKey,
+  useGetMyWallet,
+  getGetMyWalletQueryKey,
+  type WalletSummary,
 } from "@workspace/api-client-react";
 import {
   ResponsiveContainer,
@@ -58,6 +61,102 @@ function fmtDate(iso: string | null | undefined): string {
     month: "long",
     year: "numeric",
   });
+}
+
+const WALLET_KIND_LABEL: Record<string, string> = {
+  topup: "Top-up",
+  proration_credit: "Kredit proporsional",
+  downgrade_credit: "Kredit penurunan paket",
+  debit: "Pemakaian saldo",
+  cart_payment: "Pembayaran",
+  invoice_payment: "Pembayaran invoice",
+  adjustment: "Penyesuaian",
+  expiry: "Kedaluwarsa",
+};
+
+function WalletCard() {
+  const { data, isLoading } = useGetMyWallet({
+    query: {
+      queryKey: getGetMyWalletQueryKey(),
+      refetchInterval: 60_000,
+      retry: false,
+    },
+  });
+  const wallet = data as WalletSummary | undefined;
+  const txns = wallet?.transactions ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Wallet className="w-4 h-4 text-primary" />
+          Saldo Kredit
+        </CardTitle>
+        <CardDescription>
+          Kredit dipakai otomatis lebih dulu saat membayar tagihan atau membeli
+          paket.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-baseline gap-2 mb-3">
+          {isLoading ? (
+            <Skeleton className="h-8 w-32" />
+          ) : (
+            <span
+              className="text-2xl font-bold tabular-nums text-primary"
+              data-testid="wallet-balance"
+            >
+              {fmtRp(wallet?.balanceIdr ?? 0)}
+            </span>
+          )}
+        </div>
+        {txns.length === 0 ? (
+          <p
+            className="text-sm text-muted-foreground"
+            data-testid="wallet-empty"
+          >
+            Belum ada transaksi saldo.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                  <th className="py-2 pr-3 font-medium">Tanggal</th>
+                  <th className="py-2 pr-3 font-medium">Keterangan</th>
+                  <th className="py-2 font-medium text-right">Jumlah</th>
+                </tr>
+              </thead>
+              <tbody>
+                {txns.map((t) => (
+                  <tr
+                    key={t.id}
+                    data-testid={`wallet-txn-${t.id}`}
+                    className="border-b border-border/50"
+                  >
+                    <td className="py-2 pr-3 whitespace-nowrap text-xs">
+                      {fmtDate(t.createdAt)}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {WALLET_KIND_LABEL[t.kind] ?? t.kind}
+                    </td>
+                    <td
+                      className={`py-2 text-right tabular-nums ${
+                        t.deltaIdr >= 0 ? "text-emerald-500" : "text-foreground"
+                      }`}
+                    >
+                      {t.deltaIdr >= 0 ? "+" : "−"}
+                      {fmtRp(Math.abs(t.deltaIdr))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 const STATUS_MAP: Record<
@@ -250,6 +349,8 @@ export default function Billing() {
         </Card>
       ) : (
         <>
+      <WalletCard />
+
       <CheckoutSection />
 
       <Card>

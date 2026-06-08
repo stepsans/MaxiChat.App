@@ -9,7 +9,12 @@ import {
   tenantQuotaTable,
   type PaymentLineItem,
 } from "@workspace/db";
-import { CreateCheckoutBody } from "@workspace/api-zod";
+import {
+  CreateCheckoutBody,
+  PayMyInvoiceBody,
+  ChangeMyPlanBody,
+  ChangeMyQuotaBody,
+} from "@workspace/api-zod";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import {
@@ -23,7 +28,21 @@ import {
   INFINITY_PLAN_LABEL,
   INFINITY_PLAN_KEY,
 } from "../lib/infinity-owner";
-import { getOrCreateTenantQuota } from "../lib/subscription-purchase";
+import {
+  getOrCreateTenantQuota,
+  applyPlanProration,
+  addAddonToQuota,
+} from "../lib/subscription-purchase";
+import {
+  getWalletBalance,
+  listWalletTransactions,
+  recordWalletTransaction,
+} from "../lib/wallet";
+import { settleInvoiceByWallet, settleCartByWallet } from "../lib/pay-invoice";
+import { startInvoiceGatewayCheckout } from "../lib/gateway-checkout";
+import { createOpenProrationInvoice } from "../lib/proration";
+import { buildProrationLines } from "../lib/proration-build";
+import { decodeInvoiceDirective } from "../lib/proration-directive";
 import { getStorageConfig } from "../lib/storage-config";
 import {
   listInvoicesForOwner,
@@ -393,6 +412,25 @@ router.post("/checkout", async (req, res): Promise<void> => {
       .where(eq(usersTable.id, ownerUserId))
       .limit(1);
 
+    // --- Wallet-first fast path -------------------------------------------
+    // If the tenant's credit fully covers the cart, settle it straight from the
+    // wallet — no gateway / manual transfer needed. We never PARTIALLY pay a
+    // cart from the wallet (mixing credit + gateway in one order); partial
+    // credit is consumed only on metered/usage paths. Infinity owners are never
+    // billed, so they never reach checkout with a balance to spend here.
+    const walletBalance = await getWalletBalance(ownerUserId);
+    if (walletBalance >= amountIdr && amountIdr > 0) {
+      try {
+        const paidId = await settleCartByWallet(ownerUserId, amountIdr, lineItems);
+        res.json({ paymentId: paidId, mode: "wallet", amountIdr });
+        return;
+      } catch (err) {
+        // Balance shifted under us (concurrent debit) — fall through to the
+        // configured gateway/manual path rather than failing the checkout.
+        req.log.warn({ err, ownerUserId }, "wallet-first checkout fell through");
+      }
+    }
+
     // --- Manual bank-transfer checkout ------------------------------------
     // The operator collects payment off-platform and confirms it by flipping
     // the order's Status cell to LUNAS in their verification Sheet; a poller
@@ -736,6 +774,386 @@ router.get("/payments/:id/invoice", async (req, res): Promise<void> => {
     res.send(Buffer.from(pdf));
   } catch (err) {
     req.log.error({ err }, "getPaymentInvoice failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/wallet — the tenant's credit balance + recent ledger (newest
+// first). Balance is the live, non-expired total in whole Rupiah.
+router.get("/wallet", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+    const [balanceIdr, txns] = await Promise.all([
+      getWalletBalance(ownerUserId),
+      listWalletTransactions(ownerUserId, 50),
+    ]);
+    res.json({
+      balanceIdr,
+      transactions: txns.map((t) => ({
+        id: t.id,
+        deltaIdr: t.deltaIdr,
+        kind: t.kind,
+        sourceRef: t.sourceRef,
+        expiresAt: t.expiresAt,
+        createdAt: t.createdAt,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "getMyWallet failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /billing/invoices/:id/pay — settle one OPEN invoice. Wallet credit is
+// applied FIRST: if it fully covers the total the payment settles immediately
+// (mode="wallet"); otherwise a gateway/manual checkout for the FULL amount is
+// started (we never partial-pay an invoice from the wallet). The invoice's
+// deferred entitlement directive (if any) is applied on settlement.
+router.post("/invoices/:id/pay", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+
+    const invoiceId = Number(req.params.id);
+    if (!Number.isInteger(invoiceId) || invoiceId < 1) {
+      res.status(400).json({ error: "ID invoice tidak valid" });
+      return;
+    }
+    const parsed = PayMyInvoiceBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "Input tidak valid" });
+      return;
+    }
+
+    const detail = await getInvoiceForOwner(ownerUserId, invoiceId);
+    if (!detail) {
+      res.status(404).json({ error: "Invoice tidak ditemukan" });
+      return;
+    }
+    const invoice = detail.invoice;
+    if (invoice.status !== "open") {
+      res
+        .status(409)
+        .json({ error: "Invoice ini sudah dibayar atau dibatalkan" });
+      return;
+    }
+
+    const amountIdr = invoice.totalIdr;
+    // A proration invoice carries an entitlement directive; a plain bill does
+    // not. The payment kind drives the settlement branch either way.
+    const kind = decodeInvoiceDirective(invoice.notes) ? "proration" : "invoice";
+
+    // Wallet-first, full-cover only.
+    const balance = await getWalletBalance(ownerUserId);
+    if (balance >= amountIdr && amountIdr > 0) {
+      const paymentId = await settleInvoiceByWallet(
+        ownerUserId,
+        invoiceId,
+        amountIdr,
+        kind
+      );
+      if (paymentId === null) {
+        // Lost the race — another path settled it first.
+        res
+          .status(409)
+          .json({ error: "Invoice ini sudah dibayar atau dibatalkan" });
+        return;
+      }
+      res.json({ paymentId, mode: "wallet", amountIdr });
+      return;
+    }
+
+    const redirect = resolveRedirectUrl(parsed.data.successRedirectUrl);
+    const outcome = await startInvoiceGatewayCheckout(
+      ownerUserId,
+      invoice,
+      kind,
+      redirect
+    );
+    if (!outcome.ok) {
+      res.status(outcome.status).json(outcome.body);
+      return;
+    }
+    res.json(outcome.checkout);
+  } catch (err) {
+    req.log.error({ err }, "payMyInvoice failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /billing/change-plan — switch plan mid-period with proration. Downgrade
+// (net ≤ 0) applies immediately and credits the prorated difference to the
+// wallet; upgrade (net > 0) raises a prorated OPEN invoice and tries wallet-
+// first, else returns a checkout to pay. The plan change only takes effect once
+// the charge is paid (deferred via the invoice directive).
+router.post("/change-plan", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+
+    if (await isInfinityOwner(ownerUserId)) {
+      res.status(400).json({ error: "Akun ini tidak ditagih." });
+      return;
+    }
+
+    const parsed = ChangeMyPlanBody.safeParse(req.body);
+    if (!parsed.success || !Number.isInteger(parsed.data.planId)) {
+      res.status(400).json({ error: "Input tidak valid" });
+      return;
+    }
+    const { planId } = parsed.data;
+
+    const [newPlan] = await db
+      .select()
+      .from(plansTable)
+      .where(and(eq(plansTable.id, planId), eq(plansTable.isActive, true)))
+      .limit(1);
+    if (!newPlan) {
+      res.status(404).json({ error: "Paket tidak ditemukan / tidak aktif" });
+      return;
+    }
+
+    const [owner] = await db
+      .select({ plan: usersTable.plan })
+      .from(usersTable)
+      .where(eq(usersTable.id, ownerUserId))
+      .limit(1);
+    if (owner?.plan === newPlan.key) {
+      res.status(400).json({ error: "Anda sudah menggunakan paket ini." });
+      return;
+    }
+
+    // Current plan price/label drives the prorated credit (0 if none/unknown).
+    let oldPriceIdr = 0;
+    let oldLabel = "paket lama";
+    if (owner?.plan) {
+      const [cur] = await db
+        .select({ name: plansTable.name, priceIdr: plansTable.priceIdr })
+        .from(plansTable)
+        .where(eq(plansTable.key, owner.plan))
+        .limit(1);
+      if (cur) {
+        oldPriceIdr = cur.priceIdr;
+        oldLabel = `Paket ${cur.name}`;
+      }
+    }
+
+    const quota = await getOrCreateTenantQuota(ownerUserId);
+    const now = new Date();
+    // Without a bounded period window we can't prorate; apply the swap directly.
+    if (!quota.periodStart || !quota.periodEnd) {
+      await applyPlanProration(ownerUserId, newPlan);
+      res.json({ mode: "applied", invoiceId: null, creditIdr: null });
+      return;
+    }
+
+    const { netIdr } = buildProrationLines(
+      oldPriceIdr,
+      newPlan.priceIdr,
+      oldLabel,
+      `Paket ${newPlan.name}`,
+      now,
+      quota.periodStart,
+      quota.periodEnd
+    );
+
+    // Downgrade / no-cost change: apply immediately. Any prorated difference
+    // becomes wallet credit (never a cash refund).
+    if (netIdr <= 0) {
+      if (netIdr < 0) {
+        // Plan swap + prorated wallet credit must be all-or-nothing: a failed
+        // credit insert after the swap would downgrade the tenant without ever
+        // crediting the prorated difference (silent financial loss).
+        await db.transaction(async (tx) => {
+          await applyPlanProration(ownerUserId, newPlan, tx);
+          await recordWalletTransaction(
+            ownerUserId,
+            -netIdr,
+            "proration_credit",
+            { sourceRef: `plan-change:${newPlan.id}` },
+            tx
+          );
+        });
+        res.json({ mode: "credit", creditIdr: -netIdr, invoiceId: null });
+        return;
+      }
+      await applyPlanProration(ownerUserId, newPlan);
+      res.json({ mode: "applied", creditIdr: null, invoiceId: null });
+      return;
+    }
+
+    // Upgrade: raise a prorated OPEN invoice for the net charge only (the credit
+    // for the old plan is netted into it). The plan swap is deferred until paid.
+    const chargeLines = buildProrationLines(
+      oldPriceIdr,
+      newPlan.priceIdr,
+      oldLabel,
+      `Paket ${newPlan.name}`,
+      now,
+      quota.periodStart,
+      quota.periodEnd
+    ).lines;
+    const { id: invId, totalIdr } = await createOpenProrationInvoice(
+      ownerUserId,
+      chargeLines,
+      { t: "plan", planId: newPlan.id }
+    );
+    const detail = await getInvoiceForOwner(ownerUserId, invId);
+    if (!detail) {
+      res.status(500).json({ error: "Gagal membuat invoice prorata" });
+      return;
+    }
+
+    // Wallet-first full cover → settle now (change applied immediately).
+    const balance = await getWalletBalance(ownerUserId);
+    if (balance >= totalIdr && totalIdr > 0) {
+      const paymentId = await settleInvoiceByWallet(
+        ownerUserId,
+        invId,
+        totalIdr,
+        "proration"
+      );
+      if (paymentId !== null) {
+        res.json({ mode: "applied", invoiceId: invId, creditIdr: null });
+        return;
+      }
+    }
+
+    const redirect = resolveRedirectUrl(parsed.data.successRedirectUrl);
+    const outcome = await startInvoiceGatewayCheckout(
+      ownerUserId,
+      detail.invoice,
+      "proration",
+      redirect
+    );
+    if (!outcome.ok) {
+      res.status(outcome.status).json(outcome.body);
+      return;
+    }
+    res.json({ mode: "charge", invoiceId: invId, checkout: outcome.checkout });
+  } catch (err) {
+    req.log.error({ err }, "changeMyPlan failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /billing/change-quota — add a prorated add-on top-up mid-period. Raises a
+// prorated OPEN invoice for the remaining days and tries wallet-first, else
+// returns a checkout to pay. The top-up applies only once paid.
+router.post("/change-quota", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+
+    if (await isInfinityOwner(ownerUserId)) {
+      res.status(400).json({ error: "Akun ini tidak ditagih." });
+      return;
+    }
+
+    const parsed = ChangeMyQuotaBody.safeParse(req.body);
+    if (
+      !parsed.success ||
+      !Number.isInteger(parsed.data.addonId) ||
+      !Number.isInteger(parsed.data.quantity) ||
+      parsed.data.quantity < 1
+    ) {
+      res.status(400).json({ error: "Input tidak valid" });
+      return;
+    }
+    const { addonId, quantity } = parsed.data;
+
+    const [addon] = await db
+      .select()
+      .from(addonsTable)
+      .where(and(eq(addonsTable.id, addonId), eq(addonsTable.isActive, true)))
+      .limit(1);
+    if (!addon) {
+      res.status(404).json({ error: "Add-on tidak ditemukan / tidak aktif" });
+      return;
+    }
+
+    const quota = await getOrCreateTenantQuota(ownerUserId);
+    const now = new Date();
+    // No period window → apply the top-up directly (no proration possible).
+    if (!quota.periodStart || !quota.periodEnd) {
+      await addAddonToQuota(ownerUserId, addon, quantity);
+      res.json({ mode: "applied", invoiceId: null, creditIdr: null });
+      return;
+    }
+
+    const { lines, netIdr } = buildProrationLines(
+      0,
+      addon.priceIdr * quantity,
+      "",
+      `Add-on ${addon.name}${quantity > 1 ? ` x${quantity}` : ""}`,
+      now,
+      quota.periodStart,
+      quota.periodEnd
+    );
+
+    // Free / zero-cost add-on: apply immediately, no invoice.
+    if (netIdr <= 0) {
+      await addAddonToQuota(ownerUserId, addon, quantity);
+      res.json({ mode: "applied", invoiceId: null, creditIdr: null });
+      return;
+    }
+
+    const { id: invId, totalIdr } = await createOpenProrationInvoice(
+      ownerUserId,
+      lines,
+      { t: "addon", addonId: addon.id, quantity }
+    );
+    const detail = await getInvoiceForOwner(ownerUserId, invId);
+    if (!detail) {
+      res.status(500).json({ error: "Gagal membuat invoice prorata" });
+      return;
+    }
+
+    const balance = await getWalletBalance(ownerUserId);
+    if (balance >= totalIdr && totalIdr > 0) {
+      const paymentId = await settleInvoiceByWallet(
+        ownerUserId,
+        invId,
+        totalIdr,
+        "proration"
+      );
+      if (paymentId !== null) {
+        res.json({ mode: "applied", invoiceId: invId, creditIdr: null });
+        return;
+      }
+    }
+
+    const redirect = resolveRedirectUrl(parsed.data.successRedirectUrl);
+    const outcome = await startInvoiceGatewayCheckout(
+      ownerUserId,
+      detail.invoice,
+      "proration",
+      redirect
+    );
+    if (!outcome.ok) {
+      res.status(outcome.status).json(outcome.body);
+      return;
+    }
+    res.json({ mode: "charge", invoiceId: invId, checkout: outcome.checkout });
+  } catch (err) {
+    req.log.error({ err }, "changeMyQuota failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

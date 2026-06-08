@@ -23,7 +23,11 @@ import { paymentsTable } from "./payments";
 // `paymentId` links a payment-derived invoice back to its ledger row and is
 // UNIQUEly indexed so a payment yields at most ONE invoice (idempotent
 // settlement + backfill). Monthly-close invoices carry a null paymentId.
-export const invoiceSources = ["payment", "monthly_close"] as const;
+export const invoiceSources = [
+  "payment",
+  "monthly_close",
+  "proration",
+] as const;
 export type InvoiceSource = (typeof invoiceSources)[number];
 
 export const invoiceStatuses = ["open", "paid", "void"] as const;
@@ -75,6 +79,10 @@ export const invoicesTable = pgTable(
     issuedAt: timestamp("issued_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Payment due date (Billing v2 — FASE F). Snapshotted at issue; the dunning
+    // sweep treats an `open` invoice past this instant as overdue. Null for
+    // payment-derived invoices (already paid at issue).
+    dueAt: timestamp("due_at", { withTimezone: true }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     voidedAt: timestamp("voided_at", { withTimezone: true }),
     notes: text("notes"),

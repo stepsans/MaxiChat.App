@@ -4,8 +4,12 @@ import {
   getListMyInvoicesQueryKey,
   useGetMyInvoice,
   getGetMyInvoiceQueryKey,
+  usePayMyInvoice,
+  getGetMyWalletQueryKey,
+  getGetMyBillingQueryKey,
   type InvoiceRecord,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -24,7 +28,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, FileDown, Loader2, Eye } from "lucide-react";
+import { FileText, FileDown, Loader2, Eye, CreditCard, Landmark } from "lucide-react";
+import type { CheckoutResult } from "@workspace/api-client-react";
 
 function fmtRp(n: number): string {
   return "Rp " + new Intl.NumberFormat("id-ID").format(n);
@@ -65,8 +70,50 @@ const LINE_TYPE_LABEL: Record<string, string> = {
 
 export default function InvoiceHistory() {
   const { toast } = useToast();
+  const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [payingId, setPayingId] = useState<number | null>(null);
+  const [manualResult, setManualResult] = useState<CheckoutResult | null>(null);
+
+  const payInvoice = usePayMyInvoice({
+    mutation: {
+      onSuccess: (result) => {
+        if (result.mode === "xendit" && result.invoiceUrl) {
+          window.location.href = result.invoiceUrl;
+          return;
+        }
+        if (result.mode === "manual") {
+          setManualResult(result);
+        } else {
+          // wallet — settled immediately
+          toast({
+            title: "Tagihan lunas",
+            description: "Invoice dibayar dari saldo kredit Anda.",
+          });
+        }
+        qc.invalidateQueries({ queryKey: getListMyInvoicesQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetMyWalletQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetMyBillingQueryKey() });
+      },
+      onError: () => {
+        toast({
+          title: "Gagal memproses pembayaran",
+          description: "Coba lagi sebentar lagi.",
+          variant: "destructive",
+        });
+      },
+      onSettled: () => setPayingId(null),
+    },
+  });
+
+  function payNow(inv: InvoiceRecord) {
+    setPayingId(inv.id);
+    payInvoice.mutate({
+      id: inv.id,
+      data: { successRedirectUrl: window.location.href },
+    });
+  }
 
   const { data, isLoading, isError } = useListMyInvoices({
     query: {
@@ -202,6 +249,23 @@ export default function InvoiceHistory() {
                               <Eye className="w-3.5 h-3.5" />
                               Lihat
                             </Button>
+                            {inv.status === "open" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-7"
+                                disabled={payingId === inv.id}
+                                onClick={() => payNow(inv)}
+                                data-testid={`invoice-pay-${inv.id}`}
+                              >
+                                {payingId === inv.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <CreditCard className="w-3.5 h-3.5" />
+                                )}
+                                Bayar
+                              </Button>
+                            )}
                             {inv.paymentId != null && (
                               <Button
                                 type="button"
@@ -324,6 +388,70 @@ export default function InvoiceHistory() {
                   </span>
                 </div>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual transfer instructions (after a manual-mode pay) */}
+      <Dialog
+        open={manualResult != null}
+        onOpenChange={(o) => !o && setManualResult(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Landmark className="w-5 h-5 text-primary" />
+              Instruksi Transfer
+            </DialogTitle>
+            <DialogDescription>
+              Transfer sesuai nominal lalu cantumkan kode pembayaran. Pesanan
+              akan dikonfirmasi otomatis setelah pembayaran diverifikasi.
+            </DialogDescription>
+          </DialogHeader>
+          {manualResult && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Jumlah</span>
+                <span className="font-semibold tabular-nums">
+                  {fmtRp(manualResult.amountIdr)}
+                </span>
+              </div>
+              {manualResult.bankName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Bank</span>
+                  <span className="font-medium">{manualResult.bankName}</span>
+                </div>
+              )}
+              {manualResult.bankAccountNumber && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">No. Rekening</span>
+                  <span className="font-mono font-medium">
+                    {manualResult.bankAccountNumber}
+                  </span>
+                </div>
+              )}
+              {manualResult.bankAccountHolder && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Atas Nama</span>
+                  <span className="font-medium">
+                    {manualResult.bankAccountHolder}
+                  </span>
+                </div>
+              )}
+              {manualResult.code && (
+                <div className="flex items-center justify-between border-t border-border pt-3">
+                  <span className="text-muted-foreground">Kode Pembayaran</span>
+                  <span className="font-mono font-semibold text-primary">
+                    {manualResult.code}
+                  </span>
+                </div>
+              )}
+              {manualResult.manualInstructions && (
+                <p className="text-xs text-muted-foreground border-t border-border pt-3">
+                  {manualResult.manualInstructions}
+                </p>
+              )}
             </div>
           )}
         </DialogContent>

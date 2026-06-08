@@ -18,6 +18,7 @@ import { usersTable } from "./auth";
 export const subscriptionStatuses = [
   "trial",
   "active",
+  "past_due",
   "expired",
   "suspended",
 ] as const;
@@ -34,6 +35,13 @@ export const subscriptionsTable = pgTable(
     // End of the current paid/trial period. After this instant the tenant is
     // considered overdue (the enforcement layer will flip status to expired).
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    // Dunning (Billing v2 — FASE F). When an unpaid monthly_close invoice goes
+    // overdue the sweep records when dunning began and, once past the grace
+    // window, a grace deadline after which writes are blocked (past_due → the
+    // tenant keeps full access until grace_until, then read-only). Null when no
+    // dunning is in progress.
+    dunningStartedAt: timestamp("dunning_started_at", { withTimezone: true }),
+    graceUntil: timestamp("grace_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

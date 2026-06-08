@@ -21,11 +21,22 @@ import {
   useAdminGetStorageConfig,
   useAdminUpdateStorageConfig,
   getAdminGetStorageConfigQueryKey,
+  useAdminGetOverageRates,
+  useAdminUpdateOverageRates,
+  getAdminGetOverageRatesQueryKey,
+  useAdminGetDunningSettings,
+  useAdminUpdateDunningSettings,
+  getAdminGetDunningSettingsQueryKey,
+  useAdminGetFinops,
+  getAdminGetFinopsQueryKey,
   type PaymentGatewayConfig,
   type PaymentMethodSettings,
   type Credential,
   type TaxConfig,
   type StorageConfig,
+  type OverageRates,
+  type DunningSettings,
+  type FinopsSummary,
 } from "@workspace/api-client-react";
 import {
   Loader2,
@@ -45,6 +56,9 @@ import {
   Link2,
   Percent,
   HardDrive,
+  Gauge,
+  Bell,
+  BarChart3,
 } from "lucide-react";
 import { SiGoogle } from "react-icons/si";
 
@@ -824,6 +838,425 @@ function StorageEnforcementSection({
   );
 }
 
+function OverageRatesSection({
+  onError,
+  onOk,
+}: {
+  onError: (m: string) => void;
+  onOk: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+  const query = useAdminGetOverageRates({
+    query: { queryKey: getAdminGetOverageRatesQueryKey() },
+  });
+  const rates = query.data as OverageRates | undefined;
+
+  const [enabled, setEnabled] = useState(false);
+  const [tokenUnit, setTokenUnit] = useState("100");
+  const [tokenUnitPrice, setTokenUnitPrice] = useState("0");
+  const [storageGbDayPrice, setStorageGbDayPrice] = useState("0");
+
+  useEffect(() => {
+    if (!rates) return;
+    setEnabled(rates.enabled);
+    setTokenUnit(String(rates.tokenUnit));
+    setTokenUnitPrice(String(rates.tokenUnitPriceIdr));
+    setStorageGbDayPrice(String(rates.storageGbDayPriceIdr));
+  }, [
+    rates?.enabled,
+    rates?.tokenUnit,
+    rates?.tokenUnitPriceIdr,
+    rates?.storageGbDayPriceIdr,
+  ]);
+
+  const save = useAdminUpdateOverageRates({
+    mutation: {
+      onSuccess: () => {
+        onOk("Tarif kelebihan pemakaian tersimpan.");
+        qc.invalidateQueries({ queryKey: getAdminGetOverageRatesQueryKey() });
+      },
+      onError: (err: any) =>
+        onError(err?.data?.error ?? "Gagal menyimpan tarif kelebihan pemakaian"),
+    },
+  });
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    onError("");
+    const unit = Number(tokenUnit.replace(",", "."));
+    const unitPrice = Number(tokenUnitPrice.replace(",", "."));
+    const gbDay = Number(storageGbDayPrice.replace(",", "."));
+    if (!Number.isInteger(unit) || unit < 1) {
+      onError("Ukuran blok token harus bilangan bulat ≥ 1.");
+      return;
+    }
+    if (!Number.isInteger(unitPrice) || unitPrice < 0) {
+      onError("Harga per blok token harus bilangan bulat Rupiah ≥ 0.");
+      return;
+    }
+    if (!Number.isInteger(gbDay) || gbDay < 0) {
+      onError("Harga penyimpanan per GB-hari harus bilangan bulat Rupiah ≥ 0.");
+      return;
+    }
+    save.mutate({
+      data: {
+        enabled,
+        tokenUnit: unit,
+        tokenUnitPriceIdr: unitPrice,
+        storageGbDayPriceIdr: gbDay,
+      },
+    });
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="border border-border rounded-lg bg-card p-4 space-y-4"
+    >
+      <div>
+        <h2 className="text-sm font-semibold flex items-center gap-1.5">
+          <Gauge className="w-4 h-4 text-muted-foreground" />
+          Kelebihan Pemakaian (Overage)
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
+          Nonaktif = pemakaian di atas kuota tidak ditagih (perilaku default).
+          Aktif = penutupan bulanan menambahkan baris tagihan untuk token AI dan
+          penyimpanan rata-rata yang melebihi plafon.
+        </p>
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          data-testid="toggle-overage"
+          className="h-4 w-4 rounded border-border"
+        />
+        <span className="text-xs text-foreground">
+          Aktifkan penagihan kelebihan pemakaian
+        </span>
+      </label>
+
+      <div className="grid sm:grid-cols-3 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">
+            Ukuran blok token
+          </span>
+          <input
+            value={tokenUnit}
+            onChange={(e) => setTokenUnit(e.target.value)}
+            inputMode="numeric"
+            placeholder="100"
+            disabled={!enabled}
+            data-testid="input-overage-token-unit"
+            className={`${inputCls} disabled:opacity-50`}
+          />
+          <span className="text-[10px] text-muted-foreground">
+            Jumlah token per satu unit tagihan.
+          </span>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">
+            Harga / blok token (Rp)
+          </span>
+          <input
+            value={tokenUnitPrice}
+            onChange={(e) => setTokenUnitPrice(e.target.value)}
+            inputMode="numeric"
+            placeholder="0"
+            disabled={!enabled}
+            data-testid="input-overage-token-price"
+            className={`${inputCls} disabled:opacity-50`}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">
+            Harga / GB-hari (Rp)
+          </span>
+          <input
+            value={storageGbDayPrice}
+            onChange={(e) => setStorageGbDayPrice(e.target.value)}
+            inputMode="numeric"
+            placeholder="0"
+            disabled={!enabled}
+            data-testid="input-overage-storage-price"
+            className={`${inputCls} disabled:opacity-50`}
+          />
+          <span className="text-[10px] text-muted-foreground">
+            Penyimpanan rata-rata harian di atas plafon.
+          </span>
+        </label>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={save.isPending}
+          data-testid="save-overage-rates"
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+        >
+          {save.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          Simpan tarif
+        </button>
+        {rates && <StatusPill configured={rates.enabled} />}
+      </div>
+    </form>
+  );
+}
+
+function DunningSettingsSection({
+  onError,
+  onOk,
+}: {
+  onError: (m: string) => void;
+  onOk: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+  const query = useAdminGetDunningSettings({
+    query: { queryKey: getAdminGetDunningSettingsQueryKey() },
+  });
+  const settings = query.data as DunningSettings | undefined;
+
+  const [enabled, setEnabled] = useState(false);
+  const [reminder0, setReminder0] = useState("0");
+  const [reminder3, setReminder3] = useState("3");
+  const [reminder7, setReminder7] = useState("7");
+  const [suspend, setSuspend] = useState("14");
+  const [terminate, setTerminate] = useState("30");
+
+  useEffect(() => {
+    if (!settings) return;
+    setEnabled(settings.enabled);
+    setReminder0(String(settings.reminder0Days));
+    setReminder3(String(settings.reminder3Days));
+    setReminder7(String(settings.reminder7Days));
+    setSuspend(String(settings.suspendDays));
+    setTerminate(String(settings.terminateDays));
+  }, [
+    settings?.enabled,
+    settings?.reminder0Days,
+    settings?.reminder3Days,
+    settings?.reminder7Days,
+    settings?.suspendDays,
+    settings?.terminateDays,
+  ]);
+
+  const save = useAdminUpdateDunningSettings({
+    mutation: {
+      onSuccess: () => {
+        onOk("Kebijakan penagihan tertunggak tersimpan.");
+        qc.invalidateQueries({ queryKey: getAdminGetDunningSettingsQueryKey() });
+      },
+      onError: (err: any) =>
+        onError(err?.data?.error ?? "Gagal menyimpan kebijakan penagihan"),
+    },
+  });
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    onError("");
+    const fields = [
+      ["reminder0Days", reminder0],
+      ["reminder3Days", reminder3],
+      ["reminder7Days", reminder7],
+      ["suspendDays", suspend],
+      ["terminateDays", terminate],
+    ] as const;
+    const parsed: Record<string, number> = {};
+    for (const [key, raw] of fields) {
+      const n = Number(raw.replace(",", "."));
+      if (!Number.isInteger(n) || n < 0) {
+        onError("Semua hari harus bilangan bulat ≥ 0.");
+        return;
+      }
+      parsed[key] = n;
+    }
+    save.mutate({
+      data: {
+        enabled,
+        reminder0Days: parsed.reminder0Days,
+        reminder3Days: parsed.reminder3Days,
+        reminder7Days: parsed.reminder7Days,
+        suspendDays: parsed.suspendDays,
+        terminateDays: parsed.terminateDays,
+      },
+    });
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="border border-border rounded-lg bg-card p-4 space-y-4"
+    >
+      <div>
+        <h2 className="text-sm font-semibold flex items-center gap-1.5">
+          <Bell className="w-4 h-4 text-muted-foreground" />
+          Penagihan Tertunggak (Dunning)
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
+          Nonaktif = tenant tidak pernah ditangguhkan otomatis (perilaku
+          default). Aktif = invoice yang lewat jatuh tempo dieskalasi: pengingat,
+          lalu penangguhan, lalu penghentian. Hari dihitung dari tanggal jatuh
+          tempo invoice.
+        </p>
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          data-testid="toggle-dunning"
+          className="h-4 w-4 rounded border-border"
+        />
+        <span className="text-xs text-foreground">
+          Aktifkan eskalasi penagihan tertunggak
+        </span>
+      </label>
+
+      <div className="grid sm:grid-cols-3 gap-3">
+        {[
+          ["Pengingat ke-1 (hari)", reminder0, setReminder0, "input-dunning-r0"],
+          ["Pengingat ke-2 (hari)", reminder3, setReminder3, "input-dunning-r3"],
+          ["Pengingat ke-3 (hari)", reminder7, setReminder7, "input-dunning-r7"],
+          ["Tangguhkan (hari)", suspend, setSuspend, "input-dunning-suspend"],
+          ["Hentikan (hari)", terminate, setTerminate, "input-dunning-terminate"],
+        ].map(([label, val, setter, testId]) => (
+          <label key={testId as string} className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">
+              {label as string}
+            </span>
+            <input
+              value={val as string}
+              onChange={(e) => (setter as (v: string) => void)(e.target.value)}
+              inputMode="numeric"
+              disabled={!enabled}
+              data-testid={testId as string}
+              className={`${inputCls} disabled:opacity-50`}
+            />
+          </label>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={save.isPending}
+          data-testid="save-dunning-settings"
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover-elevate disabled:opacity-60"
+        >
+          {save.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          Simpan kebijakan
+        </button>
+        {settings && <StatusPill configured={settings.enabled} />}
+      </div>
+    </form>
+  );
+}
+
+function fmtRpAdmin(n: number): string {
+  return "Rp " + new Intl.NumberFormat("id-ID").format(n);
+}
+
+function FinopsSection() {
+  const query = useAdminGetFinops({
+    query: { queryKey: getAdminGetFinopsQueryKey() },
+  });
+  const f = query.data as FinopsSummary | undefined;
+
+  const moneyMetrics: { label: string; value: number }[] = f
+    ? [
+        { label: "MRR", value: f.mrr },
+        { label: "ARR", value: f.arr },
+        { label: "ARPU", value: f.arpu },
+        { label: "Penerimaan (30 hari)", value: f.billings },
+        { label: "Pendapatan diakui (30 hari)", value: f.recognizedRevenue },
+      ]
+    : [];
+
+  const countMetrics: { label: string; value: string }[] = f
+    ? [
+        { label: "Total tenant", value: String(f.totalTenants) },
+        { label: "Aktif", value: String(f.activeTenants) },
+        { label: "Trial", value: String(f.trialTenants) },
+        { label: "Jatuh tempo", value: String(f.pastDueTenants) },
+        { label: "Ditangguhkan", value: String(f.suspendedTenants) },
+        { label: "Kedaluwarsa", value: String(f.expiredTenants) },
+        { label: "Churn (30 hari)", value: String(f.churnedTenants) },
+        { label: "Churn rate", value: `${f.churnRatePct.toFixed(1)}%` },
+      ]
+    : [];
+
+  return (
+    <div className="border border-border rounded-lg bg-card p-4 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold flex items-center gap-1.5">
+          <BarChart3 className="w-4 h-4 text-muted-foreground" />
+          FinOps (berbasis invoice)
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
+          Metrik keuangan dihitung dari invoice resmi: penerimaan kas, pendapatan
+          yang diakui per hari, MRR/ARR, ARPU, dan churn dalam 30 hari terakhir.
+        </p>
+      </div>
+
+      {query.isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="w-4 h-4 animate-spin" /> Memuat metrik…
+        </div>
+      ) : query.isError || !f ? (
+        <p className="text-sm text-destructive py-2" data-testid="finops-error">
+          Gagal memuat metrik FinOps.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid sm:grid-cols-3 gap-3">
+            {moneyMetrics.map((m) => (
+              <div
+                key={m.label}
+                data-testid={`finops-${m.label}`}
+                className="rounded-md border border-border bg-input/40 p-3"
+              >
+                <div className="text-[11px] text-muted-foreground">
+                  {m.label}
+                </div>
+                <div className="text-base font-semibold tabular-nums mt-0.5">
+                  {fmtRpAdmin(m.value)}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {countMetrics.map((m) => (
+              <div
+                key={m.label}
+                data-testid={`finops-${m.label}`}
+                className="rounded-md border border-border bg-input/40 p-3"
+              >
+                <div className="text-[11px] text-muted-foreground">
+                  {m.label}
+                </div>
+                <div className="text-base font-semibold tabular-nums mt-0.5">
+                  {m.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PaymentGateway() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -1169,6 +1602,15 @@ export default function PaymentGateway() {
         onError={(m) => setError(m || null)}
         onOk={flashOk}
       />
+
+      <OverageRatesSection onError={(m) => setError(m || null)} onOk={flashOk} />
+
+      <DunningSettingsSection
+        onError={(m) => setError(m || null)}
+        onOk={flashOk}
+      />
+
+      <FinopsSection />
     </div>
   );
 }

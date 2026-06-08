@@ -44,6 +44,8 @@ import type {
   AuthUser,
   AutoReplyUpdate,
   BillingCatalog,
+  ChangePlanInput,
+  ChangeQuotaInput,
   Channel,
   ChannelCreate,
   ChannelPairQr,
@@ -81,10 +83,12 @@ import type {
   DeleteKnowledgeType409,
   DeleteMessageForMe200,
   DriveFolderRef,
+  DunningSettings,
   EditMessageTextBody,
   EffectivePermissions,
   EmailVerificationResult,
   ErrorResponse,
+  FinopsSummary,
   Flow,
   FlowCreateInput,
   FlowImportInput,
@@ -126,7 +130,9 @@ import type {
   OkResponse,
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
+  OverageRates,
   OwnerTrend,
+  PayInvoiceInput,
   PaymentGatewayConfig,
   PaymentMethodSettings,
   PaymentRecord,
@@ -138,6 +144,7 @@ import type {
   Product,
   ProductInput,
   ProductSyncConfigInput,
+  ProrationResult,
   PurgeChatsResult,
   PushRegisterInput,
   PushUnregisterInput,
@@ -193,6 +200,8 @@ import type {
   UpdateAddonInput,
   UpdateAgentInput,
   UpdateCustomerLabelInput,
+  UpdateDunningSettingsInput,
+  UpdateOverageRatesInput,
   UpdatePaymentConfigInput,
   UpdatePaymentMethodInput,
   UpdatePlanInput,
@@ -209,6 +218,7 @@ import type {
   UserChannelAccessDetail,
   UserPermissionDetail,
   VerifyEmailInput,
+  WalletSummary,
   WhatsappBio,
   WhatsappBioInput,
   WhatsappStatus,
@@ -3325,6 +3335,670 @@ export function useGetMyInvoice<TData = Awaited<ReturnType<typeof getMyInvoice>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMyInvoiceQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPayMyInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/invoices/${id}/pay`
+}
+
+/**
+ * @summary Pay an open invoice (wallet-first, then gateway)
+ */
+export const payMyInvoice = async (id: number,
+    payInvoiceInput?: PayInvoiceInput, options?: RequestInit): Promise<CheckoutResult> => {
+
+  return customFetch<CheckoutResult>(getPayMyInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      payInvoiceInput,)
+  }
+);}
+
+
+
+
+export const getPayMyInvoiceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof payMyInvoice>>, TError,{id: number;data?: BodyType<PayInvoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof payMyInvoice>>, TError,{id: number;data?: BodyType<PayInvoiceInput>}, TContext> => {
+
+const mutationKey = ['payMyInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof payMyInvoice>>, {id: number;data?: BodyType<PayInvoiceInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  payMyInvoice(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PayMyInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof payMyInvoice>>>
+    export type PayMyInvoiceMutationBody = BodyType<PayInvoiceInput> | undefined
+    export type PayMyInvoiceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Pay an open invoice (wallet-first, then gateway)
+ */
+export const usePayMyInvoice = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof payMyInvoice>>, TError,{id: number;data?: BodyType<PayInvoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof payMyInvoice>>,
+        TError,
+        {id: number;data?: BodyType<PayInvoiceInput>},
+        TContext
+      > => {
+      return useMutation(getPayMyInvoiceMutationOptions(options));
+    }
+
+export const getGetMyWalletUrl = () => {
+
+
+
+
+  return `/api/billing/wallet`
+}
+
+/**
+ * @summary The tenant's wallet credit balance and ledger
+ */
+export const getMyWallet = async ( options?: RequestInit): Promise<WalletSummary> => {
+
+  return customFetch<WalletSummary>(getGetMyWalletUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyWalletQueryKey = () => {
+    return [
+    `/api/billing/wallet`
+    ] as const;
+    }
+
+
+export const getGetMyWalletQueryOptions = <TData = Awaited<ReturnType<typeof getMyWallet>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyWallet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyWalletQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyWallet>>> = ({ signal }) => getMyWallet({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyWallet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyWalletQueryResult = NonNullable<Awaited<ReturnType<typeof getMyWallet>>>
+export type GetMyWalletQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The tenant's wallet credit balance and ledger
+ */
+
+export function useGetMyWallet<TData = Awaited<ReturnType<typeof getMyWallet>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyWallet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyWalletQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getChangeMyPlanUrl = () => {
+
+
+
+
+  return `/api/billing/change-plan`
+}
+
+/**
+ * @summary Switch plan mid-period with proration
+ */
+export const changeMyPlan = async (changePlanInput: ChangePlanInput, options?: RequestInit): Promise<ProrationResult> => {
+
+  return customFetch<ProrationResult>(getChangeMyPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      changePlanInput,)
+  }
+);}
+
+
+
+
+export const getChangeMyPlanMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeMyPlan>>, TError,{data: BodyType<ChangePlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof changeMyPlan>>, TError,{data: BodyType<ChangePlanInput>}, TContext> => {
+
+const mutationKey = ['changeMyPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof changeMyPlan>>, {data: BodyType<ChangePlanInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  changeMyPlan(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChangeMyPlanMutationResult = NonNullable<Awaited<ReturnType<typeof changeMyPlan>>>
+    export type ChangeMyPlanMutationBody = BodyType<ChangePlanInput>
+    export type ChangeMyPlanMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Switch plan mid-period with proration
+ */
+export const useChangeMyPlan = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeMyPlan>>, TError,{data: BodyType<ChangePlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof changeMyPlan>>,
+        TError,
+        {data: BodyType<ChangePlanInput>},
+        TContext
+      > => {
+      return useMutation(getChangeMyPlanMutationOptions(options));
+    }
+
+export const getChangeMyQuotaUrl = () => {
+
+
+
+
+  return `/api/billing/change-quota`
+}
+
+/**
+ * @summary Add a prorated add-on top-up mid-period
+ */
+export const changeMyQuota = async (changeQuotaInput: ChangeQuotaInput, options?: RequestInit): Promise<ProrationResult> => {
+
+  return customFetch<ProrationResult>(getChangeMyQuotaUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      changeQuotaInput,)
+  }
+);}
+
+
+
+
+export const getChangeMyQuotaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeMyQuota>>, TError,{data: BodyType<ChangeQuotaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof changeMyQuota>>, TError,{data: BodyType<ChangeQuotaInput>}, TContext> => {
+
+const mutationKey = ['changeMyQuota'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof changeMyQuota>>, {data: BodyType<ChangeQuotaInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  changeMyQuota(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChangeMyQuotaMutationResult = NonNullable<Awaited<ReturnType<typeof changeMyQuota>>>
+    export type ChangeMyQuotaMutationBody = BodyType<ChangeQuotaInput>
+    export type ChangeMyQuotaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add a prorated add-on top-up mid-period
+ */
+export const useChangeMyQuota = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeMyQuota>>, TError,{data: BodyType<ChangeQuotaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof changeMyQuota>>,
+        TError,
+        {data: BodyType<ChangeQuotaInput>},
+        TContext
+      > => {
+      return useMutation(getChangeMyQuotaMutationOptions(options));
+    }
+
+export const getAdminGetOverageRatesUrl = () => {
+
+
+
+
+  return `/api/admin/overage-rates`
+}
+
+/**
+ * @summary Get the platform metered-overage rates (admin only)
+ */
+export const adminGetOverageRates = async ( options?: RequestInit): Promise<OverageRates> => {
+
+  return customFetch<OverageRates>(getAdminGetOverageRatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetOverageRatesQueryKey = () => {
+    return [
+    `/api/admin/overage-rates`
+    ] as const;
+    }
+
+
+export const getAdminGetOverageRatesQueryOptions = <TData = Awaited<ReturnType<typeof adminGetOverageRates>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetOverageRates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetOverageRatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetOverageRates>>> = ({ signal }) => adminGetOverageRates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetOverageRates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetOverageRatesQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetOverageRates>>>
+export type AdminGetOverageRatesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the platform metered-overage rates (admin only)
+ */
+
+export function useAdminGetOverageRates<TData = Awaited<ReturnType<typeof adminGetOverageRates>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetOverageRates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetOverageRatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdateOverageRatesUrl = () => {
+
+
+
+
+  return `/api/admin/overage-rates`
+}
+
+/**
+ * @summary Update the platform metered-overage rates (admin only)
+ */
+export const adminUpdateOverageRates = async (updateOverageRatesInput: UpdateOverageRatesInput, options?: RequestInit): Promise<OverageRates> => {
+
+  return customFetch<OverageRates>(getAdminUpdateOverageRatesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateOverageRatesInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateOverageRatesMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateOverageRates>>, TError,{data: BodyType<UpdateOverageRatesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateOverageRates>>, TError,{data: BodyType<UpdateOverageRatesInput>}, TContext> => {
+
+const mutationKey = ['adminUpdateOverageRates'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateOverageRates>>, {data: BodyType<UpdateOverageRatesInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminUpdateOverageRates(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateOverageRatesMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateOverageRates>>>
+    export type AdminUpdateOverageRatesMutationBody = BodyType<UpdateOverageRatesInput>
+    export type AdminUpdateOverageRatesMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the platform metered-overage rates (admin only)
+ */
+export const useAdminUpdateOverageRates = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateOverageRates>>, TError,{data: BodyType<UpdateOverageRatesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateOverageRates>>,
+        TError,
+        {data: BodyType<UpdateOverageRatesInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateOverageRatesMutationOptions(options));
+    }
+
+export const getAdminGetDunningSettingsUrl = () => {
+
+
+
+
+  return `/api/admin/dunning-settings`
+}
+
+/**
+ * @summary Get the platform dunning settings (admin only)
+ */
+export const adminGetDunningSettings = async ( options?: RequestInit): Promise<DunningSettings> => {
+
+  return customFetch<DunningSettings>(getAdminGetDunningSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetDunningSettingsQueryKey = () => {
+    return [
+    `/api/admin/dunning-settings`
+    ] as const;
+    }
+
+
+export const getAdminGetDunningSettingsQueryOptions = <TData = Awaited<ReturnType<typeof adminGetDunningSettings>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetDunningSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetDunningSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetDunningSettings>>> = ({ signal }) => adminGetDunningSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetDunningSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetDunningSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetDunningSettings>>>
+export type AdminGetDunningSettingsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the platform dunning settings (admin only)
+ */
+
+export function useAdminGetDunningSettings<TData = Awaited<ReturnType<typeof adminGetDunningSettings>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetDunningSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetDunningSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAdminUpdateDunningSettingsUrl = () => {
+
+
+
+
+  return `/api/admin/dunning-settings`
+}
+
+/**
+ * @summary Update the platform dunning settings (admin only)
+ */
+export const adminUpdateDunningSettings = async (updateDunningSettingsInput: UpdateDunningSettingsInput, options?: RequestInit): Promise<DunningSettings> => {
+
+  return customFetch<DunningSettings>(getAdminUpdateDunningSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateDunningSettingsInput,)
+  }
+);}
+
+
+
+
+export const getAdminUpdateDunningSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateDunningSettings>>, TError,{data: BodyType<UpdateDunningSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adminUpdateDunningSettings>>, TError,{data: BodyType<UpdateDunningSettingsInput>}, TContext> => {
+
+const mutationKey = ['adminUpdateDunningSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adminUpdateDunningSettings>>, {data: BodyType<UpdateDunningSettingsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  adminUpdateDunningSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdminUpdateDunningSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof adminUpdateDunningSettings>>>
+    export type AdminUpdateDunningSettingsMutationBody = BodyType<UpdateDunningSettingsInput>
+    export type AdminUpdateDunningSettingsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the platform dunning settings (admin only)
+ */
+export const useAdminUpdateDunningSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adminUpdateDunningSettings>>, TError,{data: BodyType<UpdateDunningSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adminUpdateDunningSettings>>,
+        TError,
+        {data: BodyType<UpdateDunningSettingsInput>},
+        TContext
+      > => {
+      return useMutation(getAdminUpdateDunningSettingsMutationOptions(options));
+    }
+
+export const getAdminGetFinopsUrl = () => {
+
+
+
+
+  return `/api/admin/finops`
+}
+
+/**
+ * @summary Invoice-grounded financial metrics (admin only)
+ */
+export const adminGetFinops = async ( options?: RequestInit): Promise<FinopsSummary> => {
+
+  return customFetch<FinopsSummary>(getAdminGetFinopsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getAdminGetFinopsQueryKey = () => {
+    return [
+    `/api/admin/finops`
+    ] as const;
+    }
+
+
+export const getAdminGetFinopsQueryOptions = <TData = Awaited<ReturnType<typeof adminGetFinops>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetFinops>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getAdminGetFinopsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof adminGetFinops>>> = ({ signal }) => adminGetFinops({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof adminGetFinops>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type AdminGetFinopsQueryResult = NonNullable<Awaited<ReturnType<typeof adminGetFinops>>>
+export type AdminGetFinopsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Invoice-grounded financial metrics (admin only)
+ */
+
+export function useAdminGetFinops<TData = Awaited<ReturnType<typeof adminGetFinops>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof adminGetFinops>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getAdminGetFinopsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

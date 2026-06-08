@@ -8,7 +8,7 @@
 import type { CheckoutResultMode } from './checkoutResultMode';
 
 /**
- * Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to redirect to; "manual" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it).
+ * Checkout outcome. Branch on `mode`: "xendit" returns an invoiceUrl to redirect to; "manual" returns the bank-transfer details and a payment code the customer references on transfer (the order stays pending until the operator confirms it); "wallet" means the tenant's credit balance fully covered the amount and the order is already settled (no redirect).
  */
 export interface CheckoutResult {
   paymentId: number;

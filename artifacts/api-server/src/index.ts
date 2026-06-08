@@ -7,6 +7,7 @@ import { startAiReviewScheduler } from "./lib/ai-review";
 import { startUsageSnapshotScheduler } from "./lib/billing";
 import { startManualPaymentPoller } from "./lib/manual-payment-poller";
 import { startRetentionPurger } from "./lib/retention-purge";
+import { startDunningScheduler } from "./lib/dunning";
 import { backfillInvoicesFromPayments } from "./lib/invoices";
 import { startMonthlyCloseScheduler } from "./lib/monthly-close";
 import { logger } from "./lib/logger";
@@ -118,6 +119,9 @@ async function main(): Promise<void> {
     startUsageSnapshotScheduler();
     startManualPaymentPoller();
     startRetentionPurger();
+    // Billing v2 (FASE F): dunning escalation sweep. Inert until the operator
+    // enables dunning, so prepaid tenants are never auto-suspended by default.
+    startDunningScheduler();
     // Billing v2 (FASE B): raise recurring monthly_close invoices per active
     // tenant per period (idempotent per (owner, period) via the deterministic
     // invoice number + unique index).

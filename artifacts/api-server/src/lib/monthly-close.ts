@@ -15,11 +15,21 @@ import { computeEffectiveStatus } from "./billing-engine";
 import { isInfinityOwner } from "./infinity-owner";
 import { computeInvoiceTotals } from "./invoice-build";
 import { getTaxConfig } from "./tax-config";
+import { getOverageRates } from "./overage-config";
+import { computeOverageLines } from "./overage-build";
+import { computeOwnerUsage } from "./billing";
+import { dueDateForInvoice } from "./dunning-build";
 import {
   buildMonthlyCloseLines,
   monthlyCloseInvoiceNumber,
   type AddonPricingByType,
 } from "./monthly-close-build";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Payment term for a monthly_close invoice: days from issue to its `due_at`.
+// After this, the dunning sweep (FASE F) starts escalating toward suspension.
+const MONTHLY_CLOSE_TERM_DAYS = 7;
 
 // Monthly billing close (Billing v2 — FASE B). A scheduler raises ONE
 // `monthly_close` invoice per active tenant per billing period, reflecting the
@@ -103,6 +113,43 @@ export async function runMonthlyCloseForOwner(
     },
     byType
   );
+
+  // Overage (metered usage ABOVE the plafon): append `usage` lines for AI
+  // tokens + storage consumed over the prepaid quota during this period. When
+  // overage is disabled (default) or nothing exceeds the plafon, this adds
+  // nothing — the close is byte-for-byte unchanged. Rates are snapshotted into
+  // the line amount, so a later rate change never rewrites this invoice.
+  const overageRates = await getOverageRates();
+  if (overageRates.enabled) {
+    try {
+      const usage = await computeOwnerUsage(ownerId);
+      const periodDays = Math.max(
+        1,
+        Math.round((end.getTime() - start.getTime()) / DAY_MS)
+      );
+      const overageLines = computeOverageLines(
+        {
+          tokenUsed: usage.tokenUsage,
+          tokenLimit: quota.tokenLimit,
+          // Object-Storage footprint vs the storage plafon. Point-in-time
+          // footprint is used as the period-average proxy (no per-day media
+          // snapshot exists); GB-days scales it across the period.
+          avgStorageBytes: usage.mediaStorageBytes,
+          storageLimitBytes: quota.storageLimit,
+          periodDays,
+        },
+        overageRates
+      );
+      lines.push(...overageLines);
+    } catch (err) {
+      // Overage is additive — never let a usage-read failure abort the close.
+      logger.error(
+        { err, ownerId },
+        "monthly close: overage computation failed; billing base only"
+      );
+    }
+  }
+
   // Tax (FASE G): monthly_close is an UNPAID bill, so honor the operator's
   // inclusive/exclusive choice — exclusive adds PPN on top of the recurring
   // charge. Disabled → tax 0 (unchanged behavior).
@@ -131,6 +178,9 @@ export async function runMonthlyCloseForOwner(
         periodStart: start,
         periodEnd: end,
         issuedAt: now,
+        // Payment term (FASE F): the tenant has MONTHLY_CLOSE_TERM_DAYS to pay
+        // before the dunning sweep starts escalating.
+        dueAt: dueDateForInvoice(now, MONTHLY_CLOSE_TERM_DAYS),
         paidAt: null,
       })
       .onConflictDoNothing({ target: invoicesTable.invoiceNumber })

@@ -7,12 +7,16 @@ import {
   tenantQuotaTable,
   subscriptionsTable,
   paymentsTable,
+  invoicesTable,
   type PlanRow,
   type AddonRow,
   type PaymentRow,
+  type InvoiceRow,
 } from "@workspace/db";
 import { logger } from "./logger";
 import { createInvoiceForPayment } from "./invoices";
+import { markInvoicePaid, clearDunningForOwner } from "./dunning";
+import { decodeInvoiceDirective } from "./proration-directive";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -107,6 +111,92 @@ export async function activatePlanForOwner(
         updatedAt: now,
       },
     });
+}
+
+// Apply a mid-period PLAN SWITCH via proration (Billing v2 — FASE D). Unlike
+// activatePlanForOwner, this does NOT extend the period — the tenant already
+// paid for the running period; proration only covers the upgrade delta for the
+// remaining days. So we swap users.plan + reset the quota LIMITS to the new
+// plan baseline but KEEP the current period window. Add-ons bought separately
+// still top up afterwards.
+export async function applyPlanProration(
+  ownerId: number,
+  plan: PlanRow,
+  exec: DbExecutor = db
+): Promise<void> {
+  const now = new Date();
+  await exec
+    .update(usersTable)
+    .set({ plan: plan.key })
+    .where(eq(usersTable.id, ownerId));
+
+  // Preserve the existing period window (don't extend); only reset limits.
+  const [quota] = await exec
+    .select({
+      periodStart: tenantQuotaTable.periodStart,
+      periodEnd: tenantQuotaTable.periodEnd,
+    })
+    .from(tenantQuotaTable)
+    .where(eq(tenantQuotaTable.userId, ownerId))
+    .limit(1);
+
+  await exec
+    .insert(tenantQuotaTable)
+    .values({
+      userId: ownerId,
+      planId: plan.id,
+      tokenLimit: plan.quotaTokens,
+      channelLimit: plan.quotaChannels,
+      userLimit: plan.quotaUsers,
+      storageLimit: plan.quotaStorageBytes,
+      periodStart: quota?.periodStart ?? now,
+      periodEnd: quota?.periodEnd ?? null,
+    })
+    .onConflictDoUpdate({
+      target: tenantQuotaTable.userId,
+      set: {
+        planId: plan.id,
+        tokenLimit: plan.quotaTokens,
+        channelLimit: plan.quotaChannels,
+        userLimit: plan.quotaUsers,
+        storageLimit: plan.quotaStorageBytes,
+        updatedAt: now,
+      },
+    });
+
+  // Make sure the subscription is active (a proration upgrade implies paying).
+  await exec
+    .update(subscriptionsTable)
+    .set({ status: "active", updatedAt: now })
+    .where(eq(subscriptionsTable.userId, ownerId));
+}
+
+// Apply the deferred entitlement directive stored on a now-paid OPEN invoice
+// (proration charge). Plain bills (null directive) change nothing.
+export async function applyInvoiceDirective(
+  invoice: InvoiceRow,
+  exec: DbExecutor = db
+): Promise<void> {
+  const directive = decodeInvoiceDirective(invoice.notes);
+  if (!directive) return;
+  if (directive.t === "plan") {
+    const [plan] = await exec
+      .select()
+      .from(plansTable)
+      .where(eq(plansTable.id, directive.planId))
+      .limit(1);
+    if (!plan) throw new Error(`proration: plan ${directive.planId} not found`);
+    await applyPlanProration(invoice.userId, plan, exec);
+    return;
+  }
+  // addon top-up
+  const [addon] = await exec
+    .select()
+    .from(addonsTable)
+    .where(eq(addonsTable.id, directive.addonId))
+    .limit(1);
+  if (!addon) throw new Error(`proration: addon ${directive.addonId} not found`);
+  await addAddonToQuota(invoice.userId, addon, directive.quantity, exec);
 }
 
 // Apply an add-on top-up: increment the matching limit by unitAmount * quantity.
@@ -235,6 +325,28 @@ export async function applyPaidPayment(
     return;
   }
 
+  if (payment.kind === "invoice" || payment.kind === "proration") {
+    // Collecting an existing OPEN invoice (an overdue monthly_close bill, or a
+    // proration charge raised by change-plan/change-quota). refId = invoice id.
+    if (payment.refId == null) {
+      throw new Error(`invoice payment ${payment.id} has no refId`);
+    }
+    const invoice = await markInvoicePaid(payment.refId, exec);
+    if (invoice) {
+      // Link the collected payment to the (previously paymentId-null) invoice
+      // for traceability, then apply any deferred entitlement directive.
+      await exec
+        .update(invoicesTable)
+        .set({ paymentId: payment.id })
+        .where(eq(invoicesTable.id, invoice.id));
+      await applyInvoiceDirective(invoice, exec);
+    }
+    // Paying any open invoice clears dunning (and un-suspends if nothing else
+    // is overdue + the period still has runway).
+    await clearDunningForOwner(payment.userId, exec);
+    return;
+  }
+
   throw new Error(`Unknown payment kind: ${payment.kind}`);
 }
 
@@ -270,7 +382,14 @@ export async function settlePaymentPaid(
     // Raise the immutable invoice in the SAME transaction as the settlement, so
     // a paid payment and its financial record are all-or-nothing (idempotent
     // via the unique payment_id index — a webhook retry is a no-op).
-    await createInvoiceForPayment(updated[0], tx);
+    //
+    // EXCEPTION: invoice/proration payments COLLECT an invoice that already
+    // exists (applyPaidPayment marked it paid + linked it). Calling
+    // createInvoiceForPayment here would raise a SECOND, duplicate invoice for
+    // the same financial event, so skip it for those kinds.
+    if (updated[0].kind !== "invoice" && updated[0].kind !== "proration") {
+      await createInvoiceForPayment(updated[0], tx);
+    }
     return true;
   });
 }
