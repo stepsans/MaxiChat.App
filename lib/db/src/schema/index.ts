@@ -29,3 +29,4 @@ export * from "./overage-rates";
 export * from "./invoice-dunning";
 export * from "./dunning-settings";
 export * from "./wallet";
+export * from "./sales-assistant";

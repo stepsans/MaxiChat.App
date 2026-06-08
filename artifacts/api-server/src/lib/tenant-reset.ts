@@ -9,6 +9,8 @@ import {
   aiUsageEventsTable,
   usageSnapshotsTable,
   tenantResetAuditTable,
+  opportunitiesTable,
+  salesAuditEventsTable,
   type TenantResetSummary,
 } from "@workspace/db";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -103,6 +105,20 @@ export async function resetTenant(
       .where(eq(mediaObjectsTable.ownerUserId, ownerId))
       .returning({ id: mediaObjectsTable.id });
 
+    // AI Sales Assistant operational data. Pipeline stages are CONFIGURATION
+    // (like products/flows/settings) and are deliberately KEPT. Deleting the
+    // opportunities cascades their follow-ups; sales_audit_events that point at
+    // an opportunity also cascade, but owner-scoped events with no opportunity
+    // (or whose cascade we don't want to rely on) are swept explicitly here.
+    const deletedSalesAudit = await tx
+      .delete(salesAuditEventsTable)
+      .where(eq(salesAuditEventsTable.ownerUserId, ownerId))
+      .returning({ id: salesAuditEventsTable.id });
+    const deletedOpportunities = await tx
+      .delete(opportunitiesTable)
+      .where(eq(opportunitiesTable.ownerUserId, ownerId))
+      .returning({ id: opportunitiesTable.id });
+
     const s: TenantResetSummary = {
       chats,
       messages,
@@ -112,6 +128,8 @@ export async function resetTenant(
       logs: deletedLogs.length,
       media: deletedMedia.length,
       files,
+      opportunities: deletedOpportunities.length,
+      salesAuditEvents: deletedSalesAudit.length,
     };
 
     await tx.insert(tenantResetAuditTable).values({

@@ -135,6 +135,7 @@ router.post("/plans", async (req, res): Promise<void> => {
           quotaTokens: body.quotaTokens,
           isActive: body.isActive ?? true,
           sortOrder: body.sortOrder ?? 0,
+          hasAiSalesAssistant: body.hasAiSalesAssistant ?? false,
         })
         .returning();
       res.status(201).json(serializePlan(row));
@@ -185,6 +186,8 @@ router.patch("/plans/:id", async (req, res): Promise<void> => {
     if (body.quotaTokens !== undefined) patch.quotaTokens = body.quotaTokens;
     if (body.isActive !== undefined) patch.isActive = body.isActive;
     if (body.sortOrder !== undefined) patch.sortOrder = body.sortOrder;
+    if (body.hasAiSalesAssistant !== undefined)
+      patch.hasAiSalesAssistant = body.hasAiSalesAssistant;
     if (Object.keys(patch).length === 0) {
       const [current] = await db
         .select()

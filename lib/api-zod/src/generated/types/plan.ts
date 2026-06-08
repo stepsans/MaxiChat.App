@@ -30,6 +30,8 @@ export interface Plan {
      * @nullable
      */
   retentionLimitDays?: number | null;
+  /** Whether this plan includes the AI Sales Assistant (Enterprise-only). */
+  hasAiSalesAssistant?: boolean;
   /** Inactive plans are hidden from self-serve checkout but kept for existing tenants. */
   isActive: boolean;
   sortOrder: number;

@@ -40,6 +40,7 @@ import retentionRouter from "./retention";
 import databaseRouter from "./database";
 import pushRouter from "./push";
 import storageRouter from "./storage";
+import salesRouter from "./sales";
 import { requireAuth, requireAdmin } from "../lib/auth";
 import { enforceSubscription } from "../lib/enforce-subscription";
 
@@ -94,6 +95,9 @@ router.use("/ai-usage", aiUsageRouter);
 router.use("/ai-review", aiReviewRouter);
 router.use("/customer-labels", customerLabelsRouter);
 router.use("/link-preview", linkPreviewRouter);
+// AI Sales Assistant (Enterprise-only; the router self-gates on
+// requireSalesAssistant + per-route opportunity permissions).
+router.use("/sales", salesRouter);
 router.use("/billing", billingRouter);
 router.use("/retention", retentionRouter);
 router.use("/database", databaseRouter);

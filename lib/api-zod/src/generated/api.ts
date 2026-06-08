@@ -241,6 +241,7 @@ export const AdminListPlansResponseItem = zod.object({
   "quotaTokens": zod.number().describe('Included AI tokens per period.'),
   "quotaStorageBytes": zod.number().describe('Included Object Storage allowance, in bytes.'),
   "retentionLimitDays": zod.number().nullish().describe('Max data-retention period (days) a tenant may select; null = unlimited.'),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether this plan includes the AI Sales Assistant (Enterprise-only).'),
   "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
   "sortOrder": zod.number(),
   "createdAt": zod.coerce.date(),
@@ -287,6 +288,7 @@ export const AdminCreatePlanBody = zod.object({
   "quotaTokens": zod.number().min(adminCreatePlanBodyQuotaTokensMin),
   "quotaStorageBytes": zod.number().min(adminCreatePlanBodyQuotaStorageBytesMin),
   "retentionLimitDays": zod.number().min(1).nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional(),
   "isActive": zod.boolean().optional(),
   "sortOrder": zod.number().min(adminCreatePlanBodySortOrderMin).optional()
 })
@@ -329,6 +331,7 @@ export const AdminUpdatePlanBody = zod.object({
   "quotaTokens": zod.number().min(adminUpdatePlanBodyQuotaTokensMin).optional(),
   "quotaStorageBytes": zod.number().min(adminUpdatePlanBodyQuotaStorageBytesMin).optional(),
   "retentionLimitDays": zod.number().min(1).nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional(),
   "isActive": zod.boolean().optional(),
   "sortOrder": zod.number().min(adminUpdatePlanBodySortOrderMin).optional()
 }).describe('Partial update. The plan key is immutable and cannot be changed here.')
@@ -345,6 +348,7 @@ export const AdminUpdatePlanResponse = zod.object({
   "quotaTokens": zod.number().describe('Included AI tokens per period.'),
   "quotaStorageBytes": zod.number().describe('Included Object Storage allowance, in bytes.'),
   "retentionLimitDays": zod.number().nullish().describe('Max data-retention period (days) a tenant may select; null = unlimited.'),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether this plan includes the AI Sales Assistant (Enterprise-only).'),
   "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
   "sortOrder": zod.number(),
   "createdAt": zod.coerce.date(),
@@ -711,6 +715,7 @@ export const GetBillingCatalogResponse = zod.object({
   "quotaTokens": zod.number().describe('Included AI tokens per period.'),
   "quotaStorageBytes": zod.number().describe('Included Object Storage allowance, in bytes.'),
   "retentionLimitDays": zod.number().nullish().describe('Max data-retention period (days) a tenant may select; null = unlimited.'),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether this plan includes the AI Sales Assistant (Enterprise-only).'),
   "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
   "sortOrder": zod.number(),
   "createdAt": zod.coerce.date(),
@@ -4677,5 +4682,278 @@ export const CreateGroupResponse = zod.object({
   "groupJid": zod.string(),
   "subject": zod.string()
 })
+
+
+/**
+ * @summary List pipeline stages (auto-seeds 7 defaults on first access)
+ */
+export const ListSalesStagesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "sortOrder": zod.number().describe('Ascending display order on the board.'),
+  "isWon": zod.boolean().describe('Terminal \"deal won\" column.'),
+  "isLost": zod.boolean().describe('Terminal \"deal lost\" column.'),
+  "color": zod.string().nullable().describe('Optional hex color for the column header.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A column in the tenant\'s sales pipeline (kanban board).')
+export const ListSalesStagesResponse = zod.array(ListSalesStagesResponseItem)
+
+
+/**
+ * @summary Create a pipeline stage
+ */
+export const createSalesStageBodyNameMax = 80;
+
+export const createSalesStageBodySortOrderMin = 0;
+
+export const createSalesStageBodyColorMax = 20;
+
+
+
+export const CreateSalesStageBody = zod.object({
+  "name": zod.string().min(1).max(createSalesStageBodyNameMax),
+  "sortOrder": zod.number().min(createSalesStageBodySortOrderMin).optional(),
+  "isWon": zod.boolean().optional(),
+  "isLost": zod.boolean().optional(),
+  "color": zod.string().max(createSalesStageBodyColorMax).nullish()
+})
+
+
+/**
+ * @summary Update a pipeline stage
+ */
+export const UpdateSalesStageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateSalesStageBodyNameMax = 80;
+
+export const updateSalesStageBodySortOrderMin = 0;
+
+export const updateSalesStageBodyColorMax = 20;
+
+
+
+export const UpdateSalesStageBody = zod.object({
+  "name": zod.string().min(1).max(updateSalesStageBodyNameMax).optional(),
+  "sortOrder": zod.number().min(updateSalesStageBodySortOrderMin).optional(),
+  "isWon": zod.boolean().optional(),
+  "isLost": zod.boolean().optional(),
+  "color": zod.string().max(updateSalesStageBodyColorMax).nullish()
+}).describe('Partial update of a pipeline stage.')
+
+export const UpdateSalesStageResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "sortOrder": zod.number().describe('Ascending display order on the board.'),
+  "isWon": zod.boolean().describe('Terminal \"deal won\" column.'),
+  "isLost": zod.boolean().describe('Terminal \"deal lost\" column.'),
+  "color": zod.string().nullable().describe('Optional hex color for the column header.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A column in the tenant\'s sales pipeline (kanban board).')
+
+
+/**
+ * @summary Delete a pipeline stage (opportunities in it become unstaged)
+ */
+export const DeleteSalesStageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteSalesStageResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List opportunities (agents see only their own assigned deals)
+ */
+export const ListOpportunitiesQueryParams = zod.object({
+  "stageId": zod.coerce.number().optional().describe('Filter to a single pipeline stage.'),
+  "status": zod.enum(['open', 'won', 'lost']).optional().describe('Filter by lifecycle status.')
+})
+
+export const ListOpportunitiesResponseItem = zod.object({
+  "id": zod.number(),
+  "assignedUserId": zod.number().nullable().describe('Agent who owns the deal; null = unassigned.'),
+  "chatId": zod.number(),
+  "channelId": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullable(),
+  "stageId": zod.number().nullable(),
+  "leadScore": zod.number().describe('AI lead score 0–100.'),
+  "intentCategory": zod.string().nullable(),
+  "estimatedValueIdr": zod.number().describe('Estimated deal value in whole Rupiah.'),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "waitingStatus": zod.string().nullable(),
+  "productInterest": zod.array(zod.string()),
+  "aiNotes": zod.string().nullable(),
+  "lastActivityAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A sales opportunity (deal) attached to a chat.')
+export const ListOpportunitiesResponse = zod.array(ListOpportunitiesResponseItem)
+
+
+/**
+ * @summary Manually create an opportunity for a chat
+ */
+export const createOpportunityBodyContactNameMax = 120;
+
+export const createOpportunityBodyLeadScoreMin = 0;
+export const createOpportunityBodyLeadScoreMax = 100;
+
+export const createOpportunityBodyIntentCategoryMax = 40;
+
+export const createOpportunityBodyEstimatedValueIdrMin = 0;
+
+export const createOpportunityBodyWaitingStatusMax = 40;
+
+export const createOpportunityBodyProductInterestItemMax = 120;
+
+export const createOpportunityBodyAiNotesMax = 4000;
+
+
+
+export const CreateOpportunityBody = zod.object({
+  "chatId": zod.number().describe('The chat to attach this opportunity to (must be in the tenant).'),
+  "assignedUserId": zod.number().nullish(),
+  "stageId": zod.number().nullish(),
+  "contactName": zod.string().max(createOpportunityBodyContactNameMax).nullish(),
+  "leadScore": zod.number().min(createOpportunityBodyLeadScoreMin).max(createOpportunityBodyLeadScoreMax).optional(),
+  "intentCategory": zod.string().max(createOpportunityBodyIntentCategoryMax).nullish(),
+  "estimatedValueIdr": zod.number().min(createOpportunityBodyEstimatedValueIdrMin).optional(),
+  "status": zod.enum(['open', 'won', 'lost']).optional(),
+  "waitingStatus": zod.string().max(createOpportunityBodyWaitingStatusMax).nullish(),
+  "productInterest": zod.array(zod.string().max(createOpportunityBodyProductInterestItemMax)).optional(),
+  "aiNotes": zod.string().max(createOpportunityBodyAiNotesMax).nullish()
+})
+
+
+/**
+ * @summary Get a single opportunity
+ */
+export const GetOpportunityParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetOpportunityResponse = zod.object({
+  "id": zod.number(),
+  "assignedUserId": zod.number().nullable().describe('Agent who owns the deal; null = unassigned.'),
+  "chatId": zod.number(),
+  "channelId": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullable(),
+  "stageId": zod.number().nullable(),
+  "leadScore": zod.number().describe('AI lead score 0–100.'),
+  "intentCategory": zod.string().nullable(),
+  "estimatedValueIdr": zod.number().describe('Estimated deal value in whole Rupiah.'),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "waitingStatus": zod.string().nullable(),
+  "productInterest": zod.array(zod.string()),
+  "aiNotes": zod.string().nullable(),
+  "lastActivityAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A sales opportunity (deal) attached to a chat.')
+
+
+/**
+ * @summary Update an opportunity (stage, assignment, value, notes, …)
+ */
+export const UpdateOpportunityParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateOpportunityBodyContactNameMax = 120;
+
+export const updateOpportunityBodyLeadScoreMin = 0;
+export const updateOpportunityBodyLeadScoreMax = 100;
+
+export const updateOpportunityBodyIntentCategoryMax = 40;
+
+export const updateOpportunityBodyEstimatedValueIdrMin = 0;
+
+export const updateOpportunityBodyWaitingStatusMax = 40;
+
+export const updateOpportunityBodyProductInterestItemMax = 120;
+
+export const updateOpportunityBodyAiNotesMax = 4000;
+
+
+
+export const UpdateOpportunityBody = zod.object({
+  "assignedUserId": zod.number().nullish(),
+  "stageId": zod.number().nullish(),
+  "contactName": zod.string().max(updateOpportunityBodyContactNameMax).nullish(),
+  "leadScore": zod.number().min(updateOpportunityBodyLeadScoreMin).max(updateOpportunityBodyLeadScoreMax).optional(),
+  "intentCategory": zod.string().max(updateOpportunityBodyIntentCategoryMax).nullish(),
+  "estimatedValueIdr": zod.number().min(updateOpportunityBodyEstimatedValueIdrMin).optional(),
+  "status": zod.enum(['open', 'won', 'lost']).optional(),
+  "waitingStatus": zod.string().max(updateOpportunityBodyWaitingStatusMax).nullish(),
+  "productInterest": zod.array(zod.string().max(updateOpportunityBodyProductInterestItemMax)).optional(),
+  "aiNotes": zod.string().max(updateOpportunityBodyAiNotesMax).nullish()
+}).describe('Partial update of an opportunity.')
+
+export const UpdateOpportunityResponse = zod.object({
+  "id": zod.number(),
+  "assignedUserId": zod.number().nullable().describe('Agent who owns the deal; null = unassigned.'),
+  "chatId": zod.number(),
+  "channelId": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullable(),
+  "stageId": zod.number().nullable(),
+  "leadScore": zod.number().describe('AI lead score 0–100.'),
+  "intentCategory": zod.string().nullable(),
+  "estimatedValueIdr": zod.number().describe('Estimated deal value in whole Rupiah.'),
+  "status": zod.enum(['open', 'won', 'lost']),
+  "waitingStatus": zod.string().nullable(),
+  "productInterest": zod.array(zod.string()),
+  "aiNotes": zod.string().nullable(),
+  "lastActivityAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A sales opportunity (deal) attached to a chat.')
+
+
+/**
+ * @summary List scheduled follow-ups for an opportunity
+ */
+export const ListOpportunityFollowUpsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListOpportunityFollowUpsResponseItem = zod.object({
+  "id": zod.number(),
+  "opportunityId": zod.number(),
+  "sequence": zod.number().describe('Touch number in the sequence (1–3).'),
+  "scheduledAt": zod.coerce.date(),
+  "status": zod.enum(['pending', 'sent', 'cancelled', 'skipped']),
+  "generatedMessage": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A scheduled follow-up touch for an opportunity.')
+export const ListOpportunityFollowUpsResponse = zod.array(ListOpportunityFollowUpsResponseItem)
+
+
+/**
+ * @summary Aggregate pipeline insights for the tenant (scoped to caller)
+ */
+export const GetSalesInsightsResponse = zod.object({
+  "totalOpen": zod.number(),
+  "totalWon": zod.number(),
+  "totalLost": zod.number(),
+  "openValueIdr": zod.number().describe('Sum of estimated value across open opportunities (whole Rupiah).'),
+  "wonValueIdr": zod.number().describe('Sum of estimated value across won opportunities (whole Rupiah).'),
+  "byStage": zod.array(zod.object({
+  "stageId": zod.number().nullable(),
+  "stageName": zod.string(),
+  "count": zod.number(),
+  "valueIdr": zod.number()
+})).describe('Per-stage open counts + value for the board.')
+}).describe('Aggregate pipeline metrics scoped to the caller\'s visibility.')
 
 

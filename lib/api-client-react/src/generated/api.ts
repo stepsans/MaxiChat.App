@@ -121,6 +121,7 @@ import type {
   KnowledgeUpdate,
   LinkPreview,
   ListChatsParams,
+  ListOpportunitiesParams,
   ListSalesOrdersParams,
   ListTeamMemberPermissions200,
   LoginInput,
@@ -130,6 +131,11 @@ import type {
   OkResponse,
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
+  Opportunity,
+  OpportunityFollowUp,
+  OpportunityInput,
+  OpportunityInsight,
+  OpportunityUpdate,
   OverageRates,
   OwnerTrend,
   PayInvoiceInput,
@@ -165,6 +171,9 @@ import type {
   SalesOrder,
   SalesOrderInput,
   SalesOrderSyncConfigInput,
+  SalesStage,
+  SalesStageInput,
+  SalesStageUpdate,
   SearchChatContentParams,
   SendProductBody,
   SendQuotationBody,
@@ -15006,4 +15015,752 @@ export const useCreateGroup = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateGroupMutationOptions(options));
     }
+
+export const getListSalesStagesUrl = () => {
+
+
+
+
+  return `/api/sales/stages`
+}
+
+/**
+ * @summary List pipeline stages (auto-seeds 7 defaults on first access)
+ */
+export const listSalesStages = async ( options?: RequestInit): Promise<SalesStage[]> => {
+
+  return customFetch<SalesStage[]>(getListSalesStagesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSalesStagesQueryKey = () => {
+    return [
+    `/api/sales/stages`
+    ] as const;
+    }
+
+
+export const getListSalesStagesQueryOptions = <TData = Awaited<ReturnType<typeof listSalesStages>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSalesStages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSalesStagesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSalesStages>>> = ({ signal }) => listSalesStages({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSalesStages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSalesStagesQueryResult = NonNullable<Awaited<ReturnType<typeof listSalesStages>>>
+export type ListSalesStagesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List pipeline stages (auto-seeds 7 defaults on first access)
+ */
+
+export function useListSalesStages<TData = Awaited<ReturnType<typeof listSalesStages>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSalesStages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSalesStagesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSalesStageUrl = () => {
+
+
+
+
+  return `/api/sales/stages`
+}
+
+/**
+ * @summary Create a pipeline stage
+ */
+export const createSalesStage = async (salesStageInput: SalesStageInput, options?: RequestInit): Promise<SalesStage> => {
+
+  return customFetch<SalesStage>(getCreateSalesStageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      salesStageInput,)
+  }
+);}
+
+
+
+
+export const getCreateSalesStageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSalesStage>>, TError,{data: BodyType<SalesStageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSalesStage>>, TError,{data: BodyType<SalesStageInput>}, TContext> => {
+
+const mutationKey = ['createSalesStage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSalesStage>>, {data: BodyType<SalesStageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSalesStage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSalesStageMutationResult = NonNullable<Awaited<ReturnType<typeof createSalesStage>>>
+    export type CreateSalesStageMutationBody = BodyType<SalesStageInput>
+    export type CreateSalesStageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a pipeline stage
+ */
+export const useCreateSalesStage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSalesStage>>, TError,{data: BodyType<SalesStageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSalesStage>>,
+        TError,
+        {data: BodyType<SalesStageInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSalesStageMutationOptions(options));
+    }
+
+export const getUpdateSalesStageUrl = (id: number,) => {
+
+
+
+
+  return `/api/sales/stages/${id}`
+}
+
+/**
+ * @summary Update a pipeline stage
+ */
+export const updateSalesStage = async (id: number,
+    salesStageUpdate: SalesStageUpdate, options?: RequestInit): Promise<SalesStage> => {
+
+  return customFetch<SalesStage>(getUpdateSalesStageUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      salesStageUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateSalesStageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSalesStage>>, TError,{id: number;data: BodyType<SalesStageUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSalesStage>>, TError,{id: number;data: BodyType<SalesStageUpdate>}, TContext> => {
+
+const mutationKey = ['updateSalesStage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSalesStage>>, {id: number;data: BodyType<SalesStageUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateSalesStage(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSalesStageMutationResult = NonNullable<Awaited<ReturnType<typeof updateSalesStage>>>
+    export type UpdateSalesStageMutationBody = BodyType<SalesStageUpdate>
+    export type UpdateSalesStageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a pipeline stage
+ */
+export const useUpdateSalesStage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSalesStage>>, TError,{id: number;data: BodyType<SalesStageUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSalesStage>>,
+        TError,
+        {id: number;data: BodyType<SalesStageUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateSalesStageMutationOptions(options));
+    }
+
+export const getDeleteSalesStageUrl = (id: number,) => {
+
+
+
+
+  return `/api/sales/stages/${id}`
+}
+
+/**
+ * @summary Delete a pipeline stage (opportunities in it become unstaged)
+ */
+export const deleteSalesStage = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteSalesStageUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSalesStageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSalesStage>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSalesStage>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteSalesStage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSalesStage>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSalesStage(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSalesStageMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSalesStage>>>
+
+    export type DeleteSalesStageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a pipeline stage (opportunities in it become unstaged)
+ */
+export const useDeleteSalesStage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSalesStage>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSalesStage>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteSalesStageMutationOptions(options));
+    }
+
+export const getListOpportunitiesUrl = (params?: ListOpportunitiesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sales/opportunities?${stringifiedParams}` : `/api/sales/opportunities`
+}
+
+/**
+ * @summary List opportunities (agents see only their own assigned deals)
+ */
+export const listOpportunities = async (params?: ListOpportunitiesParams, options?: RequestInit): Promise<Opportunity[]> => {
+
+  return customFetch<Opportunity[]>(getListOpportunitiesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOpportunitiesQueryKey = (params?: ListOpportunitiesParams,) => {
+    return [
+    `/api/sales/opportunities`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListOpportunitiesQueryOptions = <TData = Awaited<ReturnType<typeof listOpportunities>>, TError = ErrorType<ErrorResponse>>(params?: ListOpportunitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpportunities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOpportunitiesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOpportunities>>> = ({ signal }) => listOpportunities(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOpportunities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOpportunitiesQueryResult = NonNullable<Awaited<ReturnType<typeof listOpportunities>>>
+export type ListOpportunitiesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List opportunities (agents see only their own assigned deals)
+ */
+
+export function useListOpportunities<TData = Awaited<ReturnType<typeof listOpportunities>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListOpportunitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpportunities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOpportunitiesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateOpportunityUrl = () => {
+
+
+
+
+  return `/api/sales/opportunities`
+}
+
+/**
+ * @summary Manually create an opportunity for a chat
+ */
+export const createOpportunity = async (opportunityInput: OpportunityInput, options?: RequestInit): Promise<Opportunity> => {
+
+  return customFetch<Opportunity>(getCreateOpportunityUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      opportunityInput,)
+  }
+);}
+
+
+
+
+export const getCreateOpportunityMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOpportunity>>, TError,{data: BodyType<OpportunityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createOpportunity>>, TError,{data: BodyType<OpportunityInput>}, TContext> => {
+
+const mutationKey = ['createOpportunity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createOpportunity>>, {data: BodyType<OpportunityInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createOpportunity(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateOpportunityMutationResult = NonNullable<Awaited<ReturnType<typeof createOpportunity>>>
+    export type CreateOpportunityMutationBody = BodyType<OpportunityInput>
+    export type CreateOpportunityMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Manually create an opportunity for a chat
+ */
+export const useCreateOpportunity = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOpportunity>>, TError,{data: BodyType<OpportunityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createOpportunity>>,
+        TError,
+        {data: BodyType<OpportunityInput>},
+        TContext
+      > => {
+      return useMutation(getCreateOpportunityMutationOptions(options));
+    }
+
+export const getGetOpportunityUrl = (id: number,) => {
+
+
+
+
+  return `/api/sales/opportunities/${id}`
+}
+
+/**
+ * @summary Get a single opportunity
+ */
+export const getOpportunity = async (id: number, options?: RequestInit): Promise<Opportunity> => {
+
+  return customFetch<Opportunity>(getGetOpportunityUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOpportunityQueryKey = (id: number,) => {
+    return [
+    `/api/sales/opportunities/${id}`
+    ] as const;
+    }
+
+
+export const getGetOpportunityQueryOptions = <TData = Awaited<ReturnType<typeof getOpportunity>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpportunity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOpportunityQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOpportunity>>> = ({ signal }) => getOpportunity(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOpportunity>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOpportunityQueryResult = NonNullable<Awaited<ReturnType<typeof getOpportunity>>>
+export type GetOpportunityQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a single opportunity
+ */
+
+export function useGetOpportunity<TData = Awaited<ReturnType<typeof getOpportunity>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpportunity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOpportunityQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateOpportunityUrl = (id: number,) => {
+
+
+
+
+  return `/api/sales/opportunities/${id}`
+}
+
+/**
+ * @summary Update an opportunity (stage, assignment, value, notes, …)
+ */
+export const updateOpportunity = async (id: number,
+    opportunityUpdate: OpportunityUpdate, options?: RequestInit): Promise<Opportunity> => {
+
+  return customFetch<Opportunity>(getUpdateOpportunityUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      opportunityUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateOpportunityMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOpportunity>>, TError,{id: number;data: BodyType<OpportunityUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOpportunity>>, TError,{id: number;data: BodyType<OpportunityUpdate>}, TContext> => {
+
+const mutationKey = ['updateOpportunity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOpportunity>>, {id: number;data: BodyType<OpportunityUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateOpportunity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOpportunityMutationResult = NonNullable<Awaited<ReturnType<typeof updateOpportunity>>>
+    export type UpdateOpportunityMutationBody = BodyType<OpportunityUpdate>
+    export type UpdateOpportunityMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update an opportunity (stage, assignment, value, notes, …)
+ */
+export const useUpdateOpportunity = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOpportunity>>, TError,{id: number;data: BodyType<OpportunityUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOpportunity>>,
+        TError,
+        {id: number;data: BodyType<OpportunityUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateOpportunityMutationOptions(options));
+    }
+
+export const getListOpportunityFollowUpsUrl = (id: number,) => {
+
+
+
+
+  return `/api/sales/opportunities/${id}/follow-ups`
+}
+
+/**
+ * @summary List scheduled follow-ups for an opportunity
+ */
+export const listOpportunityFollowUps = async (id: number, options?: RequestInit): Promise<OpportunityFollowUp[]> => {
+
+  return customFetch<OpportunityFollowUp[]>(getListOpportunityFollowUpsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOpportunityFollowUpsQueryKey = (id: number,) => {
+    return [
+    `/api/sales/opportunities/${id}/follow-ups`
+    ] as const;
+    }
+
+
+export const getListOpportunityFollowUpsQueryOptions = <TData = Awaited<ReturnType<typeof listOpportunityFollowUps>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpportunityFollowUps>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOpportunityFollowUpsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOpportunityFollowUps>>> = ({ signal }) => listOpportunityFollowUps(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOpportunityFollowUps>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOpportunityFollowUpsQueryResult = NonNullable<Awaited<ReturnType<typeof listOpportunityFollowUps>>>
+export type ListOpportunityFollowUpsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List scheduled follow-ups for an opportunity
+ */
+
+export function useListOpportunityFollowUps<TData = Awaited<ReturnType<typeof listOpportunityFollowUps>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpportunityFollowUps>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOpportunityFollowUpsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSalesInsightsUrl = () => {
+
+
+
+
+  return `/api/sales/insights`
+}
+
+/**
+ * @summary Aggregate pipeline insights for the tenant (scoped to caller)
+ */
+export const getSalesInsights = async ( options?: RequestInit): Promise<OpportunityInsight> => {
+
+  return customFetch<OpportunityInsight>(getGetSalesInsightsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSalesInsightsQueryKey = () => {
+    return [
+    `/api/sales/insights`
+    ] as const;
+    }
+
+
+export const getGetSalesInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getSalesInsights>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSalesInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSalesInsightsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSalesInsights>>> = ({ signal }) => getSalesInsights({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSalesInsights>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSalesInsightsQueryResult = NonNullable<Awaited<ReturnType<typeof getSalesInsights>>>
+export type GetSalesInsightsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Aggregate pipeline insights for the tenant (scoped to caller)
+ */
+
+export function useGetSalesInsights<TData = Awaited<ReturnType<typeof getSalesInsights>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSalesInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSalesInsightsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

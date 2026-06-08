@@ -24,6 +24,9 @@ export const PERMISSION_MENUS = [
   "statuses",
   "settings",
   "channels",
+  // AI Sales Assistant (Enterprise-only). Full CRUD; agents are scoped to
+  // their own assigned opportunities by the route layer, not this matrix.
+  "opportunities",
   // View-only menus: only canView is meaningful (no create/edit/delete routes).
   "dashboard",
   "aiStudio",
@@ -73,6 +76,9 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // Supervisor can add & connect their own channels; deletion stays with
     // the super_admin who centrally manages the tenant's channels.
     channels: allow(true, true, true, false),
+    // AI Sales Assistant: supervisors get full configurable access by default
+    // (manage every opportunity in the tenant). Owner may dial this back.
+    opportunities: allow(true, true, true, true),
     // View-only menus — supervisors see Dashboard & AI Studio by default;
     // Pemakaian Token & AI Review stay super_admin-only until granted.
     dashboard: allow(true, false, false, false),
@@ -94,6 +100,10 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // create); deletion stays super_admin-only — channels are centrally
     // managed by the tenant owner.
     channels: allow(true, true, true, false),
+    // AI Sales Assistant: agents may view + edit, but ONLY their own assigned
+    // opportunities (enforced by opportunityScopeWhere in the route layer). No
+    // create (deals are auto-detected) and no delete.
+    opportunities: allow(true, false, true, false),
     // View-only menus — agents see none of these by default.
     dashboard: allow(false, false, false, false),
     aiStudio: allow(false, false, false, false),

@@ -98,6 +98,8 @@ type PlanForm = {
   retentionLimitDays: string;
   isActive: boolean;
   sortOrder: string;
+  // Enterprise-only AI Sales Assistant entitlement.
+  hasAiSalesAssistant: boolean;
 };
 
 const EMPTY_PLAN_FORM: PlanForm = {
@@ -113,6 +115,7 @@ const EMPTY_PLAN_FORM: PlanForm = {
   retentionLimitDays: "",
   isActive: true,
   sortOrder: "0",
+  hasAiSalesAssistant: false,
 };
 
 function planToForm(p: Plan): PlanForm {
@@ -130,6 +133,7 @@ function planToForm(p: Plan): PlanForm {
       p.retentionLimitDays == null ? "" : String(p.retentionLimitDays),
     isActive: p.isActive,
     sortOrder: String(p.sortOrder),
+    hasAiSalesAssistant: p.hasAiSalesAssistant ?? false,
   };
 }
 
@@ -361,6 +365,7 @@ export default function Plans() {
         retentionLimitDays,
         isActive: planForm.isActive,
         sortOrder: nums.sortOrder,
+        hasAiSalesAssistant: planForm.hasAiSalesAssistant,
       };
       createPlan.mutate({ data: body });
     } else if (typeof editingPlanId === "number") {
@@ -378,6 +383,7 @@ export default function Plans() {
           retentionLimitDays,
           isActive: planForm.isActive,
           sortOrder: nums.sortOrder,
+          hasAiSalesAssistant: planForm.hasAiSalesAssistant,
         },
       });
     }
@@ -923,6 +929,18 @@ function PlanEditor(props: {
           className="w-4 h-4"
         />
         Aktif (tampil di checkout)
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={form.hasAiSalesAssistant}
+          onChange={(e) =>
+            setForm((p) => ({ ...p, hasAiSalesAssistant: e.target.checked }))
+          }
+          data-testid="plan-hasAiSalesAssistant"
+          className="w-4 h-4"
+        />
+        AI Sales Assistant (khusus Enterprise)
       </label>
       <div className="flex items-center gap-2">
         <button

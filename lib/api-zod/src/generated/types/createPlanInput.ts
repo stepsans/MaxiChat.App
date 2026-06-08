@@ -38,6 +38,7 @@ export interface CreatePlanInput {
      * @nullable
      */
   retentionLimitDays?: number | null;
+  hasAiSalesAssistant?: boolean;
   isActive?: boolean;
   /** @minimum 0 */
   sortOrder?: number;

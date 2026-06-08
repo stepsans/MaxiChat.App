@@ -364,6 +364,273 @@ export interface SuccessResponse {
 }
 
 /**
+ * A column in the tenant's sales pipeline (kanban board).
+ */
+export interface SalesStage {
+  id: number;
+  name: string;
+  /** Ascending display order on the board. */
+  sortOrder: number;
+  /** Terminal "deal won" column. */
+  isWon: boolean;
+  /** Terminal "deal lost" column. */
+  isLost: boolean;
+  /**
+     * Optional hex color for the column header.
+     * @nullable
+     */
+  color: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SalesStageInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /** @minimum 0 */
+  sortOrder?: number;
+  isWon?: boolean;
+  isLost?: boolean;
+  /**
+     * @maxLength 20
+     * @nullable
+     */
+  color?: string | null;
+}
+
+/**
+ * Partial update of a pipeline stage.
+ */
+export interface SalesStageUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  /** @minimum 0 */
+  sortOrder?: number;
+  isWon?: boolean;
+  isLost?: boolean;
+  /**
+     * @maxLength 20
+     * @nullable
+     */
+  color?: string | null;
+}
+
+export type OpportunityStatus = typeof OpportunityStatus[keyof typeof OpportunityStatus];
+
+
+export const OpportunityStatus = {
+  open: 'open',
+  won: 'won',
+  lost: 'lost',
+} as const;
+
+/**
+ * A sales opportunity (deal) attached to a chat.
+ */
+export interface Opportunity {
+  id: number;
+  /**
+     * Agent who owns the deal; null = unassigned.
+     * @nullable
+     */
+  assignedUserId: number | null;
+  chatId: number;
+  channelId: number;
+  contactPhone: string;
+  /** @nullable */
+  contactName: string | null;
+  /** @nullable */
+  stageId: number | null;
+  /** AI lead score 0–100. */
+  leadScore: number;
+  /** @nullable */
+  intentCategory: string | null;
+  /** Estimated deal value in whole Rupiah. */
+  estimatedValueIdr: number;
+  status: OpportunityStatus;
+  /** @nullable */
+  waitingStatus: string | null;
+  productInterest: string[];
+  /** @nullable */
+  aiNotes: string | null;
+  /** @nullable */
+  lastActivityAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OpportunityInputStatus = typeof OpportunityInputStatus[keyof typeof OpportunityInputStatus];
+
+
+export const OpportunityInputStatus = {
+  open: 'open',
+  won: 'won',
+  lost: 'lost',
+} as const;
+
+export interface OpportunityInput {
+  /** The chat to attach this opportunity to (must be in the tenant). */
+  chatId: number;
+  /** @nullable */
+  assignedUserId?: number | null;
+  /** @nullable */
+  stageId?: number | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  contactName?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  leadScore?: number;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  intentCategory?: string | null;
+  /** @minimum 0 */
+  estimatedValueIdr?: number;
+  status?: OpportunityInputStatus;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  waitingStatus?: string | null;
+  productInterest?: string[];
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  aiNotes?: string | null;
+}
+
+export type OpportunityUpdateStatus = typeof OpportunityUpdateStatus[keyof typeof OpportunityUpdateStatus];
+
+
+export const OpportunityUpdateStatus = {
+  open: 'open',
+  won: 'won',
+  lost: 'lost',
+} as const;
+
+/**
+ * Partial update of an opportunity.
+ */
+export interface OpportunityUpdate {
+  /** @nullable */
+  assignedUserId?: number | null;
+  /** @nullable */
+  stageId?: number | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  contactName?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  leadScore?: number;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  intentCategory?: string | null;
+  /** @minimum 0 */
+  estimatedValueIdr?: number;
+  status?: OpportunityUpdateStatus;
+  /**
+     * @maxLength 40
+     * @nullable
+     */
+  waitingStatus?: string | null;
+  productInterest?: string[];
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  aiNotes?: string | null;
+}
+
+export type OpportunityFollowUpStatus = typeof OpportunityFollowUpStatus[keyof typeof OpportunityFollowUpStatus];
+
+
+export const OpportunityFollowUpStatus = {
+  pending: 'pending',
+  sent: 'sent',
+  cancelled: 'cancelled',
+  skipped: 'skipped',
+} as const;
+
+/**
+ * A scheduled follow-up touch for an opportunity.
+ */
+export interface OpportunityFollowUp {
+  id: number;
+  opportunityId: number;
+  /** Touch number in the sequence (1–3). */
+  sequence: number;
+  scheduledAt: string;
+  status: OpportunityFollowUpStatus;
+  /** @nullable */
+  generatedMessage: string | null;
+  /** @nullable */
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SalesAuditEventDetail = { [key: string]: unknown };
+
+/**
+ * An append-only AI/sales activity log entry.
+ */
+export interface SalesAuditEvent {
+  id: number;
+  /** @nullable */
+  opportunityId: number | null;
+  /**
+     * Who triggered it; null = AI/system.
+     * @nullable
+     */
+  actorUserId: number | null;
+  eventType: string;
+  detail: SalesAuditEventDetail;
+  createdAt: string;
+}
+
+export type OpportunityInsightByStageItem = {
+  /** @nullable */
+  stageId: number | null;
+  stageName: string;
+  count: number;
+  valueIdr: number;
+};
+
+/**
+ * Aggregate pipeline metrics scoped to the caller's visibility.
+ */
+export interface OpportunityInsight {
+  totalOpen: number;
+  totalWon: number;
+  totalLost: number;
+  /** Sum of estimated value across open opportunities (whole Rupiah). */
+  openValueIdr: number;
+  /** Sum of estimated value across won opportunities (whole Rupiah). */
+  wonValueIdr: number;
+  /** Per-stage open counts + value for the board. */
+  byStage: OpportunityInsightByStageItem[];
+}
+
+/**
  * @nullable
  */
 export type PaymentGatewayConfigSecretKeySource = typeof PaymentGatewayConfigSecretKeySource[keyof typeof PaymentGatewayConfigSecretKeySource] | null;
@@ -1736,6 +2003,8 @@ export interface Plan {
      * @nullable
      */
   retentionLimitDays?: number | null;
+  /** Whether this plan includes the AI Sales Assistant (Enterprise-only). */
+  hasAiSalesAssistant?: boolean;
   /** Inactive plans are hidden from self-serve checkout but kept for existing tenants. */
   isActive: boolean;
   sortOrder: number;
@@ -1775,6 +2044,7 @@ export interface CreatePlanInput {
      * @nullable
      */
   retentionLimitDays?: number | null;
+  hasAiSalesAssistant?: boolean;
   isActive?: boolean;
   /** @minimum 0 */
   sortOrder?: number;
@@ -1811,6 +2081,7 @@ export interface UpdatePlanInput {
      * @nullable
      */
   retentionLimitDays?: number | null;
+  hasAiSalesAssistant?: boolean;
   isActive?: boolean;
   /** @minimum 0 */
   sortOrder?: number;
@@ -3509,4 +3780,24 @@ export type ForwardMessage200 = {
   failed: number;
   results: ForwardMessage200ResultsItem[];
 };
+
+export type ListOpportunitiesParams = {
+/**
+ * Filter to a single pipeline stage.
+ */
+stageId?: number;
+/**
+ * Filter by lifecycle status.
+ */
+status?: ListOpportunitiesStatus;
+};
+
+export type ListOpportunitiesStatus = typeof ListOpportunitiesStatus[keyof typeof ListOpportunitiesStatus];
+
+
+export const ListOpportunitiesStatus = {
+  open: 'open',
+  won: 'won',
+  lost: 'lost',
+} as const;
 

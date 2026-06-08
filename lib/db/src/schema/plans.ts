@@ -43,6 +43,12 @@ export const plansTable = pgTable(
     // NULL = unlimited (the tenant may keep data forever). A tenant's chosen
     // retention is clamped to this cap; it is never a floor.
     retentionLimitDays: integer("retention_limit_days"),
+    // Entitlement flag: does this plan include the AI Sales Assistant
+    // (Enterprise-only sales CRM)? Default false; only the enterprise plan
+    // turns it on. Infinity owners always pass regardless of this flag.
+    hasAiSalesAssistant: boolean("has_ai_sales_assistant")
+      .notNull()
+      .default(false),
     isActive: boolean("is_active").notNull().default(true),
     // Display ordering in the catalog (ascending).
     sortOrder: integer("sort_order").notNull().default(0),
@@ -105,6 +111,7 @@ export const insertPlanSchema = createInsertSchema(plansTable, {
   quotaTokens: z.number().int().min(0),
   quotaStorageBytes: z.number().int().min(0),
   retentionLimitDays: z.number().int().min(1).nullable().optional(),
+  hasAiSalesAssistant: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 

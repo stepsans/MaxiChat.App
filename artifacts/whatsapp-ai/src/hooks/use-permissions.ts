@@ -20,6 +20,9 @@ export const PERMISSION_MENUS = [
   "statuses",
   "settings",
   "channels",
+  // AI Sales Assistant (Enterprise-only). Full CRUD; agents are scoped to
+  // their own assigned opportunities by the route layer, not this matrix.
+  "opportunities",
   // View-only menus: only canView is meaningful (no create/edit/delete routes).
   "dashboard",
   "aiStudio",
@@ -44,6 +47,7 @@ export const MENU_ACTIONS: Record<PermissionMenu, Array<keyof PermissionCell>> =
   flows: FULL_CRUD,
   credentials: FULL_CRUD,
   channels: FULL_CRUD,
+  opportunities: FULL_CRUD,
   statuses: ["canView", "canCreate", "canDelete"],
   analytics: ["canView"],
   settings: ["canView"],
