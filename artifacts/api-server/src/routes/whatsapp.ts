@@ -44,7 +44,12 @@ import {
   resolveActiveChannel,
   listOwnedChannels,
 } from "../lib/channel-context";
-import { readClearUpTo } from "../lib/chat-read-sync";
+import {
+  readClearUpTo,
+  ownReadFromReceiptUpdate,
+  ownReadFromMessageUpdate,
+  type OwnReadSignal,
+} from "../lib/chat-read-sync";
 import { notifyInboundMessage } from "../lib/push";
 import {
   FLOW_REPHRASE_SYSTEM_PROMPT,
@@ -942,13 +947,64 @@ async function applyChatListMeta(
   // unread counts are never mirrored (counted by MaxiChat's own inbound path).
   const readUpTo = readClearUpTo(c);
   if (readUpTo) {
-    await db
-      .update(chatsTable)
-      .set({ unreadCount: 0 })
-      .where(
-        sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber} AND (${chatsTable.lastMessageAt} IS NULL OR ${chatsTable.lastMessageAt} <= ${readUpTo})`,
-      );
+    await clearUnreadUpTo(channelId, phoneNumber, readUpTo);
   }
+}
+
+// The single, causally-guarded unread-clear all read paths converge on:
+// chat-meta (unreadCount:0), live read receipts, and message-status updates.
+// Only clears when the read point covers the chat's latest message
+// (lastMessageAt), so a stale read can never wipe a newer unread, and positive
+// unread counts are never mirrored.
+async function clearUnreadUpTo(
+  channelId: number,
+  phoneNumber: string,
+  readUpTo: Date,
+): Promise<void> {
+  await db
+    .update(chatsTable)
+    .set({ unreadCount: 0 })
+    .where(
+      sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${phoneNumber} AND (${chatsTable.lastMessageAt} IS NULL OR ${chatsTable.lastMessageAt} <= ${readUpTo})`,
+    );
+}
+
+// Map a Baileys chat/message remoteJid to MaxiChat's stored phone_number key:
+// groups keep the full @g.us JID; 1:1 chats use the "+<digits>" form. Returns
+// null for anything else (broadcast/newsletter/status), which we never track.
+function keyForChatId(id: string): string | null {
+  if (id.endsWith("@g.us")) return id;
+  if (id.endsWith("@s.whatsapp.net")) {
+    return `+${id.split("@")[0].split(":")[0]}`;
+  }
+  return null;
+}
+
+// Translate an own-device read signal (from message-receipt.update /
+// messages.update) into the shared, causally-guarded clear. When the event
+// carries no timestamp, anchor on the referenced message's arrival time so the
+// read can still clear — the lastMessageAt guard in clearUnreadUpTo still
+// refuses to wipe a newer unread. Skips when no safe read point can be derived.
+async function applyOwnReadSignal(
+  channelId: number,
+  signal: OwnReadSignal,
+): Promise<void> {
+  const key = keyForChatId(signal.remoteJid);
+  if (!key) return;
+  let readUpTo = signal.readUpTo;
+  if (!readUpTo && signal.messageId) {
+    const [row] = await db
+      .select({ createdAt: chatMessagesTable.createdAt })
+      .from(chatMessagesTable)
+      .innerJoin(chatsTable, eq(chatMessagesTable.chatId, chatsTable.id))
+      .where(
+        sql`${chatsTable.channelId} = ${channelId} AND ${chatsTable.phoneNumber} = ${key} AND ${chatMessagesTable.waMessageId} = ${signal.messageId}`,
+      )
+      .limit(1);
+    if (row?.createdAt) readUpTo = row.createdAt;
+  }
+  if (!readUpTo) return;
+  await clearUnreadUpTo(channelId, key, readUpTo);
 }
 
 export async function getOrCreateChat(
@@ -3276,13 +3332,6 @@ async function startBaileys(userId: number, channelId: number) {
     sock.ev.on("contacts.upsert", handleContacts);
     sock.ev.on("contacts.update", handleContacts);
 
-    const keyForChatId = (id: string): string | null => {
-      if (id.endsWith("@g.us")) return id;
-      if (id.endsWith("@s.whatsapp.net")) {
-        return `+${id.split("@")[0].split(":")[0]}`;
-      }
-      return null;
-    };
     const handleChatMeta = async (
       updates: Array<{ id?: string } & Record<string, unknown>>,
     ) => {
@@ -3300,6 +3349,49 @@ async function startBaileys(userId: number, channelId: number) {
     };
     sock.ev.on("chats.upsert", handleChatMeta);
     sock.ev.on("chats.update", handleChatMeta);
+
+    // Real-time read sync from any linked WhatsApp device. The chats.update
+    // path above only fires when WhatsApp re-sends the chat with unreadCount:0
+    // + a conversationTimestamp, which it frequently omits for own-cross-device
+    // reads. These two events are the broader signal: message-receipt.update
+    // carries a readTimestamp for read-self receipts; messages.update raises an
+    // inbound message to READ status (no timestamp — anchored on the message).
+    // Both converge on applyOwnReadSignal → the shared causal-guarded clear.
+    const handleReceiptUpdate = async (
+      updates: Array<Record<string, unknown>>,
+    ) => {
+      if (myEpoch !== ctx.epoch) return;
+      logger.debug(
+        { count: updates.length },
+        "message-receipt.update received",
+      );
+      for (const item of updates) {
+        try {
+          const signal = ownReadFromReceiptUpdate(item);
+          if (!signal) continue;
+          await applyOwnReadSignal(channelId, signal);
+        } catch (err) {
+          logger.error({ err }, "Failed to apply read receipt");
+        }
+      }
+    };
+    const handleMessagesUpdate = async (
+      updates: Array<Record<string, unknown>>,
+    ) => {
+      if (myEpoch !== ctx.epoch) return;
+      logger.debug({ count: updates.length }, "messages.update received");
+      for (const item of updates) {
+        try {
+          const signal = ownReadFromMessageUpdate(item);
+          if (!signal) continue;
+          await applyOwnReadSignal(channelId, signal);
+        } catch (err) {
+          logger.error({ err }, "Failed to apply message status update");
+        }
+      }
+    };
+    sock.ev.on("message-receipt.update", handleReceiptUpdate);
+    sock.ev.on("messages.update", handleMessagesUpdate);
 
     // Live group-subject sync. When a group is renamed on WhatsApp, Baileys
     // emits groups.update with the new subject (and groups.upsert for groups

@@ -44,6 +44,7 @@
 - [api-server test runner](test-runner-setup.md) — node:test via tsx (`pnpm --filter @workspace/api-server run test`); unit-tested logic must stay in db-free modules since @workspace/db connects eagerly.
 - [LID-chat merge collision](lid-chat-merge-collision.md) — stale-LID→canonical chat merge that blindly reassigns chat_id aborts on duplicate wa_message_id, then silently drops EVERY later 1:1 message; move non-colliding rows + cascade-delete + best-effort try/catch.
 - [AI auto-reply context anchoring](ai-reply-context-anchoring.md) — order history AND anchor to triggering msg id (delay race); few-shot examples w/ real product codes become answer anchors.
+- [Cross-device read/unread sync](cross-device-read-sync.md) — own-device WA reads clear unread via ONE causal-guarded clear; receipt w/o read-timestamp ≠ read (delivery), msgs.update message-anchors; skip fromMe (blue ticks).
 - [Deploy repl-layer = whole filesystem](deploy-repl-layer-filesystem.md) — publish snapshots ALL files (gitignore ignored); api-server/media bloats to GBs → HTTP 413; empty it pre-publish or use object storage; app needs Reserved VM not autoscale.
 - [Expo workflow lazy port](expo-workflow-lazy-port.md) — `artifacts/mobile: expo` restart reports FAILED/DIDNT_OPEN_A_PORT even when healthy; Metro binds port lazily, verify via logs + typecheck not workflow status.
 - [Push token ownership & recipient scoping](push-token-ownership.md) — delete-by-token must be owner-scoped (else cross-account DoS); inbound push fan-out must filter users.status="active".

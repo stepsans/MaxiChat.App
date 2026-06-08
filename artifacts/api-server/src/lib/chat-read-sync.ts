@@ -41,3 +41,111 @@ export function readClearUpTo(c: Record<string, unknown>): Date | null {
   if (secs === null) return null;
   return new Date(secs * 1000);
 }
+
+// A normalized "I read this chat on a WhatsApp device" signal, derived from a
+// read-receipt / message-status event. The chat-meta path above only fires
+// when WhatsApp re-sends the chat object with unreadCount:0 + a
+// conversationTimestamp, which it frequently does NOT do for own-cross-device
+// reads. These receipt/update events are the broader signal.
+export interface OwnReadSignal {
+  // The chat JID the read applies to (group @g.us or 1:1 @s.whatsapp.net).
+  remoteJid: string;
+  // The read point in time, or null when the event carries no usable
+  // timestamp — the caller must then anchor on the referenced message's
+  // arrival time (see `messageId`) so a read with no clock can still clear,
+  // while the caller's causal guard prevents wiping a newer unread.
+  readUpTo: Date | null;
+  // The WA id of the message the receipt/update references, used for the
+  // message-anchored fallback when `readUpTo` is null.
+  messageId: string | null;
+}
+
+type WaKeyLike =
+  | {
+      fromMe?: boolean | null;
+      remoteJid?: string | null;
+      id?: string | null;
+    }
+  | null
+  | undefined;
+
+// Extract the remoteJid + optional messageId from a Baileys message key,
+// rejecting receipts on our OWN outbound messages. A receipt on a fromMe
+// message means the *customer* read what we sent (the blue double-check) —
+// that's explicitly out of scope; we only ever clear MaxiChat's own unread
+// badge for INBOUND (customer) messages that *we* read.
+function inboundKeyParts(
+  key: WaKeyLike,
+): { remoteJid: string; messageId: string | null } | null {
+  if (!key) return null;
+  if (key.fromMe) return null;
+  const remoteJid = key.remoteJid;
+  if (typeof remoteJid !== "string" || remoteJid === "") return null;
+  return {
+    remoteJid,
+    messageId: typeof key.id === "string" && key.id !== "" ? key.id : null,
+  };
+}
+
+// Derive an own-read signal from a Baileys `message-receipt.update` item
+// (`{ key, receipt }`). A read-self receipt carries `receipt.readTimestamp`
+// (or `playedTimestamp` for voice notes). Returns null unless the receipt
+// carries a positive read/played timestamp — `message-receipt.update` also
+// fires for non-read receipts (delivery/etc.), and without a read timestamp we
+// have NO evidence the chat was actually read, so we must NOT clear unread.
+// (Timestamp-less reads are still covered by the READ/PLAYED-filtered
+// `messages.update` path, which message-anchors safely.)
+export function ownReadFromReceiptUpdate(item: {
+  key?: WaKeyLike;
+  receipt?:
+    | { readTimestamp?: unknown; playedTimestamp?: unknown }
+    | null
+    | undefined;
+}): OwnReadSignal | null {
+  const parts = inboundKeyParts(item?.key);
+  if (!parts) return null;
+  const r = item?.receipt;
+  const secs =
+    toUnixSeconds(r?.readTimestamp) ?? toUnixSeconds(r?.playedTimestamp);
+  if (secs === null) return null;
+  return {
+    remoteJid: parts.remoteJid,
+    readUpTo: new Date(secs * 1000),
+    messageId: parts.messageId,
+  };
+}
+
+// WA proto message statuses (proto.WebMessageInfo.Status): READ = 4, PLAYED = 5.
+const WA_STATUS_READ = 4;
+const WA_STATUS_PLAYED = 5;
+
+function isReadStatus(status: unknown): boolean {
+  if (typeof status === "number") {
+    return status === WA_STATUS_READ || status === WA_STATUS_PLAYED;
+  }
+  if (typeof status === "string") {
+    const s = status.toUpperCase();
+    return s === "READ" || s === "PLAYED";
+  }
+  return false;
+}
+
+// Derive an own-read signal from a Baileys `messages.update` item
+// (`{ key, update }`) when the update raises an INBOUND message to READ/PLAYED
+// status (i.e. we read the customer's message, possibly on another device).
+// `messages.update` carries no timestamp, so `readUpTo` is always null here and
+// the caller anchors on the referenced message. Returns null for our own
+// outbound status changes (delivered/read-by-customer) and non-read updates.
+export function ownReadFromMessageUpdate(item: {
+  key?: WaKeyLike;
+  update?: { status?: unknown } | null | undefined;
+}): OwnReadSignal | null {
+  const parts = inboundKeyParts(item?.key);
+  if (!parts) return null;
+  if (!isReadStatus(item?.update?.status)) return null;
+  return {
+    remoteJid: parts.remoteJid,
+    readUpTo: null,
+    messageId: parts.messageId,
+  };
+}
