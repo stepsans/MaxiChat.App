@@ -1,0 +1,355 @@
+Menurut saya ide dasarnya bagus, tetapi kalau dibuat seperti yang Anda tulis sekarang, hasilnya masih terlalu sederhana dan akan banyak menghasilkan spam follow-up yang tidak tepat.
+
+Kalau MaxiChat ingin menjadi produk yang benar-benar bernilai, saya akan mengubahnya dari:
+
+> "Auto Follow Up"
+
+menjadi:
+
+> **AI Opportunity Follow-Up Engine**
+
+atau
+
+> **AI Sales Follow-Up Assistant**
+
+Karena yang dijual bukan sekadar kirim pesan otomatis, tetapi membantu sales menutup penjualan.
+
+---
+
+# Masalah Jika Hanya Berdasarkan Keyword
+
+Misalnya customer berkata:
+
+> "Pak saya mau lihat harga mesin laminasi"
+
+AI langsung menawarkan auto follow-up.
+
+Besok:
+
+> "Pak gimana sudah dipertimbangkan?"
+
+Masalahnya:
+
+* Bisa jadi customer sudah membeli.
+* Bisa jadi customer sudah menjawab di channel lain.
+* Bisa jadi customer sedang menunggu penawaran.
+* Bisa jadi customer sudah tidak tertarik.
+
+Akibatnya spam.
+
+---
+
+# Yang Saya Sarankan
+
+AI harus melakukan scoring terlebih dahulu.
+
+## Opportunity Detection
+
+Setiap percakapan diberi skor.
+
+Contoh:
+
+### High Intent
+
+Customer bertanya:
+
+* harga
+* spesifikasi
+* stok
+* lead time
+* garansi
+* demo
+* katalog
+* quotation
+
+Skor:
+
+```text
+85/100
+```
+
+---
+
+### Medium Intent
+
+Customer bertanya:
+
+* informasi umum
+* perbandingan produk
+
+Skor:
+
+```text
+60/100
+```
+
+---
+
+### Low Intent
+
+Customer hanya:
+
+* say hello
+* tanya alamat
+
+Skor:
+
+```text
+20/100
+```
+
+---
+
+# Sidebar Kanan
+
+Bukan hanya switch ON/OFF.
+
+Tetapi muncul card.
+
+```text
+AI Opportunity
+
+Produk:
+Mesin Laminasi
+
+Intent:
+High (88%)
+
+Status:
+Waiting Customer Response
+
+Last Interaction:
+2 hari lalu
+
+Recommendation:
+Follow Up Besok
+
+[Enable Follow Up]
+```
+
+Ini jauh lebih bernilai.
+
+---
+
+# AI Harus Membaca Status Percakapan
+
+AI harus mengerti:
+
+## Waiting Customer
+
+Contoh:
+
+Sales terakhir berkata:
+
+> "Baik pak saya kirim pricelist."
+
+Customer belum membalas.
+
+Maka:
+
+```text
+Status:
+Waiting Customer
+```
+
+Follow-up layak.
+
+---
+
+## Waiting Sales
+
+Contoh:
+
+Customer berkata:
+
+> "Pak bisa kirim katalog?"
+
+Belum dijawab.
+
+AI tidak boleh follow-up.
+
+Karena yang harus dilakukan adalah menjawab dulu.
+
+---
+
+# Follow-Up Sequence
+
+Jangan hanya 1 follow-up.
+
+Contoh:
+
+### Follow Up 1
+
+24 jam
+
+```text
+Halo Pak Bagus,
+
+Saya mau follow up terkait mesin laminasi yang kemarin sempat kita diskusikan.
+
+Apakah ada informasi tambahan yang bisa saya bantu?
+```
+
+---
+
+### Follow Up 2
+
+72 jam
+
+```text
+Halo Pak Bagus,
+
+Saya ingin memastikan apakah Bapak masih mempertimbangkan mesin laminasi tersebut.
+
+Jika ada pertanyaan atau kebutuhan lain, saya siap membantu.
+```
+
+---
+
+### Follow Up 3
+
+7 hari
+
+```text
+Halo Pak Bagus,
+
+Saya hanya ingin memastikan kembali apakah proyek mesin laminasi ini masih berjalan.
+
+Silakan hubungi saya kapan saja jika membutuhkan bantuan.
+```
+
+---
+
+Lalu berhenti.
+
+Jangan follow-up tanpa batas.
+
+---
+
+# AI Tidak Langsung Mengirim
+
+Ini penting.
+
+Saya sarankan ada 3 mode.
+
+---
+
+## Mode 1 - Suggestion Only
+
+AI hanya memberi saran.
+
+```text
+AI menyarankan follow-up.
+```
+
+User klik kirim.
+
+---
+
+## Mode 2 - Approval Required
+
+AI membuat draft.
+
+Besok muncul:
+
+```text
+Follow-up siap dikirim.
+```
+
+User approve.
+
+---
+
+## Mode 3 - Full Auto
+
+AI langsung kirim.
+
+Ini fitur premium.
+
+---
+
+# Follow-Up Harus Personal
+
+Jangan template kaku.
+
+AI harus membaca histori.
+
+Contoh:
+
+Customer bertanya:
+
+> Mesin UV DTF
+
+Maka follow-up:
+
+```text
+Halo Pak Bagus,
+
+Saya ingin follow up terkait mesin UV DTF yang kemarin sempat Bapak tanyakan.
+
+Apakah sudah ada pertimbangan atau pertanyaan tambahan?
+```
+
+Bukan:
+
+```text
+Gimana pak?
+```
+
+---
+
+# Opportunity Pipeline
+
+Ini yang akan membuat MaxiChat berbeda.
+
+Di sidebar:
+
+```text
+Lead Score: 88
+
+Produk:
+Mesin UV DTF
+
+Nilai Potensi:
+Rp 85.000.000
+
+Tahap:
+Quotation Sent
+
+Last Activity:
+3 hari lalu
+
+Follow Up:
+Recommended
+```
+
+AI sebenarnya sedang membangun mini CRM.
+
+---
+
+# Yang Akan Saya Bangun
+
+Fase 1:
+
+* AI membaca percakapan
+* Deteksi intent
+* Deteksi waiting customer
+* Tampilkan rekomendasi follow-up
+* User kirim manual
+
+Fase 2:
+
+* Lead scoring
+* Opportunity tracking
+* Follow-up sequence
+* AI draft personal
+
+Fase 3:
+
+* Full auto follow-up
+* AI CRM pipeline
+* Prediksi closing
+* Prediksi nilai deal
+* Prediksi peluang menang
+
+Menurut saya ini jauh lebih kuat secara bisnis dibanding sekadar "auto follow-up 24 jam", karena yang dijual nantinya bukan fitur follow-up, tetapi **AI Sales Assistant yang membantu closing penjualan**. Saya sarankan mulai dari Fase 1 dan desain database sejak awal agar bisa berkembang ke Fase 2 dan 3 tanpa perlu bongkar ulang arsitektur.

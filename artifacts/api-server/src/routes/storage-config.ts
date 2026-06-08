@@ -39,9 +39,12 @@ router.put("/storage-config", async (req, res): Promise<void> => {
       }
     }
     if (warnPercent !== undefined) {
-      if (!Number.isInteger(warnPercent) || warnPercent < 0 || warnPercent > 100) {
+      // Lower bound is 1: "warn at 0%" = always-on is meaningless, and allowing
+      // it would make the client's `>0 ? warnPercent : 80` fallback misreport a
+      // saved 0 as 80. Bounding at 1..100 keeps client + server faithful.
+      if (!Number.isInteger(warnPercent) || warnPercent < 1 || warnPercent > 100) {
         res.status(400).json({
-          error: "warnPercent harus bilangan bulat antara 0 dan 100",
+          error: "warnPercent harus bilangan bulat antara 1 dan 100",
         });
         return;
       }

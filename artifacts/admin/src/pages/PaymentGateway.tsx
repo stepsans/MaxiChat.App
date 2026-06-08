@@ -729,8 +729,8 @@ function StorageEnforcementSection({
       return;
     }
     const warn = Number(warnPercent.replace(",", "."));
-    if (!Number.isInteger(warn) || warn < 0 || warn > 100) {
-      onError("Ambang peringatan harus bilangan bulat antara 0 dan 100 persen.");
+    if (!Number.isInteger(warn) || warn < 1 || warn > 100) {
+      onError("Ambang peringatan harus bilangan bulat antara 1 dan 100 persen.");
       return;
     }
     save.mutate({
