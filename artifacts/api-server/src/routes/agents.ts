@@ -184,8 +184,14 @@ router.get("/", async (req, res): Promise<void> => {
     const agents = ownerRow
       ? [serialize(ownerRow), ...rows.map(serialize)]
       : rows.map(serialize);
+    // Owner Infinity is an RBAC flag, never written to users.plan (which stays
+    // at its "basic" default). Surface it here so the team page shows "Owner
+    // Infinity" + unlimited seats instead of the raw plan column, mirroring the
+    // billing/quota + dashboard surfaces.
+    const unlimited = await isInfinityOwner(owner.ownerId);
     res.json({
       plan: owner.plan,
+      unlimited,
       maxAgents: await planUserLimit(owner.plan),
       usedAgents: rows.length,
       teamRole: owner.teamRole,

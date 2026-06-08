@@ -2988,6 +2988,7 @@ export const GenerateAiReviewColumnsResponse = zod.object({
  */
 export const ListAgentsResponse = zod.object({
   "plan": zod.enum(['basic', 'pro', 'business', 'enterprise']),
+  "unlimited": zod.boolean().optional().describe('True when the owner is on the Owner Infinity plan (RBAC flag, not a catalog plan). When true the UI shows \"Owner Infinity\" and an unlimited seat count instead of the raw `plan`\/`maxAgents`.'),
   "maxAgents": zod.number(),
   "usedAgents": zod.number(),
   "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),

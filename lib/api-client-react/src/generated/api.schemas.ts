@@ -1442,6 +1442,8 @@ export const TeamListingAssignmentMode = {
 
 export interface TeamListing {
   plan: TeamListingPlan;
+  /** True when the owner is on the Owner Infinity plan (RBAC flag, not a catalog plan). When true the UI shows "Owner Infinity" and an unlimited seat count instead of the raw `plan`/`maxAgents`. */
+  unlimited?: boolean;
   maxAgents: number;
   usedAgents: number;
   teamRole: TeamListingTeamRole;

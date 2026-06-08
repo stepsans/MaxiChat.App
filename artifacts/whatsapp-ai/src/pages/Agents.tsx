@@ -192,7 +192,7 @@ export default function Agents() {
   });
 
   const isSuperAdmin = data?.teamRole === "super_admin";
-  const isAtLimit = data ? data.usedAgents >= data.maxAgents : false;
+  const isAtLimit = data ? !data.unlimited && data.usedAgents >= data.maxAgents : false;
 
   const settingsMut = useUpdateTeamSettings({
     mutation: {
@@ -365,10 +365,10 @@ export default function Agents() {
           <div className="rounded-lg border bg-card p-4 mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Badge variant="outline" className="font-medium">
-                Paket {PLAN_LABEL[data.plan] ?? data.plan}
+                Paket {data.unlimited ? "Owner Infinity" : PLAN_LABEL[data.plan] ?? data.plan}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                {data.usedAgents} / {data.maxAgents} anggota tim digunakan
+                {data.usedAgents} / {data.unlimited ? "∞" : data.maxAgents} anggota tim digunakan
               </span>
             </div>
             {isAtLimit && isSuperAdmin && (

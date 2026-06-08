@@ -27,10 +27,20 @@ catalog surface.
   middleware, the AI gate, and `/billing/me` — so the bypass covers all of them at once.
 - `retention.ts getPlanRetentionCap` → null (no cap).
 - `agents.ts` → skips the per-plan invited-seat cap.
-- Routes `/billing/me` + `/billing/quota` add `unlimited:true` + synthetic plan label/key
-  (`INFINITY_PLAN_LABEL`/`INFINITY_PLAN_KEY`). Frontend (Dashboard QuotaBar, Billing page)
-  renders ∞ + suppresses checkout/bill/trend when `unlimited`.
+- Routes `/billing/me` + `/billing/quota` + `/agents` (TeamListing) add `unlimited:true` +
+  synthetic plan label/key (`INFINITY_PLAN_LABEL`/`INFINITY_PLAN_KEY`). Frontend (Dashboard
+  QuotaBar, Billing page, Agents/Team page) renders ∞/"Owner Infinity" + suppresses
+  checkout/bill/trend/at-limit warnings when `unlimited`.
 
-**How to apply:** any NEW quota/limit/billing/read-only gate must call `isInfinityOwner`
-and bypass for it, or the infinity owner will hit the new limit. Verify scoping by
-confirming a non-infinity account still returns `unlimited:false` + read-only.
+## DISPLAY surfaces must honor the flag too, not just enforcement gates
+**Why:** `users.plan` for the infinity owner stays at its `"basic"` default forever (infinity
+is never written to the plan column). ANY surface that renders the raw `plan` (Team/Agents
+"Paket {plan}", admin tenant listings, etc.) shows "basic" while the flag is true — operators
+read this as the plan "reverting to basic" and re-toggle the flag, but the display never
+changes because it ignores the flag. There is NO runtime writer that flips the flag→false or
+plan→"basic" (seed.ts is insert-only; dunning/monthly-close touch `subscriptions.status` only).
+
+**How to apply:** any NEW quota/limit/billing/read-only gate must call `isInfinityOwner` and
+bypass, AND any surface that DISPLAYS `users.plan` must surface `unlimited`/the synthetic
+infinity label instead of the raw key. Verify scoping by confirming a non-infinity account
+still returns `unlimited:false` + read-only + its real plan key.
