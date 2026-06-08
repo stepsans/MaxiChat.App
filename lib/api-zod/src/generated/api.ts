@@ -29,7 +29,8 @@ export const LoginResponse = zod.object({
   "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
   "parentUserId": zod.number().nullish(),
   "profilePhotoUrl": zod.string().nullish(),
-  "companyName": zod.string().nullish()
+  "companyName": zod.string().nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
 })
 
 
@@ -57,7 +58,8 @@ export const MobileLoginResponse = zod.object({
   "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
   "parentUserId": zod.number().nullish(),
   "profilePhotoUrl": zod.string().nullish(),
-  "companyName": zod.string().nullish()
+  "companyName": zod.string().nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
 })
 })
 
@@ -109,7 +111,8 @@ export const GetMeResponse = zod.object({
   "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
   "parentUserId": zod.number().nullish(),
   "profilePhotoUrl": zod.string().nullish(),
-  "companyName": zod.string().nullish()
+  "companyName": zod.string().nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
 }),zod.null()])
 })
 
@@ -4967,6 +4970,92 @@ export const GetSalesInsightsResponse = zod.object({
   "valueIdr": zod.number()
 })).describe('Per-stage open counts + value for the board.')
 }).describe('Aggregate pipeline metrics scoped to the caller\'s visibility.')
+
+
+/**
+ * @summary Get the latest AI Sales Insight for a chat
+ */
+export const GetChatSalesInsightParams = zod.object({
+  "chatId": zod.coerce.number()
+})
+
+export const GetChatSalesInsightResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "channelId": zod.number(),
+  "contactPhone": zod.string(),
+  "leadScore": zod.number().describe('AI lead score 0–100.'),
+  "intentCategory": zod.string().nullable(),
+  "estimatedValueIdr": zod.number().describe('Estimated deal value in whole Rupiah.'),
+  "productInterest": zod.array(zod.string()),
+  "scoreReason": zod.string().nullable(),
+  "aiNotes": zod.string().nullable(),
+  "recommendation": zod.string().nullable(),
+  "waitingStatus": zod.union([zod.literal('waiting_customer'),zod.literal('waiting_company'),zod.literal(null)]).nullable(),
+  "analyzedAt": zod.coerce.date()
+}).describe('The latest AI Sales Insight for a chat (one per chat). Surfaced in the conversation sidebar; exists even when no opportunity has been created. All money is whole-integer Rupiah.')
+
+
+/**
+ * @summary Run (or refresh) the AI Sales Insight analysis for a chat
+ */
+export const AnalyzeChatSalesInsightParams = zod.object({
+  "chatId": zod.coerce.number()
+})
+
+export const AnalyzeChatSalesInsightResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "channelId": zod.number(),
+  "contactPhone": zod.string(),
+  "leadScore": zod.number().describe('AI lead score 0–100.'),
+  "intentCategory": zod.string().nullable(),
+  "estimatedValueIdr": zod.number().describe('Estimated deal value in whole Rupiah.'),
+  "productInterest": zod.array(zod.string()),
+  "scoreReason": zod.string().nullable(),
+  "aiNotes": zod.string().nullable(),
+  "recommendation": zod.string().nullable(),
+  "waitingStatus": zod.union([zod.literal('waiting_customer'),zod.literal('waiting_company'),zod.literal(null)]).nullable(),
+  "analyzedAt": zod.coerce.date()
+}).describe('The latest AI Sales Insight for a chat (one per chat). Surfaced in the conversation sidebar; exists even when no opportunity has been created. All money is whole-integer Rupiah.')
+
+
+/**
+ * @summary Get the tenant's AI Sales Assistant settings
+ */
+export const getSalesAssistantSettingsResponseAutoCreateThresholdMin = 0;
+export const getSalesAssistantSettingsResponseAutoCreateThresholdMax = 100;
+
+
+
+export const GetSalesAssistantSettingsResponse = zod.object({
+  "autoCreateEnabled": zod.boolean().describe('When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity.'),
+  "autoCreateThreshold": zod.number().min(getSalesAssistantSettingsResponseAutoCreateThresholdMin).max(getSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.')
+}).describe('Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).')
+
+
+/**
+ * @summary Update the tenant's AI Sales Assistant settings (super-admin/edit)
+ */
+export const updateSalesAssistantSettingsBodyAutoCreateThresholdMin = 0;
+export const updateSalesAssistantSettingsBodyAutoCreateThresholdMax = 100;
+
+
+
+export const UpdateSalesAssistantSettingsBody = zod.object({
+  "autoCreateEnabled": zod.boolean().optional(),
+  "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsBodyAutoCreateThresholdMin).max(updateSalesAssistantSettingsBodyAutoCreateThresholdMax).optional()
+}).describe('Partial update of the tenant\'s AI Sales Assistant settings.')
+
+export const updateSalesAssistantSettingsResponseAutoCreateThresholdMin = 0;
+export const updateSalesAssistantSettingsResponseAutoCreateThresholdMax = 100;
+
+
+
+export const UpdateSalesAssistantSettingsResponse = zod.object({
+  "autoCreateEnabled": zod.boolean().describe('When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity.'),
+  "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsResponseAutoCreateThresholdMin).max(updateSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.')
+}).describe('Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).')
 
 
 /**

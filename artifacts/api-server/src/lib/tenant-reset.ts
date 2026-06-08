@@ -11,6 +11,7 @@ import {
   tenantResetAuditTable,
   opportunitiesTable,
   salesAuditEventsTable,
+  salesInsightsTable,
   pipelineStagesTable,
   type TenantResetSummary,
 } from "@workspace/db";
@@ -107,16 +108,20 @@ export async function resetTenant(
       .where(eq(mediaObjectsTable.ownerUserId, ownerId))
       .returning({ id: mediaObjectsTable.id });
 
-    // AI Sales Assistant data. The tenant-reset contract is that NO AI Sales
-    // Assistant rows survive a reset, so all four tables are wiped (the default
-    // stages re-seed on the tenant's next access). Order: sweep audit + the
-    // opportunities (which cascade their follow-ups) first, then the stages —
-    // opportunities reference stage_id (SET NULL), so they must go before the
-    // stages they point at.
+    // AI Sales Assistant OPERATIONAL data is wiped (the default stages re-seed
+    // on the tenant's next access). The per-owner `sales_assistant_settings`
+    // row is CONFIGURATION (like plan/quota/channels) and is deliberately NOT
+    // touched. Order: sweep audit + insights + the opportunities (which cascade
+    // their follow-ups) first, then the stages — opportunities reference
+    // stage_id (SET NULL), so they must go before the stages they point at.
     const deletedSalesAudit = await tx
       .delete(salesAuditEventsTable)
       .where(eq(salesAuditEventsTable.ownerUserId, ownerId))
       .returning({ id: salesAuditEventsTable.id });
+    const deletedSalesInsights = await tx
+      .delete(salesInsightsTable)
+      .where(eq(salesInsightsTable.ownerUserId, ownerId))
+      .returning({ id: salesInsightsTable.id });
     const deletedOpportunities = await tx
       .delete(opportunitiesTable)
       .where(eq(opportunitiesTable.ownerUserId, ownerId))
@@ -138,6 +143,7 @@ export async function resetTenant(
       pipelineStages: deletedStages.length,
       opportunities: deletedOpportunities.length,
       salesAuditEvents: deletedSalesAudit.length,
+      salesInsights: deletedSalesInsights.length,
     };
 
     await tx.insert(tenantResetAuditTable).values({

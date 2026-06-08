@@ -40,6 +40,7 @@ import { saveTenantMedia } from "../lib/tenant-storage";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { isOwnerReadOnly } from "../lib/billing";
 import { buildProductCatalogText } from "../lib/product-catalog";
+import { enqueueChatDetection } from "../lib/sales-detection";
 import {
   resolveActiveChannel,
   listOwnedChannels,
@@ -1974,6 +1975,13 @@ async function persistWaMessage(
 
   // Lazily refresh profile picture in the background via THIS user's socket.
   void refreshChatProfilePic(userId, chat).catch(() => {});
+
+  // AI Sales Assistant: debounced, non-blocking lead analysis for genuinely new
+  // inbound customer messages. Skips own/outbound + history back-fills. The
+  // queue itself gates on the owner's Enterprise entitlement.
+  if (inserted && direction === "inbound" && !parsed.fromMe) {
+    enqueueChatDetection(chat.id);
+  }
 
   return { chat, inserted, messageId };
 }

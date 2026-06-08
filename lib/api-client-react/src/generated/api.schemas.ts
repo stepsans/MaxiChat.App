@@ -633,6 +633,69 @@ export interface OpportunityInsight {
 /**
  * @nullable
  */
+export type SalesInsightWaitingStatus = typeof SalesInsightWaitingStatus[keyof typeof SalesInsightWaitingStatus] | null;
+
+
+export const SalesInsightWaitingStatus = {
+  waiting_customer: 'waiting_customer',
+  waiting_company: 'waiting_company',
+} as const;
+
+/**
+ * The latest AI Sales Insight for a chat (one per chat). Surfaced in the conversation sidebar; exists even when no opportunity has been created. All money is whole-integer Rupiah.
+ */
+export interface SalesInsight {
+  id: number;
+  chatId: number;
+  channelId: number;
+  contactPhone: string;
+  /** AI lead score 0–100. */
+  leadScore: number;
+  /** @nullable */
+  intentCategory: string | null;
+  /** Estimated deal value in whole Rupiah. */
+  estimatedValueIdr: number;
+  productInterest: string[];
+  /** @nullable */
+  scoreReason: string | null;
+  /** @nullable */
+  aiNotes: string | null;
+  /** @nullable */
+  recommendation: string | null;
+  /** @nullable */
+  waitingStatus: SalesInsightWaitingStatus;
+  analyzedAt: string;
+}
+
+/**
+ * Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).
+ */
+export interface SalesAssistantSettings {
+  /** When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity. */
+  autoCreateEnabled: boolean;
+  /**
+     * Lead-score threshold (0–100) that triggers auto-create when enabled.
+     * @minimum 0
+     * @maximum 100
+     */
+  autoCreateThreshold: number;
+}
+
+/**
+ * Partial update of the tenant's AI Sales Assistant settings.
+ */
+export interface SalesAssistantSettingsUpdate {
+  autoCreateEnabled?: boolean;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  autoCreateThreshold?: number;
+}
+
+/**
+ * @nullable
+ */
 export type PaymentGatewayConfigSecretKeySource = typeof PaymentGatewayConfigSecretKeySource[keyof typeof PaymentGatewayConfigSecretKeySource] | null;
 
 
@@ -1647,6 +1710,8 @@ export interface AuthUser {
   profilePhotoUrl?: string | null;
   /** @nullable */
   companyName?: string | null;
+  /** Whether the tenant's plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar. */
+  hasAiSalesAssistant?: boolean;
 }
 
 export type TeamAgentTeamRole = typeof TeamAgentTeamRole[keyof typeof TeamAgentTeamRole];

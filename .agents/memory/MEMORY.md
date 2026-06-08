@@ -66,3 +66,4 @@
 - [Storage enforcement (additive)](storage-enforcement-additive.md) — opt-in/default-off, fail-open config; enforce ONLY at user-initiated uploads, NEVER at storage chokepoint/inbound media or send-then-persist paths; server must forbid client sentinel values.
 - [Billing tax/PPN](billing-tax-ppn.md) — additive default-disabled tax; payment invoices ALWAYS inclusive (total==collected); PDF must read frozen invoice snapshot not live config; disabled=inert.
 - [Billing v2 phases D–H](billing-v2-phases-defh.md) — overage/dunning/wallet/proration/retention/finops are additive + default-off; wallet-first checkout only on full-cover; computeRevenue kept separate from invoice-grounded finops (deliberate drift).
+- [Entitlement gate before AI spend](entitlement-gate-before-ai-spend.md) — entitled-only AI features must check entitlement BEFORE the model call/persist (resolve owner from trigger id first), not after; chat-keyed reads also need per-channel scope.

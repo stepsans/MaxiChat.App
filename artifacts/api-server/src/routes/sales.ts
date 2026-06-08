@@ -7,6 +7,8 @@ import {
   opportunitiesTable,
   opportunityFollowUpsTable,
   salesAuditEventsTable,
+  salesInsightsTable,
+  salesAssistantSettingsTable,
   chatsTable,
   channelsTable,
 } from "@workspace/db";
@@ -16,6 +18,7 @@ import {
   CreateOpportunityBody,
   UpdateOpportunityBody,
   ListOpportunitiesQueryParams,
+  UpdateSalesAssistantSettingsBody,
 } from "@workspace/api-zod";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
@@ -28,6 +31,7 @@ import {
   canAccessOpportunity,
   isValidAssignee,
 } from "../lib/sales-assistant";
+import { analyzeAndPersistChat } from "../lib/sales-insight";
 
 // ===========================================================================
 // AI Sales Assistant routes (Enterprise-only). Mounted under /sales behind
@@ -90,6 +94,52 @@ function serializeOpportunity(o: typeof opportunitiesTable.$inferSelect) {
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
   };
+}
+
+function serializeInsight(i: typeof salesInsightsTable.$inferSelect) {
+  return {
+    id: i.id,
+    chatId: i.chatId,
+    channelId: i.channelId,
+    contactPhone: i.contactPhone,
+    leadScore: i.leadScore,
+    intentCategory: i.intentCategory,
+    estimatedValueIdr: i.estimatedValueIdr,
+    productInterest: i.productInterest,
+    scoreReason: i.scoreReason,
+    aiNotes: i.aiNotes,
+    recommendation: i.recommendation,
+    waitingStatus: i.waitingStatus,
+    analyzedAt: i.analyzedAt.toISOString(),
+  };
+}
+
+// Per-owner AI Sales Assistant config defaults. Inert by default: auto-create
+// OFF (the AI only recommends) at a 70 threshold.
+const DEFAULT_AUTO_CREATE_ENABLED = false;
+const DEFAULT_AUTO_CREATE_THRESHOLD = 70;
+
+// Verify a chat is visible to THIS caller. Two-layer check, mirroring the chat
+// endpoints: (1) the chat's channel must belong to the tenant owner, and (2) the
+// channel must be in the caller's per-channel access set (super_admin sees all
+// owned channels via getAllowedChannelIds). Returns false when the chat is gone,
+// belongs to another tenant, or sits in a channel the caller can't see — so an
+// agent can never read/refresh insights for a chat outside their channel scope.
+async function chatVisibleToUser(
+  chatId: number,
+  ownerId: number,
+  userId: number
+): Promise<boolean> {
+  const [row] = await db
+    .select({ owner: channelsTable.userId, channelId: chatsTable.channelId })
+    .from(chatsTable)
+    .innerJoin(channelsTable, eq(channelsTable.id, chatsTable.channelId))
+    .where(eq(chatsTable.id, chatId))
+    .limit(1);
+  if (!row || row.owner !== ownerId) return false;
+  const { getAllowedChannelIds } = await import("../lib/user-channel-access");
+  const allowed = await getAllowedChannelIds(userId);
+  return allowed.has(row.channelId);
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +785,166 @@ router.get(
       openValueIdr: Number(totals?.openValueIdr ?? 0),
       wonValueIdr: Number(totals?.wonValueIdr ?? 0),
       byStage,
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// AI Sales Insight (per-chat) + AI Sales Assistant settings.
+// ---------------------------------------------------------------------------
+
+// GET /sales/insights/chat/:chatId — the latest AI Sales Insight for a chat.
+router.get(
+  "/insights/chat/:chatId",
+  requirePermission("opportunities", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const chatId = Number(req.params.chatId);
+    if (!Number.isInteger(chatId)) {
+      res.status(400).json({ error: "chatId tidak valid" });
+      return;
+    }
+    if (!(await chatVisibleToUser(chatId, ownerId, uid))) {
+      res.status(404).json({ error: "Chat tidak ditemukan" });
+      return;
+    }
+    const [row] = await db
+      .select()
+      .from(salesInsightsTable)
+      .where(
+        and(
+          eq(salesInsightsTable.chatId, chatId),
+          eq(salesInsightsTable.ownerUserId, ownerId)
+        )
+      )
+      .limit(1);
+    if (!row) {
+      res.status(404).json({ error: "Belum ada analisa untuk chat ini" });
+      return;
+    }
+    res.json(serializeInsight(row));
+  }
+);
+
+// POST /sales/insights/chat/:chatId/analyze — run/refresh the analysis now.
+router.post(
+  "/insights/chat/:chatId/analyze",
+  requirePermission("opportunities", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const chatId = Number(req.params.chatId);
+    if (!Number.isInteger(chatId)) {
+      res.status(400).json({ error: "chatId tidak valid" });
+      return;
+    }
+    if (!(await chatVisibleToUser(chatId, ownerId, uid))) {
+      res.status(404).json({ error: "Chat tidak ditemukan" });
+      return;
+    }
+    try {
+      const result = await analyzeAndPersistChat(chatId);
+      res.json(serializeInsight(result.insight));
+    } catch (err) {
+      req.log.error({ err, chatId }, "manual sales insight analyze failed");
+      res.status(502).json({ error: "Analisa AI gagal. Coba lagi." });
+    }
+  }
+);
+
+// GET /sales/settings — the tenant's AI Sales Assistant settings (defaults if
+// the owner has never configured them).
+router.get(
+  "/settings",
+  requirePermission("opportunities", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const ownerId = await resolveOwner(req, res);
+    if (ownerId == null) return;
+    const [row] = await db
+      .select()
+      .from(salesAssistantSettingsTable)
+      .where(eq(salesAssistantSettingsTable.ownerUserId, ownerId))
+      .limit(1);
+    res.json({
+      autoCreateEnabled: row?.autoCreateEnabled ?? DEFAULT_AUTO_CREATE_ENABLED,
+      autoCreateThreshold:
+        row?.autoCreateThreshold ?? DEFAULT_AUTO_CREATE_THRESHOLD,
+    });
+  }
+);
+
+// PATCH /sales/settings — update the tenant's AI Sales Assistant settings.
+// Editing settings is a tenant-CONFIGURATION change → requires the "edit"
+// opportunity permission (super_admin / supervisor with edit).
+router.patch(
+  "/settings",
+  requirePermission("opportunities", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const ownerId = await resolveOwner(req, res);
+    if (ownerId == null) return;
+    const parsed = UpdateSalesAssistantSettingsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Data setelan tidak valid" });
+      return;
+    }
+    const body = parsed.data;
+    // Re-check integer at the boundary (OpenAPI integer codegens to a zod
+    // number that accepts decimals).
+    if (
+      body.autoCreateThreshold != null &&
+      (!Number.isInteger(body.autoCreateThreshold) ||
+        body.autoCreateThreshold < 0 ||
+        body.autoCreateThreshold > 100)
+    ) {
+      res
+        .status(400)
+        .json({ error: "Threshold harus bilangan bulat 0–100" });
+      return;
+    }
+    if (
+      body.autoCreateEnabled === undefined &&
+      body.autoCreateThreshold === undefined
+    ) {
+      res.status(400).json({ error: "Tidak ada perubahan" });
+      return;
+    }
+
+    // Upsert the singleton row for this owner. We seed unspecified fields with
+    // the defaults on first insert; on conflict we only set provided keys.
+    const updateSet: Partial<typeof salesAssistantSettingsTable.$inferInsert> =
+      {};
+    if (body.autoCreateEnabled !== undefined)
+      updateSet.autoCreateEnabled = body.autoCreateEnabled;
+    if (body.autoCreateThreshold !== undefined)
+      updateSet.autoCreateThreshold = body.autoCreateThreshold;
+
+    const [row] = await db
+      .insert(salesAssistantSettingsTable)
+      .values({
+        ownerUserId: ownerId,
+        autoCreateEnabled:
+          body.autoCreateEnabled ?? DEFAULT_AUTO_CREATE_ENABLED,
+        autoCreateThreshold:
+          body.autoCreateThreshold ?? DEFAULT_AUTO_CREATE_THRESHOLD,
+      })
+      .onConflictDoUpdate({
+        target: salesAssistantSettingsTable.ownerUserId,
+        set: updateSet,
+      })
+      .returning();
+
+    res.json({
+      autoCreateEnabled: row!.autoCreateEnabled,
+      autoCreateThreshold: row!.autoCreateThreshold,
     });
   }
 );

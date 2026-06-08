@@ -18,6 +18,11 @@ import {
   useGetStarredMessages,
   useGetCommonGroups,
   useAddGroupParticipants,
+  useGetMe,
+  useGetChatSalesInsight,
+  useAnalyzeChatSalesInsight,
+  useGetSalesAssistantSettings,
+  useUpdateSalesAssistantSettings,
   getListShortcutsQueryKey,
   getListProductsQueryKey,
   getListSalesOrdersQueryKey,
@@ -27,13 +32,17 @@ import {
   getGetChatAttachmentsQueryKey,
   getGetStarredMessagesQueryKey,
   getGetCommonGroupsQueryKey,
+  getGetChatSalesInsightQueryKey,
+  getGetSalesAssistantSettingsQueryKey,
 } from "@workspace/api-client-react";
 import type {
   TextShortcut,
   Product,
   SalesOrder,
   SalesOrderItemInput,
+  SalesInsight,
 } from "@workspace/api-client-react";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -84,6 +93,9 @@ import {
   ExternalLink,
   ArrowUp,
   ArrowDown,
+  Sparkles,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { ChatAvatar } from "@/components/ChatAvatar";
@@ -1936,6 +1948,290 @@ function EmptyHint({ text }: { text: string }) {
   );
 }
 
+// Lead-score → band (mirrors the server's scoreCategory: 0–39 Low, 40–69
+// Medium, 70–100 High). Used only for the badge color/label in the sidebar.
+function scoreBand(score: number): {
+  label: string;
+  className: string;
+} {
+  if (score >= 70)
+    return {
+      label: "Tinggi",
+      className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    };
+  if (score >= 40)
+    return {
+      label: "Sedang",
+      className: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    };
+  return {
+    label: "Rendah",
+    className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+  };
+}
+
+const WAITING_STATUS_LABEL: Record<string, string> = {
+  waiting_customer: "Menunggu balasan customer",
+  waiting_company: "Menunggu balasan Anda",
+};
+
+function InsightRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+        {label}
+      </p>
+      <div className="text-xs text-foreground">{children}</div>
+    </div>
+  );
+}
+
+// AI Sales Insight tab. Surfaces the latest per-chat analysis (lead score,
+// intent, product interest, estimated value, waiting status, recommendation,
+// AI notes) plus the tenant-level Auto-Create Opportunity toggle. Gated by the
+// caller on Enterprise entitlement + the "opportunities" view permission.
+function SalesInsightTab({
+  chatId,
+  canEditSettings,
+}: {
+  chatId: number;
+  canEditSettings: boolean;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const {
+    data: insight,
+    isLoading,
+    error,
+  } = useGetChatSalesInsight(chatId, {
+    query: { queryKey: getGetChatSalesInsightQueryKey(chatId), retry: false },
+  });
+  // A 404 means "not analyzed yet" — that is an expected empty state, not an
+  // error to surface.
+  const notAnalyzed =
+    !!error &&
+    typeof error === "object" &&
+    "status" in (error as unknown as Record<string, unknown>) &&
+    (error as unknown as { status?: number }).status === 404;
+
+  const analyze = useAnalyzeChatSalesInsight({
+    mutation: {
+      onSuccess: (data) => {
+        qc.setQueryData(getGetChatSalesInsightQueryKey(chatId), data);
+        toast({ description: "Analisa AI diperbarui." });
+      },
+      onError: () => {
+        toast({
+          variant: "destructive",
+          description: "Analisa AI gagal. Coba lagi.",
+        });
+      },
+    },
+  });
+
+  const { data: settings } = useGetSalesAssistantSettings({
+    query: {
+      queryKey: getGetSalesAssistantSettingsQueryKey(),
+      enabled: canEditSettings,
+    },
+  });
+  const updateSettings = useUpdateSalesAssistantSettings({
+    mutation: {
+      onSuccess: (data) => {
+        qc.setQueryData(getGetSalesAssistantSettingsQueryKey(), data);
+      },
+      onError: () => {
+        toast({
+          variant: "destructive",
+          description: "Gagal menyimpan setelan.",
+        });
+      },
+    },
+  });
+
+  const [thresholdDraft, setThresholdDraft] = useState<string>("");
+  useEffect(() => {
+    if (settings) setThresholdDraft(String(settings.autoCreateThreshold));
+  }, [settings?.autoCreateThreshold]);
+
+  function commitThreshold() {
+    if (!settings) return;
+    const n = Number(thresholdDraft);
+    if (!Number.isInteger(n) || n < 0 || n > 100) {
+      setThresholdDraft(String(settings.autoCreateThreshold));
+      toast({
+        variant: "destructive",
+        description: "Threshold harus bilangan bulat 0–100.",
+      });
+      return;
+    }
+    if (n === settings.autoCreateThreshold) return;
+    updateSettings.mutate({ data: { autoCreateThreshold: n } });
+  }
+
+  const running = analyze.isPending;
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-sm font-medium">
+          <Sparkles className="w-4 h-4 text-[hsl(var(--wa-accent))]" />
+          AI Sales Assistant
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          data-testid="button-analyze-sales-insight"
+          disabled={running}
+          onClick={() => analyze.mutate({ chatId })}
+          className="h-7 gap-1 text-xs"
+        >
+          {running ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3.5 h-3.5" />
+          )}
+          {insight || notAnalyzed ? "Analisa ulang" : "Analisa"}
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="flex items-center justify-center gap-2 py-8 text-xs text-[hsl(var(--wa-meta))]">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
+        </p>
+      ) : insight ? (
+        <SalesInsightBody insight={insight} />
+      ) : (
+        <EmptyHint
+          text={
+            notAnalyzed
+              ? "Belum ada analisa. Klik “Analisa” untuk menilai percakapan ini."
+              : "Analisa belum tersedia untuk chat ini."
+          }
+        />
+      )}
+
+      {canEditSettings && settings ? (
+        <div className="pt-2 border-t border-[hsl(var(--wa-divider))] space-y-3">
+          <p className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+            Auto-Create Opportunity
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-foreground">
+              Buat opportunity otomatis saat skor tinggi
+            </span>
+            <Switch
+              data-testid="switch-auto-create-opportunity"
+              checked={settings.autoCreateEnabled}
+              disabled={updateSettings.isPending}
+              onCheckedChange={(checked) =>
+                updateSettings.mutate({
+                  data: { autoCreateEnabled: checked },
+                })
+              }
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-foreground">Ambang skor (0–100)</span>
+            <Input
+              data-testid="input-auto-create-threshold"
+              type="number"
+              min={0}
+              max={100}
+              value={thresholdDraft}
+              disabled={!settings.autoCreateEnabled || updateSettings.isPending}
+              onChange={(e) => setThresholdDraft(e.target.value)}
+              onBlur={commitThreshold}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              className="h-8 w-20 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SalesInsightBody({ insight }: { insight: SalesInsight }) {
+  const band = scoreBand(insight.leadScore);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5",
+            band.className
+          )}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span className="text-lg font-semibold leading-none">
+            {insight.leadScore}
+          </span>
+          <span className="text-[11px] font-medium uppercase tracking-wide">
+            {band.label}
+          </span>
+        </div>
+        {insight.intentCategory ? (
+          <span className="rounded-full bg-white/5 px-2 py-1 text-[11px] text-foreground">
+            {insight.intentCategory}
+          </span>
+        ) : null}
+      </div>
+
+      {insight.waitingStatus ? (
+        <InsightRow label="Status">
+          {WAITING_STATUS_LABEL[insight.waitingStatus] ?? insight.waitingStatus}
+        </InsightRow>
+      ) : null}
+
+      <InsightRow label="Estimasi nilai">
+        {formatRupiah(insight.estimatedValueIdr)}
+      </InsightRow>
+
+      {insight.productInterest.length > 0 ? (
+        <InsightRow label="Minat produk">
+          <div className="flex flex-wrap gap-1">
+            {insight.productInterest.map((p, i) => (
+              <span
+                key={`${p}-${i}`}
+                className="rounded-full bg-white/5 px-2 py-0.5 text-[11px]"
+              >
+                {p}
+              </span>
+            ))}
+          </div>
+        </InsightRow>
+      ) : null}
+
+      {insight.recommendation ? (
+        <InsightRow label="Rekomendasi">{insight.recommendation}</InsightRow>
+      ) : null}
+
+      {insight.scoreReason ? (
+        <InsightRow label="Alasan skor">{insight.scoreReason}</InsightRow>
+      ) : null}
+
+      {insight.aiNotes ? (
+        <InsightRow label="Catatan AI">{insight.aiNotes}</InsightRow>
+      ) : null}
+
+      <p className="pt-1 text-[10px] text-[hsl(var(--wa-meta))]">
+        Dianalisa {new Date(insight.analyzedAt).toLocaleString("id-ID")}
+      </p>
+    </div>
+  );
+}
+
 export function ChatInfoSidebar({
   chatId,
   chat,
@@ -1950,8 +2246,19 @@ export function ChatInfoSidebar({
   const [maximized, setMaximized] = useState(false);
   const isGroup = chat.phoneNumber.endsWith("@g.us");
   const [tab, setTab] = useState<
-    "info" | "grup" | "media" | "shortcut" | "products" | "order"
+    "info" | "grup" | "media" | "shortcut" | "products" | "order" | "insight"
   >("info");
+
+  // AI Sales Assistant (Enterprise-only). The tab shows only when the tenant
+  // has the entitlement AND the caller can view opportunities. Editing the
+  // tenant-level Auto-Create settings additionally needs the "edit" permission.
+  const { data: me } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
+  const { menus } = usePermissions();
+  const showInsightTab =
+    me?.user?.hasAiSalesAssistant === true &&
+    menus.opportunities.canView &&
+    !isGroup;
+  const canEditInsightSettings = menus.opportunities.canEdit;
 
   // Local, debounced-on-blur editing for free-text fields so each keystroke
   // doesn't fire a PATCH. Re-sync whenever the chat row changes underneath.
@@ -2060,6 +2367,9 @@ export function ChatInfoSidebar({
           { key: "shortcut", label: "Shortcut", icon: Zap },
           { key: "products", label: "Produk", icon: Package },
           { key: "order", label: "Order", icon: Receipt },
+          ...(showInsightTab
+            ? [{ key: "insight", label: "AI Sales", icon: Sparkles } as const]
+            : []),
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -2314,6 +2624,11 @@ export function ChatInfoSidebar({
           <ShortcutTab chatId={chatId} channelId={chat.channelId} />
         ) : tab === "products" ? (
           <ProductsTab chatId={chatId} />
+        ) : tab === "insight" ? (
+          <SalesInsightTab
+            chatId={chatId}
+            canEditSettings={canEditInsightSettings}
+          />
         ) : (
           <OrderTab chatId={chatId} />
         )}

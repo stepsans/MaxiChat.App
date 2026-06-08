@@ -213,6 +213,102 @@ export const salesAuditEventsTable = pgTable(
   ]
 );
 
+// Latest AI analysis ("AI Sales Insight") for a chat. Exactly one row per chat
+// (unique chat_id), refreshed on every detection run. This is what the
+// conversation sidebar reads — it exists even when no opportunity has been
+// created (toggle OFF = recommend only). Operational data → wiped by
+// tenant-reset. All money is whole-integer Rupiah.
+export const salesInsightsTable = pgTable(
+  "sales_insights",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    // Source chat — one insight per chat. CASCADE so wiping a chat removes it.
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chatsTable.id, { onDelete: "cascade" }),
+    channelId: integer("channel_id")
+      .notNull()
+      .references(() => channelsTable.id, { onDelete: "cascade" }),
+    // Contact-level key (owner + phone); `tg:<id>` for Telegram.
+    contactPhone: text("contact_phone").notNull(),
+    // AI lead score 0–100.
+    leadScore: integer("lead_score").notNull().default(0),
+    // Free-text intent classification (e.g. "hot"/"warm"/"cold").
+    intentCategory: text("intent_category"),
+    // Estimated deal value in whole Rupiah. bigint (mode number) for headroom.
+    estimatedValueIdr: bigint("estimated_value_idr", { mode: "number" })
+      .notNull()
+      .default(0),
+    // Products the contact has shown interest in (snapshot of names/codes).
+    productInterest: jsonb("product_interest")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    // AI explanation of the positive/negative signals behind the score.
+    scoreReason: text("score_reason"),
+    // AI-generated summary / notes about the conversation.
+    aiNotes: text("ai_notes"),
+    // AI's suggested next action (the recommendation surfaced when the
+    // auto-create toggle is OFF, or below threshold).
+    recommendation: text("recommendation"),
+    // Derived from the last message direction at analysis time:
+    // "waiting_customer" (company sent last) / "waiting_company" (customer sent
+    // last). NULL = no messages.
+    waitingStatus: text("waiting_status"),
+    // The chat_messages.id this analysis was anchored to (the latest message at
+    // analysis time). Used to debounce / skip re-analysis when nothing changed.
+    lastMessageId: integer("last_message_id"),
+    analyzedAt: timestamp("analyzed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("sales_insights_chat_unique").on(t.chatId),
+    index("sales_insights_owner_idx").on(t.ownerUserId),
+  ]
+);
+
+// Per-tenant-owner "AI Sales Assistant" configuration. One row per owner
+// (unique owner_user_id). Powers Toggle 1 (Auto-Create Opportunity). Defaults
+// are fully INERT: auto_create_enabled = false means the AI only recommends and
+// never creates an opportunity, until the owner turns it on. This is tenant
+// CONFIGURATION (like pipeline preferences), NOT operational data → it survives
+// tenant-reset.
+export const salesAssistantSettingsTable = pgTable(
+  "sales_assistant_settings",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    // When true and a chat's lead score >= autoCreateThreshold, an opportunity
+    // is created automatically. When false, the AI only recommends.
+    autoCreateEnabled: boolean("auto_create_enabled").notNull().default(false),
+    // Score threshold (0–100) that triggers auto-create when enabled.
+    autoCreateThreshold: integer("auto_create_threshold").notNull().default(70),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("sales_assistant_settings_owner_unique").on(t.ownerUserId),
+  ]
+);
+
 export const insertPipelineStageSchema = createInsertSchema(
   pipelineStagesTable,
   {
@@ -234,8 +330,32 @@ export const insertOpportunitySchema = createInsertSchema(opportunitiesTable, {
   aiNotes: z.string().trim().max(4000).nullable().optional(),
 }).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
 
+export const insertSalesInsightSchema = createInsertSchema(salesInsightsTable, {
+  contactPhone: z.string().trim().min(1).max(64),
+  leadScore: z.number().int().min(0).max(100).optional(),
+  intentCategory: z.string().trim().max(40).nullable().optional(),
+  estimatedValueIdr: z.number().int().min(0).optional(),
+  productInterest: z.array(z.string().trim().max(120)).optional(),
+  scoreReason: z.string().trim().max(4000).nullable().optional(),
+  aiNotes: z.string().trim().max(4000).nullable().optional(),
+  recommendation: z.string().trim().max(2000).nullable().optional(),
+  waitingStatus: z.string().trim().max(40).nullable().optional(),
+  lastMessageId: z.number().int().nullable().optional(),
+}).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
+
+export const insertSalesAssistantSettingsSchema = createInsertSchema(
+  salesAssistantSettingsTable,
+  {
+    autoCreateEnabled: z.boolean().optional(),
+    autoCreateThreshold: z.number().int().min(0).max(100).optional(),
+  }
+).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
+
 export type PipelineStageRow = typeof pipelineStagesTable.$inferSelect;
 export type OpportunityRow = typeof opportunitiesTable.$inferSelect;
 export type OpportunityFollowUpRow =
   typeof opportunityFollowUpsTable.$inferSelect;
 export type SalesAuditEventRow = typeof salesAuditEventsTable.$inferSelect;
+export type SalesInsightRow = typeof salesInsightsTable.$inferSelect;
+export type SalesAssistantSettingsRow =
+  typeof salesAssistantSettingsTable.$inferSelect;

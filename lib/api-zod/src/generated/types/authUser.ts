@@ -26,4 +26,6 @@ export interface AuthUser {
   profilePhotoUrl?: string | null;
   /** @nullable */
   companyName?: string | null;
+  /** Whether the tenant's plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar. */
+  hasAiSalesAssistant?: boolean;
 }

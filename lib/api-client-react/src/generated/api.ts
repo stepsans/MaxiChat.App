@@ -169,7 +169,10 @@ import type {
   RunProductSync200,
   RunSalesOrderSync200,
   RunShortcutSync200,
+  SalesAssistantSettings,
+  SalesAssistantSettingsUpdate,
   SalesAuditEvent,
+  SalesInsight,
   SalesOrder,
   SalesOrderInput,
   SalesOrderSyncConfigInput,
@@ -15835,6 +15838,301 @@ export function useGetSalesInsights<TData = Awaited<ReturnType<typeof getSalesIn
 
 
 
+
+export const getGetChatSalesInsightUrl = (chatId: number,) => {
+
+
+
+
+  return `/api/sales/insights/chat/${chatId}`
+}
+
+/**
+ * @summary Get the latest AI Sales Insight for a chat
+ */
+export const getChatSalesInsight = async (chatId: number, options?: RequestInit): Promise<SalesInsight> => {
+
+  return customFetch<SalesInsight>(getGetChatSalesInsightUrl(chatId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChatSalesInsightQueryKey = (chatId: number,) => {
+    return [
+    `/api/sales/insights/chat/${chatId}`
+    ] as const;
+    }
+
+
+export const getGetChatSalesInsightQueryOptions = <TData = Awaited<ReturnType<typeof getChatSalesInsight>>, TError = ErrorType<ErrorResponse>>(chatId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChatSalesInsight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChatSalesInsightQueryKey(chatId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChatSalesInsight>>> = ({ signal }) => getChatSalesInsight(chatId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(chatId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChatSalesInsight>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChatSalesInsightQueryResult = NonNullable<Awaited<ReturnType<typeof getChatSalesInsight>>>
+export type GetChatSalesInsightQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the latest AI Sales Insight for a chat
+ */
+
+export function useGetChatSalesInsight<TData = Awaited<ReturnType<typeof getChatSalesInsight>>, TError = ErrorType<ErrorResponse>>(
+ chatId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChatSalesInsight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChatSalesInsightQueryOptions(chatId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAnalyzeChatSalesInsightUrl = (chatId: number,) => {
+
+
+
+
+  return `/api/sales/insights/chat/${chatId}/analyze`
+}
+
+/**
+ * @summary Run (or refresh) the AI Sales Insight analysis for a chat
+ */
+export const analyzeChatSalesInsight = async (chatId: number, options?: RequestInit): Promise<SalesInsight> => {
+
+  return customFetch<SalesInsight>(getAnalyzeChatSalesInsightUrl(chatId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getAnalyzeChatSalesInsightMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeChatSalesInsight>>, TError,{chatId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeChatSalesInsight>>, TError,{chatId: number}, TContext> => {
+
+const mutationKey = ['analyzeChatSalesInsight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeChatSalesInsight>>, {chatId: number}> = (props) => {
+          const {chatId} = props ?? {};
+
+          return  analyzeChatSalesInsight(chatId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeChatSalesInsightMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeChatSalesInsight>>>
+
+    export type AnalyzeChatSalesInsightMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Run (or refresh) the AI Sales Insight analysis for a chat
+ */
+export const useAnalyzeChatSalesInsight = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeChatSalesInsight>>, TError,{chatId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeChatSalesInsight>>,
+        TError,
+        {chatId: number},
+        TContext
+      > => {
+      return useMutation(getAnalyzeChatSalesInsightMutationOptions(options));
+    }
+
+export const getGetSalesAssistantSettingsUrl = () => {
+
+
+
+
+  return `/api/sales/settings`
+}
+
+/**
+ * @summary Get the tenant's AI Sales Assistant settings
+ */
+export const getSalesAssistantSettings = async ( options?: RequestInit): Promise<SalesAssistantSettings> => {
+
+  return customFetch<SalesAssistantSettings>(getGetSalesAssistantSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSalesAssistantSettingsQueryKey = () => {
+    return [
+    `/api/sales/settings`
+    ] as const;
+    }
+
+
+export const getGetSalesAssistantSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getSalesAssistantSettings>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSalesAssistantSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSalesAssistantSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSalesAssistantSettings>>> = ({ signal }) => getSalesAssistantSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSalesAssistantSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSalesAssistantSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getSalesAssistantSettings>>>
+export type GetSalesAssistantSettingsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the tenant's AI Sales Assistant settings
+ */
+
+export function useGetSalesAssistantSettings<TData = Awaited<ReturnType<typeof getSalesAssistantSettings>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSalesAssistantSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSalesAssistantSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateSalesAssistantSettingsUrl = () => {
+
+
+
+
+  return `/api/sales/settings`
+}
+
+/**
+ * @summary Update the tenant's AI Sales Assistant settings (super-admin/edit)
+ */
+export const updateSalesAssistantSettings = async (salesAssistantSettingsUpdate: SalesAssistantSettingsUpdate, options?: RequestInit): Promise<SalesAssistantSettings> => {
+
+  return customFetch<SalesAssistantSettings>(getUpdateSalesAssistantSettingsUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      salesAssistantSettingsUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateSalesAssistantSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSalesAssistantSettings>>, TError,{data: BodyType<SalesAssistantSettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSalesAssistantSettings>>, TError,{data: BodyType<SalesAssistantSettingsUpdate>}, TContext> => {
+
+const mutationKey = ['updateSalesAssistantSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSalesAssistantSettings>>, {data: BodyType<SalesAssistantSettingsUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateSalesAssistantSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSalesAssistantSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateSalesAssistantSettings>>>
+    export type UpdateSalesAssistantSettingsMutationBody = BodyType<SalesAssistantSettingsUpdate>
+    export type UpdateSalesAssistantSettingsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the tenant's AI Sales Assistant settings (super-admin/edit)
+ */
+export const useUpdateSalesAssistantSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSalesAssistantSettings>>, TError,{data: BodyType<SalesAssistantSettingsUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSalesAssistantSettings>>,
+        TError,
+        {data: BodyType<SalesAssistantSettingsUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateSalesAssistantSettingsMutationOptions(options));
+    }
 
 export const getListSalesAuditEventsUrl = (params?: ListSalesAuditEventsParams,) => {
   const normalizedParams = new URLSearchParams();

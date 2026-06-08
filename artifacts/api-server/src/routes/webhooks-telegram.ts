@@ -19,6 +19,7 @@ import { generateAiReply } from "./whatsapp";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
 import { isOwnerReadOnly } from "../lib/billing";
 import { notifyInboundMessage } from "../lib/push";
+import { enqueueChatDetection } from "../lib/sales-detection";
 
 const router = Router();
 
@@ -154,6 +155,10 @@ async function processUpdate(
     .returning();
 
   if (insertedRows.length === 0) return; // duplicate, skip AI
+
+  // AI Sales Assistant: debounced, non-blocking lead analysis for new inbound
+  // customer messages. The queue gates on the owner's Enterprise entitlement.
+  enqueueChatDetection(chat.id);
 
   // Push notify allowed mobile users about the new inbound telegram message.
   void notifyInboundMessage({

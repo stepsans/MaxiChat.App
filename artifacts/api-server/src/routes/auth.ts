@@ -10,6 +10,8 @@ import {
 import { sendVerificationEmail, emailSenderConfigured } from "../lib/email";
 import { createTrialSubscription } from "../lib/billing";
 import { createMobileToken, revokeMobileToken } from "../lib/mobile-auth";
+import { ownerHasSalesAssistant } from "../lib/sales-assistant";
+import { resolveOwnerUserId } from "../lib/seed";
 import {
   loginLimiter,
   signupLimiter,
@@ -316,6 +318,17 @@ router.get("/me", async (req, res): Promise<void> => {
         .limit(1);
       companyName = owner?.companyName ?? null;
     }
+    // Enterprise "AI Sales Assistant" entitlement, resolved against the tenant
+    // OWNER (team members inherit the owner's plan). Lets the frontend gate the
+    // sidebar tab without relying on a 403 round-trip. Best-effort: a lookup
+    // failure degrades to false rather than failing /auth/me.
+    let hasAiSalesAssistant = false;
+    try {
+      const ownerId = await resolveOwnerUserId(row.id);
+      hasAiSalesAssistant = await ownerHasSalesAssistant(ownerId);
+    } catch (err) {
+      req.log.error({ err }, "/auth/me sales-assistant entitlement check failed");
+    }
     res.json({
       user: {
         id: row.id,
@@ -328,6 +341,7 @@ router.get("/me", async (req, res): Promise<void> => {
         parentUserId: row.parentUserId,
         profilePhotoUrl: row.profilePhotoUrl ?? null,
         companyName,
+        hasAiSalesAssistant,
       },
     });
   } catch (err) {

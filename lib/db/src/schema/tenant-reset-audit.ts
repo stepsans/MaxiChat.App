@@ -20,12 +20,13 @@ export interface TenantResetSummary {
   logs: number;
   media: number;
   files: number;
-  // AI Sales Assistant data wiped alongside the rest. All four tables are
-  // cleared (stages re-seed on next access), matching the tenant-reset
-  // contract that no AI Sales Assistant rows survive a reset.
+  // AI Sales Assistant OPERATIONAL data wiped alongside the rest (stages
+  // re-seed on next access). The per-owner `sales_assistant_settings` row is
+  // CONFIGURATION (like plan/quota/channels) and deliberately survives a reset.
   pipelineStages: number;
   opportunities: number;
   salesAuditEvents: number;
+  salesInsights: number;
 }
 
 // Append-only audit trail of tenant-wide data resets. One row per successful
