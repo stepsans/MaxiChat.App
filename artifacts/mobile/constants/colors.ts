@@ -42,6 +42,7 @@ const colors = {
     header: "#ea580c",
     headerForeground: "#ffffff",
     unreadBadge: "#f97316",
+    tickRead: "#34b7f1",
   },
 
   dark: {
@@ -79,6 +80,7 @@ const colors = {
     header: "#2a1d12",
     headerForeground: "#f1e9e3",
     unreadBadge: "#fb923c",
+    tickRead: "#53bdeb",
   },
 
   radius: 12,

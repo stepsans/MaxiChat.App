@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
@@ -572,6 +572,30 @@ export default function ConversationScreen() {
               <Text style={[styles.metaTime, { color: colors.mutedForeground }]}>
                 {msgTime(item.createdAt)}
               </Text>
+              {out ? (
+                item.status === "read" ? (
+                  <MaterialCommunityIcons
+                    name="check-all"
+                    size={14}
+                    color={colors.tickRead}
+                    accessibilityLabel="Dibaca"
+                  />
+                ) : item.status === "delivered" ? (
+                  <MaterialCommunityIcons
+                    name="check-all"
+                    size={14}
+                    color={colors.mutedForeground}
+                    accessibilityLabel="Terkirim"
+                  />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="check"
+                    size={14}
+                    color={colors.mutedForeground}
+                    accessibilityLabel="Terkirim ke server"
+                  />
+                )
+              ) : null}
             </View>
           </View>
         )}
