@@ -32,6 +32,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { Avatar } from "@/components/Avatar";
+import { ChatInfoPanel } from "@/components/chat-info/ChatInfoPanel";
 import { useColors } from "@/hooks/useColors";
 import { resolveMediaUrl, uploadChatMedia } from "@/lib/api";
 
@@ -72,6 +73,7 @@ export default function ConversationScreen() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [labelModal, setLabelModal] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   // Map message id -> media attachment so inbound/outbound images render inline.
@@ -230,6 +232,12 @@ export default function ConversationScreen() {
         >
           <Feather name="tag" size={20} color={colors.headerForeground} />
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setInfoOpen(true)}
+          style={styles.backBtn}
+        >
+          <Feather name="info" size={20} color={colors.headerForeground} />
+        </TouchableOpacity>
       </View>
 
       {/* Label chips */}
@@ -356,6 +364,13 @@ export default function ConversationScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ChatInfoPanel
+        visible={infoOpen}
+        onClose={() => setInfoOpen(false)}
+        chatId={chatId}
+        chat={chat}
+      />
     </View>
   );
 }
