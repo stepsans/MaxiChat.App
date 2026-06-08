@@ -1,5 +1,5 @@
 ---
-name: AI Sales Assistant (Enterprise CRM)
+name: AI Sales Assistant (Enterprise sales pipeline)
 description: Naming invariant, entitlement+permission gating, and pipeline-health semantics for the Enterprise sales pipeline feature.
 ---
 

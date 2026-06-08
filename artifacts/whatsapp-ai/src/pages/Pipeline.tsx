@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -170,7 +171,8 @@ export default function Pipeline() {
   const [stageMgmtOpen, setStageMgmtOpen] = useState(false);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
   );
 
   const sortedStages = useMemo(
