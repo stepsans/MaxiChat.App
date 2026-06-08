@@ -665,6 +665,26 @@ export interface SalesInsight {
   /** @nullable */
   waitingStatus: SalesInsightWaitingStatus;
   analyzedAt: string;
+  /**
+     * The id of the opportunity created for this chat, if any. Null until an opportunity exists (auto-created or via "Buat Opportunity").
+     * @nullable
+     */
+  opportunityId: number | null;
+  /**
+     * The opportunity's current pipeline stage id, if any.
+     * @nullable
+     */
+  stageId: number | null;
+  /**
+     * The opportunity's current pipeline stage name, if any.
+     * @nullable
+     */
+  stageName: string | null;
+  /**
+     * The opportunity's last-activity timestamp, if any.
+     * @nullable
+     */
+  lastActivityAt: string | null;
 }
 
 /**

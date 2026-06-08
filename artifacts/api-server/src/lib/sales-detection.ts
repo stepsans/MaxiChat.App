@@ -107,13 +107,7 @@ async function runDetection(chatId: number): Promise<void> {
 
     const result = await analyzeAndPersistChat(chatId);
 
-    const settings = await getAutoCreateSettings(result.ownerUserId);
-    if (
-      settings.autoCreateEnabled &&
-      result.leadScore >= settings.autoCreateThreshold
-    ) {
-      await maybeAutoCreateOpportunity(result);
-    }
+    await applyAutoCreateForResult(result);
   } catch (err) {
     logger.warn(
       { err: (err as Error)?.message, chatId },
@@ -189,6 +183,22 @@ async function maybeAutoCreateOpportunity(
     { chatId: result.chatId, opportunityId: opp.id, leadScore: result.leadScore },
     "sales-detection: auto-created opportunity"
   );
+}
+
+// Shared auto-create chokepoint: read the owner's effective settings and, when
+// Auto-Create is enabled and the score clears the threshold, idempotently create
+// the opportunity. Used by BOTH the background detection worker and the manual
+// "Analisa ulang" route so the toggle behaves identically on either path.
+export async function applyAutoCreateForResult(
+  result: AnalysisResult
+): Promise<void> {
+  const settings = await getAutoCreateSettings(result.ownerUserId);
+  if (
+    settings.autoCreateEnabled &&
+    result.leadScore >= settings.autoCreateThreshold
+  ) {
+    await maybeAutoCreateOpportunity(result);
+  }
 }
 
 // Exported so the settings route can read the effective (defaulted) config.

@@ -5842,6 +5842,10 @@ components:
           recommendation,
           waitingStatus,
           analyzedAt,
+          opportunityId,
+          stageId,
+          stageName,
+          lastActivityAt,
         ]
       properties:
         id:
@@ -5877,6 +5881,21 @@ components:
         analyzedAt:
           type: string
           format: date-time
+        opportunityId:
+          type: ["integer", "null"]
+          description: >-
+            The id of the opportunity created for this chat, if any. Null until an
+            opportunity exists (auto-created or via "Buat Opportunity").
+        stageId:
+          type: ["integer", "null"]
+          description: The opportunity's current pipeline stage id, if any.
+        stageName:
+          type: ["string", "null"]
+          description: The opportunity's current pipeline stage name, if any.
+        lastActivityAt:
+          type: ["string", "null"]
+          format: date-time
+          description: The opportunity's last-activity timestamp, if any.
 
     SalesAssistantSettings:
       type: object

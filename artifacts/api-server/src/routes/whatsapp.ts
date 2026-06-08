@@ -1977,9 +1977,16 @@ async function persistWaMessage(
   void refreshChatProfilePic(userId, chat).catch(() => {});
 
   // AI Sales Assistant: debounced, non-blocking lead analysis for genuinely new
-  // inbound customer messages. Skips own/outbound + history back-fills. The
-  // queue itself gates on the owner's Enterprise entitlement.
-  if (inserted && direction === "inbound" && !parsed.fromMe) {
+  // inbound customer messages. `opts.incrementUnread` is false for history
+  // back-fills, so gating on it (together with inbound + !fromMe) ensures a
+  // history sync never triggers AI runs / token spend. The queue itself also
+  // gates on the owner's Enterprise entitlement.
+  if (
+    inserted &&
+    opts.incrementUnread &&
+    direction === "inbound" &&
+    !parsed.fromMe
+  ) {
     enqueueChatDetection(chat.id);
   }
 

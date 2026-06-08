@@ -32,6 +32,7 @@ import {
   isValidAssignee,
 } from "../lib/sales-assistant";
 import { analyzeAndPersistChat } from "../lib/sales-insight";
+import { applyAutoCreateForResult } from "../lib/sales-detection";
 
 // ===========================================================================
 // AI Sales Assistant routes (Enterprise-only). Mounted under /sales behind
@@ -96,7 +97,20 @@ function serializeOpportunity(o: typeof opportunitiesTable.$inferSelect) {
   };
 }
 
-function serializeInsight(i: typeof salesInsightsTable.$inferSelect) {
+// The opportunity summary surfaced alongside an insight, so the sidebar can show
+// the deal's current stage + last activity and decide whether to offer "Buat
+// Opportunity". Null when no opportunity exists for the chat yet.
+type InsightOpportunitySummary = {
+  id: number;
+  stageId: number | null;
+  stageName: string | null;
+  lastActivityAt: Date | null;
+} | null;
+
+function serializeInsight(
+  i: typeof salesInsightsTable.$inferSelect,
+  opp: InsightOpportunitySummary = null
+) {
   return {
     id: i.id,
     chatId: i.chatId,
@@ -111,7 +125,41 @@ function serializeInsight(i: typeof salesInsightsTable.$inferSelect) {
     recommendation: i.recommendation,
     waitingStatus: i.waitingStatus,
     analyzedAt: i.analyzedAt.toISOString(),
+    opportunityId: opp?.id ?? null,
+    stageId: opp?.stageId ?? null,
+    stageName: opp?.stageName ?? null,
+    lastActivityAt: opp?.lastActivityAt
+      ? opp.lastActivityAt.toISOString()
+      : null,
   };
+}
+
+// Load the one opportunity (if any) for a chat, with its stage name, so the
+// insight response can carry stage + last-activity without a second round trip.
+async function loadInsightOpportunity(
+  chatId: number,
+  ownerId: number
+): Promise<InsightOpportunitySummary> {
+  const [opp] = await db
+    .select({
+      id: opportunitiesTable.id,
+      stageId: opportunitiesTable.stageId,
+      stageName: pipelineStagesTable.name,
+      lastActivityAt: opportunitiesTable.lastActivityAt,
+    })
+    .from(opportunitiesTable)
+    .leftJoin(
+      pipelineStagesTable,
+      eq(pipelineStagesTable.id, opportunitiesTable.stageId)
+    )
+    .where(
+      and(
+        eq(opportunitiesTable.chatId, chatId),
+        eq(opportunitiesTable.ownerUserId, ownerId)
+      )
+    )
+    .limit(1);
+  return opp ?? null;
 }
 
 // Per-owner AI Sales Assistant config defaults. Inert by default: auto-create
@@ -827,7 +875,8 @@ router.get(
       res.status(404).json({ error: "Belum ada analisa untuk chat ini" });
       return;
     }
-    res.json(serializeInsight(row));
+    const opp = await loadInsightOpportunity(chatId, ownerId);
+    res.json(serializeInsight(row, opp));
   }
 );
 
@@ -853,7 +902,16 @@ router.post(
     }
     try {
       const result = await analyzeAndPersistChat(chatId);
-      res.json(serializeInsight(result.insight));
+      // Apply the tenant's Auto-Create toggle on the manual path too, so a manual
+      // re-analysis behaves identically to background detection. Best-effort: a
+      // create failure must never fail the analysis the user just requested.
+      try {
+        await applyAutoCreateForResult(result);
+      } catch (err) {
+        req.log.warn({ err, chatId }, "manual analyze auto-create failed");
+      }
+      const opp = await loadInsightOpportunity(chatId, ownerId);
+      res.json(serializeInsight(result.insight, opp));
     } catch (err) {
       req.log.error({ err, chatId }, "manual sales insight analyze failed");
       res.status(502).json({ error: "Analisa AI gagal. Coba lagi." });

@@ -23,6 +23,7 @@ import {
   useAnalyzeChatSalesInsight,
   useGetSalesAssistantSettings,
   useUpdateSalesAssistantSettings,
+  useCreateOpportunity,
   getListShortcutsQueryKey,
   getListProductsQueryKey,
   getListSalesOrdersQueryKey,
@@ -1999,9 +2000,11 @@ function InsightRow({
 function SalesInsightTab({
   chatId,
   canEditSettings,
+  canCreateOpportunity,
 }: {
   chatId: number;
   canEditSettings: boolean;
+  canCreateOpportunity: boolean;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -2012,6 +2015,25 @@ function SalesInsightTab({
     error,
   } = useGetChatSalesInsight(chatId, {
     query: { queryKey: getGetChatSalesInsightQueryKey(chatId), retry: false },
+  });
+
+  const createOpportunity = useCreateOpportunity({
+    mutation: {
+      onSuccess: () => {
+        // The created opportunity's stage + last activity now live alongside the
+        // insight; re-fetch so the body swaps "Buat Opportunity" for the stage.
+        qc.invalidateQueries({
+          queryKey: getGetChatSalesInsightQueryKey(chatId),
+        });
+        toast({ description: "Opportunity dibuat." });
+      },
+      onError: () => {
+        toast({
+          variant: "destructive",
+          description: "Gagal membuat opportunity.",
+        });
+      },
+    },
   });
   // A 404 means "not analyzed yet" — that is an expected empty state, not an
   // error to surface.
@@ -2108,7 +2130,24 @@ function SalesInsightTab({
           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Memuat…
         </p>
       ) : insight ? (
-        <SalesInsightBody insight={insight} />
+        <SalesInsightBody
+          insight={insight}
+          canCreateOpportunity={canCreateOpportunity}
+          creating={createOpportunity.isPending}
+          onCreateOpportunity={() =>
+            createOpportunity.mutate({
+              data: {
+                chatId,
+                leadScore: insight.leadScore,
+                intentCategory: insight.intentCategory,
+                estimatedValueIdr: insight.estimatedValueIdr,
+                productInterest: insight.productInterest,
+                aiNotes: insight.aiNotes,
+                waitingStatus: insight.waitingStatus,
+              },
+            })
+          }
+        />
       ) : (
         <EmptyHint
           text={
@@ -2162,8 +2201,19 @@ function SalesInsightTab({
   );
 }
 
-function SalesInsightBody({ insight }: { insight: SalesInsight }) {
+function SalesInsightBody({
+  insight,
+  canCreateOpportunity,
+  creating,
+  onCreateOpportunity,
+}: {
+  insight: SalesInsight;
+  canCreateOpportunity: boolean;
+  creating: boolean;
+  onCreateOpportunity: () => void;
+}) {
   const band = scoreBand(insight.leadScore);
+  const hasOpportunity = insight.opportunityId != null;
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -2225,6 +2275,45 @@ function SalesInsightBody({ insight }: { insight: SalesInsight }) {
         <InsightRow label="Catatan AI">{insight.aiNotes}</InsightRow>
       ) : null}
 
+      <div className="pt-2 border-t border-[hsl(var(--wa-divider))] space-y-4">
+        {hasOpportunity ? (
+          <>
+            <InsightRow label="Tahap opportunity">
+              {insight.stageName ?? "Belum ada tahap"}
+            </InsightRow>
+            <InsightRow label="Aktivitas terakhir">
+              {insight.lastActivityAt
+                ? new Date(insight.lastActivityAt).toLocaleString("id-ID")
+                : "—"}
+            </InsightRow>
+          </>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-[11px] text-[hsl(var(--wa-meta))]">
+              Belum ada opportunity untuk chat ini.
+            </p>
+            {canCreateOpportunity ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                data-testid="button-create-opportunity"
+                disabled={creating}
+                onClick={onCreateOpportunity}
+                className="h-8 w-full gap-1.5 text-xs"
+              >
+                {creating ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Plus className="w-3.5 h-3.5" />
+                )}
+                Buat Opportunity
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
       <p className="pt-1 text-[10px] text-[hsl(var(--wa-meta))]">
         Dianalisa {new Date(insight.analyzedAt).toLocaleString("id-ID")}
       </p>
@@ -2259,6 +2348,7 @@ export function ChatInfoSidebar({
     menus.opportunities.canView &&
     !isGroup;
   const canEditInsightSettings = menus.opportunities.canEdit;
+  const canCreateOpportunity = menus.opportunities.canCreate;
 
   // Local, debounced-on-blur editing for free-text fields so each keystroke
   // doesn't fire a PATCH. Re-sync whenever the chat row changes underneath.
@@ -2628,6 +2718,7 @@ export function ChatInfoSidebar({
           <SalesInsightTab
             chatId={chatId}
             canEditSettings={canEditInsightSettings}
+            canCreateOpportunity={canCreateOpportunity}
           />
         ) : (
           <OrderTab chatId={chatId} />

@@ -4992,7 +4992,11 @@ export const GetChatSalesInsightResponse = zod.object({
   "aiNotes": zod.string().nullable(),
   "recommendation": zod.string().nullable(),
   "waitingStatus": zod.union([zod.literal('waiting_customer'),zod.literal('waiting_company'),zod.literal(null)]).nullable(),
-  "analyzedAt": zod.coerce.date()
+  "analyzedAt": zod.coerce.date(),
+  "opportunityId": zod.number().nullable().describe('The id of the opportunity created for this chat, if any. Null until an opportunity exists (auto-created or via \"Buat Opportunity\").'),
+  "stageId": zod.number().nullable().describe('The opportunity\'s current pipeline stage id, if any.'),
+  "stageName": zod.string().nullable().describe('The opportunity\'s current pipeline stage name, if any.'),
+  "lastActivityAt": zod.coerce.date().nullable().describe('The opportunity\'s last-activity timestamp, if any.')
 }).describe('The latest AI Sales Insight for a chat (one per chat). Surfaced in the conversation sidebar; exists even when no opportunity has been created. All money is whole-integer Rupiah.')
 
 
@@ -5016,7 +5020,11 @@ export const AnalyzeChatSalesInsightResponse = zod.object({
   "aiNotes": zod.string().nullable(),
   "recommendation": zod.string().nullable(),
   "waitingStatus": zod.union([zod.literal('waiting_customer'),zod.literal('waiting_company'),zod.literal(null)]).nullable(),
-  "analyzedAt": zod.coerce.date()
+  "analyzedAt": zod.coerce.date(),
+  "opportunityId": zod.number().nullable().describe('The id of the opportunity created for this chat, if any. Null until an opportunity exists (auto-created or via \"Buat Opportunity\").'),
+  "stageId": zod.number().nullable().describe('The opportunity\'s current pipeline stage id, if any.'),
+  "stageName": zod.string().nullable().describe('The opportunity\'s current pipeline stage name, if any.'),
+  "lastActivityAt": zod.coerce.date().nullable().describe('The opportunity\'s last-activity timestamp, if any.')
 }).describe('The latest AI Sales Insight for a chat (one per chat). Surfaced in the conversation sidebar; exists even when no opportunity has been created. All money is whole-integer Rupiah.')
 
 
