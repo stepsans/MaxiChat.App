@@ -25,6 +25,10 @@ import {
 } from "../lib/infinity-owner";
 import { getOrCreateTenantQuota } from "../lib/subscription-purchase";
 import {
+  listInvoicesForOwner,
+  getInvoiceForOwner,
+} from "../lib/invoices";
+import {
   createXenditInvoice,
   isXenditConfigured,
 } from "../lib/xendit";
@@ -573,6 +577,54 @@ router.get("/payments", async (req, res): Promise<void> => {
     res.json(rows);
   } catch (err) {
     req.log.error({ err }, "listMyPayments failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/invoices — the tenant's immutable invoices (newest first). These
+// are the formal financial records (FASE A): prices are snapshotted at issue so
+// a later catalog change never rewrites history. Owner-scoped.
+router.get("/invoices", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+    const invoices = await listInvoicesForOwner(ownerUserId);
+    res.json(invoices);
+  } catch (err) {
+    req.log.error({ err }, "listMyInvoices failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/invoices/:id — one invoice with its line items. Owner-scoped: an
+// invoice belonging to another tenant 404s (not 403) so ids aren't enumerable.
+router.get("/invoices/:id", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+
+    const invoiceId = Number(req.params.id);
+    if (!Number.isInteger(invoiceId) || invoiceId < 1) {
+      res.status(400).json({ error: "ID invoice tidak valid" });
+      return;
+    }
+
+    const detail = await getInvoiceForOwner(ownerUserId, invoiceId);
+    if (!detail) {
+      res.status(404).json({ error: "Invoice tidak ditemukan" });
+      return;
+    }
+    res.json(detail);
+  } catch (err) {
+    req.log.error({ err }, "getMyInvoice failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

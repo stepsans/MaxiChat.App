@@ -107,6 +107,8 @@ import type {
   ImportKnowledge400,
   ImportKnowledge409,
   ImportProducts200,
+  InvoiceDetail,
+  InvoiceRecord,
   KnowledgeEntry,
   KnowledgeInput,
   KnowledgeSyncConfigInput,
@@ -2869,6 +2871,160 @@ export function useListMyPayments<TData = Awaited<ReturnType<typeof listMyPaymen
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListMyPaymentsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListMyInvoicesUrl = () => {
+
+
+
+
+  return `/api/billing/invoices`
+}
+
+/**
+ * @summary The tenant's immutable invoices (newest first)
+ */
+export const listMyInvoices = async ( options?: RequestInit): Promise<InvoiceRecord[]> => {
+
+  return customFetch<InvoiceRecord[]>(getListMyInvoicesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMyInvoicesQueryKey = () => {
+    return [
+    `/api/billing/invoices`
+    ] as const;
+    }
+
+
+export const getListMyInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof listMyInvoices>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMyInvoicesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMyInvoices>>> = ({ signal }) => listMyInvoices({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMyInvoices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMyInvoicesQueryResult = NonNullable<Awaited<ReturnType<typeof listMyInvoices>>>
+export type ListMyInvoicesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The tenant's immutable invoices (newest first)
+ */
+
+export function useListMyInvoices<TData = Awaited<ReturnType<typeof listMyInvoices>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMyInvoicesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/invoices/${id}`
+}
+
+/**
+ * @summary One invoice with its line items (owner-scoped)
+ */
+export const getMyInvoice = async (id: number, options?: RequestInit): Promise<InvoiceDetail> => {
+
+  return customFetch<InvoiceDetail>(getGetMyInvoiceUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyInvoiceQueryKey = (id: number,) => {
+    return [
+    `/api/billing/invoices/${id}`
+    ] as const;
+    }
+
+
+export const getGetMyInvoiceQueryOptions = <TData = Awaited<ReturnType<typeof getMyInvoice>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyInvoiceQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyInvoice>>> = ({ signal }) => getMyInvoice(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyInvoice>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyInvoiceQueryResult = NonNullable<Awaited<ReturnType<typeof getMyInvoice>>>
+export type GetMyInvoiceQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary One invoice with its line items (owner-scoped)
+ */
+
+export function useGetMyInvoice<TData = Awaited<ReturnType<typeof getMyInvoice>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyInvoiceQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

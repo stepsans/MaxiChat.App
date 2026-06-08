@@ -2095,6 +2095,66 @@ export interface PaymentRecord {
   createdAt: string;
 }
 
+export type InvoiceRecordSource = typeof InvoiceRecordSource[keyof typeof InvoiceRecordSource];
+
+
+export const InvoiceRecordSource = {
+  payment: 'payment',
+  monthly_close: 'monthly_close',
+} as const;
+
+export type InvoiceRecordStatus = typeof InvoiceRecordStatus[keyof typeof InvoiceRecordStatus];
+
+
+export const InvoiceRecordStatus = {
+  open: 'open',
+  paid: 'paid',
+  void: 'void',
+} as const;
+
+export interface InvoiceRecord {
+  id: number;
+  userId: number;
+  invoiceNumber: string;
+  source: InvoiceRecordSource;
+  /** @nullable */
+  paymentId: number | null;
+  status: InvoiceRecordStatus;
+  currency: string;
+  subtotalIdr: number;
+  taxIdr: number;
+  totalIdr: number;
+  /** @nullable */
+  periodStart: string | null;
+  /** @nullable */
+  periodEnd: string | null;
+  issuedAt: string;
+  /** @nullable */
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export interface InvoiceLineItem {
+  id: number;
+  invoiceId: number;
+  lineType: string;
+  /** @nullable */
+  refId: number | null;
+  description: string;
+  quantity: number;
+  unitPriceIdr: number;
+  amountIdr: number;
+  /** @nullable */
+  prorationFactor: number | null;
+  /** @nullable */
+  calculationSource: string | null;
+}
+
+export interface InvoiceDetail {
+  invoice: InvoiceRecord;
+  lineItems: InvoiceLineItem[];
+}
+
 export interface RevenueSummary {
   /** Monthly recurring revenue — sum of latest snapshot total for effective-active owners. */
   mrr: number;

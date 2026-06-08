@@ -1,0 +1,233 @@
+# MaxiChat Billing System v2 - Official Implementation Plan
+
+IMPORTANT:
+
+Mulai implementasi berdasarkan arsitektur berikut.
+
+Prioritas utama:
+
+1. Subscription Billing Enterprise Grade
+2. Cut Off Global Tanggal 1
+3. Prorate Engine
+4. Token Booster Carry Forward
+5. Immutable Invoice
+6. Tenant Isolation
+7. Usage History
+8. Revenue Reporting
+
+Jangan mengubah fitur existing yang masih berjalan.
+
+Lakukan implementasi bertahap dan aman.
+
+---
+
+PHASE A - INVOICE FOUNDATION
+
+Buat sistem invoice formal:
+
+* invoices
+* invoice_line_items
+
+Semua invoice harus immutable.
+
+Harga harus disnapshot saat transaksi.
+
+Perubahan harga plan di masa depan tidak boleh mengubah invoice lama.
+
+Invoice menjadi source of truth untuk:
+
+* Revenue
+* MRR
+* ARPU
+* Billing History
+
+---
+
+PHASE B - MONTHLY CLOSING
+
+Buat Monthly Close Job.
+
+Jalankan setiap:
+
+00:00 WIB
+Tanggal 1
+
+Proses:
+
+1. Tutup periode bulan sebelumnya.
+2. Simpan usage snapshot.
+3. Generate invoice final.
+4. Simpan billing history.
+5. Reset plan quota bulanan.
+6. Buka periode baru.
+
+Pastikan idempotent.
+
+Tidak boleh membuat invoice ganda.
+
+---
+
+PHASE C - SUBSCRIPTION ITEMS
+
+Pisahkan recurring resources menjadi:
+
+* Plan
+* User Seat
+* Channel
+* Storage
+
+Simpan masing-masing sebagai subscription item.
+
+Setiap item harus memiliki:
+
+* quantity
+* unit price
+* billing period
+* snapshot price
+
+---
+
+PHASE D - PRORATE ENGINE
+
+Implementasikan prorate untuk:
+
+* Upgrade Plan
+* Downgrade Plan
+* Extra User
+* Extra Channel
+* Extra Storage
+
+Formula:
+
+remaining_days / total_days_in_month
+
+Semua perhitungan harus dapat diaudit.
+
+Simpan:
+
+* factor
+* amount
+* calculation source
+
+di invoice line item.
+
+---
+
+PHASE E - TOKEN CREDIT SYSTEM
+
+Ganti tokenLimit tunggal menjadi token credit bucket.
+
+Setiap bucket menyimpan:
+
+* source
+* granted amount
+* remaining amount
+* grant date
+* expiry date
+
+Jenis bucket:
+
+PLAN_TOKEN
+BOOSTER_TOKEN
+
+Prioritas konsumsi:
+
+1. PLAN_TOKEN
+2. BOOSTER_TOKEN
+
+Booster Token:
+
+* Carry Forward
+* Expiry 90 Hari
+
+Plan Token:
+
+* Reset setiap awal bulan
+
+---
+
+PHASE F - GLOBAL BILLING DATE
+
+Migrasikan seluruh tenant menjadi:
+
+Billing Cycle:
+Tanggal 1 sampai akhir bulan.
+
+Semua perhitungan harus menggunakan timezone:
+
+Asia/Jakarta
+
+Buat bridge proration untuk tenant lama.
+
+Tidak boleh terjadi kehilangan kuota atau tagihan ganda.
+
+---
+
+PHASE G - BILLING DASHBOARD
+
+Customer Dashboard:
+
+Current Billing Period
+
+Tampilkan:
+
+* Total Token
+* Prompt Token
+* Completion Token
+* AI Calls
+* User Usage
+* Channel Usage
+* Storage Usage
+
+Tampilkan persentase penggunaan.
+
+---
+
+Billing History
+
+Per bulan:
+
+* Juli 2026
+* Agustus 2026
+* September 2026
+
+Setiap bulan dapat membuka:
+
+* Invoice
+* Usage Snapshot
+* Payment History
+
+---
+
+PHASE H - ADMIN REVENUE
+
+Admin dapat melihat:
+
+* MRR
+* ARR
+* Revenue
+* Active Tenant
+* Churn
+* ARPU
+* Token Consumption
+* AI Cost
+* Gross Margin
+
+Revenue harus berasal dari invoice.
+
+Bukan dari estimasi usage.
+
+---
+
+SUCCESS CRITERIA
+
+1. Semua tenant terisolasi.
+2. Semua invoice immutable.
+3. Semua billing dapat diaudit.
+4. Semua penggunaan tersimpan historinya.
+5. Semua upgrade mendukung prorate.
+6. Token booster mendukung carry-forward.
+7. Billing menggunakan cut-off tanggal 1.
+8. Revenue report akurat.
+9. Sistem siap scale ke ribuan tenant.
+10. Tidak merusak fitur yang sudah berjalan.

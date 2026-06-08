@@ -964,6 +964,46 @@ paths:
                 items:
                   $ref: "#/components/schemas/PaymentRecord"
 
+  /billing/invoices:
+    get:
+      operationId: listMyInvoices
+      tags: [billing]
+      summary: The tenant's immutable invoices (newest first)
+      responses:
+        "200":
+          description: Invoice history for the caller's tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InvoiceRecord"
+
+  /billing/invoices/{id}:
+    get:
+      operationId: getMyInvoice
+      tags: [billing]
+      summary: One invoice with its line items (owner-scoped)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceDetail"
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/pricing:
     get:
       operationId: adminGetPricing
@@ -6508,6 +6548,113 @@ components:
           type: integer
         lineAmountIdr:
           type: integer
+
+    InvoiceRecord:
+      type: object
+      required:
+        [
+          id,
+          userId,
+          invoiceNumber,
+          source,
+          paymentId,
+          status,
+          currency,
+          subtotalIdr,
+          taxIdr,
+          totalIdr,
+          periodStart,
+          periodEnd,
+          issuedAt,
+          paidAt,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        invoiceNumber:
+          type: string
+        source:
+          type: string
+          enum: [payment, monthly_close]
+        paymentId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [open, paid, void]
+        currency:
+          type: string
+        subtotalIdr:
+          type: integer
+        taxIdr:
+          type: integer
+        totalIdr:
+          type: integer
+        periodStart:
+          type: ["string", "null"]
+          format: date-time
+        periodEnd:
+          type: ["string", "null"]
+          format: date-time
+        issuedAt:
+          type: string
+          format: date-time
+        paidAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    InvoiceLineItem:
+      type: object
+      required:
+        [
+          id,
+          invoiceId,
+          lineType,
+          refId,
+          description,
+          quantity,
+          unitPriceIdr,
+          amountIdr,
+          prorationFactor,
+          calculationSource,
+        ]
+      properties:
+        id:
+          type: integer
+        invoiceId:
+          type: integer
+        lineType:
+          type: string
+        refId:
+          type: ["integer", "null"]
+        description:
+          type: string
+        quantity:
+          type: integer
+        unitPriceIdr:
+          type: integer
+        amountIdr:
+          type: integer
+        prorationFactor:
+          type: ["number", "null"]
+        calculationSource:
+          type: ["string", "null"]
+
+    InvoiceDetail:
+      type: object
+      required: [invoice, lineItems]
+      properties:
+        invoice:
+          $ref: "#/components/schemas/InvoiceRecord"
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceLineItem"
 
     RevenueSummary:
       type: object

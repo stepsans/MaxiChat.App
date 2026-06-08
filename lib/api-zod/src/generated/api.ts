@@ -812,6 +812,69 @@ export const ListMyPaymentsResponse = zod.array(ListMyPaymentsResponseItem)
 
 
 /**
+ * @summary The tenant's immutable invoices (newest first)
+ */
+export const ListMyInvoicesResponseItem = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "source": zod.enum(['payment', 'monthly_close']),
+  "paymentId": zod.number().nullable(),
+  "status": zod.enum(['open', 'paid', 'void']),
+  "currency": zod.string(),
+  "subtotalIdr": zod.number(),
+  "taxIdr": zod.number(),
+  "totalIdr": zod.number(),
+  "periodStart": zod.coerce.date().nullable(),
+  "periodEnd": zod.coerce.date().nullable(),
+  "issuedAt": zod.coerce.date(),
+  "paidAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+})
+export const ListMyInvoicesResponse = zod.array(ListMyInvoicesResponseItem)
+
+
+/**
+ * @summary One invoice with its line items (owner-scoped)
+ */
+export const GetMyInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetMyInvoiceResponse = zod.object({
+  "invoice": zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "source": zod.enum(['payment', 'monthly_close']),
+  "paymentId": zod.number().nullable(),
+  "status": zod.enum(['open', 'paid', 'void']),
+  "currency": zod.string(),
+  "subtotalIdr": zod.number(),
+  "taxIdr": zod.number(),
+  "totalIdr": zod.number(),
+  "periodStart": zod.coerce.date().nullable(),
+  "periodEnd": zod.coerce.date().nullable(),
+  "issuedAt": zod.coerce.date(),
+  "paidAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date()
+}),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "invoiceId": zod.number(),
+  "lineType": zod.string(),
+  "refId": zod.number().nullable(),
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPriceIdr": zod.number(),
+  "amountIdr": zod.number(),
+  "prorationFactor": zod.number().nullable(),
+  "calculationSource": zod.string().nullable()
+}))
+})
+
+
+/**
  * @summary Get the global usage-based pricing config (admin only)
  */
 export const AdminGetPricingResponse = zod.object({

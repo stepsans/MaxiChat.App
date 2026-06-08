@@ -7,6 +7,7 @@ import { startAiReviewScheduler } from "./lib/ai-review";
 import { startUsageSnapshotScheduler } from "./lib/billing";
 import { startManualPaymentPoller } from "./lib/manual-payment-poller";
 import { startRetentionPurger } from "./lib/retention-purge";
+import { backfillInvoicesFromPayments } from "./lib/invoices";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -116,6 +117,16 @@ async function main(): Promise<void> {
     startUsageSnapshotScheduler();
     startManualPaymentPoller();
     startRetentionPurger();
+    // Billing v2 (FASE A): backfill immutable invoices for any already-paid
+    // payments that predate the invoices table. Idempotent + best-effort, so it
+    // never blocks boot (the NOT EXISTS filter makes it a no-op once caught up).
+    backfillInvoicesFromPayments()
+      .then((n) => {
+        if (n > 0) logger.info({ created: n }, "invoice backfill complete");
+      })
+      .catch((err) =>
+        logger.error({ err }, "invoice backfill failed (non-fatal)")
+      );
   });
 }
 

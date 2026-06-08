@@ -12,6 +12,7 @@ import {
   type PaymentRow,
 } from "@workspace/db";
 import { logger } from "./logger";
+import { createInvoiceForPayment } from "./invoices";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -266,6 +267,10 @@ export async function settlePaymentPaid(
       .returning();
     if (updated.length === 0) return false;
     await applyPaidPayment(updated[0], tx);
+    // Raise the immutable invoice in the SAME transaction as the settlement, so
+    // a paid payment and its financial record are all-or-nothing (idempotent
+    // via the unique payment_id index — a webhook retry is a no-op).
+    await createInvoiceForPayment(updated[0], tx);
     return true;
   });
 }
