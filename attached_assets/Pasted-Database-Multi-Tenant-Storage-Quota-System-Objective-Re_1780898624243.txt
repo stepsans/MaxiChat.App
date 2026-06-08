@@ -1,0 +1,274 @@
+Database Multi-Tenant & Storage Quota System
+Objective
+
+Refactor sistem menjadi arsitektur multi-tenant yang scalable, di mana setiap tenant memiliki database dan alokasi storage masing-masing.
+
+1. Multi-Tenant Database Architecture
+
+Ubah arsitektur database menjadi tenant-based.
+
+Requirements
+Setiap tenant memiliki database terpisah (database isolation).
+Semua data tenant harus terikat ke tenant yang bersangkutan.
+Tidak boleh ada data sharing antar tenant.
+Saat tenant dibuat, sistem otomatis membuat database/storage namespace untuk tenant tersebut.
+Dashboard, Analytics, Reports, dan seluruh query hanya menampilkan data milik tenant yang sedang login.
+Example
+
+Tenant A:
+
+Database: tenant_a
+
+Tenant B:
+
+Database: tenant_b
+
+Tenant C:
+
+Database: tenant_c
+
+Semua data chat, kontak, analytics, campaign, dan logs harus tersimpan pada database tenant masing-masing.
+
+2. Migrate Attachments to Object Storage
+
+Pindahkan seluruh file dan media dari database ke Object Storage.
+
+Files to Store
+Images
+Documents
+Audio
+Video
+Chat attachments
+AI generated files
+Storage Providers
+
+Buat storage layer yang dapat mendukung:
+
+AWS S3
+Cloudflare R2
+MinIO
+Google Cloud Storage
+
+Gunakan abstraction layer sehingga provider dapat diganti tanpa mengubah business logic.
+
+3. Data Retention Management
+
+Tambahkan sistem retensi data.
+
+Retention Settings
+
+Per tenant dapat mengatur:
+
+Chat retention
+Media retention
+Log retention
+Analytics retention
+
+Contoh:
+
+30 hari
+90 hari
+180 hari
+1 tahun
+Unlimited
+
+Tambahkan background job untuk menghapus data yang sudah melewati masa retensi.
+
+4. Tenant Resource Quota System
+
+Setiap tenant memiliki batas penggunaan berdasarkan paket langganan.
+
+Resources
+Database Storage Quota
+
+Contoh:
+
+Starter:
+
+5 GB
+
+Business:
+
+50 GB
+
+Enterprise:
+
+500 GB
+User Quota
+
+Contoh:
+
+Starter:
+
+3 users
+
+Business:
+
+20 users
+
+Enterprise:
+
+Unlimited
+Channel Quota
+
+Contoh:
+
+Starter:
+
+2 channels
+
+Business:
+
+10 channels
+
+Enterprise:
+
+Unlimited
+AI Token Quota
+
+Contoh:
+
+Starter:
+
+1M tokens/month
+
+Business:
+
+10M tokens/month
+
+Enterprise:
+
+Custom
+5. Subscription Package Management
+
+Pada menu Admin > Subscription Plans, tambahkan konfigurasi:
+
+Plan Settings
+Plan name
+Monthly price
+Database quota (GB)
+User quota
+Channel quota
+Token quota
+Retention limit
+Object storage quota
+Overage settings
+Add-on availability
+
+Semua quota harus dapat diubah melalui admin panel tanpa mengubah kode.
+
+6. Storage Add-On System
+
+Buat sistem add-on seperti iCloud atau Google Drive.
+
+Example Add-ons
+
++10 GB Storage
+
++50 GB Storage
+
++100 GB Storage
+
++500 GB Storage
+
++1 TB Storage
+
+Tenant dapat membeli add-on storage kapan saja.
+
+Total quota tenant = Base Plan + Add-on Storage.
+
+7. Tenant Usage Monitoring
+
+Tambahkan monitoring penggunaan resource tenant.
+
+Dashboard Metrics
+
+Database Usage:
+
+Used
+Available
+Percentage
+
+Object Storage Usage:
+
+Used
+Available
+Percentage
+
+Users:
+
+Current
+Maximum
+
+Channels:
+
+Current
+Maximum
+
+AI Tokens:
+
+Used this month
+Remaining
+
+Tampilkan progress bar dan warning ketika penggunaan >80%.
+
+8. Reset Tenant Database
+
+Pada menu Settings > Database Management:
+
+Reset Tenant Data
+
+Fitur ini harus:
+
+Menghapus seluruh data tenant
+Tidak mempengaruhi tenant lain
+Menghapus:
+Chats
+Contacts
+Analytics
+Logs
+AI Memory
+Uploaded Files
+
+Tambahkan:
+
+Confirmation modal
+Double confirmation
+Audit log
+Optional backup sebelum reset
+
+Nama fitur harus diubah menjadi:
+
+Reset Tenant Database
+
+karena yang dihapus adalah seluruh database tenant, bukan hanya chat.
+
+9. Analytics & Dashboard
+
+Pastikan seluruh halaman berikut menggunakan data tenant aktif:
+
+Dashboard
+Analytics
+Reports
+AI Usage
+Storage Usage
+User Management
+Channel Management
+
+Tidak boleh mengambil data global seluruh tenant.
+
+10. Future Scalability
+
+Desain arsitektur agar mendukung:
+
+10.000+ tenants
+Horizontal scaling
+Database sharding
+Object storage scaling
+Subscription billing integration
+Usage-based billing
+Storage overage billing
+
+Gunakan clean architecture dan service abstraction agar mudah dikembangkan di masa depan.
+
+Goal akhir: MaxiChat menjadi SaaS multi-tenant enterprise-grade dengan database isolation per tenant, object storage terpisah, quota management, retention policy, subscription-based storage, dan monitoring penggunaan resource layaknya Google Workspace atau iCloud.
