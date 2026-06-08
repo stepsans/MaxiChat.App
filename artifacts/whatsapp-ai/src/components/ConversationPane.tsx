@@ -13,9 +13,6 @@ import {
   getGetChatQueryKey,
   getListChatsQueryKey,
   getListAgentsQueryKey,
-  useListProducts,
-  getListProductsQueryKey,
-  useSendProductToChat,
   useSetMessageStar,
   getGetStarredMessagesQueryKey,
   useDeleteMessageForMe,
@@ -58,13 +55,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -80,7 +70,6 @@ import {
   FileText,
   User as UserIcon,
   Download,
-  Package,
   Smile,
   Mic,
   Check,
@@ -379,9 +368,6 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   // Briefly highlights a bubble after we scroll to it (e.g. tapping a quote).
   const [highlightId, setHighlightId] = useState<number | null>(null);
-  const [productPanelOpen, setProductPanelOpen] = useState(false);
-  const [sendingProductId, setSendingProductId] = useState<number | null>(null);
-  const [productSearch, setProductSearch] = useState("");
   // Right-side info panel that hosts Tag / Status / Manual / Assign.
   // Persist open/closed across reloads so the user's preference sticks.
   const [infoPanelOpen, setInfoPanelOpen] = useState(() => {
@@ -396,43 +382,6 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
       );
     }
   }, [infoPanelOpen]);
-
-  const { data: products } = useListProducts({
-    query: {
-      queryKey: getListProductsQueryKey(),
-      enabled: productPanelOpen,
-    },
-  });
-
-  const formatIDR = (n: number) =>
-    new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      maximumFractionDigits: 0,
-    }).format(n);
-
-  const sendProductMut = useSendProductToChat({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getGetChatQueryKey(chatId) });
-        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
-        toast({ title: "Produk terkirim." });
-        setProductPanelOpen(false);
-      },
-      onError: (err: any) =>
-        toast({
-          title: "Gagal mengirim produk",
-          description: err?.message ?? "",
-          variant: "destructive",
-        }),
-      onSettled: () => setSendingProductId(null),
-    },
-  });
-
-  function handleSendProduct(productId: number) {
-    setSendingProductId(productId);
-    sendProductMut.mutate({ id: chatId, data: { productId } });
-  }
 
   const setStarMut = useSetMessageStar({
     mutation: {
@@ -1423,106 +1372,6 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
               <PanelRightOpen className="w-4 h-4" />
             )}
           </button>
-
-          <Sheet open={productPanelOpen} onOpenChange={setProductPanelOpen}>
-            <SheetTrigger asChild>
-              <button
-                data-testid="button-open-products"
-                className="p-2 rounded-full hover:bg-white/5 text-[hsl(var(--wa-meta))] hover:text-foreground transition-colors"
-                title="Kirim Produk"
-              >
-                <Package className="w-4 h-4" />
-              </button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
-              <SheetHeader className="px-4 py-3 border-b border-border">
-                <SheetTitle className="text-sm">Kirim Produk</SheetTitle>
-              </SheetHeader>
-              <div className="px-4 py-2 border-b border-border">
-                <Input
-                  data-testid="input-product-search"
-                  placeholder="Cari kode atau nama..."
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {!products ? (
-                  <div className="text-xs text-muted-foreground text-center py-8">
-                    Memuat produk...
-                  </div>
-                ) : products.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <Package className="w-8 h-8 mb-2 opacity-30" />
-                    <p className="text-xs">Belum ada produk</p>
-                    <Link
-                      href="/products"
-                      className="text-xs text-primary underline mt-2"
-                    >
-                      Tambah di Katalog Produk
-                    </Link>
-                  </div>
-                ) : (
-                  products
-                    .filter((p) => {
-                      const q = productSearch.trim().toLowerCase();
-                      if (!q) return true;
-                      return (
-                        p.code.toLowerCase().includes(q) ||
-                        p.name.toLowerCase().includes(q)
-                      );
-                    })
-                    .map((p) => (
-                      <div
-                        key={p.id}
-                        data-testid={`product-item-${p.id}`}
-                        className="flex gap-3 p-2 rounded-md border border-border hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="w-14 h-14 rounded-md bg-secondary flex-shrink-0 overflow-hidden flex items-center justify-center">
-                          {p.imageUrl ? (
-                            <img
-                              src={resolveImageSrc(p.imageUrl) ?? p.imageUrl}
-                              alt={p.name}
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = "none";
-                              }}
-                            />
-                          ) : (
-                            <Package className="w-5 h-5 opacity-30" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] text-muted-foreground font-mono">
-                            {p.code}
-                          </p>
-                          <p className="text-xs font-medium line-clamp-2">{p.name}</p>
-                          <p className="text-xs font-semibold text-primary">
-                            {formatIDR(p.price)}
-                          </p>
-                        </div>
-                        <Button
-                          data-testid={`button-send-product-${p.id}`}
-                          size="sm"
-                          variant="default"
-                          className="h-7 text-xs self-center"
-                          disabled={sendingProductId !== null}
-                          onClick={() => handleSendProduct(p.id)}
-                        >
-                          {sendingProductId === p.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Send className="w-3 h-3" />
-                          )}
-                        </Button>
-                      </div>
-                    ))
-                )}
-              </div>
-            </SheetContent>
-          </Sheet>
 
           <button
             className={cn(
