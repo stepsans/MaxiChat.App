@@ -33,8 +33,11 @@ import {
 
 import { Avatar } from "@/components/Avatar";
 import { ChatInfoPanel } from "@/components/chat-info/ChatInfoPanel";
+import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { resolveMediaUrl, uploadChatMedia } from "@/lib/api";
+
+const AVATAR_SIZE = 30;
 
 function msgTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
@@ -43,11 +46,20 @@ function msgTime(iso: string): string {
   });
 }
 
+// Identity key used to group consecutive messages from the same sender so the
+// avatar is only rendered once per run. Outbound is always "us"; inbound groups
+// key on the participant (digits → name), 1:1 inbound collapses to a single key.
+function senderKey(m: ChatMessage): string {
+  if (m.direction === "outbound") return "out";
+  return "in:" + (m.senderPhoneDigits ?? m.senderName ?? "self");
+}
+
 export default function ConversationScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const chatId = Number(id);
 
@@ -146,13 +158,42 @@ export default function ConversationScreen() {
     }
   };
 
-  const renderMessage = ({ item }: { item: ChatMessage }) => {
+  const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
     const out = item.direction === "outbound";
     const media = mediaById.get(item.id);
     const mediaUri =
       media && (media.mediaType === "image" || media.mediaMimeType?.startsWith("image/"))
         ? resolveMediaUrl(media.mediaUrl)
         : null;
+
+    // The list is inverted (index 0 = newest, rendered at the bottom). Show the
+    // avatar on the newest message of each consecutive same-sender run — i.e.
+    // when the newer neighbour (index-1) is a different sender or doesn't exist.
+    const newer = index > 0 ? inverted[index - 1] : null;
+    const showAvatar = !newer || senderKey(newer) !== senderKey(item);
+
+    // Inbound group rows carry a participant identity (senderName and/or
+    // senderPhoneDigits) → render that member's initials only, never the group's
+    // own icon. Only a true 1:1 row (no sender info at all) falls back to the
+    // chat contact's name + profile pic. Outbound uses the signed-in agent.
+    const isGroupSender = !out && !!(item.senderPhoneDigits || item.senderName);
+    const avatarName = out
+      ? user?.name || "Saya"
+      : isGroupSender
+        ? item.senderName || item.senderPhoneDigits || "?"
+        : chat?.contactName || "?";
+    const avatarUri = out
+      ? user?.profilePhotoUrl
+      : isGroupSender
+        ? null
+        : chat?.profilePicUrl;
+
+    const avatarSlot = showAvatar ? (
+      <Avatar name={avatarName} uri={avatarUri} size={AVATAR_SIZE} />
+    ) : (
+      <View style={{ width: AVATAR_SIZE }} />
+    );
+
     return (
       <View
         style={[
@@ -160,6 +201,7 @@ export default function ConversationScreen() {
           { justifyContent: out ? "flex-end" : "flex-start" },
         ]}
       >
+        {!out ? avatarSlot : null}
         <View
           style={[
             styles.bubble,
@@ -196,6 +238,7 @@ export default function ConversationScreen() {
             </Text>
           </View>
         </View>
+        {out ? avatarSlot : null}
       </View>
     );
   };
@@ -411,9 +454,14 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: "Inter_500Medium", fontSize: 12 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   messages: { paddingHorizontal: 10, paddingVertical: 12 },
-  bubbleRow: { flexDirection: "row", marginVertical: 2 },
+  bubbleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
+    marginVertical: 2,
+  },
   bubble: {
-    maxWidth: "82%",
+    maxWidth: "78%",
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingTop: 6,
