@@ -75,6 +75,7 @@ import {
   Check,
   CheckCheck,
   MoreVertical,
+  ChevronDown,
   Search,
   RefreshCw,
   X,
@@ -1674,6 +1675,145 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                             "ring-2 ring-[hsl(var(--wa-accent))]"
                         )}
                       >
+                        {/* Top-right chevron menu — WhatsApp-style */}
+                        <div className="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                data-testid={`button-msg-menu-${msg.id}`}
+                                title="Opsi pesan"
+                                className="p-1 rounded-full hover:bg-black/10 transition-colors text-[hsl(var(--wa-meta))]"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              side="bottom"
+                              className="w-56"
+                            >
+                              <DropdownMenuItem
+                                onClick={() => startReply(msg)}
+                                data-testid={`menu-reply-${msg.id}`}
+                              >
+                                <Reply className="w-3.5 h-3.5 mr-2" />
+                                Balas
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setReactionTarget((cur) =>
+                                    cur === msg.id ? null : msg.id,
+                                  )
+                                }
+                                data-testid={`menu-react-${msg.id}`}
+                              >
+                                <Smile className="w-3.5 h-3.5 mr-2" />
+                                Reaksi
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  toggleStar(msg.id, !!msg.isStarred)
+                                }
+                                data-testid={`menu-star-${msg.id}`}
+                              >
+                                <Star className="w-3.5 h-3.5 mr-2" />
+                                {msg.isStarred ? "Hapus bintang" : "Bintang"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => togglePin(msg.id, !msg.pinnedAt)}
+                                data-testid={`menu-pin-${msg.id}`}
+                              >
+                                {msg.pinnedAt ? (
+                                  <PinOff className="w-3.5 h-3.5 mr-2" />
+                                ) : (
+                                  <Pin className="w-3.5 h-3.5 mr-2" />
+                                )}
+                                {msg.pinnedAt ? "Lepas sematan" : "Sematkan"}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setForwardSelected(new Set());
+                                  setForwardSearch("");
+                                  setForwardSource(msg.id);
+                                }}
+                                data-testid={`menu-forward-${msg.id}`}
+                              >
+                                <Share2 className="w-3.5 h-3.5 mr-2" />
+                                Teruskan
+                              </DropdownMenuItem>
+                              {msg.content && (
+                                <DropdownMenuItem
+                                  onClick={() => copyMessage(msg.content)}
+                                  data-testid={`menu-copy-${msg.id}`}
+                                >
+                                  <Copy className="w-3.5 h-3.5 mr-2" />
+                                  Salin
+                                </DropdownMenuItem>
+                              )}
+                              {isGroup && !isOutbound && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      openPrivateChat(
+                                        msg.senderPhoneDigits,
+                                        senderLabel
+                                      )
+                                    }
+                                    data-testid={`menu-reply-privately-${msg.id}`}
+                                  >
+                                    <CornerUpLeft className="w-3.5 h-3.5 mr-2" />
+                                    Balas pribadi
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      openPrivateChat(
+                                        msg.senderPhoneDigits,
+                                        senderLabel
+                                      )
+                                    }
+                                    data-testid={`menu-message-${msg.id}`}
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 mr-2" />
+                                    <span className="truncate">
+                                      Kirim pesan ke {senderLabel}
+                                    </span>
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => deleteForMe(msg.id)}
+                                data-testid={`menu-delete-for-me-${msg.id}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                Hapus untuk saya
+                              </DropdownMenuItem>
+                              {isOutbound && (
+                                <DropdownMenuItem
+                                  onClick={() => setRevokeTarget(msg.id)}
+                                  className="text-red-600 focus:text-red-600"
+                                  data-testid={`menu-delete-for-everyone-${msg.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                  Hapus untuk semua orang
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectMode(true);
+                                  setSelectedIds(new Set([msg.id]));
+                                }}
+                                data-testid={`menu-select-${msg.id}`}
+                              >
+                                <CheckSquare className="w-3.5 h-3.5 mr-2" />
+                                Pilih pesan
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                         {showSenderHeader && (
                           <div
                             className="flex items-center gap-1.5 mb-0.5"
@@ -1834,142 +1974,6 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                               fill={msg.isStarred ? "currentColor" : "none"}
                             />
                           </button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                data-testid={`button-msg-menu-${msg.id}`}
-                                title="Opsi pesan"
-                                className="p-1 rounded-full hover:bg-black/10 transition-colors text-[hsl(var(--wa-meta))] opacity-0 group-hover:opacity-100"
-                              >
-                                <MoreVertical className="w-3 h-3" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              side="top"
-                              className="w-56"
-                            >
-                              <DropdownMenuItem
-                                onClick={() => startReply(msg)}
-                                data-testid={`menu-reply-${msg.id}`}
-                              >
-                                <Reply className="w-3.5 h-3.5 mr-2" />
-                                Balas
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  setReactionTarget((cur) =>
-                                    cur === msg.id ? null : msg.id,
-                                  )
-                                }
-                                data-testid={`menu-react-${msg.id}`}
-                              >
-                                <Smile className="w-3.5 h-3.5 mr-2" />
-                                Reaksi
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  toggleStar(msg.id, !!msg.isStarred)
-                                }
-                                data-testid={`menu-star-${msg.id}`}
-                              >
-                                <Star className="w-3.5 h-3.5 mr-2" />
-                                {msg.isStarred ? "Hapus bintang" : "Bintang"}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => togglePin(msg.id, !msg.pinnedAt)}
-                                data-testid={`menu-pin-${msg.id}`}
-                              >
-                                {msg.pinnedAt ? (
-                                  <PinOff className="w-3.5 h-3.5 mr-2" />
-                                ) : (
-                                  <Pin className="w-3.5 h-3.5 mr-2" />
-                                )}
-                                {msg.pinnedAt ? "Lepas sematan" : "Sematkan"}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setForwardSelected(new Set());
-                                  setForwardSearch("");
-                                  setForwardSource(msg.id);
-                                }}
-                                data-testid={`menu-forward-${msg.id}`}
-                              >
-                                <Share2 className="w-3.5 h-3.5 mr-2" />
-                                Teruskan
-                              </DropdownMenuItem>
-                              {msg.content && (
-                                <DropdownMenuItem
-                                  onClick={() => copyMessage(msg.content)}
-                                  data-testid={`menu-copy-${msg.id}`}
-                                >
-                                  <Copy className="w-3.5 h-3.5 mr-2" />
-                                  Salin
-                                </DropdownMenuItem>
-                              )}
-                              {isGroup && !isOutbound && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      openPrivateChat(
-                                        msg.senderPhoneDigits,
-                                        senderLabel
-                                      )
-                                    }
-                                    data-testid={`menu-reply-privately-${msg.id}`}
-                                  >
-                                    <CornerUpLeft className="w-3.5 h-3.5 mr-2" />
-                                    Balas pribadi
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      openPrivateChat(
-                                        msg.senderPhoneDigits,
-                                        senderLabel
-                                      )
-                                    }
-                                    data-testid={`menu-message-${msg.id}`}
-                                  >
-                                    <MessageCircle className="w-3.5 h-3.5 mr-2" />
-                                    <span className="truncate">
-                                      Kirim pesan ke {senderLabel}
-                                    </span>
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => deleteForMe(msg.id)}
-                                data-testid={`menu-delete-for-me-${msg.id}`}
-                              >
-                                <Trash2 className="w-3.5 h-3.5 mr-2" />
-                                Hapus untuk saya
-                              </DropdownMenuItem>
-                              {isOutbound && (
-                                <DropdownMenuItem
-                                  onClick={() => setRevokeTarget(msg.id)}
-                                  className="text-red-600 focus:text-red-600"
-                                  data-testid={`menu-delete-for-everyone-${msg.id}`}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 mr-2" />
-                                  Hapus untuk semua orang
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectMode(true);
-                                  setSelectedIds(new Set([msg.id]));
-                                }}
-                                data-testid={`menu-select-${msg.id}`}
-                              >
-                                <CheckSquare className="w-3.5 h-3.5 mr-2" />
-                                Pilih pesan
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
                           {isOutbound && msg.isAiGenerated && (
                             <Bot
                               className="w-3 h-3 text-[hsl(var(--wa-meta))]"
