@@ -296,6 +296,14 @@ export const salesAssistantSettingsTable = pgTable(
     autoCreateEnabled: boolean("auto_create_enabled").notNull().default(false),
     // Score threshold (0–100) that triggers auto-create when enabled.
     autoCreateThreshold: integer("auto_create_threshold").notNull().default(70),
+    // Pipeline Health config. An open opportunity is flagged "High Risk" when its
+    // estimated value is >= highValueThresholdIdr AND it has had no activity for
+    // >= staleDaysThreshold days. highValueThresholdIdr = 0 means every open deal
+    // qualifies on the value axis (only staleness matters). Whole-int Rupiah.
+    staleDaysThreshold: integer("stale_days_threshold").notNull().default(14),
+    highValueThresholdIdr: bigint("high_value_threshold_idr", { mode: "number" })
+      .notNull()
+      .default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -348,6 +356,8 @@ export const insertSalesAssistantSettingsSchema = createInsertSchema(
   {
     autoCreateEnabled: z.boolean().optional(),
     autoCreateThreshold: z.number().int().min(0).max(100).optional(),
+    staleDaysThreshold: z.number().int().min(1).max(365).optional(),
+    highValueThresholdIdr: z.number().int().min(0).optional(),
   }
 ).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
 

@@ -16,4 +16,11 @@ export interface SalesAssistantSettingsUpdate {
      * @maximum 100
      */
   autoCreateThreshold?: number;
+  /**
+     * @minimum 1
+     * @maximum 365
+     */
+  staleDaysThreshold?: number;
+  /** @minimum 0 */
+  highValueThresholdIdr?: bigint;
 }

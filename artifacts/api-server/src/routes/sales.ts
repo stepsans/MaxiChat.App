@@ -19,6 +19,7 @@ import {
   UpdateOpportunityBody,
   ListOpportunitiesQueryParams,
   UpdateSalesAssistantSettingsBody,
+  ReorderSalesStagesBody,
 } from "@workspace/api-zod";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
@@ -33,6 +34,7 @@ import {
 } from "../lib/sales-assistant";
 import { analyzeAndPersistChat } from "../lib/sales-insight";
 import { applyAutoCreateForResult } from "../lib/sales-detection";
+import { computePipelineHealth } from "../lib/pipeline-health-build";
 
 // ===========================================================================
 // AI Sales Assistant routes (Enterprise-only). Mounted under /sales behind
@@ -166,6 +168,10 @@ async function loadInsightOpportunity(
 // OFF (the AI only recommends) at a 70 threshold.
 const DEFAULT_AUTO_CREATE_ENABLED = false;
 const DEFAULT_AUTO_CREATE_THRESHOLD = 70;
+// Pipeline Health defaults: a deal goes stale after 14 days idle; 0 high-value
+// threshold means only staleness matters until the owner raises the bar.
+const DEFAULT_STALE_DAYS_THRESHOLD = 14;
+const DEFAULT_HIGH_VALUE_THRESHOLD_IDR = 0;
 
 // Verify a chat is visible to THIS caller. Two-layer check, mirroring the chat
 // endpoints: (1) the chat's channel must belong to the tenant owner, and (2) the
@@ -299,8 +305,74 @@ router.patch(
   }
 );
 
-// DELETE /sales/stages/:id — delete a stage (opportunities in it become
-// unstaged via the FK SET NULL).
+// POST /sales/stages/reorder — reassign sortOrder by array index. The payload
+// must list EXACTLY the tenant's current stage id set (no missing/extra/foreign
+// ids), so a stale board can't silently drop or smuggle a stage. Applied in one
+// transaction; returns the stages in their new order.
+router.post(
+  "/stages/reorder",
+  requirePermission("opportunities", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const ownerId = await resolveOwner(req, res);
+    if (ownerId == null) return;
+    const parsed = ReorderSalesStagesBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Data tidak valid" });
+      return;
+    }
+    const stageIds = parsed.data.stageIds;
+    // Re-check integer at the boundary (OpenAPI integer → zod number).
+    if (!stageIds.every((n: number) => Number.isInteger(n))) {
+      res.status(400).json({ error: "stageIds harus bilangan bulat" });
+      return;
+    }
+    if (new Set(stageIds).size !== stageIds.length) {
+      res.status(400).json({ error: "stageIds tidak boleh duplikat" });
+      return;
+    }
+
+    const owned = await db
+      .select({ id: pipelineStagesTable.id })
+      .from(pipelineStagesTable)
+      .where(eq(pipelineStagesTable.ownerUserId, ownerId));
+    const ownedIds = new Set(owned.map((s) => s.id));
+    if (
+      stageIds.length !== ownedIds.size ||
+      !stageIds.every((id: number) => ownedIds.has(id))
+    ) {
+      res
+        .status(400)
+        .json({ error: "stageIds harus mencakup semua stage tenant ini" });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < stageIds.length; i++) {
+        await tx
+          .update(pipelineStagesTable)
+          .set({ sortOrder: i })
+          .where(
+            and(
+              eq(pipelineStagesTable.id, stageIds[i]!),
+              eq(pipelineStagesTable.ownerUserId, ownerId)
+            )
+          );
+      }
+    });
+
+    const rows = await db
+      .select()
+      .from(pipelineStagesTable)
+      .where(eq(pipelineStagesTable.ownerUserId, ownerId))
+      .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
+    res.json(rows.map(serializeStage));
+  }
+);
+
+// DELETE /sales/stages/:id — delete a stage. Blocked with 409 (catalog-style,
+// like plan delete) when any opportunity still references it; the caller must
+// move those deals to another stage first. This keeps the board honest rather
+// than silently unstaging deals.
 router.delete(
   "/stages/:id",
   requirePermission("opportunities", "delete"),
@@ -312,19 +384,46 @@ router.delete(
       res.status(400).json({ error: "id tidak valid" });
       return;
     }
-    const [row] = await db
-      .delete(pipelineStagesTable)
+
+    const [stage] = await db
+      .select({ id: pipelineStagesTable.id })
+      .from(pipelineStagesTable)
       .where(
         and(
           eq(pipelineStagesTable.id, id),
           eq(pipelineStagesTable.ownerUserId, ownerId)
         )
       )
-      .returning({ id: pipelineStagesTable.id });
-    if (!row) {
+      .limit(1);
+    if (!stage) {
       res.status(404).json({ error: "Stage tidak ditemukan" });
       return;
     }
+
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(opportunitiesTable)
+      .where(
+        and(
+          eq(opportunitiesTable.ownerUserId, ownerId),
+          eq(opportunitiesTable.stageId, id)
+        )
+      );
+    if (count > 0) {
+      res.status(409).json({
+        error: `Stage masih memiliki ${count} opportunity. Pindahkan dulu ke stage lain sebelum menghapus.`,
+      });
+      return;
+    }
+
+    await db
+      .delete(pipelineStagesTable)
+      .where(
+        and(
+          eq(pipelineStagesTable.id, id),
+          eq(pipelineStagesTable.ownerUserId, ownerId)
+        )
+      );
     res.json({ success: true });
   }
 );
@@ -936,6 +1035,10 @@ router.get(
       autoCreateEnabled: row?.autoCreateEnabled ?? DEFAULT_AUTO_CREATE_ENABLED,
       autoCreateThreshold:
         row?.autoCreateThreshold ?? DEFAULT_AUTO_CREATE_THRESHOLD,
+      staleDaysThreshold:
+        row?.staleDaysThreshold ?? DEFAULT_STALE_DAYS_THRESHOLD,
+      highValueThresholdIdr:
+        row?.highValueThresholdIdr ?? DEFAULT_HIGH_VALUE_THRESHOLD_IDR,
     });
   }
 );
@@ -969,8 +1072,31 @@ router.patch(
       return;
     }
     if (
+      body.staleDaysThreshold != null &&
+      (!Number.isInteger(body.staleDaysThreshold) ||
+        body.staleDaysThreshold < 1 ||
+        body.staleDaysThreshold > 365)
+    ) {
+      res
+        .status(400)
+        .json({ error: "Hari stale harus bilangan bulat 1–365" });
+      return;
+    }
+    if (
+      body.highValueThresholdIdr != null &&
+      (!Number.isInteger(body.highValueThresholdIdr) ||
+        body.highValueThresholdIdr < 0)
+    ) {
+      res.status(400).json({
+        error: "Nilai high-value harus bilangan bulat (Rupiah) >= 0",
+      });
+      return;
+    }
+    if (
       body.autoCreateEnabled === undefined &&
-      body.autoCreateThreshold === undefined
+      body.autoCreateThreshold === undefined &&
+      body.staleDaysThreshold === undefined &&
+      body.highValueThresholdIdr === undefined
     ) {
       res.status(400).json({ error: "Tidak ada perubahan" });
       return;
@@ -984,6 +1110,10 @@ router.patch(
       updateSet.autoCreateEnabled = body.autoCreateEnabled;
     if (body.autoCreateThreshold !== undefined)
       updateSet.autoCreateThreshold = body.autoCreateThreshold;
+    if (body.staleDaysThreshold !== undefined)
+      updateSet.staleDaysThreshold = body.staleDaysThreshold;
+    if (body.highValueThresholdIdr !== undefined)
+      updateSet.highValueThresholdIdr = body.highValueThresholdIdr;
 
     const [row] = await db
       .insert(salesAssistantSettingsTable)
@@ -993,6 +1123,10 @@ router.patch(
           body.autoCreateEnabled ?? DEFAULT_AUTO_CREATE_ENABLED,
         autoCreateThreshold:
           body.autoCreateThreshold ?? DEFAULT_AUTO_CREATE_THRESHOLD,
+        staleDaysThreshold:
+          body.staleDaysThreshold ?? DEFAULT_STALE_DAYS_THRESHOLD,
+        highValueThresholdIdr:
+          body.highValueThresholdIdr ?? DEFAULT_HIGH_VALUE_THRESHOLD_IDR,
       })
       .onConflictDoUpdate({
         target: salesAssistantSettingsTable.ownerUserId,
@@ -1003,7 +1137,101 @@ router.patch(
     res.json({
       autoCreateEnabled: row!.autoCreateEnabled,
       autoCreateThreshold: row!.autoCreateThreshold,
+      staleDaysThreshold: row!.staleDaysThreshold,
+      highValueThresholdIdr: row!.highValueThresholdIdr,
     });
+  }
+);
+
+// GET /sales/pipeline-health — high-risk (high-value + stale) open deals scoped
+// to the caller. The risk math is the pure computePipelineHealth; we load the
+// owner's Pipeline Health config (defaults if unset) and the caller's open
+// opportunities, then return a summary + the high-risk id set (for badging the
+// board). Best-effort: when there are high-risk deals we record ONE
+// stage_recommendation audit event per owner per day (deduped on the date) so
+// the audit trail isn't spammed by polling; failures there never break the read.
+router.get(
+  "/pipeline-health",
+  requirePermission("opportunities", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const teamRole = await resolveTeamRole(uid);
+
+    const [cfgRow] = await db
+      .select({
+        staleDaysThreshold: salesAssistantSettingsTable.staleDaysThreshold,
+        highValueThresholdIdr:
+          salesAssistantSettingsTable.highValueThresholdIdr,
+      })
+      .from(salesAssistantSettingsTable)
+      .where(eq(salesAssistantSettingsTable.ownerUserId, ownerId))
+      .limit(1);
+    const cfg = {
+      staleDaysThreshold:
+        cfgRow?.staleDaysThreshold ?? DEFAULT_STALE_DAYS_THRESHOLD,
+      highValueThresholdIdr:
+        cfgRow?.highValueThresholdIdr ?? DEFAULT_HIGH_VALUE_THRESHOLD_IDR,
+    };
+
+    // Only open deals can be at risk; scope by role (agents → own deals).
+    const rows = await db
+      .select({
+        id: opportunitiesTable.id,
+        status: opportunitiesTable.status,
+        estimatedValueIdr: opportunitiesTable.estimatedValueIdr,
+        lastActivityAt: opportunitiesTable.lastActivityAt,
+      })
+      .from(opportunitiesTable)
+      .where(
+        and(
+          opportunityScopeWhere(ownerId, teamRole, uid),
+          eq(opportunitiesTable.status, "open")
+        )
+      );
+
+    const result = computePipelineHealth(rows, cfg, new Date());
+
+    // Best-effort once-per-day audit of the recommendation. Deduped on the
+    // UTC date string so repeated polling within a day inserts at most once.
+    if (result.highRiskIds.length > 0) {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const [existing] = await db
+          .select({ id: salesAuditEventsTable.id })
+          .from(salesAuditEventsTable)
+          .where(
+            and(
+              eq(salesAuditEventsTable.ownerUserId, ownerId),
+              eq(salesAuditEventsTable.eventType, "stage_recommendation"),
+              sql`${salesAuditEventsTable.detail}->>'date' = ${today}`
+            )
+          )
+          .limit(1);
+        if (!existing) {
+          await db.insert(salesAuditEventsTable).values({
+            ownerUserId: ownerId,
+            opportunityId: null,
+            actorUserId: uid,
+            eventType: "stage_recommendation",
+            detail: {
+              date: today,
+              highRiskCount: result.summary.highRiskCount,
+              highRiskValueIdr: result.summary.highRiskValueIdr,
+              highRiskIds: result.highRiskIds,
+            },
+          });
+        }
+      } catch (err) {
+        req.log.warn({ err }, "pipeline-health audit insert failed (ignored)");
+      }
+    }
+
+    res.json(result);
   }
 );
 

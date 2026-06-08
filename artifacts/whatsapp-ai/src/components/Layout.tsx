@@ -18,6 +18,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CircleDashed,
+  Target,
   LogOut,
   Camera,
   Cpu,
@@ -62,6 +63,9 @@ type NavItem = {
   // list (`roles`). Items with neither are visible to everyone.
   menu?: PermissionMenu;
   roles?: TeamRole[];
+  // When true, the item is additionally hidden unless the tenant has the
+  // Enterprise AI Sales Assistant entitlement (AuthUser.hasAiSalesAssistant).
+  requiresAiSalesAssistant?: boolean;
 };
 
 // Sidebar is organised into sections rendered with a divider (and an
@@ -95,6 +99,19 @@ const navGroups: NavGroup[] = [
       { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },
       { href: "/products", label: "Products", icon: Package, menu: "products" },
       { href: "/flows", label: "Chatbot Flow", icon: GitBranch, menu: "flows" },
+    ],
+  },
+  {
+    id: "sales",
+    label: "AI Sales Assistant",
+    items: [
+      {
+        href: "/pipeline",
+        label: "Pipeline",
+        icon: Target,
+        menu: "opportunities",
+        requiresAiSalesAssistant: true,
+      },
     ],
   },
   {
@@ -310,6 +327,10 @@ export default function Layout({
           {(() => {
             const tr = (user?.teamRole ?? "agent") as TeamRole;
             const isVisible = (it: NavItem) => {
+              // Enterprise AI Sales Assistant items are hidden entirely unless
+              // the tenant has the entitlement, regardless of role/matrix.
+              if (it.requiresAiSalesAssistant && !user?.hasAiSalesAssistant)
+                return false;
               // Settings is always visible: every role has personal items
               // there (theme, bio, shortcuts). Every other matrix-gated item
               // (incl. AI Studio, Dashboard, AI Review, Pemakaian Token) goes

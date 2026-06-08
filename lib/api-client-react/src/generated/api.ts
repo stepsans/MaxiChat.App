@@ -145,6 +145,7 @@ import type {
   PaymentRecord,
   PermissionMatrix,
   PinMessageBody,
+  PipelineHealth,
   Plan,
   PostStatusInput,
   PricingConfig,
@@ -158,6 +159,7 @@ import type {
   ReactionInput,
   RefreshChatAvatar200,
   RenewSubscriptionInput,
+  ReorderStagesInput,
   ResendVerificationInput,
   ResendVerificationResult,
   ResetFlowCooldown200,
@@ -15311,6 +15313,77 @@ export const useDeleteSalesStage = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDeleteSalesStageMutationOptions(options));
     }
 
+export const getReorderSalesStagesUrl = () => {
+
+
+
+
+  return `/api/sales/stages/reorder`
+}
+
+/**
+ * @summary Reorder the tenant's pipeline stages
+ */
+export const reorderSalesStages = async (reorderStagesInput: ReorderStagesInput, options?: RequestInit): Promise<SalesStage[]> => {
+
+  return customFetch<SalesStage[]>(getReorderSalesStagesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      reorderStagesInput,)
+  }
+);}
+
+
+
+
+export const getReorderSalesStagesMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderSalesStages>>, TError,{data: BodyType<ReorderStagesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reorderSalesStages>>, TError,{data: BodyType<ReorderStagesInput>}, TContext> => {
+
+const mutationKey = ['reorderSalesStages'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderSalesStages>>, {data: BodyType<ReorderStagesInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  reorderSalesStages(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReorderSalesStagesMutationResult = NonNullable<Awaited<ReturnType<typeof reorderSalesStages>>>
+    export type ReorderSalesStagesMutationBody = BodyType<ReorderStagesInput>
+    export type ReorderSalesStagesMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reorder the tenant's pipeline stages
+ */
+export const useReorderSalesStages = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderSalesStages>>, TError,{data: BodyType<ReorderStagesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reorderSalesStages>>,
+        TError,
+        {data: BodyType<ReorderStagesInput>},
+        TContext
+      > => {
+      return useMutation(getReorderSalesStagesMutationOptions(options));
+    }
+
 export const getListOpportunitiesUrl = (params?: ListOpportunitiesParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -16133,6 +16206,83 @@ export const useUpdateSalesAssistantSettings = <TError = ErrorType<ErrorResponse
       > => {
       return useMutation(getUpdateSalesAssistantSettingsMutationOptions(options));
     }
+
+export const getGetPipelineHealthUrl = () => {
+
+
+
+
+  return `/api/sales/pipeline-health`
+}
+
+/**
+ * @summary Pipeline Health — high-risk (high-value + stale) open opportunities
+ */
+export const getPipelineHealth = async ( options?: RequestInit): Promise<PipelineHealth> => {
+
+  return customFetch<PipelineHealth>(getGetPipelineHealthUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPipelineHealthQueryKey = () => {
+    return [
+    `/api/sales/pipeline-health`
+    ] as const;
+    }
+
+
+export const getGetPipelineHealthQueryOptions = <TData = Awaited<ReturnType<typeof getPipelineHealth>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPipelineHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPipelineHealthQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPipelineHealth>>> = ({ signal }) => getPipelineHealth({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPipelineHealth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPipelineHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getPipelineHealth>>>
+export type GetPipelineHealthQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Pipeline Health — high-risk (high-value + stale) open opportunities
+ */
+
+export function useGetPipelineHealth<TData = Awaited<ReturnType<typeof getPipelineHealth>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPipelineHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPipelineHealthQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListSalesAuditEventsUrl = (params?: ListSalesAuditEventsParams,) => {
   const normalizedParams = new URLSearchParams();

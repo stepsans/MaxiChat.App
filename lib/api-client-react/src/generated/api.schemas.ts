@@ -688,7 +688,7 @@ export interface SalesInsight {
 }
 
 /**
- * Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).
+ * Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).
  */
 export interface SalesAssistantSettings {
   /** When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity. */
@@ -699,6 +699,17 @@ export interface SalesAssistantSettings {
      * @maximum 100
      */
   autoCreateThreshold: number;
+  /**
+     * Days without activity before an open deal counts as stale (Pipeline Health).
+     * @minimum 1
+     * @maximum 365
+     */
+  staleDaysThreshold: number;
+  /**
+     * Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).
+     * @minimum 0
+     */
+  highValueThresholdIdr: number;
 }
 
 /**
@@ -711,6 +722,38 @@ export interface SalesAssistantSettingsUpdate {
      * @maximum 100
      */
   autoCreateThreshold?: number;
+  /**
+     * @minimum 1
+     * @maximum 365
+     */
+  staleDaysThreshold?: number;
+  /** @minimum 0 */
+  highValueThresholdIdr?: number;
+}
+
+/**
+ * New top-to-bottom order of pipeline stage ids for the tenant's board.
+ */
+export interface ReorderStagesInput {
+  /** All of the tenant's pipeline stage ids, in the desired display order. sortOrder is reassigned by array index. */
+  stageIds: number[];
+}
+
+export type PipelineHealthSummary = {
+  highRiskCount: number;
+  /** Total estimated value of high-risk deals (whole Rupiah). */
+  highRiskValueIdr: number;
+  staleDaysThreshold: number;
+  highValueThresholdIdr: number;
+};
+
+/**
+ * Pipeline Health snapshot — open opportunities flagged High Risk (high value + stale) scoped to the caller. All money is whole-integer Rupiah.
+ */
+export interface PipelineHealth {
+  summary: PipelineHealthSummary;
+  /** Ids of the high-risk opportunities (for badging cards on the board). */
+  highRiskIds: number[];
 }
 
 /**

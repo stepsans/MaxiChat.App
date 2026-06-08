@@ -4713,6 +4713,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Stage still has opportunities; move or delete them first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sales/stages/reorder:
+    post:
+      operationId: reorderSalesStages
+      tags: [sales]
+      summary: Reorder the tenant's pipeline stages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderStagesInput"
+      responses:
+        "200":
+          description: The stages in their new order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesStage"
+        "400":
+          description: Invalid input (ids must be exactly the tenant's stage set)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Plan lacks the AI Sales Assistant entitlement, or no permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /sales/opportunities:
     get:
@@ -5058,6 +5097,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Plan lacks the AI Sales Assistant entitlement, or no permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sales/pipeline-health:
+    get:
+      operationId: getPipelineHealth
+      tags: [sales]
+      summary: Pipeline Health — high-risk (high-value + stale) open opportunities
+      responses:
+        "200":
+          description: Pipeline-health snapshot scoped to the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineHealth"
         "403":
           description: Plan lacks the AI Sales Assistant entitlement, or no permission
           content:
@@ -5899,8 +5957,14 @@ components:
 
     SalesAssistantSettings:
       type: object
-      description: Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).
-      required: [autoCreateEnabled, autoCreateThreshold]
+      description: Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).
+      required:
+        [
+          autoCreateEnabled,
+          autoCreateThreshold,
+          staleDaysThreshold,
+          highValueThresholdIdr,
+        ]
       properties:
         autoCreateEnabled:
           type: boolean
@@ -5910,6 +5974,18 @@ components:
           minimum: 0
           maximum: 100
           description: Lead-score threshold (0–100) that triggers auto-create when enabled.
+        staleDaysThreshold:
+          type: integer
+          minimum: 1
+          maximum: 365
+          description: Days without activity before an open deal counts as stale (Pipeline Health).
+        highValueThresholdIdr:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Minimum estimated value (whole Rupiah) for an open stale deal to be
+            flagged High Risk. 0 = value never excludes (only staleness matters).
 
     SalesAssistantSettingsUpdate:
       type: object
@@ -5921,6 +5997,61 @@ components:
           type: integer
           minimum: 0
           maximum: 100
+        staleDaysThreshold:
+          type: integer
+          minimum: 1
+          maximum: 365
+        highValueThresholdIdr:
+          type: integer
+          format: int64
+          minimum: 0
+
+    ReorderStagesInput:
+      type: object
+      description: New top-to-bottom order of pipeline stage ids for the tenant's board.
+      required: [stageIds]
+      properties:
+        stageIds:
+          type: array
+          description: >-
+            All of the tenant's pipeline stage ids, in the desired display order.
+            sortOrder is reassigned by array index.
+          items:
+            type: integer
+
+    PipelineHealth:
+      type: object
+      description: >-
+        Pipeline Health snapshot — open opportunities flagged High Risk (high
+        value + stale) scoped to the caller. All money is whole-integer Rupiah.
+      required: [summary, highRiskIds]
+      properties:
+        summary:
+          type: object
+          required:
+            [
+              highRiskCount,
+              highRiskValueIdr,
+              staleDaysThreshold,
+              highValueThresholdIdr,
+            ]
+          properties:
+            highRiskCount:
+              type: integer
+            highRiskValueIdr:
+              type: integer
+              format: int64
+              description: Total estimated value of high-risk deals (whole Rupiah).
+            staleDaysThreshold:
+              type: integer
+            highValueThresholdIdr:
+              type: integer
+              format: int64
+        highRiskIds:
+          type: array
+          description: Ids of the high-risk opportunities (for badging cards on the board).
+          items:
+            type: integer
 
     PaymentGatewayConfig:
       type: object

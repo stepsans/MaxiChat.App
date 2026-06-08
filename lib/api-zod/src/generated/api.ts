@@ -4771,6 +4771,26 @@ export const DeleteSalesStageResponse = zod.object({
 
 
 /**
+ * @summary Reorder the tenant's pipeline stages
+ */
+export const ReorderSalesStagesBody = zod.object({
+  "stageIds": zod.array(zod.number()).describe('All of the tenant\'s pipeline stage ids, in the desired display order. sortOrder is reassigned by array index.')
+}).describe('New top-to-bottom order of pipeline stage ids for the tenant\'s board.')
+
+export const ReorderSalesStagesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "sortOrder": zod.number().describe('Ascending display order on the board.'),
+  "isWon": zod.boolean().describe('Terminal \"deal won\" column.'),
+  "isLost": zod.boolean().describe('Terminal \"deal lost\" column.'),
+  "color": zod.string().nullable().describe('Optional hex color for the column header.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A column in the tenant\'s sales pipeline (kanban board).')
+export const ReorderSalesStagesResponse = zod.array(ReorderSalesStagesResponseItem)
+
+
+/**
  * @summary List opportunities (agents see only their own assigned deals)
  */
 export const ListOpportunitiesQueryParams = zod.object({
@@ -5034,12 +5054,18 @@ export const AnalyzeChatSalesInsightResponse = zod.object({
 export const getSalesAssistantSettingsResponseAutoCreateThresholdMin = 0;
 export const getSalesAssistantSettingsResponseAutoCreateThresholdMax = 100;
 
+export const getSalesAssistantSettingsResponseStaleDaysThresholdMax = 365;
+
+export const getSalesAssistantSettingsResponseHighValueThresholdIdrMin = 0;
+
 
 
 export const GetSalesAssistantSettingsResponse = zod.object({
   "autoCreateEnabled": zod.boolean().describe('When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity.'),
-  "autoCreateThreshold": zod.number().min(getSalesAssistantSettingsResponseAutoCreateThresholdMin).max(getSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.')
-}).describe('Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).')
+  "autoCreateThreshold": zod.number().min(getSalesAssistantSettingsResponseAutoCreateThresholdMin).max(getSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.'),
+  "staleDaysThreshold": zod.number().min(1).max(getSalesAssistantSettingsResponseStaleDaysThresholdMax).describe('Days without activity before an open deal counts as stale (Pipeline Health).'),
+  "highValueThresholdIdr": zod.number().min(getSalesAssistantSettingsResponseHighValueThresholdIdrMin).describe('Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).')
+}).describe('Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).')
 
 
 /**
@@ -5048,22 +5074,48 @@ export const GetSalesAssistantSettingsResponse = zod.object({
 export const updateSalesAssistantSettingsBodyAutoCreateThresholdMin = 0;
 export const updateSalesAssistantSettingsBodyAutoCreateThresholdMax = 100;
 
+export const updateSalesAssistantSettingsBodyStaleDaysThresholdMax = 365;
+
+export const updateSalesAssistantSettingsBodyHighValueThresholdIdrMin = 0;
+
 
 
 export const UpdateSalesAssistantSettingsBody = zod.object({
   "autoCreateEnabled": zod.boolean().optional(),
-  "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsBodyAutoCreateThresholdMin).max(updateSalesAssistantSettingsBodyAutoCreateThresholdMax).optional()
+  "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsBodyAutoCreateThresholdMin).max(updateSalesAssistantSettingsBodyAutoCreateThresholdMax).optional(),
+  "staleDaysThreshold": zod.number().min(1).max(updateSalesAssistantSettingsBodyStaleDaysThresholdMax).optional(),
+  "highValueThresholdIdr": zod.number().min(updateSalesAssistantSettingsBodyHighValueThresholdIdrMin).optional()
 }).describe('Partial update of the tenant\'s AI Sales Assistant settings.')
 
 export const updateSalesAssistantSettingsResponseAutoCreateThresholdMin = 0;
 export const updateSalesAssistantSettingsResponseAutoCreateThresholdMax = 100;
 
+export const updateSalesAssistantSettingsResponseStaleDaysThresholdMax = 365;
+
+export const updateSalesAssistantSettingsResponseHighValueThresholdIdrMin = 0;
+
 
 
 export const UpdateSalesAssistantSettingsResponse = zod.object({
   "autoCreateEnabled": zod.boolean().describe('When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity.'),
-  "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsResponseAutoCreateThresholdMin).max(updateSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.')
-}).describe('Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).')
+  "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsResponseAutoCreateThresholdMin).max(updateSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.'),
+  "staleDaysThreshold": zod.number().min(1).max(updateSalesAssistantSettingsResponseStaleDaysThresholdMax).describe('Days without activity before an open deal counts as stale (Pipeline Health).'),
+  "highValueThresholdIdr": zod.number().min(updateSalesAssistantSettingsResponseHighValueThresholdIdrMin).describe('Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).')
+}).describe('Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).')
+
+
+/**
+ * @summary Pipeline Health — high-risk (high-value + stale) open opportunities
+ */
+export const GetPipelineHealthResponse = zod.object({
+  "summary": zod.object({
+  "highRiskCount": zod.number(),
+  "highRiskValueIdr": zod.number().describe('Total estimated value of high-risk deals (whole Rupiah).'),
+  "staleDaysThreshold": zod.number(),
+  "highValueThresholdIdr": zod.number()
+}),
+  "highRiskIds": zod.array(zod.number()).describe('Ids of the high-risk opportunities (for badging cards on the board).')
+}).describe('Pipeline Health snapshot — open opportunities flagged High Risk (high value + stale) scoped to the caller. All money is whole-integer Rupiah.')
 
 
 /**

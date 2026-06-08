@@ -7,7 +7,7 @@
  */
 
 /**
- * Per-tenant AI Sales Assistant configuration (Toggle 1 — auto-create opportunity).
+ * Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).
  */
 export interface SalesAssistantSettings {
   /** When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity. */
@@ -18,4 +18,15 @@ export interface SalesAssistantSettings {
      * @maximum 100
      */
   autoCreateThreshold: number;
+  /**
+     * Days without activity before an open deal counts as stale (Pipeline Health).
+     * @minimum 1
+     * @maximum 365
+     */
+  staleDaysThreshold: number;
+  /**
+     * Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).
+     * @minimum 0
+     */
+  highValueThresholdIdr: bigint;
 }
