@@ -36,7 +36,7 @@
   --card: 200 19% 11%;
   --card-foreground: 200 18% 92%;
 
-  --primary: 168 100% 33%;
+  --primary: 25 95% 53%;
   --primary-foreground: 0 0% 100%;
 
   --muted: 200 16% 19%;
@@ -49,7 +49,7 @@
   --destructive-foreground: 0 0% 100%;
 
   --input: 200 19% 14%;
-  --ring: 168 100% 33%;
+  --ring: 25 95% 53%;
 
   --app-font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --radius: .5rem;

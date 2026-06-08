@@ -1286,7 +1286,7 @@ export default function PaymentGateway() {
   }, [status?.isActive]);
 
   useEffect(() => {
-    document.title = "MaxiChat Admin — Gateway Pembayaran";
+    document.title = "MaxiChat.App Backend — Gateway Pembayaran";
   }, []);
 
   function flashOk(m: string) {

@@ -290,7 +290,7 @@ export default function Plans() {
   });
 
   useEffect(() => {
-    document.title = "MaxiChat Admin — Paket & Add-on";
+    document.title = "MaxiChat.App Backend — Paket & Add-on";
   }, []);
 
   function startNewPlan() {
