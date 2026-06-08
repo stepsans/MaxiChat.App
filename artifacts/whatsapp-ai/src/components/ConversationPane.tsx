@@ -1812,13 +1812,13 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                               ))}
                             </div>
                           )}
-                        <div className="flex items-center justify-end gap-1 -mt-3 -mb-0.5 float-right pl-2">
+                        <div className="flex items-center justify-end gap-2 -mt-3 -mb-0.5 float-right pl-2">
                           <button
                             type="button"
                             onClick={() => toggleStar(msg.id, !!msg.isStarred)}
                             data-testid={`button-star-${msg.id}`}
                             className={cn(
-                              "p-0.5 rounded-full hover:bg-black/10 transition-colors",
+                              "p-1 rounded-full hover:bg-black/10 transition-colors",
                               msg.isStarred
                                 ? "text-amber-400"
                                 : "text-[hsl(var(--wa-meta))] opacity-0 group-hover:opacity-100"
@@ -1840,7 +1840,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                                 type="button"
                                 data-testid={`button-msg-menu-${msg.id}`}
                                 title="Opsi pesan"
-                                className="p-0.5 rounded-full hover:bg-black/10 transition-colors text-[hsl(var(--wa-meta))] opacity-0 group-hover:opacity-100"
+                                className="p-1 rounded-full hover:bg-black/10 transition-colors text-[hsl(var(--wa-meta))] opacity-0 group-hover:opacity-100"
                               >
                                 <MoreVertical className="w-3 h-3" />
                               </button>
