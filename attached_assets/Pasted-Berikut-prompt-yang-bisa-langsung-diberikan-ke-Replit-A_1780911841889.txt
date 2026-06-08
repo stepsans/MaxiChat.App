@@ -1,0 +1,365 @@
+Berikut prompt yang bisa langsung diberikan ke Replit AI / Claude Code untuk mendesain sistem billing SaaS MaxiChat yang siap untuk scale dan mendukung prorate.
+
+---
+
+# PROMPT UNTUK REPLIT AI
+
+Saya ingin mendesain sistem Subscription & Billing untuk MaxiChat.
+
+⚠️ IMPORTANT
+
+Jangan langsung membuat kode.
+
+Jangan membuat migration.
+
+Jangan mengubah database.
+
+Mode saat ini hanya ANALISIS, DESAIN ARSITEKTUR, dan IMPLEMENTATION PLAN.
+
+Saya ingin sistem yang siap untuk SaaS skala besar seperti:
+
+* Slack
+* HubSpot
+* Zendesk
+* Intercom
+* Shopify
+
+---
+
+# BUSINESS RULES
+
+MaxiChat adalah SaaS Omnichannel + AI.
+
+Customer berlangganan bulanan berdasarkan paket.
+
+Biaya dihitung dari:
+
+1. AI Token Usage
+2. Jumlah User
+3. Jumlah Channel
+4. Database Storage
+
+---
+
+# BILLING CYCLE
+
+Semua tenant memiliki:
+
+Cut Off Date = Tanggal 1 setiap bulan
+
+Contoh:
+
+Periode Billing:
+
+1 Juli - 31 Juli
+
+Pada tanggal 1 Agustus:
+
+* Usage periode Juli ditutup
+* Invoice final dibuat
+* Counter usage di-reset
+* Periode baru dimulai
+
+Namun histori penggunaan bulan sebelumnya tetap tersimpan dan dapat dilihat kapan saja.
+
+---
+
+# USAGE TRACKING
+
+Saya ingin sistem menyimpan histori bulanan:
+
+Contoh:
+
+Juli 2026
+
+* Total Token = 1.250.000
+
+* Prompt Token = 800.000
+
+* Completion Token = 450.000
+
+* AI Calls = 5.230
+
+* Active Users = 18
+
+* Active Channels = 7
+
+* Database Usage = 12.5 GB
+
+Total Tagihan = Rp xxx
+
+---
+
+Agustus 2026
+
+* Total Token = ...
+* Active Users = ...
+* Database = ...
+
+dan seterusnya.
+
+---
+
+# PRORATE REQUIREMENT
+
+Saya ingin semua komponen mendukung prorate.
+
+Komponen yang harus prorate:
+
+* Subscription Plan
+* Token Booster
+* User Seat
+* Channel Add-On
+* Storage Add-On
+
+---
+
+# SCENARIO 1
+
+Customer membeli:
+
+Basic Plan
+
+Tanggal:
+1 Juli
+
+Isi paket:
+
+* 500.000 token
+* 5 user
+* 3 channel
+* 5 GB storage
+
+Harga:
+Rp 1.000.000
+
+---
+
+Tanggal 15 Juli
+
+Customer upgrade ke Growth Plan.
+
+Growth:
+
+* 2.000.000 token
+* 15 user
+* 10 channel
+* 20 GB storage
+
+Harga:
+Rp 3.000.000
+
+---
+
+Saya ingin sistem menghitung prorate otomatis.
+
+Tolong jelaskan formula yang paling tepat.
+
+---
+
+# SCENARIO 2
+
+Customer membeli:
+
+Basic Plan
+
+Tanggal 1 Juli
+
+Kuota token habis tanggal 20 Juli.
+
+Kemudian membeli:
+
+Booster Token
+
++500.000 token
+
+Rp 250.000
+
+---
+
+Pertanyaan:
+
+Apakah booster:
+
+A. Hangus saat cut off
+
+atau
+
+B. Carry Forward
+
+atau
+
+C. Memiliki expiry sendiri
+
+Berikan rekomendasi terbaik untuk SaaS AI.
+
+---
+
+# SCENARIO 3
+
+Customer membeli:
+
++3 User
+
+di tengah bulan.
+
+Saya ingin sistem menghitung prorate otomatis berdasarkan sisa hari.
+
+Berikan formula yang tepat.
+
+---
+
+# SCENARIO 4
+
+Customer membeli:
+
++2 Channel
+
+di tengah bulan.
+
+Berikan formula prorate yang tepat.
+
+---
+
+# SCENARIO 5
+
+Customer membeli:
+
++20 GB Storage
+
+di tengah bulan.
+
+Berikan formula prorate yang tepat.
+
+---
+
+# USAGE DASHBOARD
+
+Saya ingin customer dapat melihat:
+
+## Current Billing Period
+
+Contoh:
+
+Billing Period
+
+1 Juli 2026 - 31 Juli 2026
+
+---
+
+AI Usage
+
+Prompt Token:
+800.000
+
+Completion Token:
+450.000
+
+Total:
+1.250.000
+
+Usage:
+62%
+
+---
+
+Users
+
+12 / 15
+
+---
+
+Channels
+
+7 / 10
+
+---
+
+Storage
+
+12.5 GB / 20 GB
+
+---
+
+# BILLING HISTORY
+
+Customer dapat melihat:
+
+Juli 2026
+
+Agustus 2026
+
+September 2026
+
+dst.
+
+Setiap bulan menyimpan snapshot.
+
+---
+
+# ADMIN DASHBOARD
+
+Super Admin dapat melihat:
+
+Per Tenant:
+
+* Revenue
+* Usage
+* Token Consumption
+* Storage Consumption
+* Active Users
+* Active Channels
+
+---
+
+# DATABASE DESIGN
+
+Buat rekomendasi tabel:
+
+* subscriptions
+* subscription_plans
+* invoices
+* invoice_items
+* usage_snapshots
+* token_usage
+* storage_usage
+* user_usage
+* channel_usage
+* booster_purchases
+
+atau struktur lain yang lebih baik.
+
+---
+
+# ACCOUNTING RULES
+
+Tentukan:
+
+Apa yang harus disimpan sebagai:
+
+1. Usage Log
+2. Monthly Snapshot
+3. Invoice Record
+4. Prorate Adjustment
+
+agar histori billing tidak berubah meskipun harga paket berubah di masa depan.
+
+---
+
+# OUTPUT YANG SAYA INGINKAN
+
+Berikan:
+
+1. Arsitektur Billing Lengkap
+2. Database Schema Recommendation
+3. Prorate Formula
+4. Booster Strategy Recommendation
+5. Usage Tracking Design
+6. Billing History Design
+7. SaaS Best Practice
+8. Risiko Yang Harus Dihindari
+9. Roadmap Implementasi Bertahap
+
+Jangan membuat kode dulu.
+
+Fokus pada desain sistem billing SaaS yang enterprise-grade dan siap digunakan untuk menjual token AI, user seat, channel, dan storage secara prorate dengan cut off setiap tanggal 1.
