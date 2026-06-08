@@ -7,8 +7,10 @@
  */
 
 export interface BillingUsage {
-  /** Chat-storage footprint in bytes. */
+  /** Chat-storage (DB) footprint in bytes — legacy metered metric. */
   storageBytes: bigint;
+  /** Object Storage footprint in bytes (SUM of media_objects) — measured against the storage quota. */
+  mediaStorageBytes: bigint;
   /** Number of invited child users (parent excluded). */
   childUserCount: number;
   channelCount: number;

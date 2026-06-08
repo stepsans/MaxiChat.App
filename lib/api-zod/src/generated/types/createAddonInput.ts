@@ -15,7 +15,7 @@ export interface CreateAddonInput {
      */
   name: string;
   /** @minimum 1 */
-  unitAmount: number;
+  unitAmount: bigint;
   /** @minimum 0 */
   priceIdr: number;
   isActive?: boolean;

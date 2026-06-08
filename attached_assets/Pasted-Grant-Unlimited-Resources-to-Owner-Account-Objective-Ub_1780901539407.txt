@@ -1,0 +1,121 @@
+Grant Unlimited Resources to Owner Account
+Objective
+
+Ubah akun owner utama dengan email:
+
+stephensan86@gmail.com
+
+agar memiliki akses unlimited (Infinity Plan) dan tidak terikat oleh batasan paket langganan apa pun.
+
+Requirements
+Owner Account Override
+
+Akun:
+
+stephensan86@gmail.com
+
+harus dianggap sebagai System Owner / Super Admin.
+
+Akun ini tidak boleh mengikuti limit dari paket Basic, Starter, Business, maupun Enterprise.
+
+Unlimited Resources
+
+Untuk akun owner tersebut, set seluruh quota menjadi unlimited:
+
+User Quota
+∞ Users
+Tidak ada batas jumlah user.
+Dapat menambah user tanpa batas.
+Channel Quota
+∞ Channels
+Tidak ada batas jumlah channel.
+Dapat menambahkan WhatsApp, Instagram, Facebook, Telegram, dan channel lain tanpa batas.
+AI Token Quota
+∞ Tokens
+Tidak ada batas penggunaan AI token.
+Tidak terkena monthly token limit.
+Tidak terkena token warning.
+Database Quota
+∞ Database Storage
+Tidak ada batas kapasitas database.
+Tidak ada batas jumlah chat.
+Tidak ada batas jumlah kontak.
+Tidak ada batas jumlah analytics data.
+Object Storage Quota
+∞ Storage
+Tidak ada batas upload file.
+Tidak ada batas media storage.
+Tidak ada batas attachment storage.
+UI Changes
+
+Pada halaman Subscription atau Billing:
+
+Tampilkan:
+
+Plan: Owner Infinity
+
+atau
+
+Plan: Unlimited
+
+dan bukan lagi:
+
+Basic
+
+Untuk seluruh quota tampilkan:
+
+Unlimited
+
+atau simbol:
+
+∞
+System Logic
+
+Tambahkan flag khusus:
+
+isOwner = true
+
+atau
+
+accountType = "OWNER"
+
+Jika user adalah owner:
+
+skipQuotaValidation = true
+
+Sehingga seluruh validasi quota dilewati:
+
+User quota validation
+Channel quota validation
+Token quota validation
+Database quota validation
+Storage quota validation
+Dashboard
+
+Pada dashboard owner tampilkan:
+
+Users: Unlimited
+Channels: Unlimited
+Tokens: Unlimited
+Database: Unlimited
+Storage: Unlimited
+
+tanpa progress bar limit.
+
+Security
+
+Unlimited access hanya berlaku untuk:
+
+stephensan86@gmail.com
+
+dan tidak boleh otomatis diberikan kepada tenant lain.
+
+Gunakan role-based access control (RBAC) agar privilege ini hanya dimiliki akun owner sistem.
+
+Expected Result
+
+Akun:
+
+stephensan86@gmail.com
+
+berfungsi sebagai akun Owner/Internal dengan resource tanpa batas (Infinity Plan), bebas dari seluruh limit paket langganan, dan dapat mengakses seluruh fitur platform tanpa pembatasan quota.

@@ -89,6 +89,7 @@ export async function activatePlanForOwner(
       tokenLimit: plan.quotaTokens,
       channelLimit: plan.quotaChannels,
       userLimit: plan.quotaUsers,
+      storageLimit: plan.quotaStorageBytes,
       periodStart: now,
       periodEnd,
     })
@@ -99,6 +100,7 @@ export async function activatePlanForOwner(
         tokenLimit: plan.quotaTokens,
         channelLimit: plan.quotaChannels,
         userLimit: plan.quotaUsers,
+        storageLimit: plan.quotaStorageBytes,
         periodStart: now,
         periodEnd,
         updatedAt: now,
@@ -126,6 +128,8 @@ export async function addAddonToQuota(
     set.channelLimit = sql`${tenantQuotaTable.channelLimit} + ${delta}` as never;
   } else if (addon.type === "user_seat") {
     set.userLimit = sql`${tenantQuotaTable.userLimit} + ${delta}` as never;
+  } else if (addon.type === "storage") {
+    set.storageLimit = sql`${tenantQuotaTable.storageLimit} + ${delta}` as never;
   } else {
     throw new Error(`Unknown add-on type: ${addon.type}`);
   }

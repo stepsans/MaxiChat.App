@@ -864,6 +864,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /retention:
+    get:
+      operationId: getRetention
+      tags: [retention]
+      summary: The tenant's data-retention policy and the plan cap
+      description: >-
+        Returns the caller tenant's chosen retention periods (days; null =
+        unlimited) plus the maximum the active plan allows. Team members resolve
+        to their owner.
+      responses:
+        "200":
+          description: Retention policy and plan cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetentionInfo"
+    put:
+      operationId: updateRetention
+      tags: [retention]
+      summary: Update the tenant's data-retention policy
+      description: >-
+        Sets the retention periods (days; null = unlimited). Each value is
+        clamped server-side to the active plan's retention cap. Super admin only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetentionInput"
+      responses:
+        "200":
+          description: Updated retention policy and plan cap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetentionInfo"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /billing/checkout:
     post:
       operationId: createCheckout
@@ -3280,6 +3323,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/PurgeChatsResult"
 
+  /database/reset:
+    post:
+      operationId: resetTenantDatabase
+      tags: [database]
+      summary: >-
+        Wipe ALL of the current tenant's operational data — chats, messages,
+        contact labels, analytics, AI usage logs, and uploaded files. Does NOT
+        touch the account, subscription, plan, channels, or other tenants.
+        Super admin only. Irreversible.
+      responses:
+        "200":
+          description: Reset summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantResetResult"
+
+  /database/reset-audit:
+    get:
+      operationId: listTenantResetAudit
+      tags: [database]
+      summary: List recent tenant-database reset events for the current owner.
+      responses:
+        "200":
+          description: Audit entries (most recent first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TenantResetAuditEntry"
+
   /flows:
     get:
       operationId: listFlows
@@ -5161,6 +5236,42 @@ components:
         deletedMessages:
           type: integer
 
+    TenantResetResult:
+      type: object
+      required:
+        [chats, messages, contactLabels, labels, analytics, logs, media, files]
+      properties:
+        chats:
+          type: integer
+        messages:
+          type: integer
+        contactLabels:
+          type: integer
+        labels:
+          type: integer
+        analytics:
+          type: integer
+        logs:
+          type: integer
+        media:
+          type: integer
+        files:
+          type: integer
+
+    TenantResetAuditEntry:
+      type: object
+      required: [id, performedByEmail, createdAt, summary]
+      properties:
+        id:
+          type: integer
+        performedByEmail:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        summary:
+          $ref: "#/components/schemas/TenantResetResult"
+
     Product:
       type: object
       required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, stock, stockOnHand, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
@@ -5700,6 +5811,7 @@ components:
           quotaUsers,
           quotaChannels,
           quotaTokens,
+          quotaStorageBytes,
           isActive,
           sortOrder,
           createdAt,
@@ -5730,6 +5842,13 @@ components:
         quotaTokens:
           type: integer
           description: Included AI tokens per period.
+        quotaStorageBytes:
+          type: integer
+          format: int64
+          description: Included Object Storage allowance, in bytes.
+        retentionLimitDays:
+          type: ["integer", "null"]
+          description: Max data-retention period (days) a tenant may select; null = unlimited.
         isActive:
           type: boolean
           description: Inactive plans are hidden from self-serve checkout but kept for existing tenants.
@@ -5745,7 +5864,16 @@ components:
     CreatePlanInput:
       type: object
       required:
-        [key, name, priceIdr, durationDays, quotaUsers, quotaChannels, quotaTokens]
+        [
+          key,
+          name,
+          priceIdr,
+          durationDays,
+          quotaUsers,
+          quotaChannels,
+          quotaTokens,
+          quotaStorageBytes,
+        ]
       properties:
         key:
           type: string
@@ -5775,6 +5903,13 @@ components:
         quotaTokens:
           type: integer
           minimum: 0
+        quotaStorageBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        retentionLimitDays:
+          type: ["integer", "null"]
+          minimum: 1
         isActive:
           type: boolean
         sortOrder:
@@ -5807,6 +5942,13 @@ components:
         quotaTokens:
           type: integer
           minimum: 0
+        quotaStorageBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        retentionLimitDays:
+          type: ["integer", "null"]
+          minimum: 1
         isActive:
           type: boolean
         sortOrder:
@@ -5822,13 +5964,14 @@ components:
           type: integer
         type:
           type: string
-          enum: [token, channel, user_seat]
+          enum: [token, channel, user_seat, storage]
           description: What this add-on tops up.
         name:
           type: string
         unitAmount:
           type: integer
-          description: How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).
+          format: int64
+          description: How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat, or bytes for storage).
         priceIdr:
           type: integer
           description: Price for one unit, in whole Rupiah.
@@ -5849,13 +5992,14 @@ components:
       properties:
         type:
           type: string
-          enum: [token, channel, user_seat]
+          enum: [token, channel, user_seat, storage]
         name:
           type: string
           minLength: 1
           maxLength: 80
         unitAmount:
           type: integer
+          format: int64
           minimum: 1
         priceIdr:
           type: integer
@@ -5872,13 +6016,14 @@ components:
       properties:
         type:
           type: string
-          enum: [token, channel, user_seat]
+          enum: [token, channel, user_seat, storage]
         name:
           type: string
           minLength: 1
           maxLength: 80
         unitAmount:
           type: integer
+          format: int64
           minimum: 1
         priceIdr:
           type: integer
@@ -5891,12 +6036,17 @@ components:
 
     BillingUsage:
       type: object
-      required: [storageBytes, childUserCount, channelCount, tokenUsage]
+      required:
+        [storageBytes, mediaStorageBytes, childUserCount, channelCount, tokenUsage]
       properties:
         storageBytes:
           type: integer
           format: int64
-          description: Chat-storage footprint in bytes.
+          description: Chat-storage (DB) footprint in bytes — legacy metered metric.
+        mediaStorageBytes:
+          type: integer
+          format: int64
+          description: Object Storage footprint in bytes (SUM of media_objects) — measured against the storage quota.
         childUserCount:
           type: integer
           description: Number of invited child users (parent excluded).
@@ -5962,7 +6112,7 @@ components:
 
     AdminTenantBilling:
       type: object
-      required: [userId, email, status, usage, breakdown]
+      required: [userId, email, status, storageLimit, usage, breakdown]
       properties:
         userId:
           type: integer
@@ -5977,6 +6127,10 @@ components:
         currentPeriodEnd:
           type: ["string", "null"]
           format: date-time
+        storageLimit:
+          type: integer
+          format: int64
+          description: Object Storage plafon in bytes (plan baseline + add-on top-ups).
         usage:
           $ref: "#/components/schemas/BillingUsage"
         breakdown:
@@ -6036,6 +6190,7 @@ components:
           tokenLimit,
           channelLimit,
           userLimit,
+          storageLimit,
           periodStart,
           periodEnd,
           usage,
@@ -6055,6 +6210,10 @@ components:
           type: integer
         userLimit:
           type: integer
+        storageLimit:
+          type: integer
+          format: int64
+          description: Object Storage plafon in bytes (plan baseline + add-on top-ups).
         periodStart:
           type: ["string", "null"]
           format: date-time
@@ -6063,6 +6222,45 @@ components:
           format: date-time
         usage:
           $ref: "#/components/schemas/BillingUsage"
+
+    RetentionInput:
+      type: object
+      description: >-
+        Retention periods in days. null = unlimited (keep forever). Omitted
+        fields are treated as null.
+      properties:
+        chatDays:
+          type: ["integer", "null"]
+          minimum: 1
+        mediaDays:
+          type: ["integer", "null"]
+          minimum: 1
+        logDays:
+          type: ["integer", "null"]
+          minimum: 1
+        analyticsDays:
+          type: ["integer", "null"]
+          minimum: 1
+
+    RetentionInfo:
+      type: object
+      required: [chatDays, mediaDays, logDays, analyticsDays, planLimitDays]
+      properties:
+        chatDays:
+          type: ["integer", "null"]
+          description: Max age (days) for chat messages; null = unlimited.
+        mediaDays:
+          type: ["integer", "null"]
+          description: Max age (days) for stored media; null = unlimited.
+        logDays:
+          type: ["integer", "null"]
+          description: Max age (days) for AI usage logs; null = unlimited.
+        analyticsDays:
+          type: ["integer", "null"]
+          description: Max age (days) for usage/analytics snapshots; null = unlimited.
+        planLimitDays:
+          type: ["integer", "null"]
+          description: Plan-imposed cap on selectable retention (days); null = no cap.
 
     CheckoutItem:
       type: object

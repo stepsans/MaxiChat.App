@@ -17,6 +17,8 @@ export interface AdminTenantBilling {
   status: AdminTenantBillingStatus;
   /** @nullable */
   currentPeriodEnd?: Date | null;
+  /** Object Storage plafon in bytes (plan baseline + add-on top-ups). */
+  storageLimit: bigint;
   usage: BillingUsage;
   breakdown: BillBreakdown;
 }

@@ -877,6 +877,25 @@ export interface PurgeChatsResult {
   deletedMessages: number;
 }
 
+export interface TenantResetResult {
+  chats: number;
+  messages: number;
+  contactLabels: number;
+  labels: number;
+  analytics: number;
+  logs: number;
+  media: number;
+  files: number;
+}
+
+export interface TenantResetAuditEntry {
+  id: number;
+  /** @nullable */
+  performedByEmail: string | null;
+  createdAt: string;
+  summary: TenantResetResult;
+}
+
 export interface Product {
   id: number;
   code: string;
@@ -1462,6 +1481,13 @@ export interface Plan {
   quotaChannels: number;
   /** Included AI tokens per period. */
   quotaTokens: number;
+  /** Included Object Storage allowance, in bytes. */
+  quotaStorageBytes: number;
+  /**
+     * Max data-retention period (days) a tenant may select; null = unlimited.
+     * @nullable
+     */
+  retentionLimitDays?: number | null;
   /** Inactive plans are hidden from self-serve checkout but kept for existing tenants. */
   isActive: boolean;
   sortOrder: number;
@@ -1494,6 +1520,13 @@ export interface CreatePlanInput {
   quotaChannels: number;
   /** @minimum 0 */
   quotaTokens: number;
+  /** @minimum 0 */
+  quotaStorageBytes: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  retentionLimitDays?: number | null;
   isActive?: boolean;
   /** @minimum 0 */
   sortOrder?: number;
@@ -1523,6 +1556,13 @@ export interface UpdatePlanInput {
   quotaChannels?: number;
   /** @minimum 0 */
   quotaTokens?: number;
+  /** @minimum 0 */
+  quotaStorageBytes?: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  retentionLimitDays?: number | null;
   isActive?: boolean;
   /** @minimum 0 */
   sortOrder?: number;
@@ -1538,6 +1578,7 @@ export const AddonType = {
   token: 'token',
   channel: 'channel',
   user_seat: 'user_seat',
+  storage: 'storage',
 } as const;
 
 export interface Addon {
@@ -1545,7 +1586,7 @@ export interface Addon {
   /** What this add-on tops up. */
   type: AddonType;
   name: string;
-  /** How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat). */
+  /** How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat, or bytes for storage). */
   unitAmount: number;
   /** Price for one unit, in whole Rupiah. */
   priceIdr: number;
@@ -1562,6 +1603,7 @@ export const CreateAddonInputType = {
   token: 'token',
   channel: 'channel',
   user_seat: 'user_seat',
+  storage: 'storage',
 } as const;
 
 export interface CreateAddonInput {
@@ -1587,6 +1629,7 @@ export const UpdateAddonInputType = {
   token: 'token',
   channel: 'channel',
   user_seat: 'user_seat',
+  storage: 'storage',
 } as const;
 
 /**
@@ -1609,8 +1652,10 @@ export interface UpdateAddonInput {
 }
 
 export interface BillingUsage {
-  /** Chat-storage footprint in bytes. */
+  /** Chat-storage (DB) footprint in bytes — legacy metered metric. */
   storageBytes: number;
+  /** Object Storage footprint in bytes (SUM of media_objects) — measured against the storage quota. */
+  mediaStorageBytes: number;
   /** Number of invited child users (parent excluded). */
   childUserCount: number;
   channelCount: number;
@@ -1689,6 +1734,8 @@ export interface AdminTenantBilling {
   status: AdminTenantBillingStatus;
   /** @nullable */
   currentPeriodEnd?: string | null;
+  /** Object Storage plafon in bytes (plan baseline + add-on top-ups). */
+  storageLimit: number;
   usage: BillingUsage;
   breakdown: BillBreakdown;
 }
@@ -1729,11 +1776,67 @@ export interface TenantQuotaInfo {
   tokenLimit: number;
   channelLimit: number;
   userLimit: number;
+  /** Object Storage plafon in bytes (plan baseline + add-on top-ups). */
+  storageLimit: number;
   /** @nullable */
   periodStart: string | null;
   /** @nullable */
   periodEnd: string | null;
   usage: BillingUsage;
+}
+
+/**
+ * Retention periods in days. null = unlimited (keep forever). Omitted fields are treated as null.
+ */
+export interface RetentionInput {
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  chatDays?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  mediaDays?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  logDays?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  analyticsDays?: number | null;
+}
+
+export interface RetentionInfo {
+  /**
+     * Max age (days) for chat messages; null = unlimited.
+     * @nullable
+     */
+  chatDays: number | null;
+  /**
+     * Max age (days) for stored media; null = unlimited.
+     * @nullable
+     */
+  mediaDays: number | null;
+  /**
+     * Max age (days) for AI usage logs; null = unlimited.
+     * @nullable
+     */
+  logDays: number | null;
+  /**
+     * Max age (days) for usage/analytics snapshots; null = unlimited.
+     * @nullable
+     */
+  analyticsDays: number | null;
+  /**
+     * Plan-imposed cap on selectable retention (days); null = no cap.
+     * @nullable
+     */
+  planLimitDays: number | null;
 }
 
 /**

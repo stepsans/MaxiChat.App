@@ -1,0 +1,190 @@
+Berikut prompt yang lebih jelas dan teknis untuk diberikan ke AI developer:
+
+---
+
+# Fix WhatsApp Read/Unread Synchronization
+
+## Issue
+
+Saat ini status **read/unread message** antara WhatsApp dan MaxiChat tidak sinkron secara real-time.
+
+### Contoh Kasus
+
+1. Ada pesan masuk dari pelanggan.
+2. Pesan tersebut masih unread di MaxiChat.
+3. Saya membuka percakapan tersebut melalui WhatsApp Desktop (MacBook).
+4. WhatsApp langsung menandai pesan sebagai **Read**.
+5. Di WhatsApp iPhone status juga langsung berubah menjadi **Read** (tidak ada badge hijau atau indikator unread).
+6. Namun di MaxiChat percakapan tersebut masih ditampilkan sebagai **Unread**.
+
+Akibatnya jumlah unread chat di MaxiChat menjadi tidak akurat.
+
+---
+
+# Expected Behavior
+
+MaxiChat harus selalu mengikuti status read/unread terbaru dari WhatsApp.
+
+Jika sebuah chat sudah dibaca dari:
+
+* WhatsApp Mobile
+* WhatsApp Desktop
+* WhatsApp Web
+* WhatsApp Business App
+* WhatsApp Business Desktop
+
+maka status chat pada MaxiChat harus otomatis berubah menjadi:
+
+```text
+READ
+```
+
+dan indikator unread harus langsung hilang.
+
+---
+
+# Required Investigation
+
+Lakukan audit dan perbaikan pada:
+
+### 1. WhatsApp Webhook Events
+
+Periksa apakah provider mengirim event:
+
+* message_read
+* messages.update
+* read_receipt
+* receipt_update
+* conversation_update
+* chat_update
+
+Pastikan event tersebut diproses oleh MaxiChat.
+
+---
+
+### 2. Conversation State Synchronization
+
+Periksa apakah MaxiChat hanya mengubah status ketika user membaca chat di dalam MaxiChat.
+
+Jika ya, ubah logika agar status juga diperbarui ketika ada update dari WhatsApp.
+
+---
+
+### 3. Real-Time Sync Engine
+
+Implementasikan sinkronisasi real-time.
+
+Ketika WhatsApp mengirim event:
+
+```json
+{
+  "status": "read"
+}
+```
+
+atau
+
+```json
+{
+  "read": true
+}
+```
+
+maka:
+
+* update database
+* update cache
+* update unread counter
+* update dashboard
+* update sidebar conversation list
+
+secara otomatis.
+
+---
+
+### 4. Unread Counter Recalculation
+
+Pastikan unread count dihitung ulang ketika:
+
+* read event diterima
+* conversation dibuka di device lain
+* reconnect session
+* refresh browser
+* reconnect WhatsApp channel
+
+---
+
+### 5. Session Recovery
+
+Saat MaxiChat restart atau reconnect:
+
+Lakukan sinkronisasi ulang terhadap:
+
+* unread count
+* last read message
+* conversation state
+
+agar tidak ada status yang tertinggal.
+
+---
+
+### 6. Multi-Device Support
+
+Karena WhatsApp menggunakan Multi-Device Architecture, pastikan perubahan status dari device berikut tersinkron:
+
+* iPhone
+* Android
+* Mac Desktop
+* Windows Desktop
+* WhatsApp Web
+
+Jika salah satu device menandai chat sebagai read, maka MaxiChat juga harus berubah menjadi read.
+
+---
+
+### 7. Database Validation
+
+Periksa struktur database conversation.
+
+Pastikan tersedia field seperti:
+
+```sql
+is_read
+unread_count
+last_read_at
+last_read_message_id
+```
+
+dan nilainya selalu diperbarui berdasarkan event WhatsApp terbaru.
+
+---
+
+### 8. Debug Logging
+
+Tambahkan logging sementara:
+
+```text
+READ_RECEIPT_RECEIVED
+CONVERSATION_MARKED_READ
+UNREAD_COUNT_UPDATED
+WHATSAPP_SYNC_COMPLETED
+```
+
+agar mudah melacak titik kegagalan sinkronisasi.
+
+---
+
+# Success Criteria
+
+Skenario berikut harus berhasil:
+
+1. Pesan masuk ke WhatsApp.
+2. Chat muncul unread di MaxiChat.
+3. User membuka chat melalui WhatsApp iPhone.
+4. Dalam beberapa detik MaxiChat menerima update.
+5. Status chat berubah menjadi Read.
+6. Badge unread hilang.
+7. Counter unread berkurang.
+8. Dashboard dan sidebar langsung ter-update tanpa refresh.
+
+Implementasikan sinkronisasi read/unread yang bersifat real-time, akurat, dan konsisten dengan status terbaru dari WhatsApp Multi-Device.

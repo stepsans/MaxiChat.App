@@ -6,6 +6,7 @@ import { startSalesOrderSyncScheduler } from "./routes/sales-orders";
 import { startAiReviewScheduler } from "./lib/ai-review";
 import { startUsageSnapshotScheduler } from "./lib/billing";
 import { startManualPaymentPoller } from "./lib/manual-payment-poller";
+import { startRetentionPurger } from "./lib/retention-purge";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -114,6 +115,7 @@ async function main(): Promise<void> {
     startAiReviewScheduler();
     startUsageSnapshotScheduler();
     startManualPaymentPoller();
+    startRetentionPurger();
   });
 }
 

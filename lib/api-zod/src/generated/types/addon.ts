@@ -12,8 +12,8 @@ export interface Addon {
   /** What this add-on tops up. */
   type: AddonType;
   name: string;
-  /** How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat). */
-  unitAmount: number;
+  /** How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat, or bytes for storage). */
+  unitAmount: bigint;
   /** Price for one unit, in whole Rupiah. */
   priceIdr: number;
   isActive: boolean;

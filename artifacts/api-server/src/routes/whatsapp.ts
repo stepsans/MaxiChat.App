@@ -36,6 +36,8 @@ import {
   ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
+import { saveTenantMedia } from "../lib/tenant-storage";
+import { ObjectStorageService } from "../lib/objectStorage";
 import { isOwnerReadOnly } from "../lib/billing";
 import { buildProductCatalogText } from "../lib/product-catalog";
 import {
@@ -260,27 +262,27 @@ function requireUserId(req: Request): number {
   return id;
 }
 
-async function ensureMediaDir() {
-  try {
-    await fs.mkdir(MEDIA_DIR, { recursive: true });
-  } catch {}
-}
-
+// Persist a downloaded WhatsApp media buffer to the tenant's Object Storage
+// prefix (tenants/<ownerUserId>/...) and record a media_objects ledger row.
+// This replaces the old local-disk MEDIA_DIR write that caused unbounded
+// per-tenant disk bloat. Returns the served URL + a display filename.
 async function saveBufferToMedia(
   buffer: Buffer,
   mimeType: string,
+  ctx: { ownerUserId: number; channelId: number; kind: string },
   preferredFilename?: string,
 ): Promise<{ url: string; filename: string }> {
-  await ensureMediaDir();
-  const ext = preferredFilename
-    ? path.extname(preferredFilename) || `.${mime.extension(mimeType) || "bin"}`
-    : `.${mime.extension(mimeType) || "bin"}`;
-  const filename = `${randomUUID()}${ext}`;
-  const filepath = path.join(MEDIA_DIR, filename);
-  await fs.writeFile(filepath, buffer);
+  const saved = await saveTenantMedia({
+    ownerUserId: ctx.ownerUserId,
+    channelId: ctx.channelId,
+    buffer,
+    contentType: mimeType,
+    kind: ctx.kind,
+    preferredFilename,
+  });
   return {
-    url: `/api/media/${filename}`,
-    filename: preferredFilename ?? filename,
+    url: saved.url,
+    filename: preferredFilename ?? path.basename(saved.objectPath),
   };
 }
 
@@ -444,7 +446,7 @@ export async function refreshChatProfilePic(
 export async function sendMediaToJid(
   userId: number,
   jid: string,
-  filepath: string,
+  source: string | Buffer,
   mimeType: string,
   mediaType: "image" | "video" | "document" | "audio",
   caption?: string,
@@ -461,7 +463,7 @@ export async function sendMediaToJid(
       : ((await getPrimaryCtxForUser(await resolveOwnerUserId(userId)))?.sock ??
         null);
   if (!sock) throw new Error("WhatsApp is not connected");
-  const buffer = await fs.readFile(filepath);
+  const buffer = Buffer.isBuffer(source) ? source : await fs.readFile(source);
   let sent;
   if (mediaType === "image") {
     sent = await sock.sendMessage(jid, {
@@ -485,7 +487,9 @@ export async function sendMediaToJid(
     sent = await sock.sendMessage(jid, {
       document: buffer,
       mimetype: mimeType,
-      fileName: filename ?? path.basename(filepath),
+      fileName:
+        filename ??
+        (typeof source === "string" ? path.basename(source) : "document"),
       caption,
     });
   }
@@ -503,6 +507,7 @@ const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
 // than read from the singleton sock) so we keep this helper independent of
 // any per-user state.
 async function persistWaStatus(
+  ownerUserId: number,
   channelId: number,
   ownerJid: string,
   msg: any,
@@ -582,6 +587,7 @@ async function persistWaStatus(
       const saved = await saveBufferToMedia(
         buf,
         mediaMime ?? "application/octet-stream",
+        { ownerUserId, channelId, kind: mediaKind ?? "status" },
       );
       mediaUrl = saved.url;
     } catch (err) {
@@ -728,7 +734,7 @@ export async function postTextStatus(
 export async function postImageStatus(
   userId: number,
   channelId: number,
-  filePath: string,
+  source: string | Buffer,
   mimeType: string,
   mediaUrl: string,
   caption: string | null,
@@ -749,7 +755,7 @@ export async function postImageStatus(
     .filter((d) => d.length >= 7)
     .map((d) => `${d}@s.whatsapp.net`);
 
-  const buffer = await fs.readFile(filePath);
+  const buffer = Buffer.isBuffer(source) ? source : await fs.readFile(source);
   const sent = await sock.sendMessage(
     "status@broadcast",
     {
@@ -1220,6 +1226,7 @@ function toEpochMs(ts: unknown): number {
 }
 
 async function parseWaMessage(
+  mediaCtx: { ownerUserId: number; channelId: number },
   msg: any,
   isJidGroup: (jid: string) => boolean,
   downloadMediaMessage: any,
@@ -1327,6 +1334,11 @@ async function parseWaMessage(
         const saved = await saveBufferToMedia(
           buf,
           mediaMime ?? "application/octet-stream",
+          {
+            ownerUserId: mediaCtx.ownerUserId,
+            channelId: mediaCtx.channelId,
+            kind: mediaKind,
+          },
           mediaFilename ?? undefined,
         );
         media = {
@@ -2125,6 +2137,16 @@ function checkAddressBlocked(addr: string): boolean {
 //     custom dispatcher. Accepted tradeoff for the small, admin-curated
 //     product catalog this serves.
 export async function loadImageBuffer(imageUrl: string): Promise<Buffer> {
+  // New tenant Object Storage URL: "/api/storage/objects/tenants/<owner>/...".
+  if (imageUrl.startsWith("/api/storage/objects/")) {
+    const objectPath = imageUrl.slice("/api/storage".length); // "/objects/..."
+    const file = await new ObjectStorageService().getObjectEntityFile(
+      objectPath,
+    );
+    const [buf] = await file.download();
+    return buf;
+  }
+  // Legacy local-disk media (pre-Object-Storage uploads still on disk).
   if (imageUrl.startsWith("/api/media/")) {
     const filename = path.basename(imageUrl.slice("/api/media/".length));
     const filepath = path.join(MEDIA_DIR, filename);
@@ -2746,6 +2768,10 @@ async function maybeTriggerAutoReply(
 
 async function startBaileys(userId: number, channelId: number) {
   const ctx = getCtxByChannel(channelId, userId);
+  // Tenant owner that all media downloaded on this socket belongs to. Resolved
+  // once here (constant per socket) and threaded into the media write helpers so
+  // each file lands under tenants/<ownerUserId>/ in Object Storage.
+  const mediaOwnerUserId = await resolveOwnerUserId(userId);
   if (ctx.isConnecting || (ctx.sock && (ctx.sock as any).ws?.readyState === 1))
     return;
   ctx.isConnecting = true;
@@ -2997,6 +3023,7 @@ async function startBaileys(userId: number, channelId: number) {
           // socket flickered, because Baileys won't re-emit those events.
           if (msg.key?.remoteJid === "status@broadcast") {
             await persistWaStatus(
+              mediaOwnerUserId,
               channelId,
               ownerJid,
               msg,
@@ -3008,6 +3035,7 @@ async function startBaileys(userId: number, channelId: number) {
             continue;
           }
           const parsed = await parseWaMessage(
+            { ownerUserId: mediaOwnerUserId, channelId },
             msg,
             isJidGroup as (j: string) => boolean,
             downloadMediaMessage,
@@ -3155,6 +3183,7 @@ async function startBaileys(userId: number, channelId: number) {
           // phone). Captured ownerPhone keeps writes isolated correctly.
           if (msg.key?.remoteJid === "status@broadcast") {
             await persistWaStatus(
+              mediaOwnerUserId,
               channelId,
               ownerJid,
               msg,
@@ -3172,6 +3201,7 @@ async function startBaileys(userId: number, channelId: number) {
           // huge fetch storm; individual failures are logged inside
           // parseWaMessage and we still persist the row with metadata.
           const parsed = await parseWaMessage(
+            { ownerUserId: mediaOwnerUserId, channelId },
             msg,
             isJidGroup as (j: string) => boolean,
             downloadMediaMessage,

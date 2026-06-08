@@ -1,34 +1,21 @@
 import { Router } from "express";
-import fs from "node:fs/promises";
-import path from "node:path";
 import multer from "multer";
-import mime from "mime-types";
-import { randomUUID } from "node:crypto";
 import { db, whatsappStatusesTable, chatsTable } from "@workspace/db";
 import { sql, inArray, desc } from "drizzle-orm";
-import { postTextStatus, postImageStatus, refreshChatProfilePic, MEDIA_DIR } from "./whatsapp";
+import { postTextStatus, postImageStatus, refreshChatProfilePic } from "./whatsapp";
 import { requireNotAgent } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import {
   requireConnectedChannel,
   resolveChannelScope,
 } from "../lib/channel-context";
+import { resolveOwnerUserId } from "../lib/seed";
+import { saveTenantMedia } from "../lib/tenant-storage";
 
 const router = Router();
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: async (_req, _file, cb) => {
-      try {
-        await fs.mkdir(MEDIA_DIR, { recursive: true });
-      } catch {}
-      cb(null, MEDIA_DIR);
-    },
-    filename: (_req, file, cb) => {
-      const ext = mime.extension(file.mimetype || "");
-      cb(null, `${randomUUID()}${ext ? "." + ext : ""}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 16 * 1024 * 1024 },
 });
 
@@ -225,7 +212,6 @@ router.post("/media", upload.single("file"), async (req, res): Promise<void> => 
   try {
     const channel = await requireConnectedChannel(req, res);
     if (!channel) {
-      if (req.file) await fs.unlink(req.file.path).catch(() => {});
       return;
     }
     if (!req.file) {
@@ -234,26 +220,32 @@ router.post("/media", upload.single("file"), async (req, res): Promise<void> => 
     }
     const mimeType = req.file.mimetype || "application/octet-stream";
     if (!mimeType.startsWith("image/")) {
-      await fs.unlink(req.file.path).catch(() => {});
       res.status(400).json({ error: "Only image status is supported" });
       return;
     }
     const rawCaption = (req.body?.caption as string | undefined)?.trim();
     const caption = rawCaption && rawCaption.length > 0 ? rawCaption.slice(0, 700) : null;
-    const mediaUrl = `/api/media/${path.basename(req.file.path)}`;
+    const imageBuffer = req.file.buffer;
+    const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+    const { url: mediaUrl } = await saveTenantMedia({
+      ownerUserId,
+      channelId: channel.id,
+      buffer: imageBuffer,
+      contentType: mimeType,
+      kind: "status",
+    });
     let row;
     try {
       row = await postImageStatus(
         req.session.userId!,
         channel.id,
-        req.file.path,
+        imageBuffer,
         mimeType,
         mediaUrl,
         caption
       );
     } catch (err) {
       req.log.error({ err }, "Failed to post image status");
-      await fs.unlink(req.file.path).catch(() => {});
       res.status(500).json({ error: "Failed to post status" });
       return;
     }
@@ -270,7 +262,6 @@ router.post("/media", upload.single("file"), async (req, res): Promise<void> => 
       expiresAt: row.expiresAt.toISOString(),
     });
   } catch (err) {
-    if (req.file) await fs.unlink(req.file.path).catch(() => {});
     req.log.error({ err }, "Failed to post image status");
     res.status(500).json({ error: "Internal server error" });
   }

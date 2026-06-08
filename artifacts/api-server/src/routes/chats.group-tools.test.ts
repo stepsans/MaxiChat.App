@@ -51,6 +51,7 @@ mock.module("./whatsapp", {
     getActiveSocket: notUsed,
     getOrCreateChat: notUsed,
     refreshChatProfilePic: notUsed,
+    isProfilePicRefreshDue: () => false,
     loadImageBuffer: notUsed,
   },
 });

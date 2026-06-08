@@ -19,3 +19,6 @@ export * from "./payments";
 export * from "./payment-gateway";
 export * from "./payment-method-settings";
 export * from "./mobile";
+export * from "./media-objects";
+export * from "./retention-settings";
+export * from "./tenant-reset-audit";

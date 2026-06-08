@@ -219,6 +219,7 @@ router.get("/quota", async (req, res): Promise<void> => {
       tokenLimit: quota.tokenLimit,
       channelLimit: quota.channelLimit,
       userLimit: quota.userLimit,
+      storageLimit: quota.storageLimit,
       periodStart: quota.periodStart,
       periodEnd: quota.periodEnd,
       usage,

@@ -30,16 +30,41 @@ import {
   Coins,
   Radio,
   UserPlus,
+  HardDrive,
 } from "lucide-react";
 
 function fmtRp(n: number): string {
   return new Intl.NumberFormat("id-ID").format(n);
 }
 
+// Storage is stored in BYTES throughout the contract, but the operator enters
+// and reads it in GB (binary GiB). These helpers convert at the UI boundary.
+const BYTES_PER_GB = 1024 * 1024 * 1024;
+
+function fmtBytes(n: number): string {
+  if (!n || n <= 0) return "0";
+  const gb = n / BYTES_PER_GB;
+  if (gb >= 1) return `${Number(gb.toFixed(gb >= 10 ? 0 : 2))} GB`;
+  const mb = n / (1024 * 1024);
+  return `${Number(mb.toFixed(mb >= 10 ? 0 : 1))} MB`;
+}
+
+function bytesToGbStr(n: number): string {
+  if (!n) return "0";
+  return String(Number((n / BYTES_PER_GB).toFixed(4)));
+}
+
+function gbStrToBytes(s: string): number {
+  const gb = Number(s);
+  if (!Number.isFinite(gb)) return NaN;
+  return Math.round(gb * BYTES_PER_GB);
+}
+
 const ADDON_TYPES = [
   { value: "token", label: "Token AI", Icon: Coins },
   { value: "channel", label: "Channel", Icon: Radio },
   { value: "user_seat", label: "Kursi User", Icon: UserPlus },
+  { value: "storage", label: "Penyimpanan", Icon: HardDrive },
 ] as const;
 
 function addonTypeMeta(type: string) {
@@ -67,6 +92,10 @@ type PlanForm = {
   quotaUsers: string;
   quotaChannels: string;
   quotaTokens: string;
+  // Storage quota entered in GB; converted to bytes on submit.
+  quotaStorageGb: string;
+  // Max retention period (days) tenants on this plan may select. Empty = unlimited.
+  retentionLimitDays: string;
   isActive: boolean;
   sortOrder: string;
 };
@@ -80,6 +109,8 @@ const EMPTY_PLAN_FORM: PlanForm = {
   quotaUsers: "0",
   quotaChannels: "0",
   quotaTokens: "0",
+  quotaStorageGb: "0",
+  retentionLimitDays: "",
   isActive: true,
   sortOrder: "0",
 };
@@ -94,6 +125,9 @@ function planToForm(p: Plan): PlanForm {
     quotaUsers: String(p.quotaUsers),
     quotaChannels: String(p.quotaChannels),
     quotaTokens: String(p.quotaTokens),
+    quotaStorageGb: bytesToGbStr(p.quotaStorageBytes),
+    retentionLimitDays:
+      p.retentionLimitDays == null ? "" : String(p.retentionLimitDays),
     isActive: p.isActive,
     sortOrder: String(p.sortOrder),
   };
@@ -121,7 +155,8 @@ function addonToForm(a: Addon): AddonForm {
   return {
     type: a.type,
     name: a.name,
-    unitAmount: String(a.unitAmount),
+    unitAmount:
+      a.type === "storage" ? bytesToGbStr(a.unitAmount) : String(a.unitAmount),
     priceIdr: String(a.priceIdr),
     isActive: a.isActive,
     sortOrder: String(a.sortOrder),
@@ -136,6 +171,7 @@ function NumberField(props: {
   prefix?: string;
   suffix?: string;
   min?: number;
+  placeholder?: string;
 }) {
   return (
     <label className="flex flex-col gap-1">
@@ -149,6 +185,7 @@ function NumberField(props: {
           min={props.min ?? 0}
           step={1}
           value={props.value}
+          placeholder={props.placeholder}
           onChange={(e) => props.onChange(e.target.value)}
           data-testid={props.testId}
           className="w-full h-9 px-2.5 rounded-md border border-border bg-input text-sm text-right tabular-nums outline-none focus:ring-2 focus:ring-primary/40"
@@ -283,9 +320,28 @@ export default function Plans() {
         return;
       }
     }
+    const quotaStorageBytes = gbStrToBytes(planForm.quotaStorageGb);
+    if (
+      !Number.isFinite(quotaStorageBytes) ||
+      !Number.isInteger(quotaStorageBytes) ||
+      quotaStorageBytes < 0
+    ) {
+      setError("Kuota penyimpanan harus angka ≥ 0 (dalam GB).");
+      return;
+    }
     if (nums.durationDays < 1) {
       setError("Durasi minimal 1 hari.");
       return;
+    }
+    const retentionTrim = planForm.retentionLimitDays.trim();
+    let retentionLimitDays: number | null = null;
+    if (retentionTrim !== "") {
+      const r = Number(retentionTrim);
+      if (!Number.isFinite(r) || !Number.isInteger(r) || r < 1) {
+        setError("Batas retensi harus angka bulat ≥ 1 hari, atau kosong (tanpa batas).");
+        return;
+      }
+      retentionLimitDays = r;
     }
     if (editingPlanId === "new") {
       if (!/^[a-z0-9_]+$/.test(planForm.key.trim())) {
@@ -301,6 +357,8 @@ export default function Plans() {
         quotaUsers: nums.quotaUsers,
         quotaChannels: nums.quotaChannels,
         quotaTokens: nums.quotaTokens,
+        quotaStorageBytes,
+        retentionLimitDays,
         isActive: planForm.isActive,
         sortOrder: nums.sortOrder,
       };
@@ -316,6 +374,8 @@ export default function Plans() {
           quotaUsers: nums.quotaUsers,
           quotaChannels: nums.quotaChannels,
           quotaTokens: nums.quotaTokens,
+          quotaStorageBytes,
+          retentionLimitDays,
           isActive: planForm.isActive,
           sortOrder: nums.sortOrder,
         },
@@ -346,11 +406,18 @@ export default function Plans() {
   function submitAddon(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const unitAmount = Number(addonForm.unitAmount);
+    const unitAmount =
+      addonForm.type === "storage"
+        ? gbStrToBytes(addonForm.unitAmount)
+        : Number(addonForm.unitAmount);
     const priceIdr = Number(addonForm.priceIdr);
     const sortOrder = Number(addonForm.sortOrder);
     if (!Number.isInteger(unitAmount) || unitAmount < 1) {
-      setError("Jumlah unit minimal 1.");
+      setError(
+        addonForm.type === "storage"
+          ? "Jumlah penyimpanan minimal lebih dari 0 (dalam GB)."
+          : "Jumlah unit minimal 1."
+      );
       return;
     }
     if (!Number.isInteger(priceIdr) || priceIdr < 0) {
@@ -475,6 +542,8 @@ export default function Plans() {
                   <th className="text-right px-3 py-2 font-medium">User</th>
                   <th className="text-right px-3 py-2 font-medium">Channel</th>
                   <th className="text-right px-3 py-2 font-medium">Token</th>
+                  <th className="text-right px-3 py-2 font-medium">Storage</th>
+                  <th className="text-right px-3 py-2 font-medium">Retensi</th>
                   <th className="text-left px-3 py-2 font-medium">Status</th>
                   <th className="text-right px-3 py-2 font-medium">Aksi</th>
                 </tr>
@@ -483,7 +552,7 @@ export default function Plans() {
                 {plansQuery.isLoading && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={10}
                       className="px-3 py-8 text-center text-muted-foreground"
                     >
                       <Loader2 className="w-4 h-4 animate-spin inline mr-1.5" />
@@ -494,7 +563,7 @@ export default function Plans() {
                 {!plansQuery.isLoading && plans.length === 0 && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={10}
                       className="px-3 py-8 text-center text-muted-foreground text-xs"
                     >
                       Belum ada paket. Klik "Paket baru" untuk menambah.
@@ -528,6 +597,14 @@ export default function Plans() {
                       <td className="px-3 py-2 text-right tabular-nums">
                         {fmtRp(p.quotaTokens)}
                       </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {fmtBytes(p.quotaStorageBytes)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        {p.retentionLimitDays == null
+                          ? "∞"
+                          : `${p.retentionLimitDays} hari`}
+                      </td>
                       <td className="px-3 py-2">
                         <ActiveBadge active={p.isActive} />
                       </td>
@@ -553,7 +630,7 @@ export default function Plans() {
                     </tr>
                     {editingPlanId === p.id && (
                       <tr>
-                        <td colSpan={8} className="px-3 py-3 bg-muted/20">
+                        <td colSpan={10} className="px-3 py-3 bg-muted/20">
                           <PlanEditor
                             title={`Ubah paket: ${p.name}`}
                             form={planForm}
@@ -652,7 +729,9 @@ export default function Plans() {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {fmtRp(a.unitAmount)}
+                          {a.type === "storage"
+                            ? fmtBytes(a.unitAmount)
+                            : fmtRp(a.unitAmount)}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           Rp {fmtRp(a.priceIdr)}
@@ -816,6 +895,22 @@ function PlanEditor(props: {
           onChange={(v) => setForm((p) => ({ ...p, quotaTokens: v }))}
           testId="plan-quotaTokens"
         />
+        <NumberField
+          label="Kuota Penyimpanan"
+          suffix="GB"
+          value={form.quotaStorageGb}
+          onChange={(v) => setForm((p) => ({ ...p, quotaStorageGb: v }))}
+          testId="plan-quotaStorageGb"
+        />
+        <NumberField
+          label="Batas Retensi"
+          suffix="hari"
+          min={1}
+          placeholder="tanpa batas"
+          value={form.retentionLimitDays}
+          onChange={(v) => setForm((p) => ({ ...p, retentionLimitDays: v }))}
+          testId="plan-retentionLimitDays"
+        />
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input
@@ -915,7 +1010,8 @@ function AddonEditor(props: {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <NumberField
           label="Jumlah per pembelian"
-          min={1}
+          suffix={form.type === "storage" ? "GB" : undefined}
+          min={form.type === "storage" ? 0 : 1}
           value={form.unitAmount}
           onChange={(v) => setForm((p) => ({ ...p, unitAmount: v }))}
           testId="addon-unitAmount"

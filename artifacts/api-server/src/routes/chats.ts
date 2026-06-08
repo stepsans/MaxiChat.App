@@ -1,13 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
-import path from "node:path";
-import fs from "node:fs/promises";
 import dns from "node:dns/promises";
 import dnsCallback from "node:dns";
 import net from "node:net";
 import { Agent, fetch as undiciFetch } from "undici";
 import ipaddr from "ipaddr.js";
-import { randomUUID } from "node:crypto";
 import mime from "mime-types";
 import type { Request, Response } from "express";
 import { db } from "@workspace/db";
@@ -33,6 +30,7 @@ import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import { requireSuperAdmin } from "../lib/team-permissions";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
+import { saveTenantMedia } from "../lib/tenant-storage";
 import {
   ListChatsQueryParams,
   UpdateChatBody,
@@ -58,7 +56,6 @@ import {
 } from "../lib/group-participants";
 import { resolveGroupParticipants } from "../lib/group-info";
 import {
-  MEDIA_DIR,
   sendMediaToJid,
   sendContactToJid,
   getSockForChannel,
@@ -76,23 +73,10 @@ import { loadChannelIdsBatch } from "../lib/channel-assignments";
 
 const router = Router();
 
-// Multer storage — write directly into the media dir with a UUID filename
+// Multer storage — keep the upload in memory so the handler can stream it
+// straight to tenant Object Storage (no local-disk write).
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: async (_req, _file, cb) => {
-      try {
-        await fs.mkdir(MEDIA_DIR, { recursive: true });
-      } catch {}
-      cb(null, MEDIA_DIR);
-    },
-    filename: (_req, file, cb) => {
-      // Derive extension from declared MIME (trusted by Multer) and never
-      // from the user-controlled original filename — that prevents stored
-      // .html/.svg/.js files from being served as active content.
-      const ext = mime.extension(file.mimetype || "");
-      cb(null, `${randomUUID()}${ext ? "." + ext : ""}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 64 * 1024 * 1024 }, // 64MB
 });
 
@@ -2246,7 +2230,6 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
 
     const target = await jidForChat(req, res, id);
     if (!target) {
-      await fs.unlink(req.file.path).catch(() => {});
       res.status(404).json({ error: "Chat not found" });
       return;
     }
@@ -2256,7 +2239,6 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     // number, which never lands in this chat's conversation on the phone.
     const sendChannelId = target.chat.channelId;
     if (sendChannelId == null || !getSockForChannel(sendChannelId)) {
-      await fs.unlink(req.file.path).catch(() => {});
       res.status(503).json({ error: "WhatsApp belum terhubung" });
       return;
     }
@@ -2275,7 +2257,7 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       waMessageId = await sendMediaToJid(
         req.session.userId!,
         target.jid,
-        req.file.path,
+        req.file.buffer,
         mimeType,
         mediaType,
         caption,
@@ -2284,12 +2266,20 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
       );
     } catch (err) {
       req.log.error({ err }, "Failed to send media via WhatsApp");
-      await fs.unlink(req.file.path).catch(() => {});
       res.status(500).json({ error: "Failed to send media" });
       return;
     }
 
-    const mediaUrl = `/api/media/${path.basename(req.file.path)}`;
+    // Persist the sent file under the tenant's Object Storage prefix.
+    const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+    const { url: mediaUrl } = await saveTenantMedia({
+      ownerUserId,
+      channelId: sendChannelId,
+      buffer: req.file.buffer,
+      contentType: mimeType,
+      kind: mediaType,
+      preferredFilename: originalName,
+    });
     const previewByType = {
       image: "📷 Gambar",
       video: "🎥 Video",
@@ -2397,13 +2387,7 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
     }
 
     const pdf = await buildQuotationPdf(items);
-
-    // Persist the PDF as a media file so the recorded message can reference it
-    // (same convention as POST /:id/media).
-    await fs.mkdir(MEDIA_DIR, { recursive: true });
-    const storedName = `${randomUUID()}.pdf`;
-    const filepath = path.join(MEDIA_DIR, storedName);
-    await fs.writeFile(filepath, Buffer.from(pdf));
+    const pdfBuffer = Buffer.from(pdf);
     // File name format: YYMMDD-HHMM-Nama.pdf (Nama = customer name, sanitized).
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -2441,7 +2425,6 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         ? Number.parseInt(chat.phoneNumber.slice(3), 10)
         : NaN;
       if (!meta?.botToken || !Number.isFinite(tgChatId)) {
-        await fs.unlink(filepath).catch(() => {});
         res.status(400).json({
           error: "Channel Telegram belum terhubung. Hubungkan bot dulu.",
         });
@@ -2459,21 +2442,18 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         dedupeKey = `tg:${tgChatId}:${sent.messageId}`;
       } catch (err) {
         req.log.error({ err, chatId: id }, "telegram quotation send failed");
-        await fs.unlink(filepath).catch(() => {});
         res.status(502).json({ error: "Gagal kirim ke Telegram" });
         return;
       }
     } else {
       const target = await jidForChat(req, res, id);
       if (!target) {
-        await fs.unlink(filepath).catch(() => {});
         res.status(404).json({ error: "Chat not found" });
         return;
       }
       // Send from the chat's OWN channel, not the user's primary channel.
       const sendChannelId = target.chat.channelId;
       if (sendChannelId == null || !getSockForChannel(sendChannelId)) {
-        await fs.unlink(filepath).catch(() => {});
         res.status(503).json({ error: "WhatsApp belum terhubung" });
         return;
       }
@@ -2481,7 +2461,7 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         dedupeKey = await sendMediaToJid(
           req.session.userId!,
           target.jid,
-          filepath,
+          pdfBuffer,
           mimeType,
           "document",
           caption,
@@ -2490,13 +2470,21 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         );
       } catch (err) {
         req.log.error({ err, chatId: id }, "whatsapp quotation send failed");
-        await fs.unlink(filepath).catch(() => {});
         res.status(500).json({ error: "Gagal kirim ke WhatsApp" });
         return;
       }
     }
 
-    const mediaUrl = `/api/media/${storedName}`;
+    // Persist the PDF under the tenant's Object Storage prefix.
+    const pdfOwnerUserId = await resolveOwnerUserId(req.session.userId!);
+    const { url: mediaUrl } = await saveTenantMedia({
+      ownerUserId: pdfOwnerUserId,
+      channelId: chat.channelId,
+      buffer: pdfBuffer,
+      contentType: mimeType,
+      kind: "document",
+      preferredFilename: displayName,
+    });
     const inserted = await db
       .insert(chatMessagesTable)
       .values({
@@ -2708,16 +2696,18 @@ router.post("/:id/product", async (req, res): Promise<void> => {
     // Missing/unreachable images fall back to text-only caption.
     let imageBuffer: Buffer | null = null;
     let imageMimeType: string | null = null;
-    if (product.imageUrl && product.imageUrl.startsWith("/api/media/")) {
-      const filename = path.basename(product.imageUrl);
-      const candidate = path.join(MEDIA_DIR, filename);
+    if (
+      product.imageUrl &&
+      (product.imageUrl.startsWith("/api/storage/") ||
+        product.imageUrl.startsWith("/api/media/"))
+    ) {
       try {
-        imageBuffer = await fs.readFile(candidate);
-        imageMimeType = mime.lookup(filename) || "image/jpeg";
+        imageBuffer = await loadImageBuffer(product.imageUrl);
+        imageMimeType = mime.lookup(product.imageUrl) || "image/jpeg";
       } catch (err) {
         req.log.warn(
           { err, productId },
-          "Product image missing on disk, falling back to text"
+          "Product image not retrievable, falling back to text"
         );
       }
     } else if (
@@ -3009,11 +2999,15 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
         const fetched = await fetchRemoteImageSafe(resolvedUrl);
         imageBuffer = fetched.buffer;
         imageMimeType = fetched.mimeType;
-        await fs.mkdir(MEDIA_DIR, { recursive: true });
-        const ext = mime.extension(imageMimeType) || "jpg";
-        const storedName = `${randomUUID()}.${ext}`;
-        await fs.writeFile(path.join(MEDIA_DIR, storedName), imageBuffer);
-        mediaStoredUrl = `/api/media/${storedName}`;
+        const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+        const saved = await saveTenantMedia({
+          ownerUserId,
+          channelId: chat.channelId,
+          buffer: imageBuffer,
+          contentType: imageMimeType,
+          kind: "image",
+        });
+        mediaStoredUrl = saved.url;
       } catch (err) {
         req.log.warn(
           { err, shortcutId, url: shortcut.link, resolvedUrl },

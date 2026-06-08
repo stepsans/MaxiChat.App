@@ -8,6 +8,7 @@ import {
   chatsTable,
   chatMessagesTable,
   aiUsageEventsTable,
+  mediaObjectsTable,
 } from "@workspace/db";
 import { and, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import {
@@ -258,7 +259,15 @@ export async function transitionExpiredSubscriptions(): Promise<number> {
 // ----- Live usage for an owner -----
 
 export interface OwnerUsage extends BillingUsage {
+  // Legacy metered metric: pg_column_size of the owner's chats + messages.
+  // Drives the old per-500MB DB charge and the usage snapshots; kept as-is so
+  // metered billing stays stable.
   storageBytes: number;
+  // Object Storage footprint = SUM(media_objects.size_bytes) for this owner.
+  // This is the canonical "penyimpanan terpakai" measured against the tenant's
+  // storage_limit (plan base + storage add-ons). Source of truth for the
+  // storage quota + monitoring (FASE B/C) and retention/reset (FASE D/E).
+  mediaStorageBytes: number;
   childUserCount: number;
   channelCount: number;
   tokenUsage: number;
@@ -299,6 +308,17 @@ export async function computeOwnerUsage(ownerId: number): Promise<OwnerUsage> {
     storageBytes = Number(chatAgg?.bytes ?? 0) + Number(msgAgg?.bytes ?? 0);
   }
 
+  // Object Storage footprint: SUM of every media_objects row for this owner.
+  // Owner-keyed (not channel-keyed) so it survives channel deletes and counts
+  // owner-level assets (product images, generated docs) too.
+  const [mediaAgg] = await db
+    .select({
+      bytes: sql<string>`coalesce(sum(${mediaObjectsTable.sizeBytes}), 0)::bigint`,
+    })
+    .from(mediaObjectsTable)
+    .where(eq(mediaObjectsTable.ownerUserId, ownerId));
+  const mediaStorageBytes = Number(mediaAgg?.bytes ?? 0);
+
   // AI tokens consumed in the owner's CURRENT billing period (join-anchored).
   const [owner] = await db
     .select({ createdAt: usersTable.createdAt })
@@ -321,7 +341,13 @@ export async function computeOwnerUsage(ownerId: number): Promise<OwnerUsage> {
     );
   const tokenUsage = tokenAgg?.total ?? 0;
 
-  return { storageBytes, childUserCount, channelCount, tokenUsage };
+  return {
+    storageBytes,
+    mediaStorageBytes,
+    childUserCount,
+    channelCount,
+    tokenUsage,
+  };
 }
 
 export interface OwnerBill {

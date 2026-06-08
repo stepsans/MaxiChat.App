@@ -23,6 +23,13 @@ export interface Plan {
   quotaChannels: number;
   /** Included AI tokens per period. */
   quotaTokens: number;
+  /** Included Object Storage allowance, in bytes. */
+  quotaStorageBytes: bigint;
+  /**
+     * Max data-retention period (days) a tenant may select; null = unlimited.
+     * @nullable
+     */
+  retentionLimitDays?: number | null;
   /** Inactive plans are hidden from self-serve checkout but kept for existing tenants. */
   isActive: boolean;
   sortOrder: number;

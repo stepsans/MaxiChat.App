@@ -2,6 +2,7 @@ import {
   pgTable,
   serial,
   integer,
+  bigint,
   text,
   boolean,
   timestamp,
@@ -33,6 +34,15 @@ export const plansTable = pgTable(
     quotaUsers: integer("quota_users").notNull().default(0),
     quotaChannels: integer("quota_channels").notNull().default(0),
     quotaTokens: integer("quota_tokens").notNull().default(0),
+    // Object Storage allowance in BYTES granted while the plan is active.
+    // bigint (mode: number) — plans run to GB scale, well within 2^53.
+    quotaStorageBytes: bigint("quota_storage_bytes", { mode: "number" })
+      .notNull()
+      .default(0),
+    // Maximum data-retention period (days) a tenant on this plan may select.
+    // NULL = unlimited (the tenant may keep data forever). A tenant's chosen
+    // retention is clamped to this cap; it is never a floor.
+    retentionLimitDays: integer("retention_limit_days"),
     isActive: boolean("is_active").notNull().default(true),
     // Display ordering in the catalog (ascending).
     sortOrder: integer("sort_order").notNull().default(0),
@@ -52,15 +62,18 @@ export const plansTable = pgTable(
 //   - "token"     → adds `unitAmount` AI tokens
 //   - "channel"   → adds `unitAmount` channel slots
 //   - "user_seat" → adds `unitAmount` invited-member seats
-export const addonTypes = ["token", "channel", "user_seat"] as const;
+//   - "storage"   → adds `unitAmount` BYTES of Object Storage (e.g. 10GB)
+export const addonTypes = ["token", "channel", "user_seat", "storage"] as const;
 export type AddonType = (typeof addonTypes)[number];
 
 export const addonsTable = pgTable("addons", {
   id: serial("id").primaryKey(),
   type: text("type").notNull(),
   name: text("name").notNull(),
-  // Units granted per purchase (e.g. 100000 tokens, or 1 channel/seat).
-  unitAmount: integer("unit_amount").notNull().default(0),
+  // Units granted per purchase (e.g. 100000 tokens, 1 channel/seat, or
+  // 10737418240 bytes of storage). bigint (mode: number) so byte-scale
+  // storage add-ons fit; token/channel/seat values stay small integers.
+  unitAmount: bigint("unit_amount", { mode: "number" }).notNull().default(0),
   // Whole Rupiah price for one purchase of this add-on.
   priceIdr: integer("price_idr").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
@@ -90,6 +103,8 @@ export const insertPlanSchema = createInsertSchema(plansTable, {
   quotaUsers: z.number().int().min(0),
   quotaChannels: z.number().int().min(0),
   quotaTokens: z.number().int().min(0),
+  quotaStorageBytes: z.number().int().min(0),
+  retentionLimitDays: z.number().int().min(1).nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 

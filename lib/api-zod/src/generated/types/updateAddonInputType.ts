@@ -13,4 +13,5 @@ export const UpdateAddonInputType = {
   token: 'token',
   channel: 'channel',
   user_seat: 'user_seat',
+  storage: 'storage',
 } as const;

@@ -6,10 +6,12 @@ import {
   useConnectWhatsapp,
   useDisconnectWhatsapp,
   useGetStorageUsage,
+  useGetMyQuota,
   getGetWhatsappStatusQueryKey,
   getGetAnalyticsSummaryQueryKey,
   getListChatsQueryKey,
   getGetStorageUsageQueryKey,
+  getGetMyQuotaQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +31,10 @@ import {
   CheckCircle,
   ShieldAlert,
   HardDrive,
+  Gauge,
+  Layers,
+  Coins,
+  AlertTriangle,
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn, formatBytes } from "@/lib/utils";
@@ -84,6 +90,67 @@ function StatCard({
   );
 }
 
+function QuotaBar({
+  label,
+  icon: Icon,
+  used,
+  limit,
+  format,
+  unit,
+  testId,
+}: {
+  label: string;
+  icon: React.ElementType;
+  used: number;
+  limit: number;
+  format: (n: number) => string;
+  unit?: string;
+  testId: string;
+}) {
+  const hasLimit = limit > 0;
+  const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const warn = hasLimit && pct >= 80;
+  const barColor = warn ? "bg-amber-500" : "bg-cyan-500";
+  return (
+    <div data-testid={testId}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+          <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+          {label}
+          {warn && (
+            <AlertTriangle
+              className="w-3.5 h-3.5 text-amber-500"
+              data-testid={`${testId}-warning`}
+            />
+          )}
+        </span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {format(used)}
+          {hasLimit ? ` / ${format(limit)}` : ` / ∞`}
+          {unit ? ` ${unit}` : ""}
+        </span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full transition-all", barColor)}
+          style={{ width: `${hasLimit ? pct : 0}%` }}
+        />
+      </div>
+      {hasLimit && (
+        <p
+          className={cn(
+            "text-[11px] mt-1 tabular-nums",
+            warn ? "text-amber-500" : "text-muted-foreground"
+          )}
+        >
+          {pct}% terpakai
+          {warn ? " — mendekati batas kuota" : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -105,6 +172,9 @@ export default function Dashboard() {
   });
   const { data: storage, isLoading: storageLoading } = useGetStorageUsage({
     query: { queryKey: getGetStorageUsageQueryKey(), enabled: canView },
+  });
+  const { data: quota, isLoading: quotaLoading } = useGetMyQuota({
+    query: { queryKey: getGetMyQuotaQueryKey(), enabled: canView },
   });
 
   const connect = useConnectWhatsapp({
@@ -343,6 +413,59 @@ export default function Dashboard() {
             <p className="text-[11px] text-muted-foreground mt-3">
               Estimasi ukuran data chat di seluruh channel akun ini.
             </p>
+          </CardContent>
+        </Card>
+
+        {/* Quota Usage */}
+        <Card data-testid="quota-usage-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Gauge className="w-4 h-4 text-cyan-400" />
+              Penggunaan Kuota
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {quotaLoading || !quota ? (
+              <Skeleton className="h-32 rounded-lg" />
+            ) : (
+              <div className="space-y-4">
+                <QuotaBar
+                  label="Penyimpanan media"
+                  icon={HardDrive}
+                  used={quota.usage.mediaStorageBytes}
+                  limit={quota.storageLimit}
+                  format={(n) => formatBytes(n)}
+                  testId="quota-storage"
+                />
+                <QuotaBar
+                  label="Pengguna"
+                  icon={Users}
+                  used={quota.usage.childUserCount}
+                  limit={quota.userLimit}
+                  format={(n) => `${n}`}
+                  unit="user"
+                  testId="quota-users"
+                />
+                <QuotaBar
+                  label="Channel"
+                  icon={Layers}
+                  used={quota.usage.channelCount}
+                  limit={quota.channelLimit}
+                  format={(n) => `${n}`}
+                  unit="channel"
+                  testId="quota-channels"
+                />
+                <QuotaBar
+                  label="Token AI"
+                  icon={Coins}
+                  used={quota.usage.tokenUsage}
+                  limit={quota.tokenLimit}
+                  format={(n) => n.toLocaleString("id-ID")}
+                  unit="token"
+                  testId="quota-tokens"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -21,6 +21,8 @@ export interface TenantQuotaInfo {
   tokenLimit: number;
   channelLimit: number;
   userLimit: number;
+  /** Object Storage plafon in bytes (plan baseline + add-on top-ups). */
+  storageLimit: bigint;
   /** @nullable */
   periodStart: Date | null;
   /** @nullable */

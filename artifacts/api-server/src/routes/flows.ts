@@ -1,14 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
-import path from "node:path";
-import fs from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import mime from "mime-types";
 import { db } from "@workspace/db";
 import { chatbotFlowsTable, chatbotFlowChannelsTable, chatsTable } from "@workspace/db";
 import { and, eq, ne, desc, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { MEDIA_DIR } from "./whatsapp";
+import { resolveOwnerUserId } from "../lib/seed";
+import { saveTenantMedia } from "../lib/tenant-storage";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import { requireOwnerUserId, requireConnectedChannel } from "../lib/channel-context";
@@ -50,18 +47,7 @@ const FlowNodeSchema = z.object({
 });
 
 const flowImageUpload = multer({
-  storage: multer.diskStorage({
-    destination: async (_req, _file, cb) => {
-      try {
-        await fs.mkdir(MEDIA_DIR, { recursive: true });
-      } catch {}
-      cb(null, MEDIA_DIR);
-    },
-    filename: (_req, file, cb) => {
-      const ext = mime.extension(file.mimetype || "");
-      cb(null, `${randomUUID()}${ext ? "." + ext : ""}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith("image/")) {
       return cb(new Error("Only image files are allowed"));
@@ -208,7 +194,14 @@ async function deactivateOverlappingFlows(
 router.post("/upload-image", requireSupervisorOrAbove, flowCreate, flowImageUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) { res.status(400).json({ error: "Missing file" }); return; }
-    const url = `/api/media/${path.basename(req.file.path)}`;
+    const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+    const { url } = await saveTenantMedia({
+      ownerUserId,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype || "image/jpeg",
+      kind: "flow",
+      preferredFilename: req.file.originalname,
+    });
     res.json({ url });
   } catch (err) {
     req.log.error({ err }, "Failed to upload flow image");

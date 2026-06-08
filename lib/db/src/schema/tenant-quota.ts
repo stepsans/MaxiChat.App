@@ -2,6 +2,7 @@ import {
   pgTable,
   serial,
   integer,
+  bigint,
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -31,6 +32,10 @@ export const tenantQuotaTable = pgTable(
     tokenLimit: integer("token_limit").notNull().default(0),
     channelLimit: integer("channel_limit").notNull().default(0),
     userLimit: integer("user_limit").notNull().default(0),
+    // Object Storage cap in BYTES (plan base + storage add-on top-ups).
+    storageLimit: bigint("storage_limit", { mode: "number" })
+      .notNull()
+      .default(0),
     // Current quota period; aligns with the subscription period. Null until a
     // plan is purchased.
     periodStart: timestamp("period_start", { withTimezone: true }),

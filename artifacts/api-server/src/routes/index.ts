@@ -31,7 +31,10 @@ import linkPreviewRouter from "./link-preview";
 import telegramWebhookRouter from "./webhooks-telegram";
 import xenditWebhookRouter from "./webhooks-xendit";
 import billingRouter from "./billing";
+import retentionRouter from "./retention";
+import databaseRouter from "./database";
 import pushRouter from "./push";
+import storageRouter from "./storage";
 import { requireAuth, requireAdmin } from "../lib/auth";
 import { enforceSubscription } from "../lib/enforce-subscription";
 
@@ -87,7 +90,11 @@ router.use("/ai-review", aiReviewRouter);
 router.use("/customer-labels", customerLabelsRouter);
 router.use("/link-preview", linkPreviewRouter);
 router.use("/billing", billingRouter);
+router.use("/retention", retentionRouter);
+router.use("/database", databaseRouter);
 router.use("/push", pushRouter);
+// Tenant-scoped Object Storage serving (GET /storage/objects/tenants/<owner>/...).
+router.use(storageRouter);
 
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.

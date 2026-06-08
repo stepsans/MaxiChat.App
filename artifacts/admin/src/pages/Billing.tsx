@@ -246,6 +246,7 @@ export default function Billing() {
                 <th className="text-left px-3 py-2 font-medium">Status</th>
                 <th className="text-left px-3 py-2 font-medium">Periode s/d</th>
                 <th className="text-right px-3 py-2 font-medium">DB</th>
+                <th className="text-right px-3 py-2 font-medium">Media</th>
                 <th className="text-right px-3 py-2 font-medium">User</th>
                 <th className="text-right px-3 py-2 font-medium">Channel</th>
                 <th className="text-right px-3 py-2 font-medium">Token</th>
@@ -257,7 +258,7 @@ export default function Billing() {
               {isLoading && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-3 py-8 text-center text-muted-foreground"
                   >
                     <Loader2 className="w-4 h-4 animate-spin inline mr-1.5" />
@@ -268,7 +269,7 @@ export default function Billing() {
               {!isLoading && filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-3 py-8 text-center text-muted-foreground text-xs"
                   >
                     Belum ada data tagihan.
@@ -323,6 +324,32 @@ export default function Billing() {
                       <div className="text-[11px] text-muted-foreground tabular-nums">
                         {fmtBytes(r.usage.storageBytes)}
                       </div>
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs">
+                      {(() => {
+                        const used = r.usage.mediaStorageBytes;
+                        const limit = r.storageLimit;
+                        const pct =
+                          limit > 0
+                            ? Math.min(100, Math.round((used / limit) * 100))
+                            : 0;
+                        const over = limit > 0 && pct >= 80;
+                        return (
+                          <>
+                            <div
+                              className={`tabular-nums font-medium ${
+                                over ? "text-amber-400" : ""
+                              }`}
+                              data-testid={`media-usage-${r.userId}`}
+                            >
+                              {fmtBytes(used)}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground tabular-nums">
+                              {limit > 0 ? `${pct}% / ${fmtBytes(limit)}` : "—"}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-2 text-right text-xs">
                       <div className="tabular-nums">

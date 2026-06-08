@@ -1,16 +1,13 @@
 import { Router } from "express";
 import multer from "multer";
-import path from "node:path";
-import fs from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import mime from "mime-types";
 import ExcelJS from "exceljs";
 import { db } from "@workspace/db";
 import { productsTable } from "@workspace/db";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Request, Response } from "express";
-import { MEDIA_DIR } from "./whatsapp";
+import { resolveOwnerUserId } from "../lib/seed";
+import { saveTenantMedia } from "../lib/tenant-storage";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
@@ -56,18 +53,7 @@ router.post("/upload-image", requireSupervisorOrAbove, requirePermission("produc
 router.post("/import", requireSupervisorOrAbove, requirePermission("products", "create"));
 
 const imageUpload = multer({
-  storage: multer.diskStorage({
-    destination: async (_req, _file, cb) => {
-      try {
-        await fs.mkdir(MEDIA_DIR, { recursive: true });
-      } catch {}
-      cb(null, MEDIA_DIR);
-    },
-    filename: (_req, file, cb) => {
-      const ext = mime.extension(file.mimetype || "");
-      cb(null, `${randomUUID()}${ext ? "." + ext : ""}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith("image/")) {
       return cb(new Error("Only image files are allowed"));
@@ -317,7 +303,14 @@ router.delete("/:id", async (req, res): Promise<void> => {
 router.post("/upload-image", imageUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) { res.status(400).json({ error: "Missing file" }); return; }
-    const url = `/api/media/${path.basename(req.file.path)}`;
+    const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+    const { url } = await saveTenantMedia({
+      ownerUserId,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype || "image/jpeg",
+      kind: "product",
+      preferredFilename: req.file.originalname,
+    });
     res.json({ url });
   } catch (err) {
     req.log.error({ err }, "Failed to upload product image");

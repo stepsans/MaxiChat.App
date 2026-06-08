@@ -30,6 +30,13 @@ export interface UpdatePlanInput {
   quotaChannels?: number;
   /** @minimum 0 */
   quotaTokens?: number;
+  /** @minimum 0 */
+  quotaStorageBytes?: bigint;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  retentionLimitDays?: number | null;
   isActive?: boolean;
   /** @minimum 0 */
   sortOrder?: number;

@@ -20,6 +20,7 @@ import {
   computeRevenue,
   renewSubscription,
 } from "../lib/billing";
+import { getOrCreateTenantQuota } from "../lib/subscription-purchase";
 
 // Serialize all role/status mutations through a single Postgres advisory
 // lock so the "must keep one active admin" invariant can't be violated by
@@ -386,9 +387,10 @@ router.get("/billing", async (req, res): Promise<void> => {
 
     const rows = await Promise.all(
       owners.map(async (o) => {
-        const [subscription, bill] = await Promise.all([
+        const [subscription, bill, quota] = await Promise.all([
           getOrCreateSubscription(o.id),
           computeOwnerBill(o.id),
+          getOrCreateTenantQuota(o.id),
         ]);
         return {
           userId: o.id,
@@ -396,6 +398,7 @@ router.get("/billing", async (req, res): Promise<void> => {
           name: o.name ?? null,
           status: subscription.status,
           currentPeriodEnd: subscription.currentPeriodEnd,
+          storageLimit: quota?.storageLimit ?? 0,
           usage: bill.usage,
           breakdown: bill.breakdown,
         };

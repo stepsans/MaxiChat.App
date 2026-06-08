@@ -145,6 +145,8 @@ import type {
   ResendVerificationInput,
   ResendVerificationResult,
   ResetFlowCooldown200,
+  RetentionInfo,
+  RetentionInput,
   RevenueSummary,
   RevokeMessage200,
   RunKnowledgeSync200,
@@ -180,6 +182,8 @@ import type {
   TenantBilling,
   TenantPaymentMethod,
   TenantQuotaInfo,
+  TenantResetAuditEntry,
+  TenantResetResult,
   TextShortcut,
   TextShortcutInput,
   UpdateAddonInput,
@@ -2577,6 +2581,156 @@ export function useGetMyQuota<TData = Awaited<ReturnType<typeof getMyQuota>>, TE
 
 
 
+
+export const getGetRetentionUrl = () => {
+
+
+
+
+  return `/api/retention`
+}
+
+/**
+ * Returns the caller tenant's chosen retention periods (days; null = unlimited) plus the maximum the active plan allows. Team members resolve to their owner.
+ * @summary The tenant's data-retention policy and the plan cap
+ */
+export const getRetention = async ( options?: RequestInit): Promise<RetentionInfo> => {
+
+  return customFetch<RetentionInfo>(getGetRetentionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRetentionQueryKey = () => {
+    return [
+    `/api/retention`
+    ] as const;
+    }
+
+
+export const getGetRetentionQueryOptions = <TData = Awaited<ReturnType<typeof getRetention>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRetention>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRetentionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRetention>>> = ({ signal }) => getRetention({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRetention>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRetentionQueryResult = NonNullable<Awaited<ReturnType<typeof getRetention>>>
+export type GetRetentionQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The tenant's data-retention policy and the plan cap
+ */
+
+export function useGetRetention<TData = Awaited<ReturnType<typeof getRetention>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRetention>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRetentionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateRetentionUrl = () => {
+
+
+
+
+  return `/api/retention`
+}
+
+/**
+ * Sets the retention periods (days; null = unlimited). Each value is clamped server-side to the active plan's retention cap. Super admin only.
+ * @summary Update the tenant's data-retention policy
+ */
+export const updateRetention = async (retentionInput: RetentionInput, options?: RequestInit): Promise<RetentionInfo> => {
+
+  return customFetch<RetentionInfo>(getUpdateRetentionUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      retentionInput,)
+  }
+);}
+
+
+
+
+export const getUpdateRetentionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRetention>>, TError,{data: BodyType<RetentionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRetention>>, TError,{data: BodyType<RetentionInput>}, TContext> => {
+
+const mutationKey = ['updateRetention'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRetention>>, {data: BodyType<RetentionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateRetention(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRetentionMutationResult = NonNullable<Awaited<ReturnType<typeof updateRetention>>>
+    export type UpdateRetentionMutationBody = BodyType<RetentionInput>
+    export type UpdateRetentionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the tenant's data-retention policy
+ */
+export const useUpdateRetention = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRetention>>, TError,{data: BodyType<RetentionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRetention>>,
+        TError,
+        {data: BodyType<RetentionInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateRetentionMutationOptions(options));
+    }
 
 export const getCreateCheckoutUrl = () => {
 
@@ -11127,6 +11281,153 @@ export const usePurgeChats = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getPurgeChatsMutationOptions(options));
     }
+
+export const getResetTenantDatabaseUrl = () => {
+
+
+
+
+  return `/api/database/reset`
+}
+
+/**
+ * @summary Wipe ALL of the current tenant's operational data — chats, messages, contact labels, analytics, AI usage logs, and uploaded files. Does NOT touch the account, subscription, plan, channels, or other tenants. Super admin only. Irreversible.
+ */
+export const resetTenantDatabase = async ( options?: RequestInit): Promise<TenantResetResult> => {
+
+  return customFetch<TenantResetResult>(getResetTenantDatabaseUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getResetTenantDatabaseMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetTenantDatabase>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetTenantDatabase>>, TError,void, TContext> => {
+
+const mutationKey = ['resetTenantDatabase'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetTenantDatabase>>, void> = () => {
+
+
+          return  resetTenantDatabase(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetTenantDatabaseMutationResult = NonNullable<Awaited<ReturnType<typeof resetTenantDatabase>>>
+
+    export type ResetTenantDatabaseMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Wipe ALL of the current tenant's operational data — chats, messages, contact labels, analytics, AI usage logs, and uploaded files. Does NOT touch the account, subscription, plan, channels, or other tenants. Super admin only. Irreversible.
+ */
+export const useResetTenantDatabase = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetTenantDatabase>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetTenantDatabase>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getResetTenantDatabaseMutationOptions(options));
+    }
+
+export const getListTenantResetAuditUrl = () => {
+
+
+
+
+  return `/api/database/reset-audit`
+}
+
+/**
+ * @summary List recent tenant-database reset events for the current owner.
+ */
+export const listTenantResetAudit = async ( options?: RequestInit): Promise<TenantResetAuditEntry[]> => {
+
+  return customFetch<TenantResetAuditEntry[]>(getListTenantResetAuditUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTenantResetAuditQueryKey = () => {
+    return [
+    `/api/database/reset-audit`
+    ] as const;
+    }
+
+
+export const getListTenantResetAuditQueryOptions = <TData = Awaited<ReturnType<typeof listTenantResetAudit>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantResetAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTenantResetAuditQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTenantResetAudit>>> = ({ signal }) => listTenantResetAudit({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTenantResetAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTenantResetAuditQueryResult = NonNullable<Awaited<ReturnType<typeof listTenantResetAudit>>>
+export type ListTenantResetAuditQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List recent tenant-database reset events for the current owner.
+ */
+
+export function useListTenantResetAudit<TData = Awaited<ReturnType<typeof listTenantResetAudit>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantResetAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTenantResetAuditQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListFlowsUrl = () => {
 

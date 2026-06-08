@@ -14,11 +14,20 @@ import {
   useDeleteCustomerLabel,
   useGetStorageUsage,
   getGetStorageUsageQueryKey,
-  usePurgeChats,
+  useResetTenantDatabase,
+  useListTenantResetAudit,
+  getListTenantResetAuditQueryKey,
   getListChatsQueryKey,
   getGetAnalyticsSummaryQueryKey,
+  useGetRetention,
+  useUpdateRetention,
+  getGetRetentionQueryKey,
 } from "@workspace/api-client-react";
-import type { TextShortcut, CustomerLabel } from "@workspace/api-client-react";
+import type {
+  TextShortcut,
+  CustomerLabel,
+  TenantResetAuditEntry,
+} from "@workspace/api-client-react";
 import { ChannelMultiSelect } from "@/components/ChannelMultiSelect";
 import ShortcutSyncCard from "@/components/ShortcutSyncCard";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -73,44 +82,65 @@ export default function Settings() {
         </div>
         <ShortcutsCard />
         <LabelsCard />
+        <RetentionCard />
         <DangerZoneCard />
       </div>
     </div>
   );
 }
 
-const PURGE_CONFIRM_WORD = "HAPUS";
+// Per-tenant data retention. Super-admin only. Each field is the max age (in
+// days) before data is auto-purged by the daily retention job; empty = keep
+// forever (unlimited). Values are clamped server-side to the plan's retention
+// cap (planLimitDays), so the UI also surfaces that cap.
+const RETENTION_FIELDS: {
+  key: "chatDays" | "mediaDays" | "logDays" | "analyticsDays";
+  label: string;
+  hint: string;
+}[] = [
+  { key: "chatDays", label: "Riwayat chat & pesan", hint: "Chat dan pesan lama" },
+  { key: "mediaDays", label: "Media tersimpan", hint: "Foto, dokumen, audio" },
+  { key: "logDays", label: "Log penggunaan AI", hint: "Catatan token AI" },
+  {
+    key: "analyticsDays",
+    label: "Snapshot analitik",
+    hint: "Data ringkasan & laporan",
+  },
+];
 
-// Super-admin only. Permanently wipes the tenant's entire chat inbox (all chats
-// + messages across every channel). Channels, contacts, labels and settings are
-// kept. A typed-confirmation gate guards the irreversible action.
-function DangerZoneCard() {
+function RetentionCard() {
   const { isSuperAdmin } = usePermissions();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-
-  const { data: usage, isLoading: usageLoading } = useGetStorageUsage({
-    query: { queryKey: getGetStorageUsageQueryKey(), enabled: isSuperAdmin },
+  const { data, isLoading } = useGetRetention({
+    query: { queryKey: getGetRetentionQueryKey(), enabled: isSuperAdmin },
   });
 
-  const purge = usePurgeChats({
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [dirty, setDirty] = useState(false);
+
+  const planLimitDays = data?.planLimitDays ?? null;
+
+  function valueOf(key: string): string {
+    if (dirty && key in form) return form[key];
+    const v = data?.[key as keyof typeof data];
+    return v == null ? "" : String(v);
+  }
+
+  const update = useUpdateRetention({
     mutation: {
-      onSuccess: (res) => {
-        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
-        qc.invalidateQueries({ queryKey: getGetStorageUsageQueryKey() });
-        qc.invalidateQueries({ queryKey: getGetAnalyticsSummaryQueryKey() });
-        setOpen(false);
-        setConfirmText("");
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetRetentionQueryKey() });
+        setDirty(false);
+        setForm({});
         toast({
-          title: "Database chat direset",
-          description: `${res.deletedChats} chat & ${res.deletedMessages} pesan dihapus permanen.`,
+          title: "Kebijakan retensi disimpan",
+          description: "Data lama akan dihapus otomatis sesuai batas baru.",
         });
       },
       onError: (err: any) =>
         toast({
-          title: "Gagal mereset database chat",
+          title: "Gagal menyimpan retensi",
           description: err?.data?.error ?? err?.message ?? "Coba lagi.",
           variant: "destructive",
         }),
@@ -119,18 +149,198 @@ function DangerZoneCard() {
 
   if (!isSuperAdmin) return null;
 
-  const confirmed = confirmText.trim().toUpperCase() === PURGE_CONFIRM_WORD;
+  function setField(key: string, v: string) {
+    setDirty(true);
+    setForm((p) => ({ ...p, [key]: v }));
+  }
+
+  function buildBody() {
+    const body: Record<string, number | null> = {};
+    for (const f of RETENTION_FIELDS) {
+      const raw = valueOf(f.key).trim();
+      body[f.key] = raw === "" ? null : Number(raw);
+    }
+    return body;
+  }
+
+  function validate(): string | null {
+    for (const f of RETENTION_FIELDS) {
+      const raw = valueOf(f.key).trim();
+      if (raw === "") continue;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+        return `"${f.label}" harus angka bulat ≥ 1 hari, atau kosong (tanpa batas).`;
+      }
+      if (planLimitDays != null && n > planLimitDays) {
+        return `"${f.label}" melebihi batas paket (${planLimitDays} hari). Akan dipotong otomatis ke ${planLimitDays} hari.`;
+      }
+    }
+    return null;
+  }
+
+  function onSave() {
+    const err = validate();
+    if (err && !err.includes("melebihi")) {
+      toast({ title: "Input tidak valid", description: err, variant: "destructive" });
+      return;
+    }
+    update.mutate({ data: buildBody() as any });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Database className="w-4 h-4" />
+          Retensi Data
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Hapus otomatis data lama untuk menghemat penyimpanan. Kosongkan untuk
+          menyimpan selamanya (tanpa batas).
+          {planLimitDays != null && (
+            <>
+              {" "}
+              Paket Anda membatasi retensi maksimal{" "}
+              <strong>{planLimitDays} hari</strong>.
+            </>
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {RETENTION_FIELDS.map((f) => (
+                <div key={f.key} className="flex flex-col gap-1">
+                  <label className="text-xs font-medium">{f.label}</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      placeholder="tanpa batas"
+                      value={valueOf(f.key)}
+                      onChange={(e) => setField(f.key, e.target.value)}
+                      data-testid={`input-retention-${f.key}`}
+                      className="h-9 text-sm text-right tabular-nums"
+                    />
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      hari
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    {f.hint}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              data-testid="button-save-retention"
+              disabled={update.isPending || !dirty}
+              onClick={onSave}
+            >
+              {update.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              Simpan Retensi
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const RESET_CONFIRM_WORD = "RESET";
+
+function resetTotal(s: TenantResetAuditEntry["summary"]): number {
+  return (
+    s.chats +
+    s.messages +
+    s.contactLabels +
+    s.labels +
+    s.analytics +
+    s.logs +
+    s.media
+  );
+}
+
+// Super-admin only. Permanently wipes ALL of the tenant's operational data —
+// chats + messages, contact labels, analytics, AI usage logs, and every
+// uploaded file — across every channel. The account, subscription, plan,
+// channels, products and settings are kept. Guarded by a TWO-STEP confirmation
+// (typed word + a final "are you sure" dialog) and audited.
+function DangerZoneCard() {
+  const { isSuperAdmin } = usePermissions();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  // Step 1 dialog (typed-word gate), step 2 dialog (final confirm).
+  const [open, setOpen] = useState(false);
+  const [finalOpen, setFinalOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+
+  const { data: usage, isLoading: usageLoading } = useGetStorageUsage({
+    query: { queryKey: getGetStorageUsageQueryKey(), enabled: isSuperAdmin },
+  });
+
+  const { data: auditLog } = useListTenantResetAudit({
+    query: {
+      queryKey: getListTenantResetAuditQueryKey(),
+      enabled: isSuperAdmin,
+    },
+  });
+
+  const reset = useResetTenantDatabase({
+    mutation: {
+      onSuccess: (res) => {
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetStorageUsageQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetAnalyticsSummaryQueryKey() });
+        qc.invalidateQueries({ queryKey: getListTenantResetAuditQueryKey() });
+        setFinalOpen(false);
+        setOpen(false);
+        setConfirmText("");
+        toast({
+          title: "Database tenant direset",
+          description: `${res.chats} chat, ${res.messages} pesan & ${res.files} file dihapus permanen.`,
+        });
+      },
+      onError: (err: any) => {
+        setFinalOpen(false);
+        toast({
+          title: "Gagal mereset database tenant",
+          description: err?.data?.error ?? err?.message ?? "Coba lagi.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  if (!isSuperAdmin) return null;
+
+  const confirmed = confirmText.trim().toUpperCase() === RESET_CONFIRM_WORD;
+  const busy = reset.isPending;
 
   return (
     <Card className="border-destructive/40">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2 text-destructive">
           <AlertTriangle className="w-4 h-4" />
-          Zona Berbahaya — Reset Database Chat
+          Zona Berbahaya — Reset Database Tenant
         </CardTitle>
         <CardDescription className="text-xs">
-          Menghapus <strong>seluruh riwayat chat dan pesan</strong> di semua
-          channel akun Anda secara permanen. Channel, kontak, label, dan
+          Menghapus <strong>seluruh data operasional</strong> akun Anda secara
+          permanen: chat &amp; pesan, label kontak, analitik, log penggunaan AI,
+          dan semua file yang diunggah. Akun, langganan, channel, produk, dan
           pengaturan tetap aman. Tindakan ini tidak bisa dibatalkan.
         </CardDescription>
       </CardHeader>
@@ -140,7 +350,7 @@ function DangerZoneCard() {
           {usageLoading ? (
             <Skeleton className="h-4 w-40" />
           ) : (
-            <span data-testid="text-purge-usage">
+            <span data-testid="text-reset-usage">
               Saat ini tersimpan{" "}
               <strong className="text-foreground">
                 {usage?.chatCount ?? 0}
@@ -161,75 +371,138 @@ function DangerZoneCard() {
           type="button"
           variant="destructive"
           size="sm"
-          data-testid="button-open-purge"
-          disabled={(usage?.chatCount ?? 0) === 0}
+          data-testid="button-open-reset"
           onClick={() => {
             setConfirmText("");
             setOpen(true);
           }}
         >
           <Trash2 className="w-4 h-4" />
-          Reset Database Chat
+          Reset Database Tenant
         </Button>
-        {(usage?.chatCount ?? 0) === 0 && !usageLoading && (
-          <p className="text-[11px] text-muted-foreground">
-            Belum ada chat untuk dihapus.
-          </p>
+
+        {auditLog && auditLog.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              Riwayat Reset
+            </p>
+            <div className="rounded-md border border-border divide-y divide-border">
+              {auditLog.slice(0, 5).map((entry) => (
+                <div
+                  key={entry.id}
+                  data-testid={`row-reset-audit-${entry.id}`}
+                  className="flex items-start justify-between gap-3 px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="text-foreground">
+                      {new Date(entry.createdAt).toLocaleString("id-ID", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </div>
+                    <div className="text-muted-foreground truncate">
+                      {entry.performedByEmail ?? "—"}
+                    </div>
+                  </div>
+                  <div className="text-right text-muted-foreground whitespace-nowrap">
+                    {resetTotal(entry.summary)} data · {entry.summary.files} file
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </CardContent>
 
+      {/* Step 1: typed-word gate */}
       <AlertDialog
         open={open}
         onOpenChange={(o) => {
-          if (!purge.isPending) setOpen(o);
+          if (!busy) setOpen(o);
         }}
       >
-        <AlertDialogContent data-testid="dialog-purge-confirm">
+        <AlertDialogContent data-testid="dialog-reset-confirm">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="w-5 h-5" />
-              Hapus semua data chat?
+              Reset seluruh database tenant?
             </AlertDialogTitle>
             <AlertDialogDescription>
               Ini akan menghapus permanen{" "}
-              <strong>{usage?.chatCount ?? 0} chat</strong> dan{" "}
-              <strong>{usage?.messageCount ?? 0} pesan</strong> di seluruh
-              channel akun Anda ({formatBytes(usage?.estimatedBytes)}). Data
-              yang dihapus tidak dapat dipulihkan.
+              <strong>{usage?.chatCount ?? 0} chat</strong>,{" "}
+              <strong>{usage?.messageCount ?? 0} pesan</strong>, label kontak,
+              analitik, log AI, dan semua file ({formatBytes(usage?.estimatedBytes)})
+              di seluruh channel akun Anda. Data yang dihapus tidak dapat
+              dipulihkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <div className="space-y-2">
             <label className="text-xs text-muted-foreground">
-              Ketik <strong className="text-foreground">{PURGE_CONFIRM_WORD}</strong>{" "}
-              untuk mengonfirmasi.
+              Ketik{" "}
+              <strong className="text-foreground">{RESET_CONFIRM_WORD}</strong>{" "}
+              untuk melanjutkan.
             </label>
             <Input
               autoFocus
-              data-testid="input-purge-confirm"
+              data-testid="input-reset-confirm"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              placeholder={PURGE_CONFIRM_WORD}
+              placeholder={RESET_CONFIRM_WORD}
               className="h-9 text-sm"
-              disabled={purge.isPending}
             />
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel
-              data-testid="button-cancel-purge"
-              disabled={purge.isPending}
-            >
+            <AlertDialogCancel data-testid="button-cancel-reset">
               Batal
             </AlertDialogCancel>
             <Button
               type="button"
               variant="destructive"
-              data-testid="button-confirm-purge"
-              disabled={!confirmed || purge.isPending}
-              onClick={() => purge.mutate()}
+              data-testid="button-continue-reset"
+              disabled={!confirmed}
+              onClick={() => setFinalOpen(true)}
             >
-              {purge.isPending ? (
+              <Trash2 className="w-4 h-4" />
+              Lanjutkan
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Step 2: final irreversible confirmation */}
+      <AlertDialog
+        open={finalOpen}
+        onOpenChange={(o) => {
+          if (!busy) setFinalOpen(o);
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-reset-final">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Anda benar-benar yakin?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Ini adalah langkah terakhir. Setelah ditekan, seluruh data
+              operasional tenant akan langsung dihapus permanen dan{" "}
+              <strong>tidak bisa dikembalikan</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-reset-final" disabled={busy}>
+              Batal
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              data-testid="button-confirm-reset"
+              disabled={busy}
+              onClick={() => reset.mutate()}
+            >
+              {busy ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Trash2 className="w-4 h-4" />

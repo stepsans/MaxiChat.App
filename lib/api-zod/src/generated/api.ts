@@ -239,6 +239,8 @@ export const AdminListPlansResponseItem = zod.object({
   "quotaUsers": zod.number().describe('Included team-member seats (parent excluded).'),
   "quotaChannels": zod.number().describe('Included channels.'),
   "quotaTokens": zod.number().describe('Included AI tokens per period.'),
+  "quotaStorageBytes": zod.number().describe('Included Object Storage allowance, in bytes.'),
+  "retentionLimitDays": zod.number().nullish().describe('Max data-retention period (days) a tenant may select; null = unlimited.'),
   "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
   "sortOrder": zod.number(),
   "createdAt": zod.coerce.date(),
@@ -267,6 +269,9 @@ export const adminCreatePlanBodyQuotaChannelsMin = 0;
 
 export const adminCreatePlanBodyQuotaTokensMin = 0;
 
+export const adminCreatePlanBodyQuotaStorageBytesMin = 0;
+
+
 export const adminCreatePlanBodySortOrderMin = 0;
 
 
@@ -280,6 +285,8 @@ export const AdminCreatePlanBody = zod.object({
   "quotaUsers": zod.number().min(adminCreatePlanBodyQuotaUsersMin),
   "quotaChannels": zod.number().min(adminCreatePlanBodyQuotaChannelsMin),
   "quotaTokens": zod.number().min(adminCreatePlanBodyQuotaTokensMin),
+  "quotaStorageBytes": zod.number().min(adminCreatePlanBodyQuotaStorageBytesMin),
+  "retentionLimitDays": zod.number().min(1).nullish(),
   "isActive": zod.boolean().optional(),
   "sortOrder": zod.number().min(adminCreatePlanBodySortOrderMin).optional()
 })
@@ -305,6 +312,9 @@ export const adminUpdatePlanBodyQuotaChannelsMin = 0;
 
 export const adminUpdatePlanBodyQuotaTokensMin = 0;
 
+export const adminUpdatePlanBodyQuotaStorageBytesMin = 0;
+
+
 export const adminUpdatePlanBodySortOrderMin = 0;
 
 
@@ -317,6 +327,8 @@ export const AdminUpdatePlanBody = zod.object({
   "quotaUsers": zod.number().min(adminUpdatePlanBodyQuotaUsersMin).optional(),
   "quotaChannels": zod.number().min(adminUpdatePlanBodyQuotaChannelsMin).optional(),
   "quotaTokens": zod.number().min(adminUpdatePlanBodyQuotaTokensMin).optional(),
+  "quotaStorageBytes": zod.number().min(adminUpdatePlanBodyQuotaStorageBytesMin).optional(),
+  "retentionLimitDays": zod.number().min(1).nullish(),
   "isActive": zod.boolean().optional(),
   "sortOrder": zod.number().min(adminUpdatePlanBodySortOrderMin).optional()
 }).describe('Partial update. The plan key is immutable and cannot be changed here.')
@@ -331,6 +343,8 @@ export const AdminUpdatePlanResponse = zod.object({
   "quotaUsers": zod.number().describe('Included team-member seats (parent excluded).'),
   "quotaChannels": zod.number().describe('Included channels.'),
   "quotaTokens": zod.number().describe('Included AI tokens per period.'),
+  "quotaStorageBytes": zod.number().describe('Included Object Storage allowance, in bytes.'),
+  "retentionLimitDays": zod.number().nullish().describe('Max data-retention period (days) a tenant may select; null = unlimited.'),
   "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
   "sortOrder": zod.number(),
   "createdAt": zod.coerce.date(),
@@ -355,9 +369,9 @@ export const AdminDeletePlanResponse = zod.object({
  */
 export const AdminListAddonsResponseItem = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['token', 'channel', 'user_seat']).describe('What this add-on tops up.'),
+  "type": zod.enum(['token', 'channel', 'user_seat', 'storage']).describe('What this add-on tops up.'),
   "name": zod.string(),
-  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).'),
+  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat, or bytes for storage).'),
   "priceIdr": zod.number().describe('Price for one unit, in whole Rupiah.'),
   "isActive": zod.boolean(),
   "sortOrder": zod.number(),
@@ -380,7 +394,7 @@ export const adminCreateAddonBodySortOrderMin = 0;
 
 
 export const AdminCreateAddonBody = zod.object({
-  "type": zod.enum(['token', 'channel', 'user_seat']),
+  "type": zod.enum(['token', 'channel', 'user_seat', 'storage']),
   "name": zod.string().min(1).max(adminCreateAddonBodyNameMax),
   "unitAmount": zod.number().min(1),
   "priceIdr": zod.number().min(adminCreateAddonBodyPriceIdrMin),
@@ -406,7 +420,7 @@ export const adminUpdateAddonBodySortOrderMin = 0;
 
 
 export const AdminUpdateAddonBody = zod.object({
-  "type": zod.enum(['token', 'channel', 'user_seat']).optional(),
+  "type": zod.enum(['token', 'channel', 'user_seat', 'storage']).optional(),
   "name": zod.string().min(1).max(adminUpdateAddonBodyNameMax).optional(),
   "unitAmount": zod.number().min(1).optional(),
   "priceIdr": zod.number().min(adminUpdateAddonBodyPriceIdrMin).optional(),
@@ -416,9 +430,9 @@ export const AdminUpdateAddonBody = zod.object({
 
 export const AdminUpdateAddonResponse = zod.object({
   "id": zod.number(),
-  "type": zod.enum(['token', 'channel', 'user_seat']).describe('What this add-on tops up.'),
+  "type": zod.enum(['token', 'channel', 'user_seat', 'storage']).describe('What this add-on tops up.'),
   "name": zod.string(),
-  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).'),
+  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat, or bytes for storage).'),
   "priceIdr": zod.number().describe('Price for one unit, in whole Rupiah.'),
   "isActive": zod.boolean(),
   "sortOrder": zod.number(),
@@ -577,7 +591,8 @@ export const GetMyBillingResponse = zod.object({
   "createdAt": zod.coerce.date()
 }),
   "usage": zod.object({
-  "storageBytes": zod.number().describe('Chat-storage footprint in bytes.'),
+  "storageBytes": zod.number().describe('Chat-storage (DB) footprint in bytes — legacy metered metric.'),
+  "mediaStorageBytes": zod.number().describe('Object Storage footprint in bytes (SUM of media_objects) — measured against the storage quota.'),
   "childUserCount": zod.number().describe('Number of invited child users (parent excluded).'),
   "channelCount": zod.number(),
   "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
@@ -637,6 +652,8 @@ export const GetBillingCatalogResponse = zod.object({
   "quotaUsers": zod.number().describe('Included team-member seats (parent excluded).'),
   "quotaChannels": zod.number().describe('Included channels.'),
   "quotaTokens": zod.number().describe('Included AI tokens per period.'),
+  "quotaStorageBytes": zod.number().describe('Included Object Storage allowance, in bytes.'),
+  "retentionLimitDays": zod.number().nullish().describe('Max data-retention period (days) a tenant may select; null = unlimited.'),
   "isActive": zod.boolean().describe('Inactive plans are hidden from self-serve checkout but kept for existing tenants.'),
   "sortOrder": zod.number(),
   "createdAt": zod.coerce.date(),
@@ -644,9 +661,9 @@ export const GetBillingCatalogResponse = zod.object({
 })).describe('Active plans, ordered by sortOrder.'),
   "addons": zod.array(zod.object({
   "id": zod.number(),
-  "type": zod.enum(['token', 'channel', 'user_seat']).describe('What this add-on tops up.'),
+  "type": zod.enum(['token', 'channel', 'user_seat', 'storage']).describe('What this add-on tops up.'),
   "name": zod.string(),
-  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat).'),
+  "unitAmount": zod.number().describe('How much of the resource one purchase grants (e.g. 100000 tokens, 1 channel, 1 seat, or bytes for storage).'),
   "priceIdr": zod.number().describe('Price for one unit, in whole Rupiah.'),
   "isActive": zod.boolean(),
   "sortOrder": zod.number(),
@@ -680,14 +697,55 @@ export const GetMyQuotaResponse = zod.object({
   "tokenLimit": zod.number().describe('AI-token plafon for the period (plan baseline + add-on top-ups).'),
   "channelLimit": zod.number(),
   "userLimit": zod.number(),
+  "storageLimit": zod.number().describe('Object Storage plafon in bytes (plan baseline + add-on top-ups).'),
   "periodStart": zod.coerce.date().nullable(),
   "periodEnd": zod.coerce.date().nullable(),
   "usage": zod.object({
-  "storageBytes": zod.number().describe('Chat-storage footprint in bytes.'),
+  "storageBytes": zod.number().describe('Chat-storage (DB) footprint in bytes — legacy metered metric.'),
+  "mediaStorageBytes": zod.number().describe('Object Storage footprint in bytes (SUM of media_objects) — measured against the storage quota.'),
   "childUserCount": zod.number().describe('Number of invited child users (parent excluded).'),
   "channelCount": zod.number(),
   "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
 })
+})
+
+
+/**
+ * Returns the caller tenant's chosen retention periods (days; null = unlimited) plus the maximum the active plan allows. Team members resolve to their owner.
+ * @summary The tenant's data-retention policy and the plan cap
+ */
+export const GetRetentionResponse = zod.object({
+  "chatDays": zod.number().nullable().describe('Max age (days) for chat messages; null = unlimited.'),
+  "mediaDays": zod.number().nullable().describe('Max age (days) for stored media; null = unlimited.'),
+  "logDays": zod.number().nullable().describe('Max age (days) for AI usage logs; null = unlimited.'),
+  "analyticsDays": zod.number().nullable().describe('Max age (days) for usage\/analytics snapshots; null = unlimited.'),
+  "planLimitDays": zod.number().nullable().describe('Plan-imposed cap on selectable retention (days); null = no cap.')
+})
+
+
+/**
+ * Sets the retention periods (days; null = unlimited). Each value is clamped server-side to the active plan's retention cap. Super admin only.
+ * @summary Update the tenant's data-retention policy
+ */
+
+
+
+
+
+
+export const UpdateRetentionBody = zod.object({
+  "chatDays": zod.number().min(1).nullish(),
+  "mediaDays": zod.number().min(1).nullish(),
+  "logDays": zod.number().min(1).nullish(),
+  "analyticsDays": zod.number().min(1).nullish()
+}).describe('Retention periods in days. null = unlimited (keep forever). Omitted fields are treated as null.')
+
+export const UpdateRetentionResponse = zod.object({
+  "chatDays": zod.number().nullable().describe('Max age (days) for chat messages; null = unlimited.'),
+  "mediaDays": zod.number().nullable().describe('Max age (days) for stored media; null = unlimited.'),
+  "logDays": zod.number().nullable().describe('Max age (days) for AI usage logs; null = unlimited.'),
+  "analyticsDays": zod.number().nullable().describe('Max age (days) for usage\/analytics snapshots; null = unlimited.'),
+  "planLimitDays": zod.number().nullable().describe('Plan-imposed cap on selectable retention (days); null = no cap.')
 })
 
 
@@ -798,8 +856,10 @@ export const AdminListBillingResponseItem = zod.object({
   "name": zod.string().nullish(),
   "status": zod.enum(['trial', 'active', 'expired', 'suspended']),
   "currentPeriodEnd": zod.coerce.date().nullish(),
+  "storageLimit": zod.number().describe('Object Storage plafon in bytes (plan baseline + add-on top-ups).'),
   "usage": zod.object({
-  "storageBytes": zod.number().describe('Chat-storage footprint in bytes.'),
+  "storageBytes": zod.number().describe('Chat-storage (DB) footprint in bytes — legacy metered metric.'),
+  "mediaStorageBytes": zod.number().describe('Object Storage footprint in bytes (SUM of media_objects) — measured against the storage quota.'),
   "childUserCount": zod.number().describe('Number of invited child users (parent excluded).'),
   "channelCount": zod.number(),
   "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
@@ -3337,6 +3397,42 @@ export const PurgeChatsResponse = zod.object({
   "deletedChats": zod.number(),
   "deletedMessages": zod.number()
 })
+
+
+/**
+ * @summary Wipe ALL of the current tenant's operational data — chats, messages, contact labels, analytics, AI usage logs, and uploaded files. Does NOT touch the account, subscription, plan, channels, or other tenants. Super admin only. Irreversible.
+ */
+export const ResetTenantDatabaseResponse = zod.object({
+  "chats": zod.number(),
+  "messages": zod.number(),
+  "contactLabels": zod.number(),
+  "labels": zod.number(),
+  "analytics": zod.number(),
+  "logs": zod.number(),
+  "media": zod.number(),
+  "files": zod.number()
+})
+
+
+/**
+ * @summary List recent tenant-database reset events for the current owner.
+ */
+export const ListTenantResetAuditResponseItem = zod.object({
+  "id": zod.number(),
+  "performedByEmail": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "summary": zod.object({
+  "chats": zod.number(),
+  "messages": zod.number(),
+  "contactLabels": zod.number(),
+  "labels": zod.number(),
+  "analytics": zod.number(),
+  "logs": zod.number(),
+  "media": zod.number(),
+  "files": zod.number()
+})
+})
+export const ListTenantResetAuditResponse = zod.array(ListTenantResetAuditResponseItem)
 
 
 /**
