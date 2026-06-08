@@ -50,6 +50,7 @@ import {
   ownReadFromMessageUpdate,
   outboundStatusFromReceiptUpdate,
   outboundStatusFromMessageUpdate,
+  outboundStatusFromMessageInfo,
   OUTBOUND_STATUS_RANK,
   type OwnReadSignal,
   type OutboundStatusSignal,
@@ -3314,6 +3315,14 @@ async function startBaileys(userId: number, channelId: number) {
             },
           );
           if (inserted) ingested++;
+          // Backfill outbound delivery/read ticks for messages we sent before
+          // live tick-tracking shipped (or while the socket was offline): the
+          // history row carries the last-known status on `msg.status`. The
+          // forward-only rank guard in applyOutboundStatusSignal ensures a
+          // stale/lower history status can never downgrade a live one, so this
+          // is safe whether the row was just inserted or already existed.
+          const outbound = outboundStatusFromMessageInfo(msg);
+          if (outbound) await applyOutboundStatusSignal(channelId, outbound);
         } catch (err) {
           logger.error({ err }, "Failed to ingest history message");
         }

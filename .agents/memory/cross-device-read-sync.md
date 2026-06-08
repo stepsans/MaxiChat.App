@@ -46,3 +46,16 @@ undo a read. Both directions are wired into the same `message-receipt.update` /
 `messages.update` listeners — inbound and outbound parsers run on each item independently.
 **Why:** a single event can be relevant to exactly one direction (fromMe gates it), so the
 two parser families are mutually exclusive by `key.fromMe` and never conflict.
+
+## Backfilling outbound ticks from history sync
+Live tick events only advance status going forward, so messages sent before the feature
+shipped (or while the socket was offline) stay a single grey check. Backfill rides the
+existing `messaging-history.set` pass: the history row is a raw `WAMessageInfo` whose
+last-known delivery/read state lives directly on `msg.status` (NOT under `update.status` like
+the live `messages.update` event). The db-free `outboundStatusFromMessageInfo({key,status})`
+parser reads it and the handler applies it through the SAME `applyOutboundStatusSignal`
+forward-only rank guard.
+**Why:** reusing the rank guard means a stale/lower history status can never downgrade a
+live `read`, and the history sync is already a bounded recent window so the backfill stays
+cheap with no extra query. No Baileys in-memory store exists, so reading an on-device receipt
+store on reconnect was not an option — history sync is the only replay source.

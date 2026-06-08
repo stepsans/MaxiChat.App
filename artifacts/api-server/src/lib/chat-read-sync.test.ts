@@ -6,6 +6,7 @@ import {
   ownReadFromReceiptUpdate,
   ownReadFromMessageUpdate,
   outboundStatusFromMessageUpdate,
+  outboundStatusFromMessageInfo,
   outboundStatusFromReceiptUpdate,
 } from "./chat-read-sync";
 
@@ -232,6 +233,73 @@ test("outboundStatusFromMessageUpdate ignores inbound msgs, SERVER_ACK, and miss
     outboundStatusFromMessageUpdate({
       key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "" },
       update: { status: 4 },
+    }),
+    null,
+  );
+});
+
+// ---- outboundStatusFromMessageInfo (messaging-history.set backfill, fromMe) ----
+
+test("outboundStatusFromMessageInfo maps history msg.status DELIVERY_ACK to delivered", () => {
+  const sig = outboundStatusFromMessageInfo({
+    key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "H1" },
+    status: 3,
+  });
+  assert.ok(sig);
+  assert.equal(sig?.remoteJid, "628111@s.whatsapp.net");
+  assert.equal(sig?.messageId, "H1");
+  assert.equal(sig?.status, "delivered");
+});
+
+test("outboundStatusFromMessageInfo maps history msg.status READ/PLAYED (numeric + string) to read", () => {
+  for (const status of [4, 5, "READ", "PLAYED"]) {
+    assert.equal(
+      outboundStatusFromMessageInfo({
+        key: { fromMe: true, remoteJid: "g@g.us", id: "H2" },
+        status,
+      })?.status,
+      "read",
+      `status ${status} should map to read`,
+    );
+  }
+});
+
+test("outboundStatusFromMessageInfo ignores inbound history msgs, SERVER_ACK/pending, and missing id", () => {
+  // inbound history message — not our outbound tick
+  assert.equal(
+    outboundStatusFromMessageInfo({
+      key: { fromMe: false, remoteJid: "628111@s.whatsapp.net", id: "H3" },
+      status: 4,
+    }),
+    null,
+  );
+  // SERVER_ACK / pending carry no delivered/read progress
+  assert.equal(
+    outboundStatusFromMessageInfo({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "H4" },
+      status: 2,
+    }),
+    null,
+  );
+  assert.equal(
+    outboundStatusFromMessageInfo({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "H5" },
+      status: 1,
+    }),
+    null,
+  );
+  // missing message id — can't key the per-message update
+  assert.equal(
+    outboundStatusFromMessageInfo({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "" },
+      status: 4,
+    }),
+    null,
+  );
+  // missing status entirely
+  assert.equal(
+    outboundStatusFromMessageInfo({
+      key: { fromMe: true, remoteJid: "628111@s.whatsapp.net", id: "H6" },
     }),
     null,
   );

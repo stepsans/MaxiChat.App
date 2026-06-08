@@ -231,6 +231,26 @@ export function outboundStatusFromMessageUpdate(item: {
   return { remoteJid: parts.remoteJid, messageId: parts.messageId, status };
 }
 
+// Derive an outbound-status signal from a raw Baileys `WAMessageInfo` (the
+// shape delivered by `messaging-history.set`, where the last-known delivery/read
+// state lives directly on `msg.status` rather than under `update.status`). Used
+// to BACKFILL outbound ticks for messages sent before live tick-tracking shipped
+// or while the socket was offline: on (re)connect history sync replays these
+// rows and this maps their persisted status onto our stored message. Returns
+// null for inbound messages and statuses with no delivered/read progress
+// (sent/pending/error). The caller applies it through the same forward-only rank
+// guard, so a stale/lower history status can never downgrade a live one.
+export function outboundStatusFromMessageInfo(item: {
+  key?: WaKeyLike;
+  status?: unknown;
+}): OutboundStatusSignal | null {
+  const parts = outboundKeyParts(item?.key);
+  if (!parts) return null;
+  const status = outboundStatusFromCode(item?.status);
+  if (!status) return null;
+  return { remoteJid: parts.remoteJid, messageId: parts.messageId, status };
+}
+
 // Derive an outbound-status signal from a Baileys `message-receipt.update` item
 // for our OWN messages. A read/played timestamp means the customer READ it; a
 // receipt timestamp alone means it was DELIVERED. Returns null when the receipt
