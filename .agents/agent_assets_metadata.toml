@@ -12,3 +12,9 @@ id = "i455B0kaqfw8iMXJcaxUg"
 uri = "file://.local/scan_demo/2_scanned.jpg"
 type = "image"
 title = "Hasil Scanner AI (sesudah)"
+
+[[outputs]]
+id = "914doBklc8GmA5drE5o2i"
+uri = "file://docs/billing-architecture-review.md"
+type = "text"
+title = "MaxiChat — Enterprise Billing & Subscription Architecture Review"

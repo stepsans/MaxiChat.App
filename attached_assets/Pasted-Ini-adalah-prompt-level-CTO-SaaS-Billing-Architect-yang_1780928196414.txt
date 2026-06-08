@@ -1,0 +1,479 @@
+Ini adalah prompt level **CTO / SaaS Billing Architect** yang jauh lebih baik dibanding hanya meminta implementasi fitur. Tujuannya agar AI melakukan **audit bisnis, audit teknis, simulasi keuangan, analisis risiko, dan desain billing enterprise-grade** sebelum menulis satu baris kode pun.
+
+# MaxiChat Enterprise Billing & Subscription Architecture Review
+
+IMPORTANT:
+
+Jangan membuat kode.
+
+Jangan membuat migration.
+
+Jangan mengubah database.
+
+Jangan mengubah logic aplikasi.
+
+Mode saat ini adalah:
+
+ANALISIS BISNIS
+ANALISIS BILLING
+ANALISIS FINANSIAL
+ANALISIS AKUNTANSI
+ANALISIS PAJAK
+ANALISIS RISIKO
+DESAIN ARSITEKTUR
+
+Saya ingin Anda bertindak sebagai:
+
+* SaaS Billing Architect
+* Subscription System Expert
+* FinOps Consultant
+* Revenue Operations Consultant
+* Enterprise ERP Consultant
+* CFO SaaS Advisor
+
+Lakukan analisis mendalam terhadap seluruh sistem billing MaxiChat.
+
+Tujuannya:
+
+Mendesain sistem billing yang mampu digunakan selama bertahun-tahun tanpa perlu redesign besar.
+
+Fokus pada:
+
+* Profitability
+* Scalability
+* Auditability
+* Tax Compliance
+* Revenue Recognition
+* Customer Experience
+
+---
+
+# BUSINESS MODEL
+
+MaxiChat adalah SaaS Omnichannel + AI.
+
+Revenue berasal dari:
+
+1. Subscription Plan
+2. AI Token
+3. User Seat
+4. Channel Add-On
+5. Storage Add-On
+6. Future AI Services
+7. Future Marketplace Services
+
+---
+
+# BAGIAN 1
+
+# AUDIT BILLING MODEL
+
+Analisa:
+
+Apakah model berikut sudah tepat:
+
+* Basic
+* Growth
+* Business
+* Enterprise
+
+Dengan kuota:
+
+* Token
+* User
+* Channel
+* Storage
+
+Tentukan:
+
+1. Kelebihan
+2. Kekurangan
+3. Risiko
+4. Revenue Leakage
+5. Abuse Scenario
+
+Berikan rekomendasi terbaik.
+
+---
+
+# BAGIAN 2
+
+# AI TOKEN ECONOMICS
+
+Analisa:
+
+Bagaimana perusahaan SaaS AI modern menjual token.
+
+Bandingkan:
+
+A. Per Token
+
+B. Per Credit
+
+C. Per Paket
+
+D. Unlimited Fair Usage
+
+E. Hybrid
+
+Berikan rekomendasi terbaik untuk MaxiChat.
+
+Jelaskan:
+
+* Profitability
+* Simplicity
+* Customer Understanding
+* Scalability
+
+---
+
+# BAGIAN 3
+
+# STORAGE BILLING STRATEGY
+
+Analisa storage secara mendalam.
+
+Storage akan digunakan untuk:
+
+* Chat History
+* WhatsApp Media
+* Image
+* PDF
+* Voice Note
+* Video
+* AI Knowledge Base
+* Future Attachments
+
+Tentukan:
+
+1. Cara menghitung storage
+2. Apakah realtime atau snapshot
+3. Apakah menggunakan peak storage
+4. Apakah menggunakan average storage
+5. Apakah menggunakan end-of-month storage
+
+Berikan rekomendasi terbaik.
+
+---
+
+# BAGIAN 4
+
+# DATA RETENTION POLICY
+
+Analisa retensi data.
+
+Pertanyaan:
+
+Apakah customer boleh menyimpan data selamanya?
+
+Atau:
+
+* 3 bulan
+* 6 bulan
+* 1 tahun
+* 2 tahun
+* unlimited
+
+Analisa:
+
+1. Biaya storage
+2. Biaya backup
+3. Risiko hukum
+4. GDPR readiness
+5. Scalability
+
+Berikan rekomendasi.
+
+---
+
+# BAGIAN 5
+
+# ARCHIVE STRATEGY
+
+Analisa:
+
+Apakah data lama:
+
+A. Dihapus
+
+B. Diarsipkan
+
+C. Dipindah ke cold storage
+
+D. Tetap online
+
+Buat strategi lifecycle data:
+
+Hot Storage
+Warm Storage
+Cold Storage
+
+Lengkap dengan:
+
+* biaya
+* performa
+* pengalaman pengguna
+
+---
+
+# BAGIAN 6
+
+# PRORATION ENGINE
+
+Analisa semua skenario:
+
+1. Upgrade Plan
+2. Downgrade Plan
+3. Add User
+4. Remove User
+5. Add Channel
+6. Remove Channel
+7. Add Storage
+8. Remove Storage
+
+Buat formula yang paling fair.
+
+Bandingkan:
+
+* Stripe
+* Chargebee
+* Paddle
+* Recurly
+
+Berikan rekomendasi terbaik.
+
+---
+
+# BAGIAN 7
+
+# CUT OFF & BILLING CYCLE
+
+Saat ini target:
+
+Cut Off = Tanggal 1
+
+Analisa:
+
+Apakah lebih baik:
+
+A. Fixed Date Billing
+
+atau
+
+B. Anniversary Billing
+
+Bandingkan:
+
+* Operasional
+* Akuntansi
+* Revenue Reporting
+* Customer Support
+
+Berikan rekomendasi.
+
+---
+
+# BAGIAN 8
+
+# TAX & COMPLIANCE
+
+Asumsi customer Indonesia.
+
+Analisa:
+
+1. PPN 11%
+2. Faktur Pajak
+3. B2B
+4. B2C
+5. Cross Border
+
+Tentukan:
+
+* apa yang harus disimpan
+* kapan pajak dihitung
+* bagaimana invoice harus dibuat
+
+Berikan desain yang siap untuk berkembang.
+
+---
+
+# BAGIAN 9
+
+# REVENUE RECOGNITION
+
+Analisa:
+
+Pendapatan harus diakui kapan?
+
+Contoh:
+
+Customer bayar tahunan.
+
+Rp 12.000.000
+
+Apakah:
+
+A. Diakui sekaligus
+
+atau
+
+B. Diakui bulanan
+
+Jelaskan menurut best practice SaaS.
+
+---
+
+# BAGIAN 10
+
+# PAYMENT FAILURE
+
+Analisa:
+
+Jika pembayaran gagal:
+
+* kartu gagal
+* VA expired
+* transfer tidak masuk
+
+Apa yang harus terjadi?
+
+Buat:
+
+* grace period
+* dunning process
+* suspension process
+* termination process
+
+---
+
+# BAGIAN 11
+
+# CREDIT SYSTEM
+
+Analisa:
+
+Apakah perlu:
+
+* Credit Balance
+* Wallet Balance
+* Promotional Credit
+* Referral Credit
+
+Jika ya:
+
+Bagaimana desainnya?
+
+---
+
+# BAGIAN 12
+
+# BOOSTER TOKEN
+
+Analisa:
+
+Booster Token terbaik:
+
+A. Hangus setiap bulan
+
+B. Carry Forward
+
+C. Expiry 90 Hari
+
+D. Expiry 1 Tahun
+
+Bandingkan:
+
+* profit
+* fairness
+* accounting
+* customer satisfaction
+
+---
+
+# BAGIAN 13
+
+# BILLING DASHBOARD
+
+Desain dashboard customer.
+
+Apa yang harus ditampilkan:
+
+* Current Usage
+* Forecast Usage
+* Estimated Overage
+* Remaining Token
+* Remaining Storage
+* Remaining User Seat
+* Remaining Channel
+
+Berikan desain ideal.
+
+---
+
+# BAGIAN 14
+
+# FINANCIAL REPORTING
+
+Desain dashboard internal.
+
+Harus ada:
+
+* MRR
+* ARR
+* ARPA
+* ARPU
+* Churn
+* Expansion Revenue
+* Contraction Revenue
+* LTV
+* CAC Payback
+
+Jelaskan cara menghitung.
+
+---
+
+# BAGIAN 15
+
+# RISK ANALYSIS
+
+Identifikasi seluruh risiko:
+
+* Revenue Leakage
+* Double Billing
+* Missing Invoice
+* Incorrect Proration
+* Tax Issues
+* Data Loss
+* Storage Explosion
+* AI Cost Explosion
+
+Buat mitigasinya.
+
+---
+
+# OUTPUT YANG SAYA INGINKAN
+
+Berikan laporan lengkap:
+
+1. Executive Summary
+2. Business Recommendation
+3. Billing Recommendation
+4. Tax Recommendation
+5. Storage Recommendation
+6. Retention Recommendation
+7. Revenue Recognition Recommendation
+8. Proration Recommendation
+9. Dashboard Recommendation
+10. Risk Analysis
+11. Enterprise Architecture Recommendation
+12. Roadmap Implementasi Prioritas Tinggi → Rendah
+
+Jangan membuat kode.
+
+Jangan membuat migration.
+
+Jangan mengubah aplikasi.
+
+Fokus pada desain sistem billing SaaS kelas enterprise yang mampu mendukung pertumbuhan MaxiChat selama 5–10 tahun ke depan.
+
+Prompt ini akan menghasilkan analisis yang jauh lebih matang daripada sekadar "buat sistem billing", karena mencakup aspek produk, keuangan, pajak, storage, retensi data, compliance, revenue recognition, dan risiko operasional sejak awal.
