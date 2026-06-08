@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   integer,
+  boolean,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -46,6 +47,11 @@ export const usersTable = pgTable("users", {
   // create. Hard-coded limits: basic=2, pro=5, business=15. Inherited from
   // parent for invited members but only the parent's value is used.
   plan: text("plan").notNull().default("basic"),
+  // RBAC override granting an "Owner Infinity Plan": unlimited users/channels/
+  // AI tokens/database/storage, never read-only, never billed. Scoped strictly
+  // to the individual account row (default false) so no other tenant is
+  // affected. Resolved everywhere through the single `isInfinityOwner` helper.
+  isInfinityOwner: boolean("is_infinity_owner").notNull().default(false),
   // Updated by a frontend heartbeat (every ~30s while the tab is active).
   // Used as the "online" signal for round-robin chat assignment: an agent
   // counts as online if lastSeenAt > now - 2 minutes.

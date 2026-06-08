@@ -28,4 +28,6 @@ export interface TenantQuotaInfo {
   /** @nullable */
   periodEnd: Date | null;
   usage: BillingUsage;
+  /** True for an Owner Infinity account: every limit is unlimited. The client renders ∞ and skips progress bars / near-limit warnings. */
+  unlimited: boolean;
 }

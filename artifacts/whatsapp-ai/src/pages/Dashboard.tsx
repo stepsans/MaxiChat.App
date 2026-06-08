@@ -98,6 +98,7 @@ function QuotaBar({
   format,
   unit,
   testId,
+  unlimited = false,
 }: {
   label: string;
   icon: React.ElementType;
@@ -106,8 +107,10 @@ function QuotaBar({
   format: (n: number) => string;
   unit?: string;
   testId: string;
+  unlimited?: boolean;
 }) {
-  const hasLimit = limit > 0;
+  // Owner Infinity: render ∞ with no progress bar / near-limit warning.
+  const hasLimit = !unlimited && limit > 0;
   const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const warn = hasLimit && pct >= 80;
   const barColor = warn ? "bg-amber-500" : "bg-cyan-500";
@@ -126,26 +129,34 @@ function QuotaBar({
         </span>
         <span className="text-xs text-muted-foreground tabular-nums">
           {format(used)}
-          {hasLimit ? ` / ${format(limit)}` : ` / ∞`}
+          {unlimited ? " / ∞" : hasLimit ? ` / ${format(limit)}` : ` / ∞`}
           {unit ? ` ${unit}` : ""}
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("h-full rounded-full transition-all", barColor)}
-          style={{ width: `${hasLimit ? pct : 0}%` }}
-        />
-      </div>
-      {hasLimit && (
-        <p
-          className={cn(
-            "text-[11px] mt-1 tabular-nums",
-            warn ? "text-amber-500" : "text-muted-foreground"
-          )}
-        >
-          {pct}% terpakai
-          {warn ? " — mendekati batas kuota" : ""}
+      {unlimited ? (
+        <p className="text-[11px] mt-1 text-cyan-500" data-testid={`${testId}-unlimited`}>
+          Tidak terbatas
         </p>
+      ) : (
+        <>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full transition-all", barColor)}
+              style={{ width: `${hasLimit ? pct : 0}%` }}
+            />
+          </div>
+          {hasLimit && (
+            <p
+              className={cn(
+                "text-[11px] mt-1 tabular-nums",
+                warn ? "text-amber-500" : "text-muted-foreground"
+              )}
+            >
+              {pct}% terpakai
+              {warn ? " — mendekati batas kuota" : ""}
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -436,6 +447,7 @@ export default function Dashboard() {
                   limit={quota.storageLimit}
                   format={(n) => formatBytes(n)}
                   testId="quota-storage"
+                  unlimited={quota.unlimited}
                 />
                 <QuotaBar
                   label="Pengguna"
@@ -445,6 +457,7 @@ export default function Dashboard() {
                   format={(n) => `${n}`}
                   unit="user"
                   testId="quota-users"
+                  unlimited={quota.unlimited}
                 />
                 <QuotaBar
                   label="Channel"
@@ -454,6 +467,7 @@ export default function Dashboard() {
                   format={(n) => `${n}`}
                   unit="channel"
                   testId="quota-channels"
+                  unlimited={quota.unlimited}
                 />
                 <QuotaBar
                   label="Token AI"
@@ -463,6 +477,7 @@ export default function Dashboard() {
                   format={(n) => n.toLocaleString("id-ID")}
                   unit="token"
                   testId="quota-tokens"
+                  unlimited={quota.unlimited}
                 />
               </div>
             )}

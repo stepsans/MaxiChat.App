@@ -6099,7 +6099,7 @@ components:
 
     TenantBilling:
       type: object
-      required: [subscription, usage, pricing, breakdown]
+      required: [subscription, usage, pricing, breakdown, unlimited, planLabel]
       properties:
         subscription:
           $ref: "#/components/schemas/SubscriptionInfo"
@@ -6109,6 +6109,17 @@ components:
           $ref: "#/components/schemas/PricingConfig"
         breakdown:
           $ref: "#/components/schemas/BillBreakdown"
+        unlimited:
+          type: boolean
+          description: >-
+            True for an Owner Infinity account (unlimited everything, never
+            read-only, never billed). The client renders the plan label and
+            suppresses the metered-charge breakdown, expiry and upsell.
+        planLabel:
+          type: ["string", "null"]
+          description: >-
+            Display name of the tenant's plan when special-cased (e.g. "Owner
+            Infinity"); null for ordinary metered tenants.
 
     AdminTenantBilling:
       type: object
@@ -6194,6 +6205,7 @@ components:
           periodStart,
           periodEnd,
           usage,
+          unlimited,
         ]
       properties:
         planId:
@@ -6222,6 +6234,11 @@ components:
           format: date-time
         usage:
           $ref: "#/components/schemas/BillingUsage"
+        unlimited:
+          type: boolean
+          description: >-
+            True for an Owner Infinity account: every limit is unlimited. The
+            client renders ∞ and skips progress bars / near-limit warnings.
 
     RetentionInput:
       type: object

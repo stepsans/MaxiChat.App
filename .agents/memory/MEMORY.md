@@ -59,3 +59,4 @@
 - [Flow node-data zod strips unknown keys](flow-node-data-zod-strip.md) — api-server's hand-written FlowNodeSchema.data must mirror OpenAPI/FlowEditor or new node.data fields vanish on save.
 - [Manual vs Xendit settlement boundary](manual-vs-xendit-settlement-boundary.md) — shared maxichat-pay-<id> externalId means the Xendit webhook MUST scope lookups to provider='xendit'; poller is the only manual settler; manual checkout fails-fast on unconfigured Sheet/append.
 - [Tenant reset ordering](tenant-reset-ordering.md) — wipe-tenant must sweep Object Storage prefix BEFORE the DB tx (blobs-first = recoverable orphan rows not orphan blobs); all DB deletes + audit insert in ONE tx.
+- [Owner Infinity Plan](infinity-owner-plan.md) — single unlimited/never-billed owner is an RBAC boolean flag (not a catalog plan) resolved everywhere via isInfinityOwner(); bypass lives in getEffectiveSubscription chokepoint.

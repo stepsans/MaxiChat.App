@@ -26,6 +26,7 @@ const SEED_USERS: ReadonlyArray<{
   password: string;
   role: "admin" | "user";
   ownerPhone?: string;
+  isInfinityOwner?: boolean;
 }> = [
   {
     email: "stephensan86@gmail.com",
@@ -34,6 +35,10 @@ const SEED_USERS: ReadonlyArray<{
     // pinned so it survives the auth migration.
     role: "admin",
     ownerPhone: "628111198000",
+    // Owner Infinity Plan: unlimited everything, never read-only / billed.
+    // Also applied to the live DB via raw psql; set here so a fresh environment
+    // (re-seed) grants it too. Only ever true for this single account.
+    isInfinityOwner: true,
   },
   { email: "jc171088@gmail.com", password: "AdminMaxipro$", role: "user" },
   { email: "test@maxipro.co.id", password: "AdminMaxipro$", role: "user" },
@@ -105,6 +110,7 @@ export async function runSeed(): Promise<void> {
         role: seed.role,
         status: "active",
         approvedAt: new Date(),
+        isInfinityOwner: seed.isInfinityOwner ?? false,
       })
       // Defend against a concurrent insert (two boots racing) — fall back
       // to reading the row that won.

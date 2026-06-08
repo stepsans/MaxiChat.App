@@ -22,6 +22,7 @@ import {
   type StoredSubscriptionStatus,
 } from "./billing-engine";
 import { computeBillingPeriod } from "./billing-period";
+import { isInfinityOwner } from "./infinity-owner";
 import { logger } from "./logger";
 
 // New tenants get a 7-day trial; after that they fall into read-only until an
@@ -152,6 +153,14 @@ export async function getEffectiveSubscription(
   ownerId: number
 ): Promise<EffectiveSubscription> {
   const info = await getOrCreateSubscription(ownerId);
+  // Owner Infinity accounts are never read-only and never expire: force an
+  // "active" effective status regardless of the stored period. This is the
+  // single derivation isOwnerReadOnly (and thus enforce-subscription, the AI
+  // auto-reply gate, and billing/me) all read from, so the bypass lands
+  // everywhere from one place.
+  if (await isInfinityOwner(ownerId)) {
+    return { ...info, effectiveStatus: "active", readOnly: false };
+  }
   const effectiveStatus = computeEffectiveStatus(
     info.status,
     info.currentPeriodEnd,

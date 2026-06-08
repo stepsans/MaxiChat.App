@@ -8,6 +8,7 @@ import { and, eq, ne, or, sql } from "drizzle-orm";
 import { db, usersTable, plansTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { touchHeartbeat } from "../lib/round-robin";
+import { isInfinityOwner } from "../lib/infinity-owner";
 import { MEDIA_DIR } from "./whatsapp";
 
 const router = Router();
@@ -222,13 +223,16 @@ router.post("/", async (req, res): Promise<void> => {
     }
 
     // Plan-limit gate — count *current* members and compare to plan cap.
-    const used = await countTeam(owner.ownerId);
-    const maxAgents = await planUserLimit(owner.plan);
-    if (used >= maxAgents) {
-      res.status(409).json({
-        error: `Kuota paket ${owner.plan} sudah penuh (${used}/${maxAgents}). Upgrade paket untuk menambah agen.`,
-      });
-      return;
+    // Owner Infinity accounts have an unlimited user quota, so skip the gate.
+    if (!(await isInfinityOwner(owner.ownerId))) {
+      const used = await countTeam(owner.ownerId);
+      const maxAgents = await planUserLimit(owner.plan);
+      if (used >= maxAgents) {
+        res.status(409).json({
+          error: `Kuota paket ${owner.plan} sudah penuh (${used}/${maxAgents}). Upgrade paket untuk menambah agen.`,
+        });
+        return;
+      }
     }
 
     // Pre-check email uniqueness so the user sees a clear message even when

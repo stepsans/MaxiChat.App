@@ -1,5 +1,6 @@
 import { db, retentionSettingsTable, tenantQuotaTable, plansTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { isInfinityOwner } from "./infinity-owner";
 
 // The four retention knobs a tenant can configure. Each is a max age in DAYS,
 // or null = unlimited (keep forever).
@@ -40,6 +41,8 @@ export async function getRetentionPolicy(
 export async function getPlanRetentionCap(
   ownerId: number
 ): Promise<number | null> {
+  // Owner Infinity accounts have no retention cap (unlimited = keep forever).
+  if (await isInfinityOwner(ownerId)) return null;
   const [quota] = await db
     .select({ planId: tenantQuotaTable.planId })
     .from(tenantQuotaTable)

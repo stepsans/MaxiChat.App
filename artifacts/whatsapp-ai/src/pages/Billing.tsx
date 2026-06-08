@@ -117,11 +117,14 @@ export default function Billing() {
   }
 
   const loading = permLoading || isLoading;
+  const unlimited = data?.unlimited ?? false;
   const status = data?.subscription.status ?? "active";
-  const statusInfo = STATUS_MAP[status] ?? {
-    label: status,
-    variant: "outline" as const,
-  };
+  const statusInfo = unlimited
+    ? { label: data?.planLabel ?? "Owner Infinity", variant: "default" as const }
+    : STATUS_MAP[status] ?? {
+        label: status,
+        variant: "outline" as const,
+      };
 
   const lines = [
     {
@@ -178,6 +181,8 @@ export default function Billing() {
               <CardDescription className="mt-1">
                 {loading ? (
                   <Skeleton className="h-4 w-56" />
+                ) : unlimited ? (
+                  <>Akses penuh tanpa batas — berlaku selamanya, tanpa tagihan</>
                 ) : data?.subscription.currentPeriodEnd == null &&
                   data?.subscription.status === "active" ? (
                   <>Berlaku selamanya</>
@@ -197,6 +202,53 @@ export default function Billing() {
         </CardHeader>
       </Card>
 
+      {unlimited ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-primary" />
+              {data?.planLabel ?? "Owner Infinity"}
+            </CardTitle>
+            <CardDescription>
+              Akun ini memiliki kuota tak terbatas dan tidak dikenakan tagihan.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y divide-border">
+              {lines.map((l) => (
+                <div
+                  key={l.label}
+                  data-testid={`bill-line-${l.label}`}
+                  className="flex items-center justify-between gap-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium flex items-center gap-1.5">
+                      <l.Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                      {l.label}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {loading ? <Skeleton className="h-3 w-32" /> : l.detail}
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums whitespace-nowrap text-primary">
+                    ∞
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between gap-4 pt-4 mt-2 border-t border-border">
+              <div className="text-sm font-semibold">Total / bulan</div>
+              <div
+                className="text-xl font-bold tabular-nums text-primary"
+                data-testid="bill-total"
+              >
+                {fmtRp(0)}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
       <CheckoutSection />
 
       <Card>
@@ -331,6 +383,8 @@ export default function Billing() {
         bergabung). Penyimpanan, jumlah user, dan channel dihitung dari kondisi
         saat ini. Tagihan ini bersifat estimasi.
       </p>
+        </>
+      )}
       </div>
     </div>
   );

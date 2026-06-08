@@ -609,7 +609,9 @@ export const GetMyBillingResponse = zod.object({
   "channelCharge": zod.number(),
   "aiCharge": zod.number(),
   "total": zod.number()
-})
+}),
+  "unlimited": zod.boolean().describe('True for an Owner Infinity account (unlimited everything, never read-only, never billed). The client renders the plan label and suppresses the metered-charge breakdown, expiry and upsell.'),
+  "planLabel": zod.string().nullable().describe('Display name of the tenant\'s plan when special-cased (e.g. \"Owner Infinity\"); null for ordinary metered tenants.')
 })
 
 
@@ -706,7 +708,8 @@ export const GetMyQuotaResponse = zod.object({
   "childUserCount": zod.number().describe('Number of invited child users (parent excluded).'),
   "channelCount": zod.number(),
   "tokenUsage": zod.number().describe('AI tokens consumed in the current billing period.')
-})
+}),
+  "unlimited": zod.boolean().describe('True for an Owner Infinity account: every limit is unlimited. The client renders ∞ and skips progress bars \/ near-limit warnings.')
 })
 
 

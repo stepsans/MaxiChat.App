@@ -15,4 +15,11 @@ export interface TenantBilling {
   usage: BillingUsage;
   pricing: PricingConfig;
   breakdown: BillBreakdown;
+  /** True for an Owner Infinity account (unlimited everything, never read-only, never billed). The client renders the plan label and suppresses the metered-charge breakdown, expiry and upsell. */
+  unlimited: boolean;
+  /**
+     * Display name of the tenant's plan when special-cased (e.g. "Owner Infinity"); null for ordinary metered tenants.
+     * @nullable
+     */
+  planLabel: string | null;
 }

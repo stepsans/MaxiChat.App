@@ -18,6 +18,11 @@ import {
   getEffectiveSubscription,
   computeOwnerTrend,
 } from "../lib/billing";
+import {
+  isInfinityOwner,
+  INFINITY_PLAN_LABEL,
+  INFINITY_PLAN_KEY,
+} from "../lib/infinity-owner";
 import { getOrCreateTenantQuota } from "../lib/subscription-purchase";
 import {
   createXenditInvoice,
@@ -86,9 +91,10 @@ router.get("/me", async (req, res): Promise<void> => {
       return;
     }
 
-    const [subscription, bill] = await Promise.all([
+    const [subscription, bill, unlimited] = await Promise.all([
       getEffectiveSubscription(ownerUserId),
       computeOwnerBill(ownerUserId),
+      isInfinityOwner(ownerUserId),
     ]);
 
     res.json({
@@ -96,6 +102,10 @@ router.get("/me", async (req, res): Promise<void> => {
       usage: bill.usage,
       pricing: bill.pricing,
       breakdown: bill.breakdown,
+      // Owner Infinity: the client renders the plan name and suppresses the
+      // metered-charge breakdown / upsell. Usage is still reported as-is.
+      unlimited,
+      planLabel: unlimited ? INFINITY_PLAN_LABEL : null,
     });
   } catch (err) {
     req.log.error({ err }, "getMyBilling failed");
@@ -198,9 +208,16 @@ router.get("/quota", async (req, res): Promise<void> => {
       return;
     }
 
+    const unlimited = await isInfinityOwner(ownerUserId);
+
     let planKey: string | null = null;
     let planName: string | null = null;
-    if (quota.planId != null) {
+    if (unlimited) {
+      // Owner Infinity isn't a real catalog plan; surface a synthetic label so
+      // the dashboard renders "Owner Infinity" and ∞ quotas.
+      planKey = INFINITY_PLAN_KEY;
+      planName = INFINITY_PLAN_LABEL;
+    } else if (quota.planId != null) {
       const [plan] = await db
         .select({ key: plansTable.key, name: plansTable.name })
         .from(plansTable)
@@ -223,6 +240,9 @@ router.get("/quota", async (req, res): Promise<void> => {
       periodStart: quota.periodStart,
       periodEnd: quota.periodEnd,
       usage,
+      // True only for the Owner Infinity account; the client renders ∞ and
+      // skips progress bars / near-limit warnings.
+      unlimited,
     });
   } catch (err) {
     req.log.error({ err }, "getMyQuota failed");

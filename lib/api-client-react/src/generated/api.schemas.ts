@@ -1714,6 +1714,13 @@ export interface TenantBilling {
   usage: BillingUsage;
   pricing: PricingConfig;
   breakdown: BillBreakdown;
+  /** True for an Owner Infinity account (unlimited everything, never read-only, never billed). The client renders the plan label and suppresses the metered-charge breakdown, expiry and upsell. */
+  unlimited: boolean;
+  /**
+     * Display name of the tenant's plan when special-cased (e.g. "Owner Infinity"); null for ordinary metered tenants.
+     * @nullable
+     */
+  planLabel: string | null;
 }
 
 export type AdminTenantBillingStatus = typeof AdminTenantBillingStatus[keyof typeof AdminTenantBillingStatus];
@@ -1783,6 +1790,8 @@ export interface TenantQuotaInfo {
   /** @nullable */
   periodEnd: string | null;
   usage: BillingUsage;
+  /** True for an Owner Infinity account: every limit is unlimited. The client renders ∞ and skips progress bars / near-limit warnings. */
+  unlimited: boolean;
 }
 
 /**
