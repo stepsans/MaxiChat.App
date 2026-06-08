@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "AI WhatsApp Automation Assistant"
+title = "Maximizing Your Chat with AI"
 version = "1.0.0"
 id = "artifacts/whatsapp-ai"
 router = "path"
