@@ -399,11 +399,8 @@ export default function ChatListPane({ selectedChatId }: Props) {
                       <span className="text-[15px] font-normal text-foreground truncate flex-1 min-w-0">
                         {displayName}
                       </span>
-                      {/* Fixed-width meta area: star + timestamp */}
+                      {/* Fixed-width meta area: timestamp */}
                       <div className="flex items-center gap-1.5 flex-shrink-0 min-w-[70px] justify-end">
-                        {chat.isStarred && (
-                          <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 flex-shrink-0" />
-                        )}
                         {chat.lastMessageAt && (
                           <span
                             className={cn(

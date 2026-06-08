@@ -1932,7 +1932,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                             />
                           )}
                         {msg.content && mediaType !== "contact" && (
-                          <p className="whitespace-pre-wrap break-words pr-14">
+                          <p className="whitespace-pre-wrap break-words">
                             {renderBodyWithMentions(msg.content)}
                           </p>
                         )}
@@ -1952,7 +1952,7 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
                               ))}
                             </div>
                           )}
-                        <div className="flex items-center justify-end gap-2 -mt-3 -mb-0.5 float-right pl-2">
+                        <div className="flex items-center justify-end gap-2 mt-0.5 flex-shrink-0">
                           <button
                             type="button"
                             onClick={() => toggleStar(msg.id, !!msg.isStarred)}
