@@ -52,6 +52,27 @@ export const usersTable = pgTable("users", {
   // to the individual account row (default false) so no other tenant is
   // affected. Resolved everywhere through the single `isInfinityOwner` helper.
   isInfinityOwner: boolean("is_infinity_owner").notNull().default(false),
+  // === TRIAL & ONBOARDING FIELDS ===
+  // WhatsApp number used during OTP signup (format 628xxx, no + or spaces).
+  // Stored permanently as an anti-abuse trial fingerprint.
+  trialWhatsapp: text("trial_whatsapp"),
+  // Whether this account has ever used a trial. Once used (even before
+  // expiry) this is true and the account cannot trial again unless an admin
+  // overrides via trialGrantedBy.
+  trialUsed: boolean("trial_used").notNull().default(false),
+  // When an admin manually grants a fresh trial, record who and when.
+  trialGrantedBy: integer("trial_granted_by"),
+  trialGrantedAt: timestamp("trial_granted_at", { withTimezone: true }),
+  // Current onboarding step: 'wa_otp' | 'business_profile' | 'complete'.
+  onboardingStep: text("onboarding_step").notNull().default("wa_otp"),
+  // Signup routing answers.
+  // volume: 'lt50' | '50to200' | '200to500' | 'gt500'
+  businessVolume: text("business_volume"),
+  // teamSize: 'solo' | '2to5' | '6to20' | 'gt20'
+  businessTeamSize: text("business_team_size"),
+  // When the user first successfully connected a WhatsApp channel.
+  // Null = never connected.
+  firstWaConnectedAt: timestamp("first_wa_connected_at", { withTimezone: true }),
   // Updated by a frontend heartbeat (every ~30s while the tab is active).
   // Used as the "online" signal for round-robin chat assignment: an agent
   // counts as online if lastSeenAt > now - 2 minutes.

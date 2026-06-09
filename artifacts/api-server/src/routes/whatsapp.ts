@@ -37,6 +37,7 @@ import {
   resolveOwnerUserId,
   ensurePrimaryWhatsappChannelForUser,
 } from "../lib/seed";
+import { refreshChecklist } from "../lib/onboarding";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
 import { saveTenantMedia } from "../lib/tenant-storage";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -3065,6 +3066,17 @@ async function startBaileys(userId: number, channelId: number) {
           connectedAt: new Date().toISOString(),
         });
         ctx.isConnecting = false;
+        // Best-effort: refresh the onboarding checklist now that WhatsApp is
+        // live (flips waConnected → true). Never let it disturb the socket.
+        try {
+          const onbOwnerUserId = await resolveOwnerUserId(userId);
+          await refreshChecklist(onbOwnerUserId);
+        } catch (err) {
+          logger.warn(
+            { err, userId },
+            "refreshChecklist after WA connect failed (non-fatal)"
+          );
+        }
       }
 
       if (connection === "close") {

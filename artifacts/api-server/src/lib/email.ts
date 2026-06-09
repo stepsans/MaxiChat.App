@@ -135,6 +135,51 @@ function renderVerificationText(args: {
   ].join("\n");
 }
 
+// Generic transactional email for the drip campaign. Uses the same provider
+// (Resend) as the verification email. No-op (logged) when not configured.
+export interface SendTransactionalEmailInput {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+}
+
+export async function sendTransactionalEmail(
+  input: SendTransactionalEmailInput
+): Promise<void> {
+  const from = process.env.EMAIL_FROM?.trim() || DEV_FROM;
+
+  if (!emailSenderConfigured()) {
+    logger.warn(
+      { to: input.to, subject: input.subject },
+      "Email provider not configured — transactional email skipped (dev mode)"
+    );
+    return;
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+    },
+    body: JSON.stringify({
+      from,
+      to: [input.to],
+      subject: input.subject,
+      text: input.text,
+      html:
+        input.html ??
+        `<pre style="font-family:sans-serif">${escapeHtml(input.text)}</pre>`,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Resend API error ${res.status}: ${body}`);
+  }
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     c === "&"

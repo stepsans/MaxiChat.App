@@ -5,6 +5,8 @@ import {
   usersTable,
   userWhatsappTable,
   aiUsageEventsTable,
+  onboardingChecklistTable,
+  subscriptionsTable,
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { computeBillingPeriod } from "../lib/billing-period";
@@ -480,6 +482,174 @@ router.patch("/subscriptions/:userId", async (req, res): Promise<void> => {
     res.json(updated);
   } catch (err) {
     req.log.error({ err }, "adminRenewSubscription failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /admin/trial-monitor
+// Every tenant currently on trial, joined with their onboarding health score.
+router.get("/trial-monitor", async (req, res): Promise<void> => {
+  try {
+    const now = new Date();
+
+    const rows = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        companyName: usersTable.companyName,
+        businessVolume: usersTable.businessVolume,
+        businessTeamSize: usersTable.businessTeamSize,
+        trialEnd: subscriptionsTable.currentPeriodEnd,
+        waConnected: onboardingChecklistTable.waConnected,
+        productAdded: onboardingChecklistTable.productAdded,
+        teamMemberAdded: onboardingChecklistTable.teamMemberAdded,
+        firstMessageAt: onboardingChecklistTable.firstMessageAt,
+        aiTriedAt: onboardingChecklistTable.aiTriedAt,
+        flowActivated: onboardingChecklistTable.flowActivated,
+        healthScore: onboardingChecklistTable.healthScore,
+        riskLevel: onboardingChecklistTable.riskLevel,
+        lastCsFollowUpAt: onboardingChecklistTable.lastCsFollowUpAt,
+      })
+      .from(usersTable)
+      .innerJoin(
+        subscriptionsTable,
+        and(
+          eq(subscriptionsTable.userId, usersTable.id),
+          eq(subscriptionsTable.status, "trial")
+        )
+      )
+      .leftJoin(
+        onboardingChecklistTable,
+        eq(onboardingChecklistTable.ownerUserId, usersTable.id)
+      )
+      .where(
+        and(
+          isNull(usersTable.parentUserId),
+          ne(usersTable.role, "admin")
+        )
+      )
+      .orderBy(onboardingChecklistTable.healthScore);
+
+    const tenants = rows.map((r) => {
+      const trialDaysLeft = r.trialEnd
+        ? Math.max(
+            0,
+            Math.ceil(
+              (r.trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+            )
+          )
+        : 0;
+      return {
+        id: r.id,
+        email: r.email,
+        name: r.name,
+        companyName: r.companyName,
+        businessVolume: r.businessVolume,
+        businessTeamSize: r.businessTeamSize,
+        trialEndsAt: r.trialEnd?.toISOString() ?? null,
+        trialDaysLeft,
+        healthScore: r.healthScore ?? 0,
+        riskLevel: r.riskLevel ?? "high",
+        waConnected: r.waConnected ?? false,
+        productAdded: r.productAdded ?? false,
+        teamMemberAdded: r.teamMemberAdded ?? false,
+        firstMessageAt: r.firstMessageAt?.toISOString() ?? null,
+        aiTriedAt: r.aiTriedAt?.toISOString() ?? null,
+        flowActivated: r.flowActivated ?? false,
+        lastCsFollowUpAt: r.lastCsFollowUpAt?.toISOString() ?? null,
+      };
+    });
+
+    res.json({ tenants });
+  } catch (err) {
+    req.log.error({ err }, "GET /admin/trial-monitor failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /admin/users/:id/grant-trial
+// Admin override: grant a fresh trial to an owner who already used theirs.
+router.post("/users/:id/grant-trial", async (req, res): Promise<void> => {
+  try {
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      res.status(400).json({ error: "Invalid user id" });
+      return;
+    }
+    const adminId = getSessionUserId(req);
+
+    const [target] = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        role: usersTable.role,
+        parentUserId: usersTable.parentUserId,
+        trialUsed: usersTable.trialUsed,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, targetId))
+      .limit(1);
+
+    if (!target) {
+      res.status(404).json({ error: "User tidak ditemukan" });
+      return;
+    }
+    if (target.parentUserId !== null || target.role === "admin") {
+      res.status(400).json({
+        error: "Hanya owner (super_admin) yang bisa diberikan trial",
+      });
+      return;
+    }
+
+    const trialDays = Number(req.body?.trialDays ?? 7);
+    if (!Number.isInteger(trialDays) || trialDays < 1 || trialDays > 30) {
+      res.status(400).json({ error: "trialDays harus antara 1-30" });
+      return;
+    }
+
+    const note =
+      typeof req.body?.note === "string" ? req.body.note.slice(0, 200) : null;
+
+    const newEnd = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
+    await db
+      .insert(subscriptionsTable)
+      .values({
+        userId: targetId,
+        status: "trial",
+        currentPeriodEnd: newEnd,
+      })
+      .onConflictDoUpdate({
+        target: subscriptionsTable.userId,
+        set: {
+          status: "trial",
+          currentPeriodEnd: newEnd,
+          dunningStartedAt: null,
+          graceUntil: null,
+          updatedAt: new Date(),
+        },
+      });
+
+    await db
+      .update(usersTable)
+      .set({
+        trialGrantedBy: adminId,
+        trialGrantedAt: new Date(),
+      })
+      .where(eq(usersTable.id, targetId));
+
+    req.log.info(
+      { adminId, targetId, trialDays, note },
+      "Admin granted new trial to user"
+    );
+
+    res.json({
+      ok: true,
+      message: `Trial ${trialDays} hari berhasil diberikan ke ${target.email}`,
+      trialEndsAt: newEnd.toISOString(),
+    });
+  } catch (err) {
+    req.log.error({ err }, "POST /admin/users/:id/grant-trial failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

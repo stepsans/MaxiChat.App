@@ -539,6 +539,20 @@ router.post("/signup", signupLimiter, async (req, res): Promise<void> => {
       typeof req.body?.mobilePhone === "string"
         ? req.body.mobilePhone.trim() || null
         : null;
+    const businessVolume =
+      typeof req.body?.businessVolume === "string" &&
+      ["lt50", "50to200", "200to500", "gt500"].includes(req.body.businessVolume)
+        ? req.body.businessVolume
+        : null;
+    const businessTeamSize =
+      typeof req.body?.businessTeamSize === "string" &&
+      ["solo", "2to5", "6to20", "gt20"].includes(req.body.businessTeamSize)
+        ? req.body.businessTeamSize
+        : null;
+    const trialWhatsapp =
+      typeof req.body?.trialWhatsapp === "string"
+        ? req.body.trialWhatsapp.replace(/\D/g, "").slice(0, 20) || null
+        : null;
 
     if (!isLikelyEmail(email)) {
       res.status(400).json({ error: "Email tidak valid" });
@@ -580,6 +594,10 @@ router.post("/signup", signupLimiter, async (req, res): Promise<void> => {
         name,
         companyName,
         mobilePhone,
+        businessVolume,
+        businessTeamSize,
+        trialWhatsapp,
+        trialUsed: true,
       })
       .onConflictDoNothing({ target: usersTable.email })
       .returning({

@@ -41,6 +41,8 @@ import databaseRouter from "./database";
 import pushRouter from "./push";
 import storageRouter from "./storage";
 import salesRouter from "./sales";
+import waOtpRouter from "./wa-otp";
+import onboardingRouter from "./onboarding";
 import { requireAuth, requireAdmin } from "../lib/auth";
 import { enforceSubscription } from "../lib/enforce-subscription";
 
@@ -55,6 +57,8 @@ router.use("/webhooks/telegram", telegramWebhookRouter);
 // Xendit payment webhook — authenticated by the static x-callback-token header
 // (XENDIT_CALLBACK_TOKEN) rather than by session.
 router.use("/webhooks/xendit", xenditWebhookRouter);
+// WA OTP — public (used before signup, no session required).
+router.use("/auth/wa-otp", waOtpRouter);
 
 // Everything below requires a signed-in session.
 router.use(requireAuth);
@@ -102,6 +106,7 @@ router.use("/billing", billingRouter);
 router.use("/retention", retentionRouter);
 router.use("/database", databaseRouter);
 router.use("/push", pushRouter);
+router.use("/onboarding", onboardingRouter);
 // Tenant-scoped Object Storage serving (GET /storage/objects/tenants/<owner>/...).
 router.use(storageRouter);
 

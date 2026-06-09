@@ -40,6 +40,7 @@ import { Link } from "wouter";
 import { cn, formatBytes } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { useEffect } from "react";
 
 // Convert a label's hex color into translucent fill/border so the count chip
@@ -255,6 +256,9 @@ export default function Dashboard() {
       </div>
 
       <div className="flex-1 p-6 space-y-6">
+        {/* Onboarding checklist — hides itself at 100% health */}
+        <OnboardingChecklist />
+
         {/* WhatsApp Connection */}
         <Card data-testid="whatsapp-connection-card">
           <CardHeader className="pb-3">

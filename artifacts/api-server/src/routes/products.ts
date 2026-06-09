@@ -7,6 +7,7 @@ import { and, eq, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Request, Response } from "express";
 import { resolveOwnerUserId } from "../lib/seed";
+import { refreshChecklist } from "../lib/onboarding";
 import { saveTenantMedia } from "../lib/tenant-storage";
 import { checkStorageQuota } from "../lib/storage-enforce";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
@@ -216,6 +217,12 @@ router.post("/", async (req, res): Promise<void> => {
         await db.delete(productsTable).where(eq(productsTable.id, created.id));
         res.status(400).json({ error: "Invalid channelIds" });
         return;
+      }
+      // Best-effort onboarding checklist refresh (flips productAdded → true).
+      try {
+        await refreshChecklist(owner.ownerUserId);
+      } catch {
+        /* best-effort */
       }
       res.status(201).json(serialize(created, channelIds ?? []));
     } catch (e: unknown) {

@@ -7,6 +7,7 @@ import { z } from "zod/v4";
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { db, usersTable, plansTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
+import { refreshChecklist } from "../lib/onboarding";
 import { touchHeartbeat } from "../lib/round-robin";
 import { isInfinityOwner } from "../lib/infinity-owner";
 import { MEDIA_DIR } from "./whatsapp";
@@ -283,6 +284,12 @@ router.post("/", async (req, res): Promise<void> => {
         .status(409)
         .json({ error: "Email sudah terdaftar di sistem. Pakai email lain." });
       return;
+    }
+    // Best-effort onboarding checklist refresh (flips teamMemberAdded → true).
+    try {
+      await refreshChecklist(owner.ownerId);
+    } catch {
+      /* best-effort */
     }
     res.status(201).json(serialize(inserted[0]));
   } catch (err) {

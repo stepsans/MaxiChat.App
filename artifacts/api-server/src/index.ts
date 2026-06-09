@@ -11,6 +11,7 @@ import { startDunningScheduler } from "./lib/dunning";
 import { backfillInvoicesFromPayments } from "./lib/invoices";
 import { startMonthlyCloseScheduler } from "./lib/monthly-close";
 import { startFollowUpScheduler } from "./lib/follow-up-engine";
+import { startDripScheduler } from "./lib/drip-engine";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -132,6 +133,10 @@ async function main(): Promise<void> {
     // generates + sends paced, sequenced follow-ups (max 3); default OFF =
     // store a recommendation only, never sends.
     startFollowUpScheduler();
+    // Trial onboarding: behavior-based drip campaign engine. Evaluates active
+    // trial tenants and enqueues/sends nudge emails (no-op when Resend is
+    // unconfigured — logs only). Default-safe, additive.
+    startDripScheduler();
     // Billing v2 (FASE A): backfill immutable invoices for any already-paid
     // payments that predate the invoices table. Idempotent + best-effort, so it
     // never blocks boot (the NOT EXISTS filter makes it a no-op once caught up).
