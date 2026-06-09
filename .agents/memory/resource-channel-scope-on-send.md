@@ -22,3 +22,5 @@ consistency break, not just a UX gap.
 **How to apply:**
 - Server is the authority (return 404, not 403, to avoid leaking existence). Mirror the same filter client-side for UX (hide out-of-scope rows) — the chat's `channelId` is needed there, so the `ChatWithMessages` contract carries `channelId`.
 - This is distinct from `user_channel_access` (per-user channel allow-list, see per-channel-chat-access.md) — that gates which channels a person sees; this gates which shared resources a channel may use.
+
+**Sales opportunities are the same trap:** `canAccessOpportunity(opp, ownerId, teamRole, uid)` checks owner + (for agents) assignment ONLY — it does NOT check `user_channel_access`. So any opportunity route that *acts on the deal's chat* (e.g. manual follow-up send/edit) must ALSO call `chatVisibleToUser(opp.chatId, ownerId, uid)` (which funnels through `getAllowedChannelIds`), or a supervisor/agent scoped to channel A can fire a WhatsApp follow-up into channel B. Read-only opportunity list/board endpoints are scoped differently (owner+assignment is acceptable there); the gap bites specifically on chat-transmitting actions.

@@ -4975,6 +4975,74 @@ export const ListOpportunityFollowUpsResponse = zod.array(ListOpportunityFollowU
 
 
 /**
+ * @summary Edit or cancel a pending follow-up touch
+ */
+export const UpdateOpportunityFollowUpParams = zod.object({
+  "id": zod.coerce.number(),
+  "followUpId": zod.coerce.number()
+})
+
+export const UpdateOpportunityFollowUpBody = zod.object({
+  "generatedMessage": zod.string().nullish().describe('The drafted message text to store on the follow-up.'),
+  "status": zod.enum(['cancelled']).optional().describe('Set to `cancelled` to drop this pending touch.')
+}).describe('Edit or cancel a pending follow-up. Provide `generatedMessage` to set the draft the operator wants sent, and\/or `status: cancelled` to drop the touch. Only pending follow-ups can be edited or cancelled.')
+
+export const UpdateOpportunityFollowUpResponse = zod.object({
+  "id": zod.number(),
+  "opportunityId": zod.number(),
+  "sequence": zod.number().describe('Touch number in the sequence (1–3).'),
+  "scheduledAt": zod.coerce.date(),
+  "status": zod.enum(['pending', 'sent', 'cancelled', 'skipped']),
+  "generatedMessage": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A scheduled follow-up touch for an opportunity.')
+
+
+/**
+ * @summary Send a pending follow-up now (drafts the message first if needed)
+ */
+export const SendOpportunityFollowUpParams = zod.object({
+  "id": zod.coerce.number(),
+  "followUpId": zod.coerce.number()
+})
+
+export const SendOpportunityFollowUpResponse = zod.object({
+  "id": zod.number(),
+  "opportunityId": zod.number(),
+  "sequence": zod.number().describe('Touch number in the sequence (1–3).'),
+  "scheduledAt": zod.coerce.date(),
+  "status": zod.enum(['pending', 'sent', 'cancelled', 'skipped']),
+  "generatedMessage": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A scheduled follow-up touch for an opportunity.')
+
+
+/**
+ * @summary Weighted revenue forecast + win rate scoped to the caller
+ */
+export const GetSalesForecastResponse = zod.object({
+  "openCount": zod.number(),
+  "openValueIdr": zod.number().describe('Sum of estimated value across open opportunities (whole Rupiah).'),
+  "weightedForecastIdr": zod.number().describe('Sum of (open estimated value × leadScore\/100), rounded (whole Rupiah).'),
+  "wonCount": zod.number(),
+  "lostCount": zod.number(),
+  "wonValueIdr": zod.number().describe('Sum of estimated value across won opportunities (whole Rupiah).'),
+  "winRatePct": zod.number().describe('won \/ (won + lost) × 100, rounded to a whole percent (0 when none closed).'),
+  "byStage": zod.array(zod.object({
+  "stageId": zod.number().nullable(),
+  "stageName": zod.string(),
+  "count": zod.number(),
+  "valueIdr": zod.number(),
+  "weightedIdr": zod.number()
+})).describe('Per-stage open count, value, and weighted forecast.')
+}).describe('Weighted revenue forecast + win rate scoped to the caller\'s visibility. The weighted forecast multiplies each open deal\'s estimated value by its lead score probability (leadScore\/100). All money is whole-integer Rupiah.')
+
+
+/**
  * @summary Aggregate pipeline insights for the tenant (scoped to caller)
  */
 export const GetSalesInsightsResponse = zod.object({

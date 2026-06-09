@@ -134,6 +134,7 @@ import type {
   OpenChatByPhoneResult,
   Opportunity,
   OpportunityFollowUp,
+  OpportunityFollowUpUpdate,
   OpportunityInput,
   OpportunityInsight,
   OpportunityUpdate,
@@ -174,6 +175,7 @@ import type {
   SalesAssistantSettings,
   SalesAssistantSettingsUpdate,
   SalesAuditEvent,
+  SalesForecast,
   SalesInsight,
   SalesOrder,
   SalesOrderInput,
@@ -15823,6 +15825,229 @@ export function useListOpportunityFollowUps<TData = Awaited<ReturnType<typeof li
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListOpportunityFollowUpsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateOpportunityFollowUpUrl = (id: number,
+    followUpId: number,) => {
+
+
+
+
+  return `/api/sales/opportunities/${id}/follow-ups/${followUpId}`
+}
+
+/**
+ * @summary Edit or cancel a pending follow-up touch
+ */
+export const updateOpportunityFollowUp = async (id: number,
+    followUpId: number,
+    opportunityFollowUpUpdate: OpportunityFollowUpUpdate, options?: RequestInit): Promise<OpportunityFollowUp> => {
+
+  return customFetch<OpportunityFollowUp>(getUpdateOpportunityFollowUpUrl(id,followUpId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      opportunityFollowUpUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateOpportunityFollowUpMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOpportunityFollowUp>>, TError,{id: number;followUpId: number;data: BodyType<OpportunityFollowUpUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOpportunityFollowUp>>, TError,{id: number;followUpId: number;data: BodyType<OpportunityFollowUpUpdate>}, TContext> => {
+
+const mutationKey = ['updateOpportunityFollowUp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOpportunityFollowUp>>, {id: number;followUpId: number;data: BodyType<OpportunityFollowUpUpdate>}> = (props) => {
+          const {id,followUpId,data} = props ?? {};
+
+          return  updateOpportunityFollowUp(id,followUpId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOpportunityFollowUpMutationResult = NonNullable<Awaited<ReturnType<typeof updateOpportunityFollowUp>>>
+    export type UpdateOpportunityFollowUpMutationBody = BodyType<OpportunityFollowUpUpdate>
+    export type UpdateOpportunityFollowUpMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Edit or cancel a pending follow-up touch
+ */
+export const useUpdateOpportunityFollowUp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOpportunityFollowUp>>, TError,{id: number;followUpId: number;data: BodyType<OpportunityFollowUpUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOpportunityFollowUp>>,
+        TError,
+        {id: number;followUpId: number;data: BodyType<OpportunityFollowUpUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateOpportunityFollowUpMutationOptions(options));
+    }
+
+export const getSendOpportunityFollowUpUrl = (id: number,
+    followUpId: number,) => {
+
+
+
+
+  return `/api/sales/opportunities/${id}/follow-ups/${followUpId}/send`
+}
+
+/**
+ * @summary Send a pending follow-up now (drafts the message first if needed)
+ */
+export const sendOpportunityFollowUp = async (id: number,
+    followUpId: number, options?: RequestInit): Promise<OpportunityFollowUp> => {
+
+  return customFetch<OpportunityFollowUp>(getSendOpportunityFollowUpUrl(id,followUpId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSendOpportunityFollowUpMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendOpportunityFollowUp>>, TError,{id: number;followUpId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendOpportunityFollowUp>>, TError,{id: number;followUpId: number}, TContext> => {
+
+const mutationKey = ['sendOpportunityFollowUp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendOpportunityFollowUp>>, {id: number;followUpId: number}> = (props) => {
+          const {id,followUpId} = props ?? {};
+
+          return  sendOpportunityFollowUp(id,followUpId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendOpportunityFollowUpMutationResult = NonNullable<Awaited<ReturnType<typeof sendOpportunityFollowUp>>>
+
+    export type SendOpportunityFollowUpMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send a pending follow-up now (drafts the message first if needed)
+ */
+export const useSendOpportunityFollowUp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendOpportunityFollowUp>>, TError,{id: number;followUpId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendOpportunityFollowUp>>,
+        TError,
+        {id: number;followUpId: number},
+        TContext
+      > => {
+      return useMutation(getSendOpportunityFollowUpMutationOptions(options));
+    }
+
+export const getGetSalesForecastUrl = () => {
+
+
+
+
+  return `/api/sales/forecast`
+}
+
+/**
+ * @summary Weighted revenue forecast + win rate scoped to the caller
+ */
+export const getSalesForecast = async ( options?: RequestInit): Promise<SalesForecast> => {
+
+  return customFetch<SalesForecast>(getGetSalesForecastUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSalesForecastQueryKey = () => {
+    return [
+    `/api/sales/forecast`
+    ] as const;
+    }
+
+
+export const getGetSalesForecastQueryOptions = <TData = Awaited<ReturnType<typeof getSalesForecast>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSalesForecast>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSalesForecastQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSalesForecast>>> = ({ signal }) => getSalesForecast({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSalesForecast>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSalesForecastQueryResult = NonNullable<Awaited<ReturnType<typeof getSalesForecast>>>
+export type GetSalesForecastQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Weighted revenue forecast + win rate scoped to the caller
+ */
+
+export function useGetSalesForecast<TData = Awaited<ReturnType<typeof getSalesForecast>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSalesForecast>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSalesForecastQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

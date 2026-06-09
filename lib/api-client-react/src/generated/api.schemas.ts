@@ -588,6 +588,57 @@ export interface OpportunityFollowUp {
   updatedAt: string;
 }
 
+/**
+ * Set to `cancelled` to drop this pending touch.
+ */
+export type OpportunityFollowUpUpdateStatus = typeof OpportunityFollowUpUpdateStatus[keyof typeof OpportunityFollowUpUpdateStatus];
+
+
+export const OpportunityFollowUpUpdateStatus = {
+  cancelled: 'cancelled',
+} as const;
+
+/**
+ * Edit or cancel a pending follow-up. Provide `generatedMessage` to set the draft the operator wants sent, and/or `status: cancelled` to drop the touch. Only pending follow-ups can be edited or cancelled.
+ */
+export interface OpportunityFollowUpUpdate {
+  /**
+     * The drafted message text to store on the follow-up.
+     * @nullable
+     */
+  generatedMessage?: string | null;
+  /** Set to `cancelled` to drop this pending touch. */
+  status?: OpportunityFollowUpUpdateStatus;
+}
+
+export type SalesForecastByStageItem = {
+  /** @nullable */
+  stageId: number | null;
+  stageName: string;
+  count: number;
+  valueIdr: number;
+  weightedIdr: number;
+};
+
+/**
+ * Weighted revenue forecast + win rate scoped to the caller's visibility. The weighted forecast multiplies each open deal's estimated value by its lead score probability (leadScore/100). All money is whole-integer Rupiah.
+ */
+export interface SalesForecast {
+  openCount: number;
+  /** Sum of estimated value across open opportunities (whole Rupiah). */
+  openValueIdr: number;
+  /** Sum of (open estimated value × leadScore/100), rounded (whole Rupiah). */
+  weightedForecastIdr: number;
+  wonCount: number;
+  lostCount: number;
+  /** Sum of estimated value across won opportunities (whole Rupiah). */
+  wonValueIdr: number;
+  /** won / (won + lost) × 100, rounded to a whole percent (0 when none closed). */
+  winRatePct: number;
+  /** Per-stage open count, value, and weighted forecast. */
+  byStage: SalesForecastByStageItem[];
+}
+
 export type SalesAuditEventDetail = { [key: string]: unknown };
 
 /**

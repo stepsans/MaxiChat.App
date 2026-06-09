@@ -20,6 +20,7 @@ import {
   ListOpportunitiesQueryParams,
   UpdateSalesAssistantSettingsBody,
   ReorderSalesStagesBody,
+  UpdateOpportunityFollowUpBody,
 } from "@workspace/api-zod";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
@@ -35,6 +36,14 @@ import {
 import { analyzeAndPersistChat } from "../lib/sales-insight";
 import { applyAutoCreateForResult } from "../lib/sales-detection";
 import { computePipelineHealth } from "../lib/pipeline-health-build";
+import { computeSalesForecast } from "../lib/sales-forecast-build";
+import {
+  decideManualFollowUpSend,
+  type FollowUpStatus,
+} from "../lib/follow-up-manual-build";
+import { generateFollowUpMessage } from "../lib/follow-up-message";
+import { getOrCreateTenantSettings } from "../lib/settings-store";
+import { sendFollowUpOnChannel } from "./whatsapp";
 
 // ===========================================================================
 // AI Sales Assistant routes (Enterprise-only). Mounted under /sales behind
@@ -1344,6 +1353,300 @@ router.get(
         createdAt: e.createdAt.toISOString(),
       }))
     );
+  }
+);
+
+// Serialize one follow-up row to the OpportunityFollowUp contract shape.
+function serializeFollowUp(f: typeof opportunityFollowUpsTable.$inferSelect) {
+  return {
+    id: f.id,
+    opportunityId: f.opportunityId,
+    sequence: f.sequence,
+    scheduledAt: f.scheduledAt.toISOString(),
+    status: f.status,
+    generatedMessage: f.generatedMessage,
+    sentAt: f.sentAt ? f.sentAt.toISOString() : null,
+    createdAt: f.createdAt.toISOString(),
+    updatedAt: f.updatedAt.toISOString(),
+  };
+}
+
+// Load an opportunity + one of its follow-ups, enforcing the caller's access.
+// Returns null (and writes the 404) when the opportunity is missing/invisible
+// or the follow-up doesn't belong to it.
+async function loadOwnedFollowUp(
+  req: Request,
+  res: Response,
+  uid: number
+): Promise<{
+  opp: typeof opportunitiesTable.$inferSelect;
+  followUp: typeof opportunityFollowUpsTable.$inferSelect;
+} | null> {
+  const ownerId = await resolveOwnerUserId(uid);
+  const teamRole = await resolveTeamRole(uid);
+  const id = Number(req.params.id);
+  const followUpId = Number(req.params.followUpId);
+  if (!Number.isInteger(id) || !Number.isInteger(followUpId)) {
+    res.status(400).json({ error: "id tidak valid" });
+    return null;
+  }
+  const [opp] = await db
+    .select()
+    .from(opportunitiesTable)
+    .where(eq(opportunitiesTable.id, id))
+    .limit(1);
+  if (!opp || !canAccessOpportunity(opp, ownerId, teamRole, uid)) {
+    res.status(404).json({ error: "Opportunity tidak ditemukan" });
+    return null;
+  }
+  // Per-channel scope: editing/sending a follow-up is an action on the deal's
+  // chat, so the caller must also be able to see that chat's channel (an agent
+  // restricted to channel A must never send a WhatsApp touch into channel B).
+  // canAccessOpportunity covers owner + assignment only; this closes the gap.
+  if (!(await chatVisibleToUser(opp.chatId, ownerId, uid))) {
+    res.status(404).json({ error: "Opportunity tidak ditemukan" });
+    return null;
+  }
+  const [followUp] = await db
+    .select()
+    .from(opportunityFollowUpsTable)
+    .where(
+      and(
+        eq(opportunityFollowUpsTable.id, followUpId),
+        eq(opportunityFollowUpsTable.opportunityId, id)
+      )
+    )
+    .limit(1);
+  if (!followUp) {
+    res.status(404).json({ error: "Follow-up tidak ditemukan" });
+    return null;
+  }
+  return { opp, followUp };
+}
+
+// PATCH /sales/opportunities/:id/follow-ups/:followUpId — edit the drafted
+// message and/or cancel a still-`pending` follow-up. Sent/cancelled/skipped
+// touches are immutable (400). Editing follow-ups is an action on the deal →
+// requires the "edit" opportunity permission.
+router.patch(
+  "/opportunities/:id/follow-ups/:followUpId",
+  requirePermission("opportunities", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const parsed = UpdateOpportunityFollowUpBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Data follow-up tidak valid" });
+      return;
+    }
+    const body = parsed.data;
+    if (body.generatedMessage === undefined && body.status === undefined) {
+      res.status(400).json({ error: "Tidak ada perubahan" });
+      return;
+    }
+
+    const loaded = await loadOwnedFollowUp(req, res, uid);
+    if (!loaded) return;
+    if (loaded.followUp.status !== "pending") {
+      res
+        .status(400)
+        .json({ error: "Hanya follow-up terjadwal yang bisa diubah." });
+      return;
+    }
+
+    const patch: Partial<typeof opportunityFollowUpsTable.$inferInsert> = {};
+    if (body.generatedMessage !== undefined) {
+      const text = body.generatedMessage?.trim() ?? "";
+      patch.generatedMessage = text.length > 0 ? text : null;
+    }
+    if (body.status === "cancelled") patch.status = "cancelled";
+    patch.updatedAt = new Date();
+
+    // Re-assert `pending` at the SQL level so a concurrent send/sweep can't be
+    // clobbered by a stale edit (TOCTOU).
+    const [row] = await db
+      .update(opportunityFollowUpsTable)
+      .set(patch)
+      .where(
+        and(
+          eq(opportunityFollowUpsTable.id, loaded.followUp.id),
+          eq(opportunityFollowUpsTable.status, "pending")
+        )
+      )
+      .returning();
+    if (!row) {
+      res.status(409).json({ error: "Follow-up sudah tidak terjadwal." });
+      return;
+    }
+    res.json(serializeFollowUp(row));
+  }
+);
+
+// POST /sales/opportunities/:id/follow-ups/:followUpId/send — send a pending
+// follow-up NOW. Drafts the message via AI first when the row has none (a
+// recommendation-only touch from the engine while Auto Follow-Up was off).
+// Claim-first (pending→sent) so a concurrent sweep can't double-send; the send
+// is rolled back to pending on failure. Mirrors the engine's send path.
+router.post(
+  "/opportunities/:id/follow-ups/:followUpId/send",
+  requirePermission("opportunities", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+
+    const loaded = await loadOwnedFollowUp(req, res, uid);
+    if (!loaded) return;
+    const { opp, followUp } = loaded;
+
+    // Resolve the chat's OWN channel kind — only WhatsApp can send a follow-up.
+    const [channel] = await db
+      .select({ kind: channelsTable.kind })
+      .from(channelsTable)
+      .where(eq(channelsTable.id, opp.channelId))
+      .limit(1);
+
+    const decision = decideManualFollowUpSend({
+      followUpStatus: followUp.status as FollowUpStatus,
+      channelKind: channel?.kind ?? "",
+    });
+    if (!decision.ok) {
+      if (decision.code === "not_pending") {
+        res.status(409).json({ error: "Follow-up sudah tidak terjadwal." });
+      } else {
+        res
+          .status(400)
+          .json({ error: "Follow-up hanya bisa dikirim ke channel WhatsApp." });
+      }
+      return;
+    }
+
+    // Draft a message when the row has none (recommendation-only). 502 on
+    // generation failure so the client can retry without a half-applied state.
+    let messageText = followUp.generatedMessage?.trim() || "";
+    let provider: string | null = null;
+    let model: string | null = null;
+    if (!messageText) {
+      const draft = await generateFollowUpMessage({
+        opportunity: opp,
+        sequence: followUp.sequence,
+      });
+      if (!draft) {
+        res.status(502).json({ error: "Gagal membuat pesan follow-up." });
+        return;
+      }
+      messageText = draft.text;
+      provider = draft.provider;
+      model = draft.model;
+    }
+
+    // Claim the row (pending→sent) atomically; if nothing comes back another
+    // path already settled it.
+    const sentAt = new Date();
+    const claimed = await db
+      .update(opportunityFollowUpsTable)
+      .set({ status: "sent", sentAt, generatedMessage: messageText, updatedAt: sentAt })
+      .where(
+        and(
+          eq(opportunityFollowUpsTable.id, followUp.id),
+          eq(opportunityFollowUpsTable.status, "pending")
+        )
+      )
+      .returning();
+    const claimedRow = claimed[0];
+    if (!claimedRow) {
+      res.status(409).json({ error: "Follow-up sudah tidak terjadwal." });
+      return;
+    }
+
+    const tenant = await getOrCreateTenantSettings(ownerId);
+    const ok = await sendFollowUpOnChannel(opp.channelId, opp.chatId, messageText, {
+      min: tenant.replyDelayMin,
+      max: tenant.replyDelayMax,
+    });
+    if (!ok) {
+      // Roll the claim back so the touch stays actionable (manual retry / sweep).
+      const [reverted] = await db
+        .update(opportunityFollowUpsTable)
+        .set({ status: "pending", sentAt: null, updatedAt: new Date() })
+        .where(eq(opportunityFollowUpsTable.id, followUp.id))
+        .returning();
+      req.log.warn(
+        { followUpId: followUp.id, channelId: opp.channelId },
+        "manual follow-up send failed; rolled back to pending"
+      );
+      res.status(502).json({ error: "Gagal mengirim follow-up. Coba lagi." });
+      void reverted;
+      return;
+    }
+
+    // Advance the deal's activity clock so staleness/health reflect the touch.
+    await db
+      .update(opportunitiesTable)
+      .set({ lastActivityAt: sentAt })
+      .where(eq(opportunitiesTable.id, opp.id));
+    await db.insert(salesAuditEventsTable).values({
+      ownerUserId: ownerId,
+      opportunityId: opp.id,
+      actorUserId: uid,
+      eventType: "follow_up_sent",
+      detail: {
+        sequence: followUp.sequence,
+        manual: true,
+        ...(provider ? { provider } : {}),
+        ...(model ? { model } : {}),
+      },
+    });
+    res.json(serializeFollowUp(claimedRow));
+  }
+);
+
+// GET /sales/forecast — weighted revenue forecast + win rate scoped to caller.
+router.get(
+  "/forecast",
+  requirePermission("opportunities", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req);
+    if (uid == null) {
+      res.status(401).json({ error: "Not signed in" });
+      return;
+    }
+    const ownerId = await resolveOwnerUserId(uid);
+    const teamRole = await resolveTeamRole(uid);
+    const scope = opportunityScopeWhere(ownerId, teamRole, uid);
+
+    const rows = await db
+      .select({
+        status: opportunitiesTable.status,
+        stageId: opportunitiesTable.stageId,
+        estimatedValueIdr: opportunitiesTable.estimatedValueIdr,
+        leadScore: opportunitiesTable.leadScore,
+      })
+      .from(opportunitiesTable)
+      .where(scope);
+
+    const stages = await db
+      .select({ id: pipelineStagesTable.id, name: pipelineStagesTable.name })
+      .from(pipelineStagesTable)
+      .where(eq(pipelineStagesTable.ownerUserId, ownerId))
+      .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
+
+    const result = computeSalesForecast(
+      rows.map((r) => ({
+        status: r.status as "open" | "won" | "lost",
+        stageId: r.stageId,
+        estimatedValueIdr: Number(r.estimatedValueIdr),
+        leadScore: Number(r.leadScore),
+      })),
+      stages
+    );
+    res.json(result);
   }
 );
 

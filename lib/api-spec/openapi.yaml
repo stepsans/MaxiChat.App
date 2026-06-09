@@ -4969,6 +4969,127 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /sales/opportunities/{id}/follow-ups/{followUpId}:
+    patch:
+      operationId: updateOpportunityFollowUp
+      tags: [sales]
+      summary: Edit or cancel a pending follow-up touch
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: followUpId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityFollowUpUpdate"
+      responses:
+        "200":
+          description: The updated follow-up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpportunityFollowUp"
+        "400":
+          description: Invalid payload, or the follow-up is not pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Plan lacks the AI Sales Assistant entitlement, or no permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Opportunity or follow-up not found / not visible to caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sales/opportunities/{id}/follow-ups/{followUpId}/send:
+    post:
+      operationId: sendOpportunityFollowUp
+      tags: [sales]
+      summary: Send a pending follow-up now (drafts the message first if needed)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: followUpId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The follow-up after it was sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpportunityFollowUp"
+        "400":
+          description: Invalid id, or the channel is not WhatsApp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Plan lacks the AI Sales Assistant entitlement, or no permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Opportunity or follow-up not found / not visible to caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The follow-up is no longer pending (already sent or cancelled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Drafting or sending the message failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sales/forecast:
+    get:
+      operationId: getSalesForecast
+      tags: [sales]
+      summary: Weighted revenue forecast + win rate scoped to the caller
+      responses:
+        "200":
+          description: Forecast snapshot scoped to the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesForecast"
+        "403":
+          description: Plan lacks the AI Sales Assistant entitlement, or no permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /sales/insights:
     get:
       operationId: getSalesInsights
@@ -5819,6 +5940,80 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    OpportunityFollowUpUpdate:
+      type: object
+      description: >-
+        Edit or cancel a pending follow-up. Provide `generatedMessage` to set the
+        draft the operator wants sent, and/or `status: cancelled` to drop the
+        touch. Only pending follow-ups can be edited or cancelled.
+      properties:
+        generatedMessage:
+          type: ["string", "null"]
+          description: The drafted message text to store on the follow-up.
+        status:
+          type: string
+          enum: [cancelled]
+          description: Set to `cancelled` to drop this pending touch.
+
+    SalesForecast:
+      type: object
+      description: >-
+        Weighted revenue forecast + win rate scoped to the caller's visibility.
+        The weighted forecast multiplies each open deal's estimated value by its
+        lead score probability (leadScore/100). All money is whole-integer Rupiah.
+      required:
+        [
+          openCount,
+          openValueIdr,
+          weightedForecastIdr,
+          wonCount,
+          lostCount,
+          wonValueIdr,
+          winRatePct,
+          byStage,
+        ]
+      properties:
+        openCount:
+          type: integer
+        openValueIdr:
+          type: integer
+          format: int64
+          description: Sum of estimated value across open opportunities (whole Rupiah).
+        weightedForecastIdr:
+          type: integer
+          format: int64
+          description: Sum of (open estimated value × leadScore/100), rounded (whole Rupiah).
+        wonCount:
+          type: integer
+        lostCount:
+          type: integer
+        wonValueIdr:
+          type: integer
+          format: int64
+          description: Sum of estimated value across won opportunities (whole Rupiah).
+        winRatePct:
+          type: integer
+          description: won / (won + lost) × 100, rounded to a whole percent (0 when none closed).
+        byStage:
+          type: array
+          description: Per-stage open count, value, and weighted forecast.
+          items:
+            type: object
+            required: [stageId, stageName, count, valueIdr, weightedIdr]
+            properties:
+              stageId:
+                type: ["integer", "null"]
+              stageName:
+                type: string
+              count:
+                type: integer
+              valueIdr:
+                type: integer
+                format: int64
+              weightedIdr:
+                type: integer
+                format: int64
 
     SalesAuditEvent:
       type: object

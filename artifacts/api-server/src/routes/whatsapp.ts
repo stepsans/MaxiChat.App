@@ -4,6 +4,7 @@ import qrcode from "qrcode";
 import path from "path";
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { BlockList, isIP } from "node:net";
 import mime from "mime-types";
 import { db } from "@workspace/db";
 import {
@@ -2262,10 +2263,7 @@ const MAX_EXTERNAL_IMAGE_BYTES = 16 * 1024 * 1024;
 // requests to (used as an SSRF guard when loading flow/product images by URL).
 // Covers loopback, RFC1918 private, link-local (incl. 169.254.169.254 cloud
 // metadata), CGNAT, multicast, reserved, and IPv6 equivalents.
-const SSRF_BLOCKLIST: import("node:net").BlockList = (() => {
-  // Lazy require to avoid the cost at module import in non-prod hot paths.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { BlockList } = require("node:net") as typeof import("node:net");
+const SSRF_BLOCKLIST: BlockList = (() => {
   const bl = new BlockList();
   bl.addSubnet("0.0.0.0", 8, "ipv4");
   bl.addSubnet("10.0.0.0", 8, "ipv4");
@@ -2288,8 +2286,6 @@ const SSRF_BLOCKLIST: import("node:net").BlockList = (() => {
 // ::ffff:0102:0304 hex forms) so we never miss private IPv4 ranges hidden
 // behind IPv6 encoding.
 function checkAddressBlocked(addr: string): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { isIP } = require("node:net") as typeof import("node:net");
   const family = isIP(addr);
   if (family === 4) return SSRF_BLOCKLIST.check(addr, "ipv4");
   if (family !== 6) return true; // unknown → block

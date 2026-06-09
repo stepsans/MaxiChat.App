@@ -25,6 +25,8 @@ import {
   useUpdateSalesAssistantSettings,
   useCreateOpportunity,
   useListOpportunityFollowUps,
+  useSendOpportunityFollowUp,
+  useUpdateOpportunityFollowUp,
   getListShortcutsQueryKey,
   getListProductsQueryKey,
   getListSalesOrdersQueryKey,
@@ -2165,7 +2167,9 @@ function SalesInsightTab({
       ) : insight ? (
         <SalesInsightBody
           insight={insight}
+          chatId={chatId}
           canCreateOpportunity={canCreateOpportunity}
+          canEditOpportunity={canEditSettings}
           creating={createOpportunity.isPending}
           onCreateOpportunity={() =>
             createOpportunity.mutate({
@@ -2338,7 +2342,17 @@ const FOLLOW_UP_STATUS_LABEL: Record<string, string> = {
 // Follow-Up toggle is OFF, the engine writes a recommendation row (status
 // `pending`, no drafted message) — we show those as "Disarankan" so the user
 // sees what AI WOULD send. Cancelled/skipped rows are hidden to keep it focused.
-function FollowUpSection({ opportunityId }: { opportunityId: number }) {
+function FollowUpSection({
+  opportunityId,
+  chatId,
+  canEdit,
+}: {
+  opportunityId: number;
+  chatId: number;
+  canEdit: boolean;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const { data, isLoading, isError } = useListOpportunityFollowUps(
     opportunityId,
     {
@@ -2348,6 +2362,51 @@ function FollowUpSection({ opportunityId }: { opportunityId: number }) {
       },
     }
   );
+
+  // Which pending row is currently being edited inline, plus its draft text.
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+
+  function refresh() {
+    qc.invalidateQueries({
+      queryKey: getListOpportunityFollowUpsQueryKey(opportunityId),
+    });
+    // The sidebar's "last activity" / recommendation can shift after a send.
+    qc.invalidateQueries({ queryKey: getGetChatSalesInsightQueryKey(chatId) });
+  }
+
+  const sendFollowUp = useSendOpportunityFollowUp({
+    mutation: {
+      onSuccess: () => {
+        refresh();
+        toast({ description: "Follow-up terkirim." });
+      },
+      onError: () => {
+        toast({
+          variant: "destructive",
+          description: "Gagal mengirim follow-up. Coba lagi.",
+        });
+        refresh();
+      },
+    },
+  });
+  const updateFollowUp = useUpdateOpportunityFollowUp({
+    mutation: {
+      onSuccess: () => {
+        setEditingId(null);
+        refresh();
+      },
+      onError: () => {
+        toast({
+          variant: "destructive",
+          description: "Gagal menyimpan perubahan follow-up.",
+        });
+      },
+    },
+  });
+
+  const pending = sendFollowUp.isPending || updateFollowUp.isPending;
+
   const items = (data ?? []).filter(
     (f) => f.status === "pending" || f.status === "sent"
   );
@@ -2371,6 +2430,11 @@ function FollowUpSection({ opportunityId }: { opportunityId: number }) {
             const recommendationOnly =
               f.status === "pending" && !f.generatedMessage;
             const when = sent ? f.sentAt : f.scheduledAt;
+            const isEditing = editingId === f.id;
+            // Manual controls only on still-pending touches, and only when the
+            // caller can edit opportunities. A recommendation-only row (no
+            // drafted message) can still be sent — the server drafts on send.
+            const showActions = canEdit && f.status === "pending";
             return (
               <li
                 key={f.id}
@@ -2401,14 +2465,102 @@ function FollowUpSection({ opportunityId }: { opportunityId: number }) {
                   {sent ? "Terkirim" : "Jatuh tempo"}{" "}
                   {when ? new Date(when).toLocaleString("id-ID") : "—"}
                 </p>
-                {f.generatedMessage ? (
+                {isEditing ? (
+                  <div className="space-y-1.5">
+                    <Textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      rows={3}
+                      placeholder="Tulis pesan follow-up…"
+                      className="text-xs"
+                      data-testid={`textarea-follow-up-${f.id}`}
+                    />
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        className="h-6 px-2 text-[11px]"
+                        disabled={pending || draft.trim().length === 0}
+                        data-testid={`button-save-follow-up-${f.id}`}
+                        onClick={() =>
+                          updateFollowUp.mutate({
+                            id: opportunityId,
+                            followUpId: f.id,
+                            data: { generatedMessage: draft.trim() },
+                          })
+                        }
+                      >
+                        Simpan
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[11px]"
+                        disabled={pending}
+                        data-testid={`button-cancel-edit-follow-up-${f.id}`}
+                        onClick={() => setEditingId(null)}
+                      >
+                        Batal
+                      </Button>
+                    </div>
+                  </div>
+                ) : f.generatedMessage ? (
                   <p className="text-xs text-foreground whitespace-pre-wrap">
                     {f.generatedMessage}
                   </p>
                 ) : recommendationOnly ? (
                   <p className="text-[10px] italic text-[hsl(var(--wa-meta))]">
-                    Aktifkan Auto Follow-Up agar pesan dibuat & dikirim otomatis.
+                    Pesan akan dibuat otomatis saat dikirim.
                   </p>
+                ) : null}
+                {showActions && !isEditing ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <Button
+                      size="sm"
+                      className="h-6 px-2 text-[11px]"
+                      disabled={pending}
+                      data-testid={`button-send-follow-up-${f.id}`}
+                      onClick={() =>
+                        sendFollowUp.mutate({
+                          id: opportunityId,
+                          followUpId: f.id,
+                        })
+                      }
+                    >
+                      <Send className="w-3 h-3 mr-1" />
+                      Kirim sekarang
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      disabled={pending}
+                      data-testid={`button-edit-follow-up-${f.id}`}
+                      onClick={() => {
+                        setEditingId(f.id);
+                        setDraft(f.generatedMessage ?? "");
+                      }}
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-[11px] text-red-400 hover:text-red-300"
+                      disabled={pending}
+                      data-testid={`button-cancel-follow-up-${f.id}`}
+                      onClick={() =>
+                        updateFollowUp.mutate({
+                          id: opportunityId,
+                          followUpId: f.id,
+                          data: { status: "cancelled" },
+                        })
+                      }
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Batalkan
+                    </Button>
+                  </div>
                 ) : null}
               </li>
             );
@@ -2421,12 +2573,16 @@ function FollowUpSection({ opportunityId }: { opportunityId: number }) {
 
 function SalesInsightBody({
   insight,
+  chatId,
   canCreateOpportunity,
+  canEditOpportunity,
   creating,
   onCreateOpportunity,
 }: {
   insight: SalesInsight;
+  chatId: number;
   canCreateOpportunity: boolean;
+  canEditOpportunity: boolean;
   creating: boolean;
   onCreateOpportunity: () => void;
 }) {
@@ -2505,7 +2661,11 @@ function SalesInsightBody({
                 : "—"}
             </InsightRow>
             {insight.opportunityId != null ? (
-              <FollowUpSection opportunityId={insight.opportunityId} />
+              <FollowUpSection
+                opportunityId={insight.opportunityId}
+                chatId={chatId}
+                canEdit={canEditOpportunity}
+              />
             ) : null}
           </>
         ) : (

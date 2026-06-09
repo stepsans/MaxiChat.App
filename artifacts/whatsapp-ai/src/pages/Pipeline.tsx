@@ -23,12 +23,18 @@ import {
   useReorderSalesStages,
   useGetPipelineHealth,
   useListAgents,
+  useGetSalesForecast,
+  useListSalesAuditEvents,
   getListSalesStagesQueryKey,
   getListOpportunitiesQueryKey,
   getGetPipelineHealthQueryKey,
   getListAgentsQueryKey,
+  getGetSalesForecastQueryKey,
+  getListSalesAuditEventsQueryKey,
   type Opportunity,
   type SalesStage,
+  type SalesAuditEvent,
+  type SalesForecast,
 } from "@workspace/api-client-react";
 import {
   AlertTriangle,
@@ -41,7 +47,19 @@ import {
   Plus,
   Trash2,
   TrendingUp,
+  LayoutGrid,
+  BarChart3,
+  History,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -129,6 +147,7 @@ export default function Pipeline() {
   const hasEntitlement = me?.user?.hasAiSalesAssistant === true;
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
+  const [view, setView] = useState<"board" | "analytics" | "activity">("board");
 
   const { data: stages, isLoading: stagesLoading } = useListSalesStages({
     query: { queryKey: getListSalesStagesQueryKey(), enabled: hasEntitlement && perm.canView },
@@ -158,6 +177,26 @@ export default function Pipeline() {
       enabled: hasEntitlement && perm.canView,
     },
   });
+
+  // Analytics + activity surfaces are lazy: only fetched once their tab is
+  // opened (the board is the default view).
+  const { data: forecast, isLoading: forecastLoading } = useGetSalesForecast({
+    query: {
+      queryKey: getGetSalesForecastQueryKey(),
+      enabled: hasEntitlement && perm.canView && view === "analytics",
+      refetchInterval: 30_000,
+    },
+  });
+  const { data: auditEvents, isLoading: auditLoading } = useListSalesAuditEvents(
+    { limit: 100 },
+    {
+      query: {
+        queryKey: getListSalesAuditEventsQueryKey({ limit: 100 }),
+        enabled: hasEntitlement && perm.canView && view === "activity",
+        refetchInterval: 30_000,
+      },
+    }
+  );
 
   const updateOpp = useUpdateOpportunity();
 
@@ -321,84 +360,125 @@ export default function Pipeline() {
         </div>
       </div>
 
-      {summary && summary.highRiskCount > 0 ? (
-        <div className="flex items-center gap-2 px-4 py-2.5 text-sm border-b bg-destructive/10 text-destructive sm:px-6">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span>
-            <strong>{summary.highRiskCount}</strong> peluang berisiko tinggi
-            (tidak aktif &ge; {summary.staleDaysThreshold} hari) senilai{" "}
-            <strong>{formatRupiah(summary.highRiskValueIdr)}</strong> butuh
-            perhatian.
-          </span>
-        </div>
+      <div className="flex items-center gap-1 px-4 border-b sm:px-6">
+        {(
+          [
+            { key: "board", label: "Papan", icon: LayoutGrid },
+            { key: "analytics", label: "Analitik", icon: BarChart3 },
+            { key: "activity", label: "Aktivitas", icon: History },
+          ] as const
+        ).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setView(key)}
+            data-testid={`tab-${key}`}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+              view === key
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "board" ? (
+        <>
+          {summary && summary.highRiskCount > 0 ? (
+            <div className="flex items-center gap-2 px-4 py-2.5 text-sm border-b bg-destructive/10 text-destructive sm:px-6">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>
+                <strong>{summary.highRiskCount}</strong> peluang berisiko tinggi
+                (tidak aktif &ge; {summary.staleDaysThreshold} hari) senilai{" "}
+                <strong>{formatRupiah(summary.highRiskValueIdr)}</strong> butuh
+                perhatian.
+              </span>
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div className="flex items-center justify-center flex-1">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex-1 overflow-x-auto">
+                <div className="flex h-full gap-3 p-4 sm:p-6 min-w-max">
+                  {[
+                    ...sortedStages.map((s) => ({
+                      key: String(s.id),
+                      stage: s,
+                    })),
+                    { key: NO_STAGE, stage: null as SalesStage | null },
+                  ].map(({ key, stage }) => {
+                    const items = byStage.get(key) ?? [];
+                    const total = items.reduce(
+                      (sum, o) => sum + o.estimatedValueIdr,
+                      0
+                    );
+                    return (
+                      <StageColumn
+                        key={key}
+                        id={key}
+                        title={stage?.name ?? "Tanpa Stage"}
+                        color={stage?.color ?? null}
+                        isTerminal={!!(stage?.isWon || stage?.isLost)}
+                        count={items.length}
+                        total={total}
+                        canDrag={perm.canEdit}
+                      >
+                        {items.map((o) => (
+                          <OpportunityCard
+                            key={o.id}
+                            opp={o}
+                            highRisk={highRiskIds.has(o.id)}
+                            canDrag={perm.canEdit}
+                            onClick={() => setDetailId(o.id)}
+                          />
+                        ))}
+                        {items.length === 0 ? (
+                          <p className="px-1 py-6 text-xs text-center text-muted-foreground">
+                            Kosong
+                          </p>
+                        ) : null}
+                      </StageColumn>
+                    );
+                  })}
+                </div>
+              </div>
+              <DragOverlay>
+                {activeOpp ? (
+                  <OpportunityCard
+                    opp={activeOpp}
+                    highRisk={highRiskIds.has(activeOpp.id)}
+                    canDrag
+                    dragging
+                  />
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </>
       ) : null}
 
-      {loading ? (
-        <div className="flex items-center justify-center flex-1">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex-1 overflow-x-auto">
-            <div className="flex h-full gap-3 p-4 sm:p-6 min-w-max">
-              {[
-                ...sortedStages.map((s) => ({
-                  key: String(s.id),
-                  stage: s,
-                })),
-                { key: NO_STAGE, stage: null as SalesStage | null },
-              ].map(({ key, stage }) => {
-                const items = byStage.get(key) ?? [];
-                const total = items.reduce(
-                  (sum, o) => sum + o.estimatedValueIdr,
-                  0
-                );
-                return (
-                  <StageColumn
-                    key={key}
-                    id={key}
-                    title={stage?.name ?? "Tanpa Stage"}
-                    color={stage?.color ?? null}
-                    isTerminal={!!(stage?.isWon || stage?.isLost)}
-                    count={items.length}
-                    total={total}
-                    canDrag={perm.canEdit}
-                  >
-                    {items.map((o) => (
-                      <OpportunityCard
-                        key={o.id}
-                        opp={o}
-                        highRisk={highRiskIds.has(o.id)}
-                        canDrag={perm.canEdit}
-                        onClick={() => setDetailId(o.id)}
-                      />
-                    ))}
-                    {items.length === 0 ? (
-                      <p className="px-1 py-6 text-xs text-center text-muted-foreground">
-                        Kosong
-                      </p>
-                    ) : null}
-                  </StageColumn>
-                );
-              })}
-            </div>
-          </div>
-          <DragOverlay>
-            {activeOpp ? (
-              <OpportunityCard
-                opp={activeOpp}
-                highRisk={highRiskIds.has(activeOpp.id)}
-                canDrag
-                dragging
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
+      {view === "analytics" ? (
+        <ForecastPanel
+          forecast={forecast}
+          loading={forecastLoading}
+        />
+      ) : null}
+
+      {view === "activity" ? (
+        <AuditTrailPanel events={auditEvents} loading={auditLoading} />
+      ) : null}
 
       {detailOpp ? (
         <OpportunityDetailDialog
@@ -421,6 +501,228 @@ export default function Pipeline() {
           onClose={() => setStageMgmtOpen(false)}
         />
       ) : null}
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="p-4 border rounded-lg bg-card">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+      {hint ? (
+        <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function ForecastPanel({
+  forecast,
+  loading,
+}: {
+  forecast: SalesForecast | undefined;
+  loading: boolean;
+}) {
+  if (loading && !forecast) {
+    return (
+      <div className="flex items-center justify-center flex-1">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!forecast) {
+    return (
+      <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
+        Belum ada data prakiraan.
+      </div>
+    );
+  }
+
+  const chartData = forecast.byStage.map((s) => ({
+    name: s.stageName,
+    Nilai: s.valueIdr,
+    Tertimbang: s.weightedIdr,
+  }));
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-6 sm:p-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard
+          label="Nilai pipeline terbuka"
+          value={formatRupiah(forecast.openValueIdr)}
+          hint={`${forecast.openCount} peluang terbuka`}
+        />
+        <MetricCard
+          label="Prakiraan tertimbang"
+          value={formatRupiah(forecast.weightedForecastIdr)}
+          hint="Nilai × skor lead"
+        />
+        <MetricCard
+          label="Tingkat kemenangan"
+          value={`${forecast.winRatePct}%`}
+          hint={`${forecast.wonCount} menang · ${forecast.lostCount} kalah`}
+        />
+        <MetricCard
+          label="Nilai dimenangkan"
+          value={formatRupiah(forecast.wonValueIdr)}
+          hint="Total peluang menang"
+        />
+      </div>
+
+      <div className="p-4 border rounded-lg bg-card">
+        <h2 className="text-sm font-semibold">Prakiraan per Stage</h2>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Nilai terbuka dan prakiraan tertimbang di tiap stage.
+        </p>
+        {chartData.length === 0 ? (
+          <p className="py-12 text-sm text-center text-muted-foreground">
+            Belum ada peluang terbuka.
+          </p>
+        ) : (
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  className="stroke-muted"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 12 }}
+                  className="fill-muted-foreground"
+                />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  className="fill-muted-foreground"
+                  tickFormatter={(v) =>
+                    new Intl.NumberFormat("id-ID", {
+                      notation: "compact",
+                      maximumFractionDigits: 1,
+                    }).format(Number(v))
+                  }
+                />
+                <Tooltip
+                  formatter={(v: number | string) => formatRupiah(Number(v))}
+                  contentStyle={{ fontSize: 12 }}
+                />
+                <Bar
+                  dataKey="Nilai"
+                  fill="hsl(var(--muted-foreground))"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="Tertimbang"
+                  fill="hsl(var(--primary))"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const AUDIT_EVENT_LABEL: Record<string, string> = {
+  opportunity_created: "Peluang dibuat",
+  opportunity_deleted: "Peluang dihapus",
+  stage_changed: "Stage diubah",
+  stage_recommendation: "Rekomendasi stage",
+  follow_up_recommended: "Tindak lanjut disarankan",
+  follow_up_sent: "Tindak lanjut dikirim",
+  lead_scored: "Skor lead diperbarui",
+};
+
+function auditEventLabel(eventType: string): string {
+  return AUDIT_EVENT_LABEL[eventType] ?? eventType;
+}
+
+function auditDetailText(ev: SalesAuditEvent): string | null {
+  const d = ev.detail ?? {};
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(d)) {
+    if (v == null) continue;
+    if (typeof v === "object") continue;
+    parts.push(`${k}: ${String(v)}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function AuditTrailPanel({
+  events,
+  loading,
+}: {
+  events: SalesAuditEvent[] | undefined;
+  loading: boolean;
+}) {
+  if (loading && !events) {
+    return (
+      <div className="flex items-center justify-center flex-1">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!events || events.length === 0) {
+    return (
+      <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
+        Belum ada aktivitas tercatat.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <ul className="space-y-2 max-w-3xl">
+        {events.map((ev) => {
+          const detail = auditDetailText(ev);
+          return (
+            <li
+              key={ev.id}
+              className="flex items-start gap-3 p-3 border rounded-lg bg-card"
+              data-testid={`audit-event-${ev.id}`}
+            >
+              <span
+                className={cn(
+                  "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                  ev.actorUserId == null ? "bg-primary" : "bg-emerald-500"
+                )}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="text-sm font-medium">
+                    {auditEventLabel(ev.eventType)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {ev.actorUserId == null ? "AI / sistem" : "Pengguna"}
+                  </span>
+                </div>
+                {detail ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground break-words">
+                    {detail}
+                  </p>
+                ) : null}
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {new Date(ev.createdAt).toLocaleString("id-ID")}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
