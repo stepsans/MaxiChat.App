@@ -42,3 +42,9 @@ id = "viP5Ns6YrFZ-99QcR_QNu"
 uri = "file://.local/exports/maxichat-key-files.tar.gz"
 type = "unspecified"
 title = "MaxiChat — server entry + DB schema/migrations + package.json"
+
+[[outputs]]
+id = "oASqtk6ugUKFOtdfW1Pkl"
+uri = "file://.local/exports/maxichat-full.tar.gz"
+type = "unspecified"
+title = "MaxiChat — full source code + database (structured)"
