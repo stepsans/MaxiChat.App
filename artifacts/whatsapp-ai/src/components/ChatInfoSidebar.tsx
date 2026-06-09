@@ -24,6 +24,7 @@ import {
   useGetSalesAssistantSettings,
   useUpdateSalesAssistantSettings,
   useCreateOpportunity,
+  useListOpportunityFollowUps,
   getListShortcutsQueryKey,
   getListProductsQueryKey,
   getListSalesOrdersQueryKey,
@@ -35,6 +36,7 @@ import {
   getGetCommonGroupsQueryKey,
   getGetChatSalesInsightQueryKey,
   getGetSalesAssistantSettingsQueryKey,
+  getListOpportunityFollowUpsQueryKey,
 } from "@workspace/api-client-react";
 import type {
   TextShortcut,
@@ -97,6 +99,8 @@ import {
   Sparkles,
   RefreshCw,
   TrendingUp,
+  Clock,
+  CheckCheck,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { ChatAvatar } from "@/components/ChatAvatar";
@@ -2322,6 +2326,99 @@ function SalesInsightTab({
   );
 }
 
+const FOLLOW_UP_STATUS_LABEL: Record<string, string> = {
+  sent: "Terkirim",
+  pending: "Terjadwal",
+  cancelled: "Dibatalkan",
+  skipped: "Dilewati",
+};
+
+// Surfaces the per-opportunity follow-up plan in the chat sidebar: queued
+// touches (status `pending`) and already-sent ones. When the tenant's Auto
+// Follow-Up toggle is OFF, the engine writes a recommendation row (status
+// `pending`, no drafted message) — we show those as "Disarankan" so the user
+// sees what AI WOULD send. Cancelled/skipped rows are hidden to keep it focused.
+function FollowUpSection({ opportunityId }: { opportunityId: number }) {
+  const { data, isLoading, isError } = useListOpportunityFollowUps(
+    opportunityId,
+    {
+      query: {
+        queryKey: getListOpportunityFollowUpsQueryKey(opportunityId),
+        retry: false,
+      },
+    }
+  );
+  const items = (data ?? []).filter(
+    (f) => f.status === "pending" || f.status === "sent"
+  );
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+        Follow-up
+      </p>
+      {isLoading ? (
+        <p className="text-[11px] text-[hsl(var(--wa-meta))]">Memuat…</p>
+      ) : isError ? (
+        <p className="text-[11px] text-red-400">Gagal memuat follow-up.</p>
+      ) : items.length === 0 ? (
+        <p className="text-[11px] text-[hsl(var(--wa-meta))]">
+          Belum ada follow-up terjadwal.
+        </p>
+      ) : (
+        <ul className="space-y-2" data-testid="follow-up-list">
+          {items.map((f) => {
+            const sent = f.status === "sent";
+            const recommendationOnly =
+              f.status === "pending" && !f.generatedMessage;
+            const when = sent ? f.sentAt : f.scheduledAt;
+            return (
+              <li
+                key={f.id}
+                data-testid={`follow-up-${f.id}`}
+                className="rounded-md border border-[hsl(var(--wa-divider))] bg-white/[0.02] p-2 space-y-1"
+              >
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  {sent ? (
+                    <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  <span className="font-medium text-foreground">
+                    Follow-up ke-{f.sequence}
+                  </span>
+                  <span
+                    className={cn(
+                      "ml-auto",
+                      sent ? "text-emerald-400" : "text-amber-400"
+                    )}
+                  >
+                    {recommendationOnly
+                      ? "Disarankan"
+                      : FOLLOW_UP_STATUS_LABEL[f.status] ?? f.status}
+                  </span>
+                </div>
+                <p className="text-[10px] text-[hsl(var(--wa-meta))]">
+                  {sent ? "Terkirim" : "Jatuh tempo"}{" "}
+                  {when ? new Date(when).toLocaleString("id-ID") : "—"}
+                </p>
+                {f.generatedMessage ? (
+                  <p className="text-xs text-foreground whitespace-pre-wrap">
+                    {f.generatedMessage}
+                  </p>
+                ) : recommendationOnly ? (
+                  <p className="text-[10px] italic text-[hsl(var(--wa-meta))]">
+                    Aktifkan Auto Follow-Up agar pesan dibuat & dikirim otomatis.
+                  </p>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function SalesInsightBody({
   insight,
   canCreateOpportunity,
@@ -2407,6 +2504,9 @@ function SalesInsightBody({
                 ? new Date(insight.lastActivityAt).toLocaleString("id-ID")
                 : "—"}
             </InsightRow>
+            {insight.opportunityId != null ? (
+              <FollowUpSection opportunityId={insight.opportunityId} />
+            ) : null}
           </>
         ) : (
           <div className="space-y-2">
