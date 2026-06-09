@@ -103,9 +103,11 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
       // 2. Persist before React commits — survives a hard refresh
       //    even if the user navigates away immediately.
       persist(sel);
-      // 3. Invalidate only channel-scoped queries — avoid thrashing
+      // 3. Remove channel-scoped queries from cache immediately so active
+      //    subscribers enter loading state instead of showing the previous
+      //    channel's data while the new fetch is in-flight. Skips
       //    static-per-user data (auth/me, permissions, channels list).
-      queryClient.invalidateQueries({
+      queryClient.removeQueries({
         predicate: (q) => !isChannelAgnosticKey(q.queryKey),
       });
       // 4. Finally update React state so the UI reflects the change.

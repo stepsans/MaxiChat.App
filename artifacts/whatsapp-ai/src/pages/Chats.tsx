@@ -8,6 +8,7 @@ import {
   useGetWhatsappStatus,
   getGetWhatsappStatusQueryKey,
 } from "@workspace/api-client-react";
+import { useActiveChannel } from "@/contexts/ChannelContext";
 
 // Two-pane WhatsApp Web layout: chat list on the left, open conversation
 // on the right. On mobile, only one is visible at a time and the URL drives
@@ -18,6 +19,8 @@ export default function Chats() {
   const chatId = match && params?.id ? Number(params.id) : null;
   const [, navigate] = useLocation();
 
+  const { activeChannelId, channels } = useActiveChannel();
+
   const { data: waStatus } = useGetWhatsappStatus({
     query: {
       queryKey: getGetWhatsappStatusQueryKey(),
@@ -25,7 +28,19 @@ export default function Chats() {
     },
   });
 
-  const status = waStatus?.status ?? "disconnected";
+  // When "all channels" is selected, derive connection status from the channel
+  // list instead of the single-channel status endpoint. The chat view is
+  // accessible as long as at least one channel is connected or syncing.
+  const status = (() => {
+    if (activeChannelId === "all" && channels.length > 0) {
+      if (channels.some((c) => c.status === "connected")) return "connected";
+      if (channels.some((c) => c.status === "syncing")) return "syncing";
+      if (channels.some((c) => c.status === "connecting" || c.status === "qr_ready"))
+        return "connecting";
+      return "disconnected";
+    }
+    return waStatus?.status ?? "disconnected";
+  })();
 
   return (
     <div className="flex h-full w-full bg-[hsl(var(--wa-conversation))] relative">

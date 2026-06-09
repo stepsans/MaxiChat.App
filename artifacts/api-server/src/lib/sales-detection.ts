@@ -5,37 +5,27 @@ import {
   channelsTable,
   pipelineStagesTable,
   opportunitiesTable,
-  salesInsightsTable,
+  opportunityProductsTable,
   salesAssistantSettingsTable,
   salesAuditEventsTable,
 } from "@workspace/db";
-import { ownerHasSalesAssistant } from "./sales-assistant";
+import {
+  ownerHasSalesAssistant,
+  getPipelineByType,
+} from "./sales-assistant";
 import { analyzeAndPersistChat } from "./sales-insight";
 import { resolveOwnerUserId } from "./seed";
 import { logger } from "./logger";
+import type { OpportunityCandidate } from "./sales-insight-build";
 
 // ===========================================================================
-// AI Sales Assistant — in-process detection queue. Inbound message handlers
-// call enqueueChatDetection(chatId) (non-blocking, fire-and-forget) and return
-// immediately so the socket / webhook path is never blocked by AI work. Per
-// chat we DEBOUNCE (a burst of messages collapses into one analysis after a
-// quiet window) and we hold a per-chat in-flight lock so the same chat is never
-// analysed concurrently. Mirrors the ai-review scheduler's in-flight-Set
-// discipline.
+// AI Sales Assistant — in-process detection queue.
 // ===========================================================================
 
-// Quiet window after the last inbound message before analysis fires. A
-// customer typing several lines in a row collapses into a single run.
 const DEBOUNCE_MS = 8_000;
-
-// Per-chat pending debounce timers and the set of chats currently being
-// analysed. A trigger arriving while a chat is in-flight re-arms the timer so
-// the new message is picked up by a follow-up run.
 const pendingTimers = new Map<number, NodeJS.Timeout>();
 const inFlight = new Set<number>();
 
-// Default settings when a tenant has never configured the assistant: auto-create
-// is OFF (the AI only recommends) at a 70 threshold.
 const DEFAULT_AUTO_CREATE_ENABLED = false;
 const DEFAULT_AUTO_CREATE_THRESHOLD = 70;
 
@@ -59,9 +49,6 @@ async function getAutoCreateSettings(
   };
 }
 
-// Fire-and-forget entry point from the inbound message pipeline. Schedules a
-// debounced analysis for `chatId`. Never throws — a detection failure must
-// never break message ingestion.
 export function enqueueChatDetection(chatId: number): void {
   if (!Number.isInteger(chatId) || chatId <= 0) return;
   const existing = pendingTimers.get(chatId);
@@ -70,13 +57,10 @@ export function enqueueChatDetection(chatId: number): void {
     pendingTimers.delete(chatId);
     void runDetection(chatId);
   }, DEBOUNCE_MS);
-  // Don't keep the event loop alive solely for a pending analysis.
   if (typeof timer.unref === "function") timer.unref();
   pendingTimers.set(chatId, timer);
 }
 
-// Cheap chat → channel → tenant-owner resolution used to entitlement-gate a
-// detection run before any AI work. Returns null when the chat/channel is gone.
 async function resolveChatOwner(chatId: number): Promise<number | null> {
   const [row] = await db
     .select({ channelUserId: channelsTable.userId })
@@ -90,23 +74,17 @@ async function resolveChatOwner(chatId: number): Promise<number | null> {
 
 async function runDetection(chatId: number): Promise<void> {
   if (inFlight.has(chatId)) {
-    // Re-arm so the message that arrived during the in-flight run is analysed.
     enqueueChatDetection(chatId);
     return;
   }
   inFlight.add(chatId);
   try {
-    // Entitlement gate FIRST: the AI Sales Assistant is Enterprise-only. Resolve
-    // the chat's owner cheaply (chat → channel → owner) and bail BEFORE any AI
-    // call so a non-Enterprise tenant never spends tokens or has an insight
-    // persisted. Auto-detection is an entitled-only behaviour.
     const ownerUserId = await resolveChatOwner(chatId);
     if (ownerUserId == null) return;
     const entitled = await ownerHasSalesAssistant(ownerUserId);
     if (!entitled) return;
 
     const result = await analyzeAndPersistChat(chatId);
-
     await applyAutoCreateForResult(result);
   } catch (err) {
     logger.warn(
@@ -120,86 +98,129 @@ async function runDetection(chatId: number): Promise<void> {
 
 type AnalysisResult = Awaited<ReturnType<typeof analyzeAndPersistChat>>;
 
-// Idempotently create ONE opportunity for this chat, pre-filled from the AI
-// analysis. The unique chat_id index + onConflictDoNothing guarantees a single
-// opportunity per chat even under concurrent triggers. All fields stay editable
-// later via the opportunity routes.
-async function maybeAutoCreateOpportunity(
-  result: AnalysisResult
-): Promise<void> {
-  // Default the deal into the owner's first stage ("New Lead") if any exist.
+// Upsert one opportunity candidate into the DB. Uses (chatId, intentKey) as
+// the dedup key: same topic → update score/notes, new topic → insert.
+async function upsertOpportunity(
+  result: AnalysisResult,
+  candidate: OpportunityCandidate
+): Promise<number | null> {
+  // Route to the matching pipeline by type, falling back to default.
+  const pipeline = await getPipelineByType(
+    result.ownerUserId,
+    candidate.pipelineType
+  );
+  if (!pipeline) return null;
+
+  // First stage of this specific pipeline (where new opportunities land).
   const [firstStage] = await db
     .select({ id: pipelineStagesTable.id })
     .from(pipelineStagesTable)
-    .where(eq(pipelineStagesTable.ownerUserId, result.ownerUserId))
+    .where(eq(pipelineStagesTable.pipelineId, pipeline.id))
     .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id))
     .limit(1);
 
-  const inserted = await db
+  const now = new Date();
+
+  // Try insert; on conflict (same chatId + intentKey) update the AI fields.
+  const [opp] = await db
     .insert(opportunitiesTable)
     .values({
       ownerUserId: result.ownerUserId,
       chatId: result.chatId,
       channelId: result.channelId,
+      pipelineId: pipeline.id,
       contactPhone: result.contactPhone,
       contactName: result.contactName,
       stageId: firstStage?.id ?? null,
-      leadScore: result.leadScore,
-      intentCategory: result.analysis.intentCategory,
-      estimatedValueIdr: result.analysis.estimatedValueIdr,
+      intentKey: candidate.intentKey,
+      intentType: candidate.intentType,
+      leadScore: candidate.leadScore,
+      intentCategory: candidate.intentCategory,
+      estimatedValueIdr: candidate.estimatedValueIdr,
       status: "open",
       waitingStatus: result.waitingStatus,
-      productInterest: result.analysis.productInterest,
-      aiNotes: result.analysis.aiNotes,
-      lastActivityAt: new Date(),
+      productInterest: candidate.products,
+      scoreReason: candidate.scoreReason,
+      aiNotes: candidate.aiNotes,
+      recommendation: candidate.recommendation,
+      analyzedAt: now,
+      analyzedMessageIds: result.analyzedMessageIds,
+      keyQuotes: candidate.keyQuotes,
+      lastActivityAt: now,
     })
-    .onConflictDoNothing({ target: opportunitiesTable.chatId })
+    .onConflictDoUpdate({
+      target: [opportunitiesTable.chatId, opportunitiesTable.intentKey],
+      // Only update AI-generated fields; preserve stage/status/assignment.
+      set: {
+        leadScore: candidate.leadScore,
+        intentCategory: candidate.intentCategory,
+        estimatedValueIdr: candidate.estimatedValueIdr,
+        waitingStatus: result.waitingStatus,
+        productInterest: candidate.products,
+        scoreReason: candidate.scoreReason,
+        aiNotes: candidate.aiNotes,
+        recommendation: candidate.recommendation,
+        analyzedAt: now,
+        analyzedMessageIds: result.analyzedMessageIds,
+        keyQuotes: candidate.keyQuotes,
+        lastActivityAt: now,
+        updatedAt: now,
+      },
+    })
     .returning({ id: opportunitiesTable.id });
 
-  const opp = inserted[0];
-  if (!opp) return; // An opportunity already existed for this chat — no-op.
+  if (!opp) return null;
 
-  try {
-    await db.insert(salesAuditEventsTable).values({
-      ownerUserId: result.ownerUserId,
-      opportunityId: opp.id,
-      actorUserId: null,
-      eventType: "opportunity_created",
-      detail: {
-        chatId: result.chatId,
-        leadScore: result.leadScore,
-        estimatedValueIdr: result.analysis.estimatedValueIdr,
-        source: "ai_auto",
-      },
-    });
-  } catch (err) {
-    logger.warn(
-      { err, chatId: result.chatId },
-      "sales-detection: opportunity_created audit failed"
+  // Sync opportunity_products: replace with the current candidate's list.
+  if (candidate.products.length > 0) {
+    await db
+      .delete(opportunityProductsTable)
+      .where(eq(opportunityProductsTable.opportunityId, opp.id));
+    await db.insert(opportunityProductsTable).values(
+      candidate.products.map((name) => ({
+        opportunityId: opp.id,
+        productName: name,
+      }))
     );
   }
 
-  logger.info(
-    { chatId: result.chatId, opportunityId: opp.id, leadScore: result.leadScore },
-    "sales-detection: auto-created opportunity"
-  );
+  return opp.id;
 }
 
-// Shared auto-create chokepoint: read the owner's effective settings and, when
-// Auto-Create is enabled and the score clears the threshold, idempotently create
-// the opportunity. Used by BOTH the background detection worker and the manual
-// "Analisa ulang" route so the toggle behaves identically on either path.
 export async function applyAutoCreateForResult(
   result: AnalysisResult
 ): Promise<void> {
   const settings = await getAutoCreateSettings(result.ownerUserId);
-  if (
-    settings.autoCreateEnabled &&
-    result.leadScore >= settings.autoCreateThreshold
-  ) {
-    await maybeAutoCreateOpportunity(result);
+  if (!settings.autoCreateEnabled) return;
+
+  for (const candidate of result.analysis.opportunities) {
+    if (candidate.leadScore < settings.autoCreateThreshold) continue;
+
+    try {
+      const oppId = await upsertOpportunity(result, candidate);
+      if (oppId == null) continue;
+
+      await db.insert(salesAuditEventsTable).values({
+        ownerUserId: result.ownerUserId,
+        opportunityId: oppId,
+        actorUserId: null,
+        eventType: "opportunity_upserted",
+        detail: {
+          chatId: result.chatId,
+          intentKey: candidate.intentKey,
+          intentType: candidate.intentType,
+          leadScore: candidate.leadScore,
+          estimatedValueIdr: candidate.estimatedValueIdr,
+          source: "ai_auto",
+        },
+      }).onConflictDoNothing();
+    } catch (err) {
+      logger.warn(
+        { err, chatId: result.chatId, intentKey: candidate.intentKey },
+        "sales-detection: upsert opportunity failed"
+      );
+    }
   }
 }
 
-// Exported so the settings route can read the effective (defaulted) config.
 export { getAutoCreateSettings };

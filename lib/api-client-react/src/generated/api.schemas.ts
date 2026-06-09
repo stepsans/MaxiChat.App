@@ -368,6 +368,8 @@ export interface SuccessResponse {
  */
 export interface SalesStage {
   id: number;
+  /** Pipeline this stage belongs to. */
+  pipelineId: number;
   name: string;
   /** Ascending display order on the board. */
   sortOrder: number;
@@ -384,7 +386,42 @@ export interface SalesStage {
   updatedAt: string;
 }
 
+/**
+ * A tenant-owned sales pipeline (e.g. "Pipeline Sales", "Pipeline Service").
+ */
+export interface Pipeline {
+  id: number;
+  name: string;
+  /** 'sales' | 'service' | 'custom' */
+  pipelineType: string;
+  /** Hex color for the pipeline tab/badge. */
+  color: string;
+  /** Whether this pipeline is the default for AI routing. */
+  isDefault: boolean;
+  isArchived: boolean;
+  sortOrder: number;
+  stages: SalesStage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PipelineInput {
+  name: string;
+  pipelineType?: string;
+  color?: string;
+}
+
+export interface PipelineUpdate {
+  name?: string;
+  color?: string;
+  isArchived?: boolean;
+  isDefault?: boolean;
+  sortOrder?: number;
+}
+
 export interface SalesStageInput {
+  /** Pipeline this stage belongs to (required for multi-pipeline). */
+  pipelineId: number;
   /**
      * @minLength 1
      * @maxLength 80
@@ -433,6 +470,17 @@ export const OpportunityStatus = {
 /**
  * A sales opportunity (deal) attached to a chat.
  */
+export interface KeyQuotes {
+  positive: string[];
+  negative: string[];
+  verbatim: string[];
+}
+
+export interface OpportunityProduct {
+  productId: number | null;
+  productName: string;
+}
+
 export interface Opportunity {
   id: number;
   /**
@@ -442,11 +490,17 @@ export interface Opportunity {
   assignedUserId: number | null;
   chatId: number;
   channelId: number;
+  /** Pipeline this opportunity belongs to. @nullable */
+  pipelineId: number | null;
   contactPhone: string;
   /** @nullable */
   contactName: string | null;
   /** @nullable */
   stageId: number | null;
+  /** AI-generated intent cluster slug. @nullable */
+  intentKey: string | null;
+  /** purchase | service | renewal | other */
+  intentType: string;
   /** AI lead score 0–100. */
   leadScore: number;
   /** @nullable */
@@ -458,11 +512,32 @@ export interface Opportunity {
   waitingStatus: string | null;
   productInterest: string[];
   /** @nullable */
+  scoreReason: string | null;
+  /** @nullable */
   aiNotes: string | null;
+  /** @nullable */
+  recommendation: string | null;
+  /** @nullable */
+  analyzedAt: string | null;
+  /** IDs of messages in the analysis window. */
+  analyzedMessageIds: number[];
+  keyQuotes: KeyQuotes;
   /** @nullable */
   lastActivityAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // Enriched from JOINs (present in list + single GET responses)
+  /** @nullable */
+  profilePicUrl: string | null;
+  /** @nullable */
+  channelLabel: string | null;
+  /** @nullable */
+  channelColor: string | null;
+  /** @nullable */
+  stageName: string | null;
+  /** @nullable */
+  pipelineName: string | null;
+  products: OpportunityProduct[];
 }
 
 export type OpportunityInputStatus = typeof OpportunityInputStatus[keyof typeof OpportunityInputStatus];
@@ -477,6 +552,14 @@ export const OpportunityInputStatus = {
 export interface OpportunityInput {
   /** The chat to attach this opportunity to (must be in the tenant). */
   chatId: number;
+  /** Pipeline to assign; defaults to the owner's default pipeline. @nullable */
+  pipelineId?: number | null;
+  /**
+   * AI-detected intent key for this opportunity. When provided, used as dedup
+   * key (chat_id + intent_key) so re-clicking "Buat" for the same candidate
+   * upserts rather than creates a duplicate. @nullable
+   */
+  intentKey?: string | null;
   /** @nullable */
   assignedUserId?: number | null;
   /** @nullable */
@@ -742,6 +825,35 @@ export interface SalesInsight {
      * @nullable
      */
   lastActivityAt: string | null;
+  /** All opportunities detected for this chat (multi-pipeline, multi-intent). */
+  opportunities: Array<{
+    id: number;
+    pipelineId: number | null;
+    pipelineName: string | null;
+    stageId: number | null;
+    stageName: string | null;
+    intentKey: string | null;
+    intentType: string;
+    leadScore: number;
+    lastActivityAt: string | null;
+  }>;
+  /**
+   * Raw AI-detected candidates from the latest analysis run.
+   * Includes candidates not yet persisted as opportunities (auto-create OFF).
+   * Use intentKey to match against existing opportunities to avoid showing "Buat" for already-created ones.
+   */
+  detectedCandidates: Array<{
+    intentKey: string;
+    intentType: string;
+    pipelineType: string;
+    products: string[];
+    intentCategory: string;
+    leadScore: number;
+    estimatedValueIdr: number;
+    scoreReason: string | null;
+    aiNotes: string | null;
+    recommendation: string | null;
+  }>;
 }
 
 /**
@@ -806,7 +918,9 @@ export interface SalesAssistantSettingsUpdate {
  * New top-to-bottom order of pipeline stage ids for the tenant's board.
  */
 export interface ReorderStagesInput {
-  /** All of the tenant's pipeline stage ids, in the desired display order. sortOrder is reassigned by array index. */
+  /** Pipeline the stages belong to (required). */
+  pipelineId: number;
+  /** All stage ids in this pipeline, in the desired display order. sortOrder is reassigned by array index. */
   stageIds: number[];
 }
 
@@ -3995,6 +4109,10 @@ stageId?: number;
  * Filter by lifecycle status.
  */
 status?: ListOpportunitiesStatus;
+/**
+ * Filter by pipeline.
+ */
+pipelineId?: number;
 };
 
 export type ListOpportunitiesStatus = typeof ListOpportunitiesStatus[keyof typeof ListOpportunitiesStatus];

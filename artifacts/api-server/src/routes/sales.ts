@@ -3,8 +3,10 @@ import type { Request, Response } from "express";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   db,
+  pipelinesTable,
   pipelineStagesTable,
   opportunitiesTable,
+  opportunityProductsTable,
   opportunityFollowUpsTable,
   salesAuditEventsTable,
   salesInsightsTable,
@@ -27,7 +29,9 @@ import { resolveOwnerUserId } from "../lib/seed";
 import { requirePermission } from "../lib/role-permissions";
 import {
   requireSalesAssistant,
+  seedDefaultPipelines,
   seedDefaultStages,
+  getDefaultPipeline,
   resolveTeamRole,
   opportunityScopeWhere,
   canAccessOpportunity,
@@ -73,9 +77,24 @@ async function resolveOwner(req: Request, res: Response): Promise<number | null>
   return resolveOwnerUserId(uid);
 }
 
+function serializePipeline(p: typeof pipelinesTable.$inferSelect) {
+  return {
+    id: p.id,
+    name: p.name,
+    pipelineType: p.pipelineType,
+    color: p.color,
+    isDefault: p.isDefault,
+    isArchived: p.isArchived,
+    sortOrder: p.sortOrder,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+  };
+}
+
 function serializeStage(s: typeof pipelineStagesTable.$inferSelect) {
   return {
     id: s.id,
+    pipelineId: s.pipelineId,
     name: s.name,
     sortOrder: s.sortOrder,
     isWon: s.isWon,
@@ -86,41 +105,68 @@ function serializeStage(s: typeof pipelineStagesTable.$inferSelect) {
   };
 }
 
-function serializeOpportunity(o: typeof opportunitiesTable.$inferSelect) {
+function serializeOpportunity(
+  o: typeof opportunitiesTable.$inferSelect,
+  extra?: {
+    profilePicUrl?: string | null;
+    channelLabel?: string | null;
+    channelColor?: string | null;
+    stageName?: string | null;
+    pipelineName?: string | null;
+    products?: Array<{ productId: number | null; productName: string }>;
+  }
+) {
   return {
     id: o.id,
     assignedUserId: o.assignedUserId,
     chatId: o.chatId,
     channelId: o.channelId,
+    pipelineId: o.pipelineId,
     contactPhone: o.contactPhone,
     contactName: o.contactName,
     stageId: o.stageId,
+    intentKey: o.intentKey,
+    intentType: o.intentType,
     leadScore: o.leadScore,
     intentCategory: o.intentCategory,
     estimatedValueIdr: o.estimatedValueIdr,
     status: o.status,
     waitingStatus: o.waitingStatus,
     productInterest: o.productInterest,
+    scoreReason: o.scoreReason,
     aiNotes: o.aiNotes,
+    recommendation: o.recommendation,
+    analyzedAt: o.analyzedAt ? o.analyzedAt.toISOString() : null,
+    analyzedMessageIds: o.analyzedMessageIds,
+    keyQuotes: o.keyQuotes,
     lastActivityAt: o.lastActivityAt ? o.lastActivityAt.toISOString() : null,
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
+    // Enriched fields from JOINs
+    profilePicUrl: extra?.profilePicUrl ?? null,
+    channelLabel: extra?.channelLabel ?? null,
+    channelColor: extra?.channelColor ?? null,
+    stageName: extra?.stageName ?? null,
+    pipelineName: extra?.pipelineName ?? null,
+    products: extra?.products ?? [],
   };
 }
 
-// The opportunity summary surfaced alongside an insight, so the sidebar can show
-// the deal's current stage + last activity and decide whether to offer "Buat
-// Opportunity". Null when no opportunity exists for the chat yet.
-type InsightOpportunitySummary = {
+type InsightOpportunitySummary = Array<{
   id: number;
+  pipelineId: number | null;
+  pipelineName: string | null;
   stageId: number | null;
   stageName: string | null;
+  intentKey: string | null;
+  intentType: string;
+  leadScore: number;
   lastActivityAt: Date | null;
-} | null;
+}>;
 
 function serializeInsight(
   i: typeof salesInsightsTable.$inferSelect,
-  opp: InsightOpportunitySummary = null
+  opps: InsightOpportunitySummary = []
 ) {
   return {
     id: i.id,
@@ -136,26 +182,59 @@ function serializeInsight(
     recommendation: i.recommendation,
     waitingStatus: i.waitingStatus,
     analyzedAt: i.analyzedAt.toISOString(),
-    opportunityId: opp?.id ?? null,
-    stageId: opp?.stageId ?? null,
-    stageName: opp?.stageName ?? null,
-    lastActivityAt: opp?.lastActivityAt
-      ? opp.lastActivityAt.toISOString()
+    // Backwards-compat single-opp fields (first/highest-scored opportunity).
+    opportunityId: opps[0]?.id ?? null,
+    stageId: opps[0]?.stageId ?? null,
+    stageName: opps[0]?.stageName ?? null,
+    lastActivityAt: opps[0]?.lastActivityAt
+      ? opps[0].lastActivityAt.toISOString()
       : null,
+    // New: all opportunities for this chat.
+    opportunities: opps.map((o) => ({
+      id: o.id,
+      pipelineId: o.pipelineId,
+      pipelineName: o.pipelineName,
+      stageId: o.stageId,
+      stageName: o.stageName,
+      intentKey: o.intentKey,
+      intentType: o.intentType,
+      leadScore: o.leadScore,
+      lastActivityAt: o.lastActivityAt ? o.lastActivityAt.toISOString() : null,
+    })),
+    // Raw AI-detected candidates from the latest analysis. Allows the sidebar
+    // to show per-candidate "Buat" buttons even when auto-create is OFF. A
+    // candidate whose intentKey already exists in `opportunities` above is
+    // already persisted; the frontend filters those out before offering "Buat".
+    detectedCandidates: (i.detectedCandidates ?? []) as Array<{
+      intentKey: string;
+      intentType: string;
+      pipelineType: string;
+      products: string[];
+      intentCategory: string;
+      leadScore: number;
+      estimatedValueIdr: number;
+      scoreReason: string | null;
+      aiNotes: string | null;
+      recommendation: string | null;
+    }>,
   };
 }
 
-// Load the one opportunity (if any) for a chat, with its stage name, so the
-// insight response can carry stage + last-activity without a second round trip.
-async function loadInsightOpportunity(
+// Load all opportunities for a chat with their stage/pipeline names.
+async function loadInsightOpportunities(
   chatId: number,
   ownerId: number
 ): Promise<InsightOpportunitySummary> {
-  const [opp] = await db
+  return db
     .select({
       id: opportunitiesTable.id,
+      pipelineId: opportunitiesTable.pipelineId,
+      pipelineName: pipelinesTable.name,
       stageId: opportunitiesTable.stageId,
       stageName: pipelineStagesTable.name,
+      intentKey: opportunitiesTable.intentKey,
+      intentType: opportunitiesTable.intentType,
+      leadScore: opportunitiesTable.leadScore,
       lastActivityAt: opportunitiesTable.lastActivityAt,
     })
     .from(opportunitiesTable)
@@ -163,14 +242,17 @@ async function loadInsightOpportunity(
       pipelineStagesTable,
       eq(pipelineStagesTable.id, opportunitiesTable.stageId)
     )
+    .leftJoin(
+      pipelinesTable,
+      eq(pipelinesTable.id, opportunitiesTable.pipelineId)
+    )
     .where(
       and(
         eq(opportunitiesTable.chatId, chatId),
         eq(opportunitiesTable.ownerUserId, ownerId)
       )
     )
-    .limit(1);
-  return opp ?? null;
+    .orderBy(desc(opportunitiesTable.leadScore));
 }
 
 // Per-owner AI Sales Assistant config defaults. Inert by default: auto-create
@@ -210,23 +292,231 @@ async function chatVisibleToUser(
 }
 
 // ---------------------------------------------------------------------------
-// Pipeline stages (board columns). Seeded on first GET. Stages are tenant
-// CONFIGURATION; create/edit/delete need the "edit"/"delete" opportunity perm.
+// Pipelines — tenant-scoped boards (Sales, Service, custom).
 // ---------------------------------------------------------------------------
 
-// GET /sales/stages — list (seeds defaults on first access).
+// GET /sales/pipelines — list all pipelines with their stages.
+router.get(
+  "/pipelines",
+  requirePermission("opportunities", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const ownerId = await resolveOwner(req, res);
+    if (ownerId == null) return;
+    const pipelinesWithStages = await seedDefaultPipelines(ownerId);
+    res.json(
+      pipelinesWithStages.map(({ pipeline, stages }) => ({
+        ...serializePipeline(pipeline),
+        stages: stages.map(serializeStage),
+      }))
+    );
+  }
+);
+
+// POST /sales/pipelines — create a custom pipeline.
+router.post(
+  "/pipelines",
+  requirePermission("opportunities", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const ownerId = await resolveOwner(req, res);
+    if (ownerId == null) return;
+    const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    if (!name) {
+      res.status(400).json({ error: "Nama pipeline harus diisi" });
+      return;
+    }
+    if (name.length > 80) {
+      res.status(400).json({ error: "Nama pipeline maksimal 80 karakter" });
+      return;
+    }
+    const color = typeof req.body.color === "string" ? req.body.color.trim() : "#6366f1";
+    const pipelineTypeRaw = typeof req.body.pipelineType === "string" ? req.body.pipelineType : "custom";
+    const pipelineType = (
+      ["sales", "service", "custom"].includes(pipelineTypeRaw) ? pipelineTypeRaw : "custom"
+    ) as "sales" | "service" | "custom";
+    try {
+      const [row] = await db
+        .insert(pipelinesTable)
+        .values({
+          ownerUserId: ownerId,
+          name,
+          pipelineType,
+          color,
+          isDefault: false,
+          isArchived: false,
+          sortOrder: 99,
+        })
+        .returning();
+      res.status(201).json({ ...serializePipeline(row), stages: [] });
+    } catch (err) {
+      req.log.error({ err }, "create pipeline failed");
+      res.status(409).json({ error: "Nama pipeline sudah dipakai" });
+    }
+  }
+);
+
+// PATCH /sales/pipelines/:id — update name/color/isArchived.
+router.patch(
+  "/pipelines/:id",
+  requirePermission("opportunities", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const ownerId = await resolveOwner(req, res);
+    if (ownerId == null) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "id tidak valid" });
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(pipelinesTable)
+      .where(and(eq(pipelinesTable.id, id), eq(pipelinesTable.ownerUserId, ownerId)))
+      .limit(1);
+    if (!existing) {
+      res.status(404).json({ error: "Pipeline tidak ditemukan" });
+      return;
+    }
+    const patch: Partial<typeof pipelinesTable.$inferInsert> = {};
+    if (typeof req.body.name === "string") {
+      const name = req.body.name.trim();
+      if (!name || name.length > 80) {
+        res.status(400).json({ error: "Nama pipeline tidak valid (1–80 karakter)" });
+        return;
+      }
+      patch.name = name;
+    }
+    if (typeof req.body.color === "string") patch.color = req.body.color.trim();
+    if (typeof req.body.isArchived === "boolean") patch.isArchived = req.body.isArchived;
+    if (typeof req.body.isDefault === "boolean" && req.body.isDefault === true) {
+      // Promote this pipeline to default; demote the current default.
+      patch.isDefault = true;
+      await db
+        .update(pipelinesTable)
+        .set({ isDefault: false })
+        .where(and(eq(pipelinesTable.ownerUserId, ownerId), eq(pipelinesTable.isDefault, true)));
+    }
+    if (typeof req.body.sortOrder === "number" && Number.isInteger(req.body.sortOrder)) {
+      patch.sortOrder = req.body.sortOrder;
+    }
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: "Tidak ada perubahan" });
+      return;
+    }
+    try {
+      const [row] = await db
+        .update(pipelinesTable)
+        .set(patch)
+        .where(and(eq(pipelinesTable.id, id), eq(pipelinesTable.ownerUserId, ownerId)))
+        .returning();
+      if (!row) {
+        res.status(404).json({ error: "Pipeline tidak ditemukan" });
+        return;
+      }
+      res.json(serializePipeline(row));
+    } catch (err) {
+      req.log.error({ err }, "update pipeline failed");
+      res.status(409).json({ error: "Nama pipeline sudah dipakai" });
+    }
+  }
+);
+
+// DELETE /sales/pipelines/:id — archive (soft-delete). Cannot delete the
+// default pipeline or a pipeline with open opportunities.
+router.delete(
+  "/pipelines/:id",
+  requirePermission("opportunities", "delete"),
+  async (req: Request, res: Response): Promise<void> => {
+    const ownerId = await resolveOwner(req, res);
+    if (ownerId == null) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "id tidak valid" });
+      return;
+    }
+    const [pipeline] = await db
+      .select()
+      .from(pipelinesTable)
+      .where(and(eq(pipelinesTable.id, id), eq(pipelinesTable.ownerUserId, ownerId)))
+      .limit(1);
+    if (!pipeline) {
+      res.status(404).json({ error: "Pipeline tidak ditemukan" });
+      return;
+    }
+    if (pipeline.isDefault) {
+      res.status(409).json({ error: "Pipeline default tidak dapat dihapus" });
+      return;
+    }
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(opportunitiesTable)
+      .where(
+        and(
+          eq(opportunitiesTable.ownerUserId, ownerId),
+          eq(opportunitiesTable.pipelineId, id),
+          eq(opportunitiesTable.status, "open")
+        )
+      );
+    if (count > 0) {
+      res.status(409).json({
+        error: `Pipeline masih memiliki ${count} opportunity aktif. Pindahkan atau tutup dulu sebelum menghapus.`,
+      });
+      return;
+    }
+    // Soft-delete: archive the pipeline (preserves history for closed deals).
+    const [row] = await db
+      .update(pipelinesTable)
+      .set({ isArchived: true })
+      .where(and(eq(pipelinesTable.id, id), eq(pipelinesTable.ownerUserId, ownerId)))
+      .returning();
+    res.json({ success: true, archived: true, id: row?.id });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Pipeline stages (board columns). Stages are tenant CONFIGURATION; create/
+// edit/delete need the "edit"/"delete" opportunity perm.
+// ---------------------------------------------------------------------------
+
+// GET /sales/stages — list stages. Optional ?pipelineId= to filter by pipeline.
+// Without the filter returns all stages across all pipelines (backwards compat).
 router.get(
   "/stages",
   requirePermission("opportunities", "view"),
   async (req: Request, res: Response): Promise<void> => {
     const ownerId = await resolveOwner(req, res);
     if (ownerId == null) return;
-    const stages = await seedDefaultStages(ownerId);
+    // Seed pipelines+stages if this is a first access.
+    await seedDefaultPipelines(ownerId);
+    const pipelineIdFilter = req.query.pipelineId != null
+      ? Number(req.query.pipelineId)
+      : null;
+    if (pipelineIdFilter != null && !Number.isInteger(pipelineIdFilter)) {
+      res.status(400).json({ error: "pipelineId tidak valid" });
+      return;
+    }
+    const conds = [eq(pipelineStagesTable.ownerUserId, ownerId)];
+    if (pipelineIdFilter != null) {
+      // Verify the pipeline belongs to this owner.
+      const [pl] = await db
+        .select({ id: pipelinesTable.id })
+        .from(pipelinesTable)
+        .where(and(eq(pipelinesTable.id, pipelineIdFilter), eq(pipelinesTable.ownerUserId, ownerId)))
+        .limit(1);
+      if (!pl) {
+        res.status(404).json({ error: "Pipeline tidak ditemukan" });
+        return;
+      }
+      conds.push(eq(pipelineStagesTable.pipelineId, pipelineIdFilter));
+    }
+    const stages = await db
+      .select()
+      .from(pipelineStagesTable)
+      .where(and(...conds))
+      .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
     res.json(stages.map(serializeStage));
   }
 );
 
-// POST /sales/stages — create a stage.
+// POST /sales/stages — create a stage. Requires pipelineId in body.
 router.post(
   "/stages",
   requirePermission("opportunities", "create"),
@@ -243,11 +533,28 @@ router.post(
       res.status(400).json({ error: "sortOrder harus bilangan bulat" });
       return;
     }
+    // pipelineId is required for multi-pipeline (not yet in generated schema,
+    // so read directly from body and validate manually).
+    const pipelineId = req.body.pipelineId != null ? Number(req.body.pipelineId) : null;
+    if (pipelineId == null || !Number.isInteger(pipelineId)) {
+      res.status(400).json({ error: "pipelineId harus diisi" });
+      return;
+    }
+    const [pipeline] = await db
+      .select({ id: pipelinesTable.id })
+      .from(pipelinesTable)
+      .where(and(eq(pipelinesTable.id, pipelineId), eq(pipelinesTable.ownerUserId, ownerId)))
+      .limit(1);
+    if (!pipeline) {
+      res.status(404).json({ error: "Pipeline tidak ditemukan" });
+      return;
+    }
     try {
       const [row] = await db
         .insert(pipelineStagesTable)
         .values({
           ownerUserId: ownerId,
+          pipelineId,
           name: body.name,
           sortOrder: body.sortOrder ?? 0,
           isWon: body.isWon ?? false,
@@ -318,10 +625,9 @@ router.patch(
   }
 );
 
-// POST /sales/stages/reorder — reassign sortOrder by array index. The payload
-// must list EXACTLY the tenant's current stage id set (no missing/extra/foreign
-// ids), so a stale board can't silently drop or smuggle a stage. Applied in one
-// transaction; returns the stages in their new order.
+// POST /sales/stages/reorder — reassign sortOrder by array index. Scoped to
+// a single pipeline (pipelineId required). The payload must list EXACTLY that
+// pipeline's current stage ids. Applied in one transaction.
 router.post(
   "/stages/reorder",
   requirePermission("opportunities", "edit"),
@@ -334,7 +640,6 @@ router.post(
       return;
     }
     const stageIds = parsed.data.stageIds;
-    // Re-check integer at the boundary (OpenAPI integer → zod number).
     if (!stageIds.every((n: number) => Number.isInteger(n))) {
       res.status(400).json({ error: "stageIds harus bilangan bulat" });
       return;
@@ -344,18 +649,36 @@ router.post(
       return;
     }
 
+    const pipelineId = req.body.pipelineId != null ? Number(req.body.pipelineId) : null;
+    if (pipelineId == null || !Number.isInteger(pipelineId)) {
+      res.status(400).json({ error: "pipelineId harus diisi" });
+      return;
+    }
+    const [pipeline] = await db
+      .select({ id: pipelinesTable.id })
+      .from(pipelinesTable)
+      .where(and(eq(pipelinesTable.id, pipelineId), eq(pipelinesTable.ownerUserId, ownerId)))
+      .limit(1);
+    if (!pipeline) {
+      res.status(404).json({ error: "Pipeline tidak ditemukan" });
+      return;
+    }
+
     const owned = await db
       .select({ id: pipelineStagesTable.id })
       .from(pipelineStagesTable)
-      .where(eq(pipelineStagesTable.ownerUserId, ownerId));
+      .where(
+        and(
+          eq(pipelineStagesTable.ownerUserId, ownerId),
+          eq(pipelineStagesTable.pipelineId, pipelineId)
+        )
+      );
     const ownedIds = new Set(owned.map((s) => s.id));
     if (
       stageIds.length !== ownedIds.size ||
       !stageIds.every((id: number) => ownedIds.has(id))
     ) {
-      res
-        .status(400)
-        .json({ error: "stageIds harus mencakup semua stage tenant ini" });
+      res.status(400).json({ error: "stageIds harus mencakup semua stage pipeline ini" });
       return;
     }
 
@@ -376,7 +699,12 @@ router.post(
     const rows = await db
       .select()
       .from(pipelineStagesTable)
-      .where(eq(pipelineStagesTable.ownerUserId, ownerId))
+      .where(
+        and(
+          eq(pipelineStagesTable.ownerUserId, ownerId),
+          eq(pipelineStagesTable.pipelineId, pipelineId)
+        )
+      )
       .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
     res.json(rows.map(serializeStage));
   }
@@ -445,7 +773,9 @@ router.delete(
 // Opportunities (deals). Agents see only their own assigned deals.
 // ---------------------------------------------------------------------------
 
-// GET /sales/opportunities — list (scoped by role).
+// GET /sales/opportunities — list (scoped by role). Accepts optional filters:
+// ?pipelineId=, ?stageId=, ?status=. Returns enriched data (profilePicUrl,
+// channelLabel, stageName, products) via JOINs.
 router.get(
   "/opportunities",
   requirePermission("opportunities", "view"),
@@ -473,12 +803,60 @@ router.get(
     if (q.data.status) {
       conds.push(eq(opportunitiesTable.status, q.data.status));
     }
+    // pipelineId filter (not yet in generated schema — read from query directly).
+    const pipelineIdRaw = req.query.pipelineId != null ? Number(req.query.pipelineId) : null;
+    if (pipelineIdRaw != null) {
+      if (!Number.isInteger(pipelineIdRaw)) {
+        res.status(400).json({ error: "pipelineId tidak valid" });
+        return;
+      }
+      conds.push(eq(opportunitiesTable.pipelineId, pipelineIdRaw));
+    }
+
     const rows = await db
-      .select()
+      .select({
+        opp: opportunitiesTable,
+        profilePicUrl: chatsTable.profilePicUrl,
+        channelLabel: channelsTable.label,
+        channelColor: channelsTable.color,
+        stageName: pipelineStagesTable.name,
+        pipelineName: pipelinesTable.name,
+      })
       .from(opportunitiesTable)
+      .leftJoin(chatsTable, eq(chatsTable.id, opportunitiesTable.chatId))
+      .leftJoin(channelsTable, eq(channelsTable.id, opportunitiesTable.channelId))
+      .leftJoin(pipelineStagesTable, eq(pipelineStagesTable.id, opportunitiesTable.stageId))
+      .leftJoin(pipelinesTable, eq(pipelinesTable.id, opportunitiesTable.pipelineId))
       .where(and(...conds))
       .orderBy(desc(opportunitiesTable.updatedAt));
-    res.json(rows.map(serializeOpportunity));
+
+    // Bulk-load products for all returned opportunities.
+    const oppIds = rows.map((r) => r.opp.id);
+    const allProducts = oppIds.length > 0
+      ? await db
+          .select()
+          .from(opportunityProductsTable)
+          .where(sql`${opportunityProductsTable.opportunityId} = ANY(ARRAY[${sql.join(oppIds.map((id) => sql`${id}`), sql`, `)}]::int[])`)
+      : [];
+    const productsByOpp = new Map<number, Array<{ productId: number | null; productName: string }>>();
+    for (const p of allProducts) {
+      const list = productsByOpp.get(p.opportunityId) ?? [];
+      list.push({ productId: p.productId ?? null, productName: p.productName });
+      productsByOpp.set(p.opportunityId, list);
+    }
+
+    res.json(
+      rows.map((r) =>
+        serializeOpportunity(r.opp, {
+          profilePicUrl: r.profilePicUrl,
+          channelLabel: r.channelLabel,
+          channelColor: r.channelColor,
+          stageName: r.stageName,
+          pipelineName: r.pipelineName,
+          products: productsByOpp.get(r.opp.id) ?? [],
+        })
+      )
+    );
   }
 );
 
@@ -567,6 +945,46 @@ router.post(
       }
     }
 
+    // Optional intentKey — from AI candidate, used for dedup when creating from a detected candidate.
+    const intentKey = typeof req.body.intentKey === "string" && req.body.intentKey.trim()
+      ? req.body.intentKey.trim()
+      : null;
+
+    // Optional pipelineId — if not provided, use the owner's default pipeline.
+    let pipelineId: number | null = null;
+    const rawPipelineId = req.body.pipelineId != null ? Number(req.body.pipelineId) : null;
+    if (rawPipelineId != null) {
+      if (!Number.isInteger(rawPipelineId)) {
+        res.status(400).json({ error: "pipelineId tidak valid" });
+        return;
+      }
+      const [pl] = await db
+        .select({ id: pipelinesTable.id })
+        .from(pipelinesTable)
+        .where(and(eq(pipelinesTable.id, rawPipelineId), eq(pipelinesTable.ownerUserId, ownerId)))
+        .limit(1);
+      if (!pl) {
+        res.status(404).json({ error: "Pipeline tidak ditemukan" });
+        return;
+      }
+      pipelineId = rawPipelineId;
+    } else {
+      const defaultPl = await getDefaultPipeline(ownerId);
+      pipelineId = defaultPl?.id ?? null;
+    }
+
+    // If no stageId provided, default to first stage of the chosen pipeline.
+    let resolvedStageId = body.stageId ?? null;
+    if (resolvedStageId == null && pipelineId != null) {
+      const [firstStage] = await db
+        .select({ id: pipelineStagesTable.id })
+        .from(pipelineStagesTable)
+        .where(eq(pipelineStagesTable.pipelineId, pipelineId))
+        .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id))
+        .limit(1);
+      resolvedStageId = firstStage?.id ?? null;
+    }
+
     try {
       const [row] = await db
         .insert(opportunitiesTable)
@@ -575,9 +993,11 @@ router.post(
           assignedUserId: body.assignedUserId ?? null,
           chatId: chat.id,
           channelId: chat.channelId,
+          pipelineId,
           contactPhone: chat.phoneNumber,
           contactName: body.contactName ?? chat.contactName ?? null,
-          stageId: body.stageId ?? null,
+          stageId: resolvedStageId,
+          intentKey: intentKey ?? null,
           leadScore: body.leadScore ?? 0,
           intentCategory: body.intentCategory ?? null,
           estimatedValueIdr: body.estimatedValueIdr ?? 0,
@@ -587,13 +1007,19 @@ router.post(
           aiNotes: body.aiNotes ?? null,
           lastActivityAt: new Date(),
         })
+        .onConflictDoUpdate({
+          target: [opportunitiesTable.chatId, opportunitiesTable.intentKey],
+          // On conflict (same chat + intentKey already exists), just return the
+          // existing row so the caller gets the id without an error.
+          set: { updatedAt: new Date() },
+        })
         .returning();
       await db.insert(salesAuditEventsTable).values({
         ownerUserId: ownerId,
         opportunityId: row.id,
         actorUserId: getSessionUserId(req),
         eventType: "opportunity_created",
-        detail: { source: "manual" },
+        detail: { source: "manual", pipelineId },
       });
       res.status(201).json(serializeOpportunity(row));
     } catch (err) {
@@ -605,7 +1031,7 @@ router.post(
   }
 );
 
-// GET /sales/opportunities/:id — fetch one (role-scoped).
+// GET /sales/opportunities/:id — fetch one (role-scoped) with enriched data.
 router.get(
   "/opportunities/:id",
   requirePermission("opportunities", "view"),
@@ -622,16 +1048,37 @@ router.get(
       res.status(400).json({ error: "id tidak valid" });
       return;
     }
-    const [row] = await db
-      .select()
+    const [enriched] = await db
+      .select({
+        opp: opportunitiesTable,
+        profilePicUrl: chatsTable.profilePicUrl,
+        channelLabel: channelsTable.label,
+        channelColor: channelsTable.color,
+        stageName: pipelineStagesTable.name,
+      })
       .from(opportunitiesTable)
+      .leftJoin(chatsTable, eq(chatsTable.id, opportunitiesTable.chatId))
+      .leftJoin(channelsTable, eq(channelsTable.id, opportunitiesTable.channelId))
+      .leftJoin(pipelineStagesTable, eq(pipelineStagesTable.id, opportunitiesTable.stageId))
       .where(eq(opportunitiesTable.id, id))
       .limit(1);
-    if (!row || !canAccessOpportunity(row, ownerId, teamRole, uid)) {
+    if (!enriched || !canAccessOpportunity(enriched.opp, ownerId, teamRole, uid)) {
       res.status(404).json({ error: "Opportunity tidak ditemukan" });
       return;
     }
-    res.json(serializeOpportunity(row));
+    const products = await db
+      .select()
+      .from(opportunityProductsTable)
+      .where(eq(opportunityProductsTable.opportunityId, id));
+    res.json(
+      serializeOpportunity(enriched.opp, {
+        profilePicUrl: enriched.profilePicUrl,
+        channelLabel: enriched.channelLabel,
+        channelColor: enriched.channelColor,
+        stageName: enriched.stageName,
+        products: products.map((p) => ({ productId: p.productId ?? null, productName: p.productName })),
+      })
+    );
   }
 );
 
@@ -987,7 +1434,7 @@ router.get(
       res.status(404).json({ error: "Belum ada analisa untuk chat ini" });
       return;
     }
-    const opp = await loadInsightOpportunity(chatId, ownerId);
+    const opp = await loadInsightOpportunities(chatId, ownerId);
     res.json(serializeInsight(row, opp));
   }
 );
@@ -1022,7 +1469,7 @@ router.post(
       } catch (err) {
         req.log.warn({ err, chatId }, "manual analyze auto-create failed");
       }
-      const opp = await loadInsightOpportunity(chatId, ownerId);
+      const opp = await loadInsightOpportunities(chatId, ownerId);
       res.json(serializeInsight(result.insight, opp));
     } catch (err) {
       req.log.error({ err, chatId }, "manual sales insight analyze failed");

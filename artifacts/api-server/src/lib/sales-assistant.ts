@@ -4,6 +4,7 @@ import {
   db,
   plansTable,
   usersTable,
+  pipelinesTable,
   pipelineStagesTable,
   opportunitiesTable,
 } from "@workspace/db";
@@ -13,15 +14,10 @@ import { isInfinityOwner } from "./infinity-owner";
 import { getCurrentTeamRole, type TeamRole } from "./team-permissions";
 
 // ===========================================================================
-// AI Sales Assistant — Enterprise gate, default-stage seeding, and the
-// agent-ownership scope fragment shared by every sales route.
+// AI Sales Assistant — Enterprise gate, default pipeline/stage seeding, and
+// the agent-ownership scope fragment shared by every sales route.
 // ===========================================================================
 
-// Does the tenant OWNER's plan include the AI Sales Assistant entitlement?
-// Infinity owners always pass — the bypass is resolved through the same
-// isInfinityOwner chokepoint the effective-subscription path uses, so granting
-// Infinity to an account unlocks the assistant everywhere from one place.
-// Pass an already-resolved owner id (use resolveOwnerUserId for team members).
 export async function ownerHasSalesAssistant(ownerId: number): Promise<boolean> {
   if (await isInfinityOwner(ownerId)) return true;
   const [row] = await db
@@ -33,10 +29,6 @@ export async function ownerHasSalesAssistant(ownerId: number): Promise<boolean> 
   return row?.has ?? false;
 }
 
-// Express middleware: 403 any AI Sales Assistant call from a tenant whose plan
-// lacks the entitlement. Mounted on every sales router. Resolves the owner from
-// the session (team members roll up to their owner) on each request so a plan
-// change / Infinity toggle takes effect immediately.
 export async function requireSalesAssistant(
   req: Request,
   res: Response,
@@ -56,11 +48,8 @@ export async function requireSalesAssistant(
       });
       return;
     }
-    // Seed the default pipeline stages on the tenant's first AI Sales Assistant
-    // access — ANY /sales/* endpoint, not just GET /sales/stages. seedDefaultStages
-    // is idempotent; the per-process cache avoids re-querying on every request.
     if (!seededOwners.has(ownerId)) {
-      await seedDefaultStages(ownerId);
+      await seedDefaultPipelines(ownerId);
       seededOwners.add(ownerId);
     }
     next();
@@ -70,74 +59,192 @@ export async function requireSalesAssistant(
   }
 }
 
-// Per-process cache of owners whose default stages have been ensured this boot.
-// seedDefaultStages itself is idempotent against the DB; this just skips the
-// extra read on the hot path. Cleared for an owner by tenant-reset (which wipes
-// their stages) so the next access re-seeds.
 const seededOwners = new Set<number>();
 
-// Called by tenant-reset after it wipes a tenant's pipeline stages, so the
-// next AI Sales Assistant access re-seeds the defaults.
 export function markOwnerStagesUnseeded(ownerId: number): void {
   seededOwners.delete(ownerId);
 }
 
-// The seven default pipeline stages every tenant starts with. Order is stable
-// (index = sortOrder); Won/Lost are the terminal columns.
+// ---------------------------------------------------------------------------
+// Default pipeline definitions
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_SALES_PIPELINE = {
+  name: "Pipeline Sales",
+  pipelineType: "sales" as const,
+  color: "#22c55e",
+  isDefault: true,
+  sortOrder: 0,
+} as const;
+
+export const DEFAULT_SERVICE_PIPELINE = {
+  name: "Pipeline Service",
+  pipelineType: "service" as const,
+  color: "#3b82f6",
+  isDefault: false,
+  sortOrder: 1,
+} as const;
+
 export const DEFAULT_SALES_STAGES: ReadonlyArray<{
   name: string;
   isWon: boolean;
   isLost: boolean;
 }> = [
-  { name: "New Lead", isWon: false, isLost: false },
-  { name: "Inquiry", isWon: false, isLost: false },
+  { name: "New Lead",       isWon: false, isLost: false },
+  { name: "Inquiry",        isWon: false, isLost: false },
   { name: "Quotation Sent", isWon: false, isLost: false },
-  { name: "Follow Up", isWon: false, isLost: false },
-  { name: "Negotiation", isWon: false, isLost: false },
-  { name: "Won", isWon: true, isLost: false },
-  { name: "Lost", isWon: false, isLost: true },
+  { name: "Follow Up",      isWon: false, isLost: false },
+  { name: "Negotiation",    isWon: false, isLost: false },
+  { name: "Won",            isWon: true,  isLost: false },
+  { name: "Lost",           isWon: false, isLost: true  },
 ];
 
-// Idempotently seed the default stages for an owner on first access. If the
-// tenant already has any stage we leave their board untouched (they may have
-// added/removed/reordered). Concurrency-safe: the per-name unique index +
-// onConflictDoNothing makes a racing double-seed a no-op. Returns the owner's
-// current stages ordered for display.
-export async function seedDefaultStages(
-  ownerId: number
-): Promise<(typeof pipelineStagesTable.$inferSelect)[]> {
-  const existing = await db
-    .select()
-    .from(pipelineStagesTable)
-    .where(eq(pipelineStagesTable.ownerUserId, ownerId))
-    .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
-  if (existing.length > 0) return existing;
+export const DEFAULT_SERVICE_STAGES: ReadonlyArray<{
+  name: string;
+  isWon: boolean;
+  isLost: boolean;
+}> = [
+  { name: "Permintaan Masuk",    isWon: false, isLost: false },
+  { name: "Diagnosa",            isWon: false, isLost: false },
+  { name: "Penawaran Service",   isWon: false, isLost: false },
+  { name: "Dalam Pengerjaan",    isWon: false, isLost: false },
+  { name: "Selesai",             isWon: true,  isLost: false },
+  { name: "Dibatalkan",          isWon: false, isLost: true  },
+];
 
+// ---------------------------------------------------------------------------
+// Seeding
+// ---------------------------------------------------------------------------
+
+// Idempotently seed both default pipelines (Sales + Service) and their stages
+// for an owner on first access. If the owner already has pipelines, skips.
+// Returns all of the owner's pipelines with their stages.
+export async function seedDefaultPipelines(ownerId: number): Promise<
+  Array<{
+    pipeline: typeof pipelinesTable.$inferSelect;
+    stages: Array<typeof pipelineStagesTable.$inferSelect>;
+  }>
+> {
+  const existingPipelines = await db
+    .select()
+    .from(pipelinesTable)
+    .where(eq(pipelinesTable.ownerUserId, ownerId))
+    .orderBy(asc(pipelinesTable.sortOrder), asc(pipelinesTable.id));
+
+  // Always ensure both default pipelines exist (handles the case where
+  // the migration backfilled only Pipeline Sales for legacy owners).
   await db
-    .insert(pipelineStagesTable)
-    .values(
-      DEFAULT_SALES_STAGES.map((s, i) => ({
-        ownerUserId: ownerId,
-        name: s.name,
-        sortOrder: i,
-        isWon: s.isWon,
-        isLost: s.isLost,
-      }))
-    )
+    .insert(pipelinesTable)
+    .values([
+      { ownerUserId: ownerId, ...DEFAULT_SALES_PIPELINE },
+      { ownerUserId: ownerId, ...DEFAULT_SERVICE_PIPELINE },
+    ])
     .onConflictDoNothing();
 
-  return db
+  // Fetch all pipelines (may have been created above or already existed).
+  const pipelines = await db
     .select()
-    .from(pipelineStagesTable)
-    .where(eq(pipelineStagesTable.ownerUserId, ownerId))
-    .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
+    .from(pipelinesTable)
+    .where(eq(pipelinesTable.ownerUserId, ownerId))
+    .orderBy(asc(pipelinesTable.sortOrder), asc(pipelinesTable.id));
+
+  const result: Array<{
+    pipeline: typeof pipelinesTable.$inferSelect;
+    stages: Array<typeof pipelineStagesTable.$inferSelect>;
+  }> = [];
+
+  for (const pipeline of pipelines) {
+    const existingStages = await db
+      .select()
+      .from(pipelineStagesTable)
+      .where(eq(pipelineStagesTable.pipelineId, pipeline.id))
+      .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
+
+    if (existingStages.length === 0) {
+      const defaultStages =
+        pipeline.pipelineType === "service"
+          ? DEFAULT_SERVICE_STAGES
+          : DEFAULT_SALES_STAGES;
+
+      await db
+        .insert(pipelineStagesTable)
+        .values(
+          defaultStages.map((s, i) => ({
+            ownerUserId: ownerId,
+            pipelineId: pipeline.id,
+            name: s.name,
+            sortOrder: i,
+            isWon: s.isWon,
+            isLost: s.isLost,
+          }))
+        )
+        .onConflictDoNothing();
+    }
+
+    const stages = await db
+      .select()
+      .from(pipelineStagesTable)
+      .where(eq(pipelineStagesTable.pipelineId, pipeline.id))
+      .orderBy(asc(pipelineStagesTable.sortOrder), asc(pipelineStagesTable.id));
+
+    result.push({ pipeline, stages });
+  }
+
+  return result;
 }
 
-// The reusable authorization fragment for opportunity reads/writes. Layers the
-// tenant-owner scope with the per-role rule:
-//   * super_admin / supervisor → all of the owner's opportunities
-//   * agent                    → only opportunities assigned to that agent
-// Returns a Drizzle WHERE condition other phases compose into their queries.
+// Compatibility shim: callers that previously called seedDefaultStages(ownerId)
+// and expected a flat list of stages now get the first (default) pipeline's
+// stages. Background detection uses this to resolve the first stage.
+export async function seedDefaultStages(
+  ownerId: number
+): Promise<Array<typeof pipelineStagesTable.$inferSelect>> {
+  const pipelines = await seedDefaultPipelines(ownerId);
+  const defaultPipeline =
+    pipelines.find((p) => p.pipeline.isDefault) ?? pipelines[0];
+  return defaultPipeline?.stages ?? [];
+}
+
+// Return the default pipeline for an owner (used by auto-detection to place
+// new opportunities). Ensures pipelines are seeded before querying.
+export async function getDefaultPipeline(
+  ownerId: number
+): Promise<typeof pipelinesTable.$inferSelect | null> {
+  const pipelines = await seedDefaultPipelines(ownerId);
+  return (
+    pipelines.find((p) => p.pipeline.isDefault)?.pipeline ??
+    pipelines[0]?.pipeline ??
+    null
+  );
+}
+
+// Return a pipeline by type for an owner (e.g. 'service' for service intents).
+// Falls back to the default pipeline if no match.
+export async function getPipelineByType(
+  ownerId: number,
+  pipelineType: string
+): Promise<typeof pipelinesTable.$inferSelect | null> {
+  await seedDefaultPipelines(ownerId);
+  const [match] = await db
+    .select()
+    .from(pipelinesTable)
+    .where(
+      and(
+        eq(pipelinesTable.ownerUserId, ownerId),
+        eq(pipelinesTable.pipelineType, pipelineType),
+        eq(pipelinesTable.isArchived, false)
+      )
+    )
+    .orderBy(asc(pipelinesTable.sortOrder))
+    .limit(1);
+  if (match) return match;
+  return getDefaultPipeline(ownerId);
+}
+
+// ---------------------------------------------------------------------------
+// RBAC helpers
+// ---------------------------------------------------------------------------
+
 export function opportunityScopeWhere(
   ownerId: number,
   teamRole: TeamRole,
@@ -150,16 +257,10 @@ export function opportunityScopeWhere(
   return base;
 }
 
-// Convenience: resolve the caller's effective team role (DB-backed, not the
-// session cache) so route handlers can build the scope fragment.
 export async function resolveTeamRole(userId: number): Promise<TeamRole> {
   return getCurrentTeamRole(userId);
 }
 
-// Validate that an opportunity assignee belongs to THIS tenant before we write
-// it. A team member's owner = COALESCE(parent_user_id, id); the owner may also
-// assign a deal to themselves. Rejects non-existent ids and cross-tenant ids
-// (which would otherwise create invalid ownership / RBAC-bypass semantics).
 export async function isValidAssignee(
   assignedUserId: number,
   ownerId: number
@@ -177,8 +278,6 @@ export async function isValidAssignee(
   return !!row;
 }
 
-// Helper used by per-id opportunity routes: can the caller (with the given
-// role) act on this specific opportunity row? Mirrors opportunityScopeWhere.
 export function canAccessOpportunity(
   opp: { ownerUserId: number; assignedUserId: number | null },
   ownerId: number,

@@ -4,7 +4,16 @@
       "Bash(npx tsc *)",
       "Bash(node *)",
       "Bash(pnpm --filter api-server test -- --test-name-pattern \"computeSalesForecast\")",
-      "Bash(pnpm --filter api-server test)"
+      "Bash(pnpm --filter api-server test)",
+      "Bash(pkill -f \"ts-node\\\\|tsx\\\\|node.*api-server\")",
+      "Bash(npm run *)",
+      "Bash(pnpm --filter @workspace/db build)",
+      "Bash(printenv DATABASE_URL)",
+      "Bash(curl *)",
+      "Bash(netstat -tlnp)",
+      "Bash(pnpm --filter @workspace/api-server run build)",
+      "Bash(node --enable-source-maps ./dist/index.mjs)",
+      "Bash(echo \"API server PID: $!\")"
     ]
   }
 }

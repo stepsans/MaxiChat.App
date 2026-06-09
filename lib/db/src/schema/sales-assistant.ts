@@ -10,11 +10,13 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./auth";
 import { chatsTable } from "./whatsapp";
 import { channelsTable } from "./channels";
+import { productsTable } from "./whatsapp";
 
 // ===========================================================================
 // AI Sales Assistant (Enterprise-only). The marketing/user-facing name is
@@ -25,11 +27,42 @@ import { channelsTable } from "./channels";
 // them without leaving orphans. All money is whole-integer Rupiah.
 // ===========================================================================
 
-// A tenant's customizable sales pipeline stages (kanban columns). Seeded with
-// seven defaults on first access (New Lead → Inquiry → Quotation Sent → Follow
-// Up → Negotiation → Won → Lost); the tenant may later add/remove/reorder.
-// Tenant-reset wipes stages along with the rest of the AI Sales Assistant data;
-// the seven defaults re-seed on the tenant's next access.
+// A tenant-owned sales pipeline (e.g. "Pipeline Sales", "Pipeline Service").
+// Multiple pipelines per tenant are allowed; each has its own stage columns.
+// Seeded with two defaults (Sales + Service) on first access; the tenant may
+// add, rename, or archive additional pipelines freely.
+export const pipelinesTable = pgTable(
+  "pipelines",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // 'sales' | 'service' | 'custom' — controls AI routing and default stages.
+    pipelineType: text("pipeline_type").notNull().default("sales"),
+    // Hex color for the pipeline tab/badge in the UI.
+    color: text("color").notNull().default("#6366f1"),
+    // The pipeline the AI routes new opportunities to when no explicit match.
+    isDefault: boolean("is_default").notNull().default(false),
+    isArchived: boolean("is_archived").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index("pipelines_owner_idx").on(t.ownerUserId, t.sortOrder),
+    uniqueIndex("pipelines_owner_name_unique").on(t.ownerUserId, t.name),
+  ]
+);
+
+// A stage (kanban column) within a specific pipeline. Seeded with defaults on
+// first access; the tenant may add/remove/reorder per pipeline.
 export const pipelineStagesTable = pgTable(
   "pipeline_stages",
   {
@@ -37,15 +70,15 @@ export const pipelineStagesTable = pgTable(
     ownerUserId: integer("owner_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
+    // Pipeline this stage belongs to. CASCADE: deleting a pipeline removes all
+    // its stages (and SET NULLs any opportunities that were in those stages).
+    pipelineId: integer("pipeline_id")
+      .notNull()
+      .references(() => pipelinesTable.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    // Ascending display order within the tenant's board.
     sortOrder: integer("sort_order").notNull().default(0),
-    // Terminal markers. At most one Won and one Lost stage is meaningful, but
-    // we don't DB-enforce that — the app keeps it sane. An opportunity in a
-    // Won/Lost stage is closed and excluded from open-pipeline forecasts.
     isWon: boolean("is_won").notNull().default(false),
     isLost: boolean("is_lost").notNull().default(false),
-    // Optional hex color for the kanban column header (later UI phase).
     color: text("color"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -56,16 +89,21 @@ export const pipelineStagesTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    index("pipeline_stages_owner_idx").on(t.ownerUserId, t.sortOrder),
-    // A tenant can't have two stages with the same display name.
-    uniqueIndex("pipeline_stages_owner_name_unique").on(t.ownerUserId, t.name),
+    index("pipeline_stages_pipeline_idx").on(t.pipelineId, t.sortOrder),
+    index("pipeline_stages_owner_idx").on(t.ownerUserId),
+    // Stage names unique within a pipeline (not globally per owner).
+    uniqueIndex("pipeline_stages_pipeline_name_unique").on(
+      t.pipelineId,
+      t.name
+    ),
   ]
 );
 
-// A sales opportunity (deal) detected from / attached to a chat. Exactly one
-// opportunity per chat (unique chat_id). Lead score 0–100; estimated value is
-// whole Rupiah. `assignedUserId` is the agent who owns the deal (RBAC scoping
-// for the "agent sees only their own" rule); NULL = unassigned.
+// A sales/service opportunity detected from or attached to a chat.
+// Multiple opportunities per chat are allowed — one per distinct intent cluster
+// (e.g. "mesin lem purchase" and "mesin laminasi service" from the same thread).
+// Deduplication: (chat_id, intent_key) is unique when intent_key is not null;
+// manual entries (intent_key IS NULL) are always allowed.
 export const opportunitiesTable = pgTable(
   "opportunities",
   {
@@ -73,54 +111,69 @@ export const opportunitiesTable = pgTable(
     ownerUserId: integer("owner_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
-    // Agent who owns this deal. NULL = unassigned. SET NULL on user delete so
-    // a removed team member doesn't drop the deal.
     assignedUserId: integer("assigned_user_id").references(
       () => usersTable.id,
       { onDelete: "set null" }
     ),
-    // Source chat — one opportunity per chat. CASCADE so wiping a chat (tenant
-    // reset / chat delete) removes its opportunity.
+    // Source chat. CASCADE so wiping a chat removes its opportunities.
     chatId: integer("chat_id")
       .notNull()
       .references(() => chatsTable.id, { onDelete: "cascade" }),
-    // Source channel the deal originated on (WhatsApp/Telegram).
+    // Source channel. CASCADE: removing a channel removes its opportunities.
     channelId: integer("channel_id")
       .notNull()
       .references(() => channelsTable.id, { onDelete: "cascade" }),
-    // Contact linkage. Mirrors the contact-level convention (owner + phone) so
-    // a deal follows the number; `tg:<id>` for Telegram contacts.
-    contactPhone: text("contact_phone").notNull(),
-    contactName: text("contact_name"),
-    // Current pipeline stage. SET NULL if a stage is deleted (later phase
-    // reassigns); the deal survives stage deletion.
+    // Pipeline this opportunity belongs to. SET NULL if pipeline is deleted
+    // (opportunity survives, moves to "unsorted").
+    pipelineId: integer("pipeline_id").references(() => pipelinesTable.id, {
+      onDelete: "set null",
+    }),
+    // Current pipeline stage. SET NULL if the stage is deleted.
     stageId: integer("stage_id").references(() => pipelineStagesTable.id, {
       onDelete: "set null",
     }),
-    // AI lead score 0–100 (0 = not yet scored).
+    // AI-generated slug that identifies the intent cluster within this chat.
+    // Stable across re-analyses so the same topic upserts rather than duplicates.
+    // Example: "mesin-lem-x200-purchase", "service-mesin-laminasi".
+    // NULL for manually created opportunities (no dedup needed).
+    intentKey: text("intent_key"),
+    // 'purchase' | 'service' | 'renewal' | 'other'
+    intentType: text("intent_type").notNull().default("purchase"),
+    contactPhone: text("contact_phone").notNull(),
+    contactName: text("contact_name"),
     leadScore: integer("lead_score").notNull().default(0),
-    // Free-text intent classification (e.g. "hot"/"warm"/"cold" or a category
-    // label). NULL = not classified.
     intentCategory: text("intent_category"),
-    // Estimated deal value in whole Rupiah. bigint (mode number) for headroom.
     estimatedValueIdr: bigint("estimated_value_idr", { mode: "number" })
       .notNull()
       .default(0),
-    // Open / Won / Lost lifecycle. Stage flags drive board state; this is the
-    // coarse status used by forecasts and filters.
     status: text("status").notNull().default("open"),
-    // Who the deal is waiting on, e.g. "waiting_customer" / "waiting_us".
-    // NULL = no explicit waiting state.
     waitingStatus: text("waiting_status"),
-    // Products the contact has shown interest in (snapshot of names/codes).
+    // Snapshot of product names/codes for this specific opportunity cluster.
     productInterest: jsonb("product_interest")
       .$type<string[]>()
       .notNull()
       .default([]),
-    // AI-generated summary / notes about the deal.
+    // AI evidence fields.
+    scoreReason: text("score_reason"),
     aiNotes: text("ai_notes"),
-    // Last meaningful activity (message, stage change, follow-up). Drives
-    // staleness / follow-up scheduling in later phases.
+    recommendation: text("recommendation"),
+    // Message IDs that were in the analysis window — used to link back to the
+    // specific messages in the chat view ("Buka Chat" scrolls to these).
+    analyzedMessageIds: jsonb("analyzed_message_ids")
+      .$type<number[]>()
+      .notNull()
+      .default([]),
+    // Verbatim + signal quotes extracted by the AI for the evidence panel.
+    // { positive: string[], negative: string[], verbatim: string[] }
+    keyQuotes: jsonb("key_quotes")
+      .$type<{
+        positive: string[];
+        negative: string[];
+        verbatim: string[];
+      }>()
+      .notNull()
+      .default({ positive: [], negative: [], verbatim: [] }),
+    analyzedAt: timestamp("analyzed_at", { withTimezone: true }),
     lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -131,17 +184,48 @@ export const opportunitiesTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    // One opportunity per chat. A chat belongs to exactly one channel/owner,
-    // so this global-unique is sufficient for the per-tenant invariant.
-    uniqueIndex("opportunities_chat_unique").on(t.chatId),
+    // Dedup: one opportunity per (chat, intent cluster). Manual entries
+    // (intent_key IS NULL) are exempt — allow multiple manual per chat.
+    uniqueIndex("opportunities_chat_intent_unique").on(
+      t.chatId,
+      t.intentKey
+    ).where(sql`${t.intentKey} IS NOT NULL`),
     index("opportunities_owner_idx").on(t.ownerUserId),
+    index("opportunities_pipeline_stage_idx").on(t.pipelineId, t.stageId),
     index("opportunities_owner_stage_idx").on(t.ownerUserId, t.stageId),
     index("opportunities_assigned_idx").on(t.assignedUserId),
+    index("opportunities_chat_idx").on(t.chatId),
   ]
 );
 
-// Scheduled follow-up messages for an opportunity. The auto-follow-up engine
-// (later phase) generates up to three sequenced touches per deal.
+// Products linked to a specific opportunity. Many-to-many: one opportunity can
+// cover multiple products; one product can appear in many opportunities.
+// product_id is nullable because the customer may mention a product not in
+// the catalog — we always store the name for display.
+export const opportunityProductsTable = pgTable(
+  "opportunity_products",
+  {
+    id: serial("id").primaryKey(),
+    opportunityId: integer("opportunity_id")
+      .notNull()
+      .references(() => opportunitiesTable.id, { onDelete: "cascade" }),
+    // Nullable: product may not be in the catalog (customer mentioned by name).
+    productId: integer("product_id").references(() => productsTable.id, {
+      onDelete: "set null",
+    }),
+    // Always store the name so the card still renders if the product is deleted.
+    productName: text("product_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("opportunity_products_opp_idx").on(t.opportunityId),
+    index("opportunity_products_product_idx").on(t.productId),
+  ]
+);
+
+// Scheduled follow-up messages for an opportunity.
 export const opportunityFollowUpsTable = pgTable(
   "opportunity_follow_ups",
   {
@@ -149,23 +233,13 @@ export const opportunityFollowUpsTable = pgTable(
     opportunityId: integer("opportunity_id")
       .notNull()
       .references(() => opportunitiesTable.id, { onDelete: "cascade" }),
-    // Denormalized owner for tenant-scoped reads/wipes without a join.
     ownerUserId: integer("owner_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
-    // Touch number in the sequence (1–3).
     sequence: integer("sequence").notNull(),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
-    // pending | sent | cancelled | skipped
     status: text("status").notNull().default("pending"),
-    // The AI-drafted message body to send at `scheduledAt`.
     generatedMessage: text("generated_message"),
-    // TRUE once a human has taken ownership of this touch (edited/queued the
-    // draft via the manual controls). The auto-follow-up engine treats such a
-    // pending row as an OPEN TASK and defers — it neither auto-sends nor cancels
-    // it. Distinct from the engine's own pending rows (recommendation with a
-    // null message, or an auto-send rollback that still carries a message), so
-    // `generatedMessage IS NOT NULL` alone can't be used to detect a human task.
     manualDraft: boolean("manual_draft").notNull().default(false),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -186,9 +260,7 @@ export const opportunityFollowUpsTable = pgTable(
   ]
 );
 
-// Append-only audit trail of AI/sales activity (opportunity created, stage
-// changed, scored, follow-up sent, etc.). Operational data → wiped by
-// tenant-reset.
+// Append-only audit trail of AI/sales activity.
 export const salesAuditEventsTable = pgTable(
   "sales_audit_events",
   {
@@ -196,19 +268,14 @@ export const salesAuditEventsTable = pgTable(
     ownerUserId: integer("owner_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
-    // Optional deal the event relates to. CASCADE with the opportunity.
     opportunityId: integer("opportunity_id").references(
       () => opportunitiesTable.id,
       { onDelete: "cascade" }
     ),
-    // Who triggered it; NULL for AI/system-generated events.
     actorUserId: integer("actor_user_id").references(() => usersTable.id, {
       onDelete: "set null",
     }),
-    // e.g. "opportunity_created" | "stage_changed" | "lead_scored" |
-    // "follow_up_scheduled" | "follow_up_sent".
     eventType: text("event_type").notNull(),
-    // Arbitrary structured payload (before/after stage, score delta, etc.).
     detail: jsonb("detail").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -220,11 +287,9 @@ export const salesAuditEventsTable = pgTable(
   ]
 );
 
-// Latest AI analysis ("AI Sales Insight") for a chat. Exactly one row per chat
-// (unique chat_id), refreshed on every detection run. This is what the
-// conversation sidebar reads — it exists even when no opportunity has been
-// created (toggle OFF = recommend only). Operational data → wiped by
-// tenant-reset. All money is whole-integer Rupiah.
+// Latest AI analysis ("AI Sales Insight") for a chat. One row per chat,
+// refreshed on every detection run. Exists even when no opportunity has been
+// created (toggle OFF = recommend only).
 export const salesInsightsTable = pgTable(
   "sales_insights",
   {
@@ -232,41 +297,44 @@ export const salesInsightsTable = pgTable(
     ownerUserId: integer("owner_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
-    // Source chat — one insight per chat. CASCADE so wiping a chat removes it.
     chatId: integer("chat_id")
       .notNull()
       .references(() => chatsTable.id, { onDelete: "cascade" }),
     channelId: integer("channel_id")
       .notNull()
       .references(() => channelsTable.id, { onDelete: "cascade" }),
-    // Contact-level key (owner + phone); `tg:<id>` for Telegram.
     contactPhone: text("contact_phone").notNull(),
-    // AI lead score 0–100.
     leadScore: integer("lead_score").notNull().default(0),
-    // Free-text intent classification (e.g. "hot"/"warm"/"cold").
     intentCategory: text("intent_category"),
-    // Estimated deal value in whole Rupiah. bigint (mode number) for headroom.
     estimatedValueIdr: bigint("estimated_value_idr", { mode: "number" })
       .notNull()
       .default(0),
-    // Products the contact has shown interest in (snapshot of names/codes).
     productInterest: jsonb("product_interest")
       .$type<string[]>()
       .notNull()
       .default([]),
-    // AI explanation of the positive/negative signals behind the score.
     scoreReason: text("score_reason"),
-    // AI-generated summary / notes about the conversation.
     aiNotes: text("ai_notes"),
-    // AI's suggested next action (the recommendation surfaced when the
-    // auto-create toggle is OFF, or below threshold).
     recommendation: text("recommendation"),
-    // Derived from the last message direction at analysis time:
-    // "waiting_customer" (company sent last) / "waiting_company" (customer sent
-    // last). NULL = no messages.
     waitingStatus: text("waiting_status"),
-    // The chat_messages.id this analysis was anchored to (the latest message at
-    // analysis time). Used to debounce / skip re-analysis when nothing changed.
+    // Raw AI-detected opportunity candidates from the latest analysis run.
+    // Stored so the sidebar can show per-candidate "Buat" buttons even when
+    // auto-create is OFF (without this, candidates are lost after analysis).
+    detectedCandidates: jsonb("detected_candidates")
+      .$type<Array<{
+        intentKey: string;
+        intentType: string;
+        pipelineType: string;
+        products: string[];
+        intentCategory: string;
+        leadScore: number;
+        estimatedValueIdr: number;
+        scoreReason: string | null;
+        aiNotes: string | null;
+        recommendation: string | null;
+      }>>()
+      .notNull()
+      .default([]),
     lastMessageId: integer("last_message_id"),
     analyzedAt: timestamp("analyzed_at", { withTimezone: true })
       .notNull()
@@ -285,12 +353,7 @@ export const salesInsightsTable = pgTable(
   ]
 );
 
-// Per-tenant-owner "AI Sales Assistant" configuration. One row per owner
-// (unique owner_user_id). Powers Toggle 1 (Auto-Create Opportunity). Defaults
-// are fully INERT: auto_create_enabled = false means the AI only recommends and
-// never creates an opportunity, until the owner turns it on. This is tenant
-// CONFIGURATION (like pipeline preferences), NOT operational data → it survives
-// tenant-reset.
+// Per-tenant AI Sales Assistant configuration.
 export const salesAssistantSettingsTable = pgTable(
   "sales_assistant_settings",
   {
@@ -298,28 +361,15 @@ export const salesAssistantSettingsTable = pgTable(
     ownerUserId: integer("owner_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
-    // When true and a chat's lead score >= autoCreateThreshold, an opportunity
-    // is created automatically. When false, the AI only recommends.
     autoCreateEnabled: boolean("auto_create_enabled").notNull().default(false),
-    // Score threshold (0–100) that triggers auto-create when enabled.
     autoCreateThreshold: integer("auto_create_threshold").notNull().default(70),
-    // Pipeline Health config. An open opportunity is flagged "High Risk" when its
-    // estimated value is >= highValueThresholdIdr AND it has had no activity for
-    // >= staleDaysThreshold days. highValueThresholdIdr = 0 means every open deal
-    // qualifies on the value axis (only staleness matters). Whole-int Rupiah.
     staleDaysThreshold: integer("stale_days_threshold").notNull().default(14),
     highValueThresholdIdr: bigint("high_value_threshold_idr", { mode: "number" })
       .notNull()
       .default(0),
-    // Auto Follow-Up engine config. When false (default), the AI only RECOMMENDS
-    // a follow-up (surfaced in the UI) and never sends. When true, the engine
-    // generates + sends sequenced follow-ups (max 3) for opportunities waiting on
-    // the customer, paced + on the chat's own channel.
     autoFollowUpEnabled: boolean("auto_follow_up_enabled")
       .notNull()
       .default(false),
-    // Hours of silence (since the Last Meaningful Interaction) before the next
-    // follow-up touch is due. Tenant picks 24/48/72/168 or a custom value.
     followUpIntervalHours: integer("follow_up_interval_hours")
       .notNull()
       .default(48),
@@ -336,6 +386,18 @@ export const salesAssistantSettingsTable = pgTable(
   ]
 );
 
+// ---------------------------------------------------------------------------
+// Zod insert schemas
+// ---------------------------------------------------------------------------
+
+export const insertPipelineSchema = createInsertSchema(pipelinesTable, {
+  name: z.string().trim().min(1).max(80),
+  pipelineType: z.enum(["sales", "service", "custom"]).optional(),
+  color: z.string().trim().max(20).optional(),
+  isDefault: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+}).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
+
 export const insertPipelineStageSchema = createInsertSchema(
   pipelineStagesTable,
   {
@@ -350,11 +412,14 @@ export const insertOpportunitySchema = createInsertSchema(opportunitiesTable, {
   contactName: z.string().trim().max(120).nullable().optional(),
   leadScore: z.number().int().min(0).max(100).optional(),
   intentCategory: z.string().trim().max(40).nullable().optional(),
+  intentType: z.enum(["purchase", "service", "renewal", "other"]).optional(),
   estimatedValueIdr: z.number().int().min(0).optional(),
   status: z.string().trim().max(20).optional(),
   waitingStatus: z.string().trim().max(40).nullable().optional(),
   productInterest: z.array(z.string().trim().max(120)).optional(),
   aiNotes: z.string().trim().max(4000).nullable().optional(),
+  scoreReason: z.string().trim().max(4000).nullable().optional(),
+  recommendation: z.string().trim().max(2000).nullable().optional(),
 }).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
 
 export const insertSalesInsightSchema = createInsertSchema(salesInsightsTable, {
@@ -382,11 +447,15 @@ export const insertSalesAssistantSettingsSchema = createInsertSchema(
   }
 ).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
 
+// ---------------------------------------------------------------------------
+// Row types
+// ---------------------------------------------------------------------------
+
+export type PipelineRow = typeof pipelinesTable.$inferSelect;
 export type PipelineStageRow = typeof pipelineStagesTable.$inferSelect;
 export type OpportunityRow = typeof opportunitiesTable.$inferSelect;
-export type OpportunityFollowUpRow =
-  typeof opportunityFollowUpsTable.$inferSelect;
+export type OpportunityProductRow = typeof opportunityProductsTable.$inferSelect;
+export type OpportunityFollowUpRow = typeof opportunityFollowUpsTable.$inferSelect;
 export type SalesAuditEventRow = typeof salesAuditEventsTable.$inferSelect;
 export type SalesInsightRow = typeof salesInsightsTable.$inferSelect;
-export type SalesAssistantSettingsRow =
-  typeof salesAssistantSettingsTable.$inferSelect;
+export type SalesAssistantSettingsRow = typeof salesAssistantSettingsTable.$inferSelect;

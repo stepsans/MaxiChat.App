@@ -24,6 +24,7 @@ import {
   useGetSalesAssistantSettings,
   useUpdateSalesAssistantSettings,
   useCreateOpportunity,
+  useListPipelines,
   useListOpportunityFollowUps,
   useSendOpportunityFollowUp,
   useUpdateOpportunityFollowUp,
@@ -39,6 +40,7 @@ import {
   getGetChatSalesInsightQueryKey,
   getGetSalesAssistantSettingsQueryKey,
   getListOpportunityFollowUpsQueryKey,
+  getListPipelinesQueryKey,
 } from "@workspace/api-client-react";
 import type {
   TextShortcut,
@@ -46,6 +48,7 @@ import type {
   SalesOrder,
   SalesOrderItemInput,
   SalesInsight,
+  Pipeline,
 } from "@workspace/api-client-react";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
@@ -103,6 +106,7 @@ import {
   TrendingUp,
   Clock,
   CheckCheck,
+  ChevronRight,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { ChatAvatar } from "@/components/ChatAvatar";
@@ -2064,6 +2068,13 @@ function SalesInsightTab({
     },
   });
 
+  const { data: pipelines } = useListPipelines({
+    query: {
+      queryKey: getListPipelinesQueryKey(),
+      enabled: canCreateOpportunity,
+    },
+  });
+
   const { data: settings } = useGetSalesAssistantSettings({
     query: {
       queryKey: getGetSalesAssistantSettingsQueryKey(),
@@ -2171,16 +2182,12 @@ function SalesInsightTab({
           canCreateOpportunity={canCreateOpportunity}
           canEditOpportunity={canEditSettings}
           creating={createOpportunity.isPending}
-          onCreateOpportunity={() =>
+          pipelines={pipelines ?? []}
+          onCreateOpportunity={(payload) =>
             createOpportunity.mutate({
               data: {
                 chatId,
-                leadScore: insight.leadScore,
-                intentCategory: insight.intentCategory,
-                estimatedValueIdr: insight.estimatedValueIdr,
-                productInterest: insight.productInterest,
-                aiNotes: insight.aiNotes,
-                waitingStatus: insight.waitingStatus,
+                ...payload,
               },
             })
           }
@@ -2571,6 +2578,93 @@ function FollowUpSection({
   );
 }
 
+function timeAgoInsight(iso: string | null | undefined): string {
+  if (!iso) return "Belum ada aktivitas";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return "Hari ini";
+  if (days === 1) return "1 hari lalu";
+  if (days < 30) return `${days} hari lalu`;
+  const m = Math.floor(days / 30);
+  return m === 1 ? "1 bulan lalu" : `${m} bulan lalu`;
+}
+
+function ManualAddMenu({
+  pipelines,
+  creating,
+  showLabel,
+  onSelect,
+}: {
+  pipelines: Array<{ id: number; name: string; color: string }>;
+  creating: boolean;
+  showLabel: boolean;
+  onSelect: (pipelineId: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          size="sm"
+          variant={showLabel ? "outline" : "ghost"}
+          disabled={creating}
+          className="h-8 w-full gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
+        >
+          {creating ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Plus className="w-3.5 h-3.5" />
+          )}
+          {showLabel ? "Buat Opportunity" : "Tambah Opportunity Manual"}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-52 p-1.5 space-y-0.5">
+        <p className="text-[10px] text-[hsl(var(--wa-meta))] px-1.5 pb-1">
+          Pilih pipeline:
+        </p>
+        {pipelines.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => { onSelect(p.id); setOpen(false); }}
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-white/5"
+          >
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ background: p.color }}
+            />
+            {p.name}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type DetectedCandidate = {
+  intentKey: string;
+  intentType: string;
+  pipelineType: string;
+  products: string[];
+  intentCategory: string;
+  leadScore: number;
+  estimatedValueIdr: number;
+  scoreReason: string | null;
+  aiNotes: string | null;
+  recommendation: string | null;
+};
+
+type CreateOpportunityPayload = {
+  pipelineId?: number | null;
+  intentKey?: string | null;
+  leadScore?: number;
+  intentCategory?: string | null;
+  estimatedValueIdr?: number;
+  productInterest?: string[];
+  aiNotes?: string | null;
+  waitingStatus?: string | null;
+};
+
 function SalesInsightBody({
   insight,
   chatId,
@@ -2578,19 +2672,40 @@ function SalesInsightBody({
   canEditOpportunity,
   creating,
   onCreateOpportunity,
+  pipelines,
 }: {
   insight: SalesInsight;
   chatId: number;
   canCreateOpportunity: boolean;
   canEditOpportunity: boolean;
   creating: boolean;
-  onCreateOpportunity: () => void;
+  onCreateOpportunity: (payload: CreateOpportunityPayload) => void;
+  pipelines: Pipeline[];
 }) {
   const band = scoreBand(insight.leadScore);
-  const hasOpportunity = insight.opportunityId != null;
+  const opportunities = ((insight as any).opportunities as Array<{
+    id: number;
+    pipelineId?: number;
+    pipelineName?: string;
+    stageId?: number;
+    stageName?: string;
+    intentKey?: string;
+    intentType?: string;
+    leadScore: number;
+    lastActivityAt?: string | null;
+  }>) ?? [];
+  const detectedCandidates = ((insight as any).detectedCandidates as DetectedCandidate[]) ?? [];
+  const visiblePipelines = pipelines.filter((p) => !p.isArchived);
+
+  // Candidates not yet persisted as opportunities (by intentKey).
+  const createdIntentKeys = new Set(opportunities.map((o) => o.intentKey).filter(Boolean));
+  const pendingCandidates = detectedCandidates.filter(
+    (c) => !createdIntentKeys.has(c.intentKey)
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <div
           className={cn(
             "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5",
@@ -2649,50 +2764,168 @@ function SalesInsightBody({
         <InsightRow label="Catatan AI">{insight.aiNotes}</InsightRow>
       ) : null}
 
-      <div className="pt-2 border-t border-[hsl(var(--wa-divider))] space-y-4">
-        {hasOpportunity ? (
-          <>
-            <InsightRow label="Tahap opportunity">
-              {insight.stageName ?? "Belum ada tahap"}
-            </InsightRow>
-            <InsightRow label="Aktivitas terakhir">
-              {insight.lastActivityAt
-                ? new Date(insight.lastActivityAt).toLocaleString("id-ID")
-                : "—"}
-            </InsightRow>
-            {insight.opportunityId != null ? (
-              <FollowUpSection
-                opportunityId={insight.opportunityId}
-                chatId={chatId}
-                canEdit={canEditOpportunity}
-              />
-            ) : null}
-          </>
+      {/* Multi-opportunity list */}
+      <div className="pt-2 border-t border-[hsl(var(--wa-divider))] space-y-3">
+        <p className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+          Peluang ({opportunities.length})
+        </p>
+
+        {opportunities.length === 0 ? (
+          <p className="text-[11px] text-[hsl(var(--wa-meta))]">
+            Belum ada peluang terdeteksi untuk chat ini.
+          </p>
         ) : (
           <div className="space-y-2">
-            <p className="text-[11px] text-[hsl(var(--wa-meta))]">
-              Belum ada opportunity untuk chat ini.
-            </p>
-            {canCreateOpportunity ? (
+            {opportunities.map((opp) => {
+              const oppBand = scoreBand(opp.leadScore);
+              return (
+                <div
+                  key={opp.id}
+                  data-testid={`insight-opportunity-${opp.id}`}
+                  className="rounded-lg border border-[hsl(var(--wa-divider))] bg-white/[0.02] p-2.5 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                        oppBand.className
+                      )}
+                    >
+                      <TrendingUp className="w-3 h-3" />
+                      {opp.leadScore}
+                    </span>
+                    <span className="text-xs font-medium truncate">
+                      {opp.intentKey ?? opp.intentType ?? "Peluang"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-[hsl(var(--wa-meta))]">
+                    <span className="truncate">{opp.pipelineName ?? "Pipeline"}</span>
+                    <ChevronRight className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{opp.stageName ?? "Tanpa Stage"}</span>
+                  </div>
+                  <p className="text-[10px] text-[hsl(var(--wa-meta))]">
+                    {timeAgoInsight(opp.lastActivityAt)}
+                  </p>
+                  <FollowUpSection
+                    opportunityId={opp.id}
+                    chatId={chatId}
+                    canEdit={canEditOpportunity}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Per-candidate create buttons (from AI analysis) */}
+        {canCreateOpportunity ? (
+          <div className="pt-1 space-y-1.5">
+            {pendingCandidates.length > 0 && (
+              <>
+                <p className="text-[10px] text-[hsl(var(--wa-meta))]">
+                  Kandidat AI belum dibuat:
+                </p>
+                {pendingCandidates.map((c) => {
+                  const targetPipeline = visiblePipelines.find(
+                    (p) => p.pipelineType === c.pipelineType
+                  ) ?? visiblePipelines[0];
+                  return (
+                    <Button
+                      key={c.intentKey}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      data-testid={`button-create-candidate-${c.intentKey}`}
+                      disabled={creating}
+                      onClick={() =>
+                        onCreateOpportunity({
+                          pipelineId: targetPipeline?.id,
+                          intentKey: c.intentKey,
+                          leadScore: c.leadScore,
+                          intentCategory: c.intentCategory,
+                          estimatedValueIdr: c.estimatedValueIdr,
+                          productInterest: c.products,
+                          aiNotes: c.aiNotes,
+                          waitingStatus: insight.waitingStatus ?? null,
+                        })
+                      }
+                      className="h-auto min-h-[2rem] w-full gap-1.5 text-xs justify-start border-[hsl(var(--wa-divider))] py-1.5 px-2"
+                    >
+                      {creating ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      ) : targetPipeline ? (
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ background: targetPipeline.color }}
+                        />
+                      ) : (
+                        <Plus className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span className="flex-1 min-w-0 text-left leading-snug">
+                        <span className="font-medium truncate block">
+                          {c.intentKey.replace(/-/g, " ")}
+                        </span>
+                        <span className="text-[hsl(var(--wa-meta))] font-normal">
+                          {formatRupiah(c.estimatedValueIdr)} · skor {c.leadScore}
+                          {targetPipeline ? ` · ${targetPipeline.name}` : ""}
+                        </span>
+                      </span>
+                    </Button>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Manual add — always visible so user can add opportunities not detected by AI */}
+            {visiblePipelines.length === 0 ? null : visiblePipelines.length === 1 ? (
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant={opportunities.length === 0 && pendingCandidates.length === 0 ? "outline" : "ghost"}
                 data-testid="button-create-opportunity"
                 disabled={creating}
-                onClick={onCreateOpportunity}
-                className="h-8 w-full gap-1.5 text-xs"
+                onClick={() =>
+                  onCreateOpportunity({
+                    pipelineId: visiblePipelines[0]?.id,
+                    leadScore: insight.leadScore,
+                    intentCategory: insight.intentCategory,
+                    estimatedValueIdr: insight.estimatedValueIdr,
+                    productInterest: insight.productInterest,
+                    aiNotes: insight.aiNotes,
+                    waitingStatus: insight.waitingStatus ?? null,
+                  })
+                }
+                className="h-8 w-full gap-1.5 text-xs border-[hsl(var(--wa-divider))]"
               >
                 {creating ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Plus className="w-3.5 h-3.5" />
                 )}
-                Buat Opportunity
+                {opportunities.length === 0 && pendingCandidates.length === 0
+                  ? "Buat Opportunity"
+                  : "Tambah Opportunity Manual"}
               </Button>
-            ) : null}
+            ) : (
+              <ManualAddMenu
+                pipelines={visiblePipelines}
+                creating={creating}
+                showLabel={opportunities.length === 0 && pendingCandidates.length === 0}
+                onSelect={(pipelineId) =>
+                  onCreateOpportunity({
+                    pipelineId,
+                    leadScore: insight.leadScore,
+                    intentCategory: insight.intentCategory,
+                    estimatedValueIdr: insight.estimatedValueIdr,
+                    productInterest: insight.productInterest,
+                    aiNotes: insight.aiNotes,
+                    waitingStatus: insight.waitingStatus ?? null,
+                  })
+                }
+              />
+            )}
           </div>
-        )}
+        ) : null}
       </div>
 
       <p className="pt-1 text-[10px] text-[hsl(var(--wa-meta))]">

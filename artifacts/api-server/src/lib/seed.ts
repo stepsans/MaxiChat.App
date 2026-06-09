@@ -81,10 +81,20 @@ function migrateLegacyAuthDir(userId: number): void {
   }
 }
 
+// Idempotent: adds the is_default column on channels if the 0005 migration
+// hasn't been applied yet. Safe to re-run (ADD COLUMN IF NOT EXISTS).
+async function ensureChannelIsDefault(): Promise<void> {
+  await db.execute(sql`
+    ALTER TABLE channels
+      ADD COLUMN IF NOT EXISTS is_default boolean NOT NULL DEFAULT false;
+  `);
+}
+
 export async function runSeed(): Promise<void> {
   // Must run before any request hits the session middleware, since the
   // express-session store assumes the table exists.
   await ensureSessionTable();
+  await ensureChannelIsDefault();
 
   const userIdsByEmail = new Map<string, number>();
   for (const seed of SEED_USERS) {

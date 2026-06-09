@@ -23,16 +23,6 @@ import {
 } from "./sales-insight-build";
 import { logger } from "./logger";
 
-// ===========================================================================
-// AI Sales Assistant — conversation analysis service. Reads a chat's recent
-// history + the tenant's product catalog, asks the AI to score the lead, and
-// persists the result as the per-chat "AI Sales Insight". Token usage is
-// attributed to the tenant owner; every analysis writes a sales audit event.
-// Fails EXPLICITLY (throws) rather than fabricating an analysis.
-// ===========================================================================
-
-// How many recent messages feed the model. Enough context for intent without
-// blowing token spend on very long threads.
 const HISTORY_LIMIT = 30;
 
 export interface ChatAnalysisResult {
@@ -44,14 +34,12 @@ export interface ChatAnalysisResult {
   leadScore: number;
   waitingStatus: WaitingStatus | null;
   analysis: SalesInsightAnalysis;
+  // IDs of all messages that were in the analysis window.
+  analyzedMessageIds: number[];
   lastMessageId: number | null;
   insight: SalesInsightRow;
 }
 
-// Analyse one chat and upsert its AI Sales Insight. Returns the structured
-// result so the detection engine can decide whether to auto-create an
-// opportunity. Throws on any hard failure (chat/channel missing, model returned
-// no recoverable JSON) so callers never persist a fabricated score.
 export async function analyzeAndPersistChat(
   chatId: number
 ): Promise<ChatAnalysisResult> {
@@ -71,8 +59,6 @@ export async function analyzeAndPersistChat(
 
   const ownerUserId = await resolveOwnerUserId(channel.userId);
 
-  // Recent messages, newest-first then reversed to chronological order — same
-  // ordering discipline as generateAiReply so the model sees the latest turns.
   const recent = (
     await db
       .select({
@@ -97,6 +83,7 @@ export async function analyzeAndPersistChat(
       ? ("outbound" as const)
       : ("inbound" as const);
   const waitingStatus = deriveWaitingStatus(lastDirection);
+  const analyzedMessageIds = recent.map((m) => m.id);
 
   const products = await db
     .select()
@@ -120,11 +107,10 @@ export async function analyzeAndPersistChat(
         content: `Analisa percakapan berikut dan balas HANYA dengan satu objek JSON sesuai format.\n\n--- PERCAKAPAN ---\n${transcript}\n--- END PERCAKAPAN ---`,
       },
     ],
-    max_tokens: 800,
+    max_tokens: 1200,
     temperature: 0,
   });
 
-  // Owner-attributed, best-effort — never blocks the analysis.
   void recordAiUsage({
     ownerUserId,
     channelId: chat.channelId,
@@ -135,15 +121,27 @@ export async function analyzeAndPersistChat(
 
   const content = response.choices[0]?.message?.content ?? "";
   const analysis = parseInsight(content);
-  // Fail explicitly: the model returned nothing we can trust. We must NOT write
-  // a fabricated zero-score insight that looks like a real analysis.
   if (!analysis) {
     throw new Error(
       "AI tidak mengembalikan analisa JSON yang valid untuk chat ini."
     );
   }
 
-  // Upsert the per-chat insight (one row per chat).
+  // Strip keyQuotes before storing — they live on the opportunity row instead.
+  const candidatesForStorage = analysis.opportunities.map((c) => ({
+    intentKey: c.intentKey,
+    intentType: c.intentType,
+    pipelineType: c.pipelineType,
+    products: c.products,
+    intentCategory: c.intentCategory,
+    leadScore: c.leadScore,
+    estimatedValueIdr: c.estimatedValueIdr,
+    scoreReason: c.scoreReason,
+    aiNotes: c.aiNotes,
+    recommendation: c.recommendation,
+  }));
+
+  // Upsert the per-chat insight (aggregate / sidebar view).
   const [insight] = await db
     .insert(salesInsightsTable)
     .values({
@@ -159,6 +157,7 @@ export async function analyzeAndPersistChat(
       aiNotes: analysis.aiNotes,
       recommendation: analysis.recommendation,
       waitingStatus,
+      detectedCandidates: candidatesForStorage,
       lastMessageId: lastMsg.id,
       analyzedAt: new Date(),
     })
@@ -173,6 +172,7 @@ export async function analyzeAndPersistChat(
         aiNotes: analysis.aiNotes,
         recommendation: analysis.recommendation,
         waitingStatus,
+        detectedCandidates: candidatesForStorage,
         lastMessageId: lastMsg.id,
         analyzedAt: new Date(),
         updatedAt: new Date(),
@@ -180,10 +180,6 @@ export async function analyzeAndPersistChat(
     })
     .returning();
 
-  // Audit: every analysis records a lead-score event; a non-empty
-  // recommendation records a separate recommendation event. Both are
-  // AI/system-generated (actorUserId null). Best-effort — an audit write must
-  // never fail the analysis.
   try {
     await db.insert(salesAuditEventsTable).values({
       ownerUserId,
@@ -193,22 +189,11 @@ export async function analyzeAndPersistChat(
         chatId,
         leadScore: analysis.leadScore,
         intentCategory: analysis.intentCategory,
+        opportunityCount: analysis.opportunities.length,
         waitingStatus,
         source: "ai",
       },
     });
-    if (analysis.recommendation) {
-      await db.insert(salesAuditEventsTable).values({
-        ownerUserId,
-        actorUserId: null,
-        eventType: "recommendation",
-        detail: {
-          chatId,
-          recommendation: analysis.recommendation,
-          source: "ai",
-        },
-      });
-    }
   } catch (err) {
     logger.warn({ err, chatId }, "sales-insight: audit write failed");
   }
@@ -222,6 +207,7 @@ export async function analyzeAndPersistChat(
     leadScore: analysis.leadScore,
     waitingStatus,
     analysis,
+    analyzedMessageIds,
     lastMessageId: lastMsg.id,
     insight: insight!,
   };
