@@ -30,3 +30,9 @@ id = "opwcZaRcYVXouM9o2ybO0"
 uri = "file://.local/exports/markdown-files.tar.gz"
 type = "unspecified"
 title = "All Markdown files (84 files)"
+
+[[outputs]]
+id = "x0wdhDfkdYgGR8wNAH5PT"
+uri = "file://.local/exports/maxichat-source.tar.gz"
+type = "unspecified"
+title = "MaxiChat — full source code (1,054 files)"
