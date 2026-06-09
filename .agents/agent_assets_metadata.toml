@@ -24,3 +24,9 @@ id = "IhFWV2O5bdB_gw5Ngpv-M"
 uri = "file://docs/billing-fase-fdeh-plan.md"
 type = "text"
 title = "Rencana Detail Billing: FASE F, D, E, H + Overage/Wallet/Credit"
+
+[[outputs]]
+id = "opwcZaRcYVXouM9o2ybO0"
+uri = "file://.local/exports/markdown-files.tar.gz"
+type = "unspecified"
+title = "All Markdown files (84 files)"
