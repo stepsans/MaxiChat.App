@@ -60,6 +60,7 @@ const ChannelUpdateBody = z.object({
   label: z.string().trim().min(1).max(60).optional(),
   color: z.string().regex(HEX_COLOR).optional(),
   icon: z.string().trim().min(1).max(40).optional(),
+  isDefault: z.boolean().optional(),
 });
 
 // Strip secrets (currently: the Telegram bot token + webhook secret) from
@@ -90,6 +91,7 @@ function serialize(c: typeof channelsTable.$inferSelect) {
     icon: c.icon,
     status: c.status,
     ownerPhone: c.ownerPhone,
+    isDefault: c.isDefault,
     metadata: redactMetadata(c.metadata as Record<string, unknown> | null),
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
@@ -206,7 +208,8 @@ router.patch("/:id", requirePermission("channels", "edit"), async (req, res): Pr
   if (
     patch.label === undefined &&
     patch.color === undefined &&
-    patch.icon === undefined
+    patch.icon === undefined &&
+    patch.isDefault === undefined
   ) {
     res.status(400).json({ error: "No fields to update" });
     return;
@@ -217,12 +220,23 @@ router.patch("/:id", requirePermission("channels", "edit"), async (req, res): Pr
       res.status(404).json({ error: "Channel not found" });
       return;
     }
+    // Enforce single default: when setting isDefault=true, clear the flag on
+    // every other channel owned by this user first.
+    if (patch.isDefault === true) {
+      await db
+        .update(channelsTable)
+        .set({ isDefault: false, updatedAt: sql`now()` })
+        .where(
+          and(eq(channelsTable.userId, existing.userId), ne(channelsTable.id, id))
+        );
+    }
     const [row] = await db
       .update(channelsTable)
       .set({
         ...(patch.label !== undefined ? { label: patch.label.trim() } : {}),
         ...(patch.color !== undefined ? { color: patch.color } : {}),
         ...(patch.icon !== undefined ? { icon: patch.icon.trim() } : {}),
+        ...(patch.isDefault !== undefined ? { isDefault: patch.isDefault } : {}),
         updatedAt: sql`now()`,
       })
       .where(eq(channelsTable.id, id))

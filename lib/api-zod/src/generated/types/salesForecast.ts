@@ -22,6 +22,12 @@ export interface SalesForecast {
   wonValueIdr: bigint;
   /** won / (won + lost) × 100, rounded to a whole percent (0 when none closed). */
   winRatePct: number;
+  /** Average estimated value across open deals (0 when pipeline empty). */
+  avgDealSizeIdr: bigint;
+  /** Average days from opportunity creation to close (won or lost). 0 when no closed deals. */
+  avgCycleDays: number;
+  /** Sales velocity in Rupiah/day: (openCount × avgDealSize × winRate%) / avgCycleDays. */
+  salesVelocityIdr: bigint;
   /** Per-stage open count, value, and weighted forecast. */
   byStage: SalesForecastByStageItem[];
 }

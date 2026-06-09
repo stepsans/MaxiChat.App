@@ -1,13 +1,8 @@
-import { useQueryClient } from "@tanstack/react-query";
 import {
-  useGetWhatsappStatus,
   useGetAnalyticsSummary,
   useListChats,
-  useConnectWhatsapp,
-  useDisconnectWhatsapp,
   useGetStorageUsage,
   useGetMyQuota,
-  getGetWhatsappStatusQueryKey,
   getGetAnalyticsSummaryQueryKey,
   getListChatsQueryKey,
   getGetStorageUsageQueryKey,
@@ -24,11 +19,6 @@ import {
   Flame,
   TrendingUp,
   Users,
-  Wifi,
-  WifiOff,
-  QrCode,
-  Loader2,
-  CheckCircle,
   ShieldAlert,
   HardDrive,
   Gauge,
@@ -38,10 +28,8 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn, formatBytes } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
-import { useEffect } from "react";
 
 // Convert a label's hex color into translucent fill/border so the count chip
 // reads as a soft tint with the label color as text — consistent with the
@@ -174,18 +162,9 @@ function QuotaBar({
 }
 
 export default function Dashboard() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
   const { menus, isLoading: permLoading } = usePermissions();
   const canView = menus.dashboard.canView;
 
-  const { data: status, isLoading: statusLoading } = useGetWhatsappStatus({
-    query: {
-      queryKey: getGetWhatsappStatusQueryKey(),
-      refetchInterval: 3000,
-      enabled: canView,
-    },
-  });
   const { data: summary, isLoading: summaryLoading } = useGetAnalyticsSummary({
     query: { queryKey: getGetAnalyticsSummaryQueryKey(), enabled: canView },
   });
@@ -198,28 +177,6 @@ export default function Dashboard() {
   const { data: quota, isLoading: quotaLoading } = useGetMyQuota({
     query: { queryKey: getGetMyQuotaQueryKey(), enabled: canView },
   });
-
-  const connect = useConnectWhatsapp({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getGetWhatsappStatusQueryKey() });
-        toast({ title: "QR code generated. Scan with WhatsApp." });
-      },
-    },
-  });
-
-  const disconnect = useDisconnectWhatsapp({
-    mutation: {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getGetWhatsappStatusQueryKey() });
-        toast({ title: "WhatsApp disconnected." });
-      },
-    },
-  });
-
-  const isConnected = status?.status === "connected";
-  const isQrReady = status?.status === "qr_ready";
-  const isConnecting = status?.status === "connecting";
 
   const needsHumanChats = chats?.filter((c) => c.status === "needs_human") ?? [];
 
@@ -258,88 +215,6 @@ export default function Dashboard() {
       <div className="flex-1 p-6 space-y-6">
         {/* Onboarding checklist — hides itself at 100% health */}
         <OnboardingChecklist />
-
-        {/* WhatsApp Connection */}
-        <Card data-testid="whatsapp-connection-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">WhatsApp Connection</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              <div
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium",
-                  isConnected
-                    ? "bg-primary/10 text-primary border-primary/20"
-                    : isQrReady || isConnecting
-                    ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
-                    : "bg-red-500/10 text-red-400 border-red-500/20"
-                )}
-              >
-                {isConnected ? (
-                  <CheckCircle className="w-4 h-4" />
-                ) : isQrReady || isConnecting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <WifiOff className="w-4 h-4" />
-                )}
-                {isConnected
-                  ? `Connected${status?.phoneNumber ? ` · ${status.phoneNumber}` : ""}`
-                  : isQrReady
-                  ? "Scan QR code to connect"
-                  : isConnecting
-                  ? "Connecting..."
-                  : "Not connected"}
-              </div>
-
-              {!isConnected && (
-                <Button
-                  data-testid="button-connect-whatsapp"
-                  size="sm"
-                  onClick={() => connect.mutate()}
-                  disabled={connect.isPending || isQrReady || isConnecting}
-                >
-                  {connect.isPending || isConnecting ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                  ) : (
-                    <QrCode className="w-3.5 h-3.5 mr-1.5" />
-                  )}
-                  {isQrReady ? "Scan QR Code" : "Connect WhatsApp"}
-                </Button>
-              )}
-
-              {isConnected && (
-                <Button
-                  data-testid="button-disconnect-whatsapp"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => disconnect.mutate()}
-                  disabled={disconnect.isPending}
-                >
-                  Disconnect
-                </Button>
-              )}
-            </div>
-
-            {isQrReady && status?.qrCode && (
-              <div className="mt-4 p-4 bg-white rounded-lg inline-block" data-testid="qr-code-display">
-                <p className="text-xs text-gray-600 font-medium mb-3 text-center">
-                  Scan dengan WhatsApp di HP kamu
-                </p>
-                <img
-                  src={status.qrCode}
-                  alt="WhatsApp QR Code"
-                  width={220}
-                  height={220}
-                  className="rounded"
-                />
-                <p className="text-[10px] text-gray-400 text-center mt-2">
-                  QR kedaluwarsa dalam 60 detik
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -635,6 +635,12 @@ export interface SalesForecast {
   wonValueIdr: number;
   /** won / (won + lost) × 100, rounded to a whole percent (0 when none closed). */
   winRatePct: number;
+  /** Average estimated value across open deals (0 when pipeline empty). */
+  avgDealSizeIdr: number;
+  /** Average days from opportunity creation to close (won or lost). 0 when no closed deals. */
+  avgCycleDays: number;
+  /** Sales velocity in Rupiah/day: (openCount × avgDealSize × winRate%) / avgCycleDays. */
+  salesVelocityIdr: number;
   /** Per-stage open count, value, and weighted forecast. */
   byStage: SalesForecastByStageItem[];
 }
@@ -1105,6 +1111,7 @@ export type WhatsappStatusStatus = typeof WhatsappStatusStatus[keyof typeof What
 
 export const WhatsappStatusStatus = {
   connected: 'connected',
+  syncing: 'syncing',
   disconnected: 'disconnected',
   connecting: 'connecting',
   qr_ready: 'qr_ready',
@@ -3665,6 +3672,7 @@ export const ChannelStatus = {
   connecting: 'connecting',
   qr_ready: 'qr_ready',
   connected: 'connected',
+  syncing: 'syncing',
   error: 'error',
 } as const;
 
@@ -3682,6 +3690,8 @@ export interface Channel {
   status: ChannelStatus;
   /** WhatsApp-only: paired phone number (digits) */
   ownerPhone?: string | null;
+  /** When true this channel opens by default on app load */
+  isDefault: boolean;
   /** Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind. */
   metadata?: unknown | null;
   createdAt: string;
@@ -3717,6 +3727,8 @@ export interface ChannelUpdate {
      * @maxLength 40
      */
   icon?: string;
+  /** Set to true to make this the default channel on app load. Clears the flag on all sibling channels. */
+  isDefault?: boolean;
 }
 
 export interface TelegramConnect {

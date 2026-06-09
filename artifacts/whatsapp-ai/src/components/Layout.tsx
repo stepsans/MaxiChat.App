@@ -151,32 +151,39 @@ function StatusBadge({ collapsed }: { collapsed: boolean }) {
   if (!status) return null;
 
   const isConnected = status.status === "connected";
+  const isSyncing = status.status === "syncing";
   const isConnecting = status.status === "connecting" || status.status === "qr_ready";
   const label = isConnected
     ? status.phoneNumber ?? "Connected"
-    : isConnecting
-      ? "Connecting..."
-      : "Disconnected";
+    : isSyncing
+      ? "Sinkronisasi..."
+      : isConnecting
+        ? "Connecting..."
+        : "Disconnected";
+
+  const dotColor = isConnected
+    ? "bg-primary/15 text-primary"
+    : isSyncing || isConnecting
+      ? "bg-yellow-500/15 text-yellow-400"
+      : "bg-red-500/15 text-red-400";
+
+  const dotIcon = isConnected ? (
+    <Wifi className="w-3 h-3" />
+  ) : isSyncing || isConnecting ? (
+    <Loader2 className="w-3 h-3 animate-spin" />
+  ) : (
+    <WifiOff className="w-3 h-3" />
+  );
 
   const dot = (
     <div
       className={cn(
         "flex items-center justify-center rounded-full",
         collapsed ? "w-8 h-8" : "w-6 h-6",
-        isConnected
-          ? "bg-primary/15 text-primary"
-          : isConnecting
-            ? "bg-yellow-500/15 text-yellow-400"
-            : "bg-red-500/15 text-red-400"
+        dotColor,
       )}
     >
-      {isConnected ? (
-        <Wifi className="w-3 h-3" />
-      ) : isConnecting ? (
-        <Loader2 className="w-3 h-3 animate-spin" />
-      ) : (
-        <WifiOff className="w-3 h-3" />
-      )}
+      {dotIcon}
     </div>
   );
 
@@ -196,25 +203,21 @@ function StatusBadge({ collapsed }: { collapsed: boolean }) {
     );
   }
 
+  const badgeColor = isConnected
+    ? "bg-primary/10 text-primary border-primary/20"
+    : isSyncing || isConnecting
+      ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+      : "bg-red-500/10 text-red-400 border-red-500/20";
+
   return (
     <div
       data-testid="whatsapp-status-badge"
       className={cn(
         "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border",
-        isConnected
-          ? "bg-primary/10 text-primary border-primary/20"
-          : isConnecting
-            ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
-            : "bg-red-500/10 text-red-400 border-red-500/20"
+        badgeColor,
       )}
     >
-      {isConnected ? (
-        <Wifi className="w-3 h-3" />
-      ) : isConnecting ? (
-        <Loader2 className="w-3 h-3 animate-spin" />
-      ) : (
-        <WifiOff className="w-3 h-3" />
-      )}
+      {dotIcon}
       <span className="truncate">{label}</span>
     </div>
   );

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { db, channelsTable } from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "./auth";
 import { getAllowedChannelIds } from "./user-channel-access";
@@ -187,15 +187,24 @@ export async function resolveChannelScope(
       mode: "single",
     };
   }
-  // "All channels" aggregate: restrict to the channels this caller is
-  // actually allowed to see (super_admin → all owned; others → assigned).
+  // "All channels" aggregate: restrict to CONNECTED channels the caller is
+  // allowed to see. Disconnected channels have no live socket so their chats
+  // are stale — including them in an "all" query would surface dead threads.
   const sessionUid = getSessionUserId(req);
   const allowed =
     sessionUid == null ? new Set<number>() : await getAllowedChannelIds(sessionUid);
   const all = await db
     .select({ id: channelsTable.id })
     .from(channelsTable)
-    .where(eq(channelsTable.userId, sel.ownerUserId));
+    .where(
+      and(
+        eq(channelsTable.userId, sel.ownerUserId),
+        or(
+          eq(channelsTable.status, "connected"),
+          eq(channelsTable.status, "syncing")
+        )
+      )
+    );
   return {
     channelIds: all.map((r) => r.id).filter((id) => allowed.has(id)),
     ownerUserId: sel.ownerUserId,

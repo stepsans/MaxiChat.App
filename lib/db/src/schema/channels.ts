@@ -5,6 +5,7 @@ import {
   integer,
   timestamp,
   jsonb,
+  boolean,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { usersTable } from "./auth";
@@ -61,6 +62,10 @@ export const channelsTable = pgTable(
     // Kind-specific extras (e.g. Instagram page id, Shopee shop id,
     // last connection error). Schema enforced at the app layer per kind.
     metadata: jsonb("metadata"),
+    // When true this channel is opened by default on app load. Only one
+    // channel per user should have this set; the PATCH endpoint enforces that
+    // by clearing the flag on all siblings when setting it on a new one.
+    isDefault: boolean("is_default").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

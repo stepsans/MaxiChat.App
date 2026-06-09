@@ -17,12 +17,24 @@ const KIND_ICON: Record<string, keyof typeof Feather.glyphMap> = {
   telegram: "send",
 };
 
+function isChannelConnected(status: string): boolean {
+  return status === "connected" || status === "syncing";
+}
+
 export function ChannelSwitcher({ tint }: { tint?: string }) {
   const colors = useColors();
   const { channels, activeChannel, activeChannelId, setActiveChannelId } =
     useChannel();
   const [open, setOpen] = useState(false);
   const color = tint ?? colors.headerForeground;
+  const isAll = activeChannelId === "all";
+
+  const triggerLabel = isAll
+    ? "Semua channel"
+    : (activeChannel?.label ?? "Pilih channel");
+  const triggerDotColor = isAll
+    ? "#94a3b8"
+    : (activeChannel?.color ?? colors.accent);
 
   return (
     <>
@@ -31,14 +43,9 @@ export function ChannelSwitcher({ tint }: { tint?: string }) {
         onPress={() => setOpen(true)}
         activeOpacity={0.7}
       >
-        <View
-          style={[
-            styles.dot,
-            { backgroundColor: activeChannel?.color ?? colors.accent },
-          ]}
-        />
+        <View style={[styles.dot, { backgroundColor: triggerDotColor }]} />
         <Text style={[styles.triggerLabel, { color }]} numberOfLines={1}>
-          {activeChannel?.label ?? "Pilih channel"}
+          {triggerLabel}
         </Text>
         <Feather name="chevron-down" size={16} color={color} />
       </TouchableOpacity>
@@ -64,43 +71,104 @@ export function ChannelSwitcher({ tint }: { tint?: string }) {
                 Belum ada channel.
               </Text>
             ) : (
-              channels.map((c) => {
-                const active = c.id === activeChannelId;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[
-                      styles.row,
-                      active && { backgroundColor: colors.secondary },
-                    ]}
-                    onPress={() => {
-                      setActiveChannelId(c.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Feather
-                      name={KIND_ICON[c.kind] ?? "hash"}
-                      size={18}
-                      color={c.color || colors.primary}
+              <>
+                {channels.map((c) => {
+                  const active = c.id === activeChannelId;
+                  const connected = isChannelConnected(c.status);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[
+                        styles.row,
+                        active && { backgroundColor: colors.secondary },
+                        !connected && styles.rowDimmed,
+                      ]}
+                      onPress={() => {
+                        setActiveChannelId(c.id);
+                        setOpen(false);
+                      }}
+                    >
+                      <View style={styles.iconWrapper}>
+                        <Feather
+                          name={KIND_ICON[c.kind] ?? "hash"}
+                          size={18}
+                          color={c.color || colors.primary}
+                        />
+                        {/* Connection status dot */}
+                        <View
+                          style={[
+                            styles.statusDot,
+                            {
+                              backgroundColor: connected
+                                ? "#22c55e"
+                                : "#94a3b8",
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+                          {c.label}
+                        </Text>
+                        {c.ownerPhone ? (
+                          <Text
+                            style={[styles.rowSub, { color: colors.mutedForeground }]}
+                          >
+                            {c.ownerPhone}
+                          </Text>
+                        ) : (
+                          <Text
+                            style={[styles.rowSub, { color: colors.mutedForeground }]}
+                          >
+                            {connected ? "Terhubung" : "Tidak terhubung"}
+                          </Text>
+                        )}
+                      </View>
+                      {active ? (
+                        <Feather name="check" size={18} color={colors.primary} />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* "All channels" option — only shown when there are 2+ channels */}
+                {channels.length > 1 && (
+                  <>
+                    <View
+                      style={[styles.separator, { backgroundColor: colors.border }]}
                     />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.rowLabel, { color: colors.foreground }]}>
-                        {c.label}
-                      </Text>
-                      {c.ownerPhone ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.row,
+                        isAll && { backgroundColor: colors.secondary },
+                      ]}
+                      onPress={() => {
+                        setActiveChannelId("all");
+                        setOpen(false);
+                      }}
+                    >
+                      <Feather
+                        name="layers"
+                        size={18}
+                        color={colors.mutedForeground}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+                          Semua channel
+                        </Text>
                         <Text
                           style={[styles.rowSub, { color: colors.mutedForeground }]}
                         >
-                          {c.ownerPhone}
+                          Hanya channel terhubung
                         </Text>
+                      </View>
+                      {isAll ? (
+                        <Feather name="check" size={18} color={colors.primary} />
                       ) : null}
-                    </View>
-                    {active ? (
-                      <Feather name="check" size={18} color={colors.primary} />
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })
+                    </TouchableOpacity>
+                  </>
+                )}
+              </>
             )}
           </Pressable>
         </Pressable>
@@ -145,6 +213,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 10,
   },
+  rowDimmed: { opacity: 0.55 },
+  iconWrapper: { position: "relative" },
+  statusDot: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.8)",
+  },
+  separator: { height: StyleSheet.hairlineWidth, marginVertical: 4 },
   rowLabel: { fontFamily: "Inter_500Medium", fontSize: 15 },
   rowSub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 1 },
   empty: { fontFamily: "Inter_400Regular", fontSize: 14, padding: 12 },

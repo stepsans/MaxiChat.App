@@ -549,39 +549,96 @@ function ForecastPanel({
 
   const chartData = forecast.byStage.map((s) => ({
     name: s.stageName,
-    Nilai: s.valueIdr,
-    Tertimbang: s.weightedIdr,
+    Nilai: Number(s.valueIdr),
+    Tertimbang: Number(s.weightedIdr),
+    Jumlah: s.count,
   }));
+
+  // Funnel data: conversion rate per stage (count relative to first stage)
+  const totalOpen = forecast.openCount;
+  const funnelData = forecast.byStage
+    .filter((s) => s.count > 0)
+    .map((s) => ({
+      name: s.stageName,
+      count: s.count,
+      pct: totalOpen > 0 ? Math.round((s.count / totalOpen) * 100) : 0,
+    }));
+
+  const closedTotal = forecast.wonCount + forecast.lostCount;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-6 sm:p-6">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
-          label="Nilai pipeline terbuka"
-          value={formatRupiah(forecast.openValueIdr)}
-          hint={`${forecast.openCount} peluang terbuka`}
-        />
-        <MetricCard
-          label="Prakiraan tertimbang"
-          value={formatRupiah(forecast.weightedForecastIdr)}
-          hint="Nilai × skor lead"
-        />
-        <MetricCard
-          label="Tingkat kemenangan"
-          value={`${forecast.winRatePct}%`}
-          hint={`${forecast.wonCount} menang · ${forecast.lostCount} kalah`}
-        />
-        <MetricCard
-          label="Nilai dimenangkan"
-          value={formatRupiah(forecast.wonValueIdr)}
-          hint="Total peluang menang"
-        />
+      {/* Row 1 — pipeline value metrics */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+          Pipeline
+        </p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <MetricCard
+            label="Nilai pipeline terbuka"
+            value={formatRupiah(Number(forecast.openValueIdr))}
+            hint={`${forecast.openCount} peluang terbuka`}
+          />
+          <MetricCard
+            label="Prakiraan tertimbang"
+            value={formatRupiah(Number(forecast.weightedForecastIdr))}
+            hint="Nilai × skor lead"
+          />
+          <MetricCard
+            label="Rata-rata ukuran deal"
+            value={formatRupiah(Number(forecast.avgDealSizeIdr))}
+            hint="Rata-rata nilai peluang terbuka"
+          />
+          <MetricCard
+            label="Sales velocity"
+            value={
+              Number(forecast.salesVelocityIdr) > 0
+                ? `${formatRupiah(Number(forecast.salesVelocityIdr))}/hari`
+                : "—"
+            }
+            hint="Pendapatan yang dihasilkan per hari"
+          />
+        </div>
       </div>
 
+      {/* Row 2 — win/loss metrics */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+          Performa
+        </p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <MetricCard
+            label="Tingkat kemenangan"
+            value={`${forecast.winRatePct}%`}
+            hint={`${forecast.wonCount} menang · ${forecast.lostCount} kalah`}
+          />
+          <MetricCard
+            label="Nilai dimenangkan"
+            value={formatRupiah(Number(forecast.wonValueIdr))}
+            hint={`${forecast.wonCount} deal tertutup`}
+          />
+          <MetricCard
+            label="Rata-rata siklus deal"
+            value={forecast.avgCycleDays > 0 ? `${forecast.avgCycleDays} hari` : "—"}
+            hint={
+              closedTotal > 0
+                ? `Dari ${closedTotal} deal tertutup`
+                : "Belum ada deal tertutup"
+            }
+          />
+          <MetricCard
+            label="Total deal tertutup"
+            value={String(closedTotal)}
+            hint={`${forecast.wonCount} menang · ${forecast.lostCount} kalah`}
+          />
+        </div>
+      </div>
+
+      {/* Chart — nilai & prakiraan per stage */}
       <div className="p-4 border rounded-lg bg-card">
         <h2 className="text-sm font-semibold">Prakiraan per Stage</h2>
         <p className="mb-4 text-xs text-muted-foreground">
-          Nilai terbuka dan prakiraan tertimbang di tiap stage.
+          Nilai terbuka vs prakiraan tertimbang (nilai × skor lead) per stage.
         </p>
         {chartData.length === 0 ? (
           <p className="py-12 text-sm text-center text-muted-foreground">
@@ -615,7 +672,10 @@ function ForecastPanel({
                   }
                 />
                 <Tooltip
-                  formatter={(v: number | string) => formatRupiah(Number(v))}
+                  formatter={(v: number | string, name: string) => [
+                    formatRupiah(Number(v)),
+                    name,
+                  ]}
                   contentStyle={{ fontSize: 12 }}
                 />
                 <Bar
@@ -633,6 +693,37 @@ function ForecastPanel({
           </div>
         )}
       </div>
+
+      {/* Funnel — distribusi deal per stage */}
+      {funnelData.length > 0 && (
+        <div className="p-4 border rounded-lg bg-card">
+          <h2 className="text-sm font-semibold">Distribusi Pipeline</h2>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Jumlah peluang terbuka di tiap stage.
+          </p>
+          <div className="space-y-2">
+            {funnelData.map((s) => (
+              <div key={s.name} className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-32 truncate shrink-0">
+                  {s.name}
+                </span>
+                <div className="flex-1 bg-muted rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full bg-primary transition-all duration-300"
+                    style={{ width: `${s.pct}%` }}
+                  />
+                </div>
+                <span className="text-xs font-mono w-14 text-right shrink-0">
+                  {s.count} deal
+                </span>
+                <span className="text-xs text-muted-foreground w-8 text-right shrink-0">
+                  {s.pct}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -662,6 +753,16 @@ function auditDetailText(ev: SalesAuditEvent): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
+const AUDIT_EVENT_CATEGORIES: Record<string, { label: string; color: string }> = {
+  opportunity_created:    { label: "Dibuat", color: "bg-emerald-500" },
+  opportunity_deleted:    { label: "Dihapus", color: "bg-red-500" },
+  stage_changed:          { label: "Stage", color: "bg-blue-500" },
+  stage_recommendation:   { label: "Rekomendasi", color: "bg-primary" },
+  follow_up_recommended:  { label: "Follow-up", color: "bg-amber-500" },
+  follow_up_sent:         { label: "Follow-up", color: "bg-amber-500" },
+  lead_scored:            { label: "Skor", color: "bg-violet-500" },
+};
+
 function AuditTrailPanel({
   events,
   loading,
@@ -669,6 +770,8 @@ function AuditTrailPanel({
   events: SalesAuditEvent[] | undefined;
   loading: boolean;
 }) {
+  const [filterType, setFilterType] = useState<string>("all");
+
   if (loading && !events) {
     return (
       <div className="flex items-center justify-center flex-1">
@@ -684,45 +787,119 @@ function AuditTrailPanel({
     );
   }
 
+  // Build unique event type list from actual events
+  const eventTypes = Array.from(new Set(events.map((e) => e.eventType))).sort();
+
+  const filtered =
+    filterType === "all" ? events : events.filter((e) => e.eventType === filterType);
+
+  // Summary counts
+  const aiCount = events.filter((e) => e.actorUserId == null).length;
+  const userCount = events.length - aiCount;
+
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-      <ul className="space-y-2 max-w-3xl">
-        {events.map((ev) => {
-          const detail = auditDetailText(ev);
-          return (
-            <li
-              key={ev.id}
-              className="flex items-start gap-3 p-3 border rounded-lg bg-card"
-              data-testid={`audit-event-${ev.id}`}
+    <div className="flex-1 overflow-hidden flex flex-col">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b sm:px-6">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-2">
+          <span className="font-medium text-foreground">{events.length}</span> aktivitas
+          <span className="mx-1">·</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            {aiCount} AI
+          </span>
+          <span className="mx-1">·</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {userCount} pengguna
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1 ml-auto">
+          <button
+            type="button"
+            onClick={() => setFilterType("all")}
+            className={cn(
+              "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors",
+              filterType === "all"
+                ? "bg-foreground text-background border-foreground"
+                : "bg-background text-muted-foreground border-border hover:bg-muted"
+            )}
+          >
+            Semua
+          </button>
+          {eventTypes.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setFilterType(t)}
+              className={cn(
+                "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors",
+                filterType === t
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+              )}
             >
-              <span
-                className={cn(
-                  "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                  ev.actorUserId == null ? "bg-primary" : "bg-emerald-500"
-                )}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <span className="text-sm font-medium">
-                    {auditEventLabel(ev.eventType)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {ev.actorUserId == null ? "AI / sistem" : "Pengguna"}
-                  </span>
-                </div>
-                {detail ? (
-                  <p className="mt-0.5 text-xs text-muted-foreground break-words">
-                    {detail}
-                  </p>
-                ) : null}
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {new Date(ev.createdAt).toLocaleString("id-ID")}
-                </p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+              {AUDIT_EVENT_CATEGORIES[t]?.label ?? t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Event list */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {filtered.length === 0 ? (
+          <p className="py-8 text-sm text-center text-muted-foreground">
+            Tidak ada aktivitas dengan filter ini.
+          </p>
+        ) : (
+          <ul className="space-y-2 max-w-3xl">
+            {filtered.map((ev) => {
+              const detail = auditDetailText(ev);
+              const cat = AUDIT_EVENT_CATEGORIES[ev.eventType];
+              const isAi = ev.actorUserId == null;
+              return (
+                <li
+                  key={ev.id}
+                  className="flex items-start gap-3 p-3 border rounded-lg bg-card"
+                  data-testid={`audit-event-${ev.id}`}
+                >
+                  <span
+                    className={cn(
+                      "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                      cat?.color ?? (isAi ? "bg-primary" : "bg-emerald-500")
+                    )}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="text-sm font-medium">
+                        {auditEventLabel(ev.eventType)}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                          isAi
+                            ? "bg-primary/10 text-primary"
+                            : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        )}
+                      >
+                        {isAi ? "AI / sistem" : "Pengguna"}
+                      </span>
+                    </div>
+                    {detail ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground break-words">
+                        {detail}
+                      </p>
+                    ) : null}
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {new Date(ev.createdAt).toLocaleString("id-ID")}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

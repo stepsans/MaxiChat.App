@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(node *)",
+      "Bash(pnpm --filter api-server test -- --test-name-pattern \"computeSalesForecast\")",
+      "Bash(pnpm --filter api-server test)"
+    ]
+  }
+}

@@ -18,6 +18,8 @@ export interface ForecastOpportunity {
   stageId: number | null;
   estimatedValueIdr: number;
   leadScore: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ForecastStage {
@@ -41,6 +43,12 @@ export interface SalesForecastResult {
   lostCount: number;
   wonValueIdr: number;
   winRatePct: number;
+  /** Average estimated value across open deals (0 when pipeline empty). */
+  avgDealSizeIdr: number;
+  /** Average days from opportunity creation to close (won or lost). 0 when no closed deals. */
+  avgCycleDays: number;
+  /** Sales velocity in Rupiah/day: (openCount × avgDealSize × winRate%) / avgCycleDays. 0 when cycle unknown. */
+  salesVelocityIdr: number;
   byStage: ForecastStageBucket[];
 }
 
@@ -72,6 +80,8 @@ export function computeSalesForecast(
   let wonCount = 0;
   let lostCount = 0;
   let wonValueIdr = 0;
+  let totalCycleDays = 0;
+  let closedWithCycleCount = 0;
 
   // Per-stage accumulators for OPEN deals only (the board/forecast is about the
   // live pipeline). Seed every known stage so empty columns still render.
@@ -88,10 +98,20 @@ export function computeSalesForecast(
     if (opp.status === "won") {
       wonCount += 1;
       wonValueIdr += value;
+      const cycleDays = (opp.updatedAt.getTime() - opp.createdAt.getTime()) / 86_400_000;
+      if (cycleDays >= 0) {
+        totalCycleDays += cycleDays;
+        closedWithCycleCount += 1;
+      }
       continue;
     }
     if (opp.status === "lost") {
       lostCount += 1;
+      const cycleDays = (opp.updatedAt.getTime() - opp.createdAt.getTime()) / 86_400_000;
+      if (cycleDays >= 0) {
+        totalCycleDays += cycleDays;
+        closedWithCycleCount += 1;
+      }
       continue;
     }
     // open
@@ -153,6 +173,14 @@ export function computeSalesForecast(
   const closed = wonCount + lostCount;
   const winRatePct = closed > 0 ? Math.round((wonCount / closed) * 100) : 0;
 
+  const avgDealSizeIdr = openCount > 0 ? Math.round(openValueIdr / openCount) : 0;
+  const avgCycleDays =
+    closedWithCycleCount > 0 ? Math.round(totalCycleDays / closedWithCycleCount) : 0;
+  const salesVelocityIdr =
+    avgCycleDays > 0
+      ? Math.round((openCount * avgDealSizeIdr * (winRatePct / 100)) / avgCycleDays)
+      : 0;
+
   return {
     openCount,
     openValueIdr,
@@ -161,6 +189,9 @@ export function computeSalesForecast(
     lostCount,
     wonValueIdr,
     winRatePct,
+    avgDealSizeIdr,
+    avgCycleDays,
+    salesVelocityIdr,
     byStage,
   };
 }

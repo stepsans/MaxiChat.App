@@ -114,13 +114,11 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
     [queryClient, isChannelAgnosticKey]
   );
 
-  // Once the channel list arrives, default to the primary (lowest-id)
-  // channel if the user hasn't picked one yet. If their stored selection
-  // points at a channel that no longer exists (deleted in another tab,
-  // logged in as a different user with the same browser), fall back to
-  // the primary AND persist + refetch — so subsequent requests stop
-  // sending the stale id immediately, instead of waiting for the next
-  // explicit switch.
+  // Once the channel list arrives, default to the channel marked isDefault
+  // (if any), otherwise fall back to the lowest-id channel. If the stored
+  // selection points at a channel that no longer exists (deleted in another
+  // tab / different user) fall back the same way and persist immediately so
+  // subsequent requests stop sending the stale id.
   useEffect(() => {
     if (!channels || channels.length === 0) return;
     if (activeChannelId === "all") return;
@@ -130,7 +128,8 @@ export function ChannelProvider({ children }: { children: ReactNode }) {
     ) {
       return;
     }
-    switchTo(channels[0].id);
+    const defaultChannel = channels.find((c) => c.isDefault) ?? channels[0];
+    switchTo(defaultChannel.id);
   }, [channels, activeChannelId, switchTo]);
 
   const setActiveChannelId = useCallback(

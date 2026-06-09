@@ -2957,6 +2957,32 @@ async function startBaileys(userId: number, channelId: number) {
   ctx.isConnecting = true;
   const myEpoch = ++ctx.epoch;
 
+  // Connection-scoped snapshot for missed-message detection in
+  // messaging-history.set. Taken once at connection open so ALL batches
+  // share the same frozen baseline — avoids the bug where batch N's snapshot
+  // already reflects messages inserted by batch N-1, causing missed messages
+  // (e.g. in batch 2) to appear older than the updated lastMessageAt and get
+  // incorrectly skipped. Null until connection.update → "open" populates it
+  // (or until the first batch does it lazily if there's a race).
+  let connPreSyncCutoff: Map<string, Date | null> | null = null;
+
+  // Resettable "syncing → connected" fallback. We give the sync 2 minutes
+  // initially, and reset the timer on every incoming history batch. This
+  // means a long initial sync (many batches) never cuts the overlay short
+  // while still promoting to "connected" if Baileys goes quiet (isLatest
+  // never fires or history is empty).
+  const SYNC_FALLBACK_MS = 120_000;
+  let syncFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  const rescheduleSyncFallback = () => {
+    if (syncFallbackTimer != null) clearTimeout(syncFallbackTimer);
+    const ep = myEpoch;
+    syncFallbackTimer = setTimeout(() => {
+      if (ctx.epoch !== ep) return;
+      syncFallbackTimer = null;
+      void syncChannelStatus(channelId, { status: "connected" });
+    }, SYNC_FALLBACK_MS);
+  };
+
   try {
     const {
       useMultiFileAuthState,
@@ -3001,9 +3027,35 @@ async function startBaileys(userId: number, channelId: number) {
         const rawId = sock.user?.id ?? null;
         const phoneNumber = rawId?.split(":")[0] ?? null;
         const normalised = normalizeOwnerPhone(phoneNumber);
-        // Data-isolation gate: persist the user↔phone mapping BEFORE we
-        // expose the phone via ctx.ownerPhone. If another app user already
-        // owns this WhatsApp number (unique constraint on
+
+        // Expose ownerPhone IMMEDIATELY so that messaging-history.set and
+        // messages.upsert handlers — which fire while this async handler is
+        // still awaiting DB operations — don't hit the `if (!ownerPhone) return`
+        // guard and silently drop every message delivered during reconnect.
+        // Reverted to null below only if we have to reject the connection.
+        if (normalised) ctx.ownerPhone = normalised;
+        else ctx.ownerPhone = null;
+
+        // Take the pre-sync snapshot BEFORE any DB writes so all batches of
+        // messaging-history.set share the same frozen baseline. If there's a
+        // tiny race and connPreSyncCutoff is already set (first batch fired
+        // before we got here), skip recomputation — the lazy path in the
+        // handler already did it correctly.
+        if (!connPreSyncCutoff) {
+          const preSyncRows = await db
+            .select({
+              phoneNumber: chatsTable.phoneNumber,
+              lastMessageAt: chatsTable.lastMessageAt,
+            })
+            .from(chatsTable)
+            .where(eq(chatsTable.channelId, channelId));
+          connPreSyncCutoff = new Map(
+            preSyncRows.map((r) => [r.phoneNumber, r.lastMessageAt]),
+          );
+        }
+
+        // Data-isolation gate: persist the user↔phone mapping. If another
+        // app user already owns this WhatsApp number (unique constraint on
         // user_whatsapp.owner_phone), refuse the connection — otherwise
         // requests from this user would read the other user's chats.
         if (normalised) {
@@ -3017,6 +3069,7 @@ async function startBaileys(userId: number, channelId: number) {
                 "WhatsApp number already paired to another account; rejecting connection",
               );
               ctx.ownerPhone = null;
+              connPreSyncCutoff = null;
               // Await so the channel row reflects 'disconnected' before
               // we tear down the socket — UI polling must not see a stale
               // qr_ready/connecting state after rejection.
@@ -3037,6 +3090,7 @@ async function startBaileys(userId: number, channelId: number) {
               "Failed to persist user_whatsapp mapping; refusing to expose ownerPhone",
             );
             ctx.ownerPhone = null;
+            connPreSyncCutoff = null;
             await syncChannelStatus(channelId, {
               status: "disconnected",
               qrCode: null,
@@ -3049,23 +3103,26 @@ async function startBaileys(userId: number, channelId: number) {
             ctx.isConnecting = false;
             return;
           }
-          ctx.ownerPhone = normalised;
-        } else {
-          ctx.ownerPhone = null;
         }
         // Keep channels.status / channels.owner_phone in lockstep with the
         // live ctx. The frontend switcher reads these to render per-channel
         // connectivity dots. connectedAt is persisted so the legacy
         // /whatsapp/status response shape stays accurate after E1.
         const ownerName = sock.user?.name ?? sock.user?.verifiedName ?? null;
+        // Set "syncing" so the frontend shows the loading overlay while
+        // Baileys replays missed messages via messaging-history.set.
+        // The handler below promotes to "connected" when isLatest fires.
+        // rescheduleSyncFallback fires after 2 minutes of silence and is
+        // reset on each incoming history batch so long syncs never cut short.
         void syncChannelStatus(channelId, {
-          status: "connected",
+          status: "syncing",
           ownerPhone: normalised,
           ownerName,
           qrCode: null,
           connectedAt: new Date().toISOString(),
         });
         ctx.isConnecting = false;
+        rescheduleSyncFallback();
         // Best-effort: refresh the onboarding checklist now that WhatsApp is
         // live (flips waConnected → true). Never let it disturb the socket.
         try {
@@ -3083,6 +3140,14 @@ async function startBaileys(userId: number, channelId: number) {
         const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)
           ?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason.loggedOut;
+        // Disarm the syncing→connected fallback so it doesn't fire after
+        // a disconnect and incorrectly flip a dead channel to "connected".
+        if (syncFallbackTimer != null) {
+          clearTimeout(syncFallbackTimer);
+          syncFallbackTimer = null;
+        }
+        // Clear the snapshot so the next connection starts fresh.
+        connPreSyncCutoff = null;
         // Clear connectedAt so the legacy /whatsapp/status no longer
         // reports a stale connection time after a drop.
         // Channel mirror: socket dropped. We deliberately do NOT clear
@@ -3333,6 +3398,24 @@ async function startBaileys(userId: number, channelId: number) {
         "messaging-history.set received",
       );
 
+      // We're still receiving history — reset the fallback so the overlay
+      // stays up until all batches have been processed (or 2 minutes of silence).
+      rescheduleSyncFallback();
+
+      // Use the connection-scoped snapshot for missed-message detection so
+      // all batches share the same frozen baseline. If connection.update
+      // hasn't populated it yet (rare race), compute lazily here.
+      if (!connPreSyncCutoff) {
+        const rows = await db
+          .select({ phoneNumber: chatsTable.phoneNumber, lastMessageAt: chatsTable.lastMessageAt })
+          .from(chatsTable)
+          .where(eq(chatsTable.channelId, channelId));
+        connPreSyncCutoff = new Map(rows.map((r) => [r.phoneNumber, r.lastMessageAt]));
+      }
+      // Map<chatKey, lastMessageAt|null>. undefined = brand-new chat (not in map).
+      const preSyncCutoff = connPreSyncCutoff;
+      const isReconnect = preSyncCutoff.size > 0;
+
       for (const c of chats) {
         try {
           if (!c?.id) continue;
@@ -3401,12 +3484,33 @@ async function startBaileys(userId: number, channelId: number) {
             resolveLidToPn,
           );
           if (!parsed) continue;
+
+          // Decide whether this history message should count as a new unread.
+          // Key: the phone/group-jid stored in chats.phoneNumber for this chat.
+          const hChatKey = parsed.isGroup ? parsed.jid : `+${parsed.rawNumber}`;
+          // preSyncCutoff.get returns:
+          //   Date   → existing chat with known last message
+          //   null   → existing chat, no messages stored yet
+          //   undefined → brand-new chat (started during disconnect)
+          const hCutoff = preSyncCutoff.get(hChatKey);
+          // A message is "missed" when:
+          //   1. We're reconnecting (not a first-ever pair)
+          //   2. It's inbound (not from us)
+          //   3. Either the chat is new (hCutoff == null/undefined) or the
+          //      message arrived after our last known message for that chat.
+          // The unique-key constraint in persistWaMessage prevents any
+          // double-counting when messages.upsert also delivers the same msg.
+          const isMissed =
+            isReconnect &&
+            !parsed.fromMe &&
+            (hCutoff == null || parsed.timestamp > hCutoff);
+
           const { inserted } = await persistWaMessage(
             userId,
             channelId,
             parsed,
             {
-              incrementUnread: false,
+              incrementUnread: isMissed,
             },
           );
           if (inserted) ingested++;
@@ -3423,6 +3527,12 @@ async function startBaileys(userId: number, channelId: number) {
         }
       }
       logger.info({ ingested }, "messaging-history.set done");
+      // When Baileys signals this is the final history batch, promote the
+      // channel from "syncing" to "connected" so the frontend reveals the
+      // chat list. If isLatest never fires the 15 s fallback above covers it.
+      if (isLatest) {
+        void syncChannelStatus(channelId, { status: "connected" });
+      }
     });
 
     const handleContacts = async (
@@ -3732,18 +3842,17 @@ async function readChannelStatus(channelId: number): Promise<{
   const qrCode =
     typeof meta.qrCode === "string" ? (meta.qrCode as string) : null;
   const status = row?.status ?? "disconnected";
-  const isConnected = status === "connected";
-  // Preserve legacy contract: phoneNumber + connectedAt only when actually
-  // connected. (Pre-E1 `whatsapp_session` cleared both on disconnect.)
-  // connectedAt is stored on channels.metadata.connectedAt by the
-  // connection.open handler so it survives non-status `updatedAt` bumps.
+  // Expose phone + connectedAt while syncing too — the number is already
+  // known and the frontend needs it to show "Memuat riwayat..." with the
+  // phone number in the status badge.
+  const isLive = status === "connected" || status === "syncing";
   const connectedAtRaw =
     typeof meta.connectedAt === "string" ? (meta.connectedAt as string) : null;
   return {
     status,
     qrCode,
-    phoneNumber: isConnected ? (row?.ownerPhone ?? null) : null,
-    connectedAt: isConnected ? connectedAtRaw : null,
+    phoneNumber: isLive ? (row?.ownerPhone ?? null) : null,
+    connectedAt: isLive ? connectedAtRaw : null,
   };
 }
 

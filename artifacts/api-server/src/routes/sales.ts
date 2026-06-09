@@ -1631,6 +1631,8 @@ router.get(
         stageId: opportunitiesTable.stageId,
         estimatedValueIdr: opportunitiesTable.estimatedValueIdr,
         leadScore: opportunitiesTable.leadScore,
+        createdAt: opportunitiesTable.createdAt,
+        updatedAt: opportunitiesTable.updatedAt,
       })
       .from(opportunitiesTable)
       .where(scope);
@@ -1647,6 +1649,8 @@ router.get(
         stageId: r.stageId,
         estimatedValueIdr: Number(r.estimatedValueIdr),
         leadScore: Number(r.leadScore),
+        createdAt: r.createdAt ?? new Date(),
+        updatedAt: r.updatedAt ?? new Date(),
       })),
       stages
     );

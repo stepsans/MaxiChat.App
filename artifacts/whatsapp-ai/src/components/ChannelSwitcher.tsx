@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Check, ChevronDown, Layers, Plus, Settings2 } from "lucide-react";
+import { Check, ChevronDown, Layers, Plus, Settings2, Wifi, WifiOff } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,19 @@ import {
 import { cn } from "@/lib/utils";
 import { useActiveChannel } from "@/contexts/ChannelContext";
 import { usePermissions } from "@/hooks/use-permissions";
+
+function ChannelStatusDot({ status }: { status: string }) {
+  const isConnected = status === "connected" || status === "syncing";
+  return (
+    <span
+      className={cn(
+        "inline-block w-1.5 h-1.5 rounded-full flex-shrink-0",
+        isConnected ? "bg-emerald-500" : "bg-zinc-400"
+      )}
+      title={isConnected ? "Terhubung" : "Tidak terhubung"}
+    />
+  );
+}
 
 // Compact dropdown shown in the sidebar header. Color dot reflects the
 // active channel (or a neutral grey for "All channels"); label shows the
@@ -87,12 +100,13 @@ export function ChannelSwitcher({ collapsed }: { collapsed: boolean }) {
         </DropdownMenuLabel>
         {channels.map((c) => {
           const selected = activeChannelId === c.id;
+          const isConnected = c.status === "connected" || c.status === "syncing";
           return (
             <DropdownMenuItem
               key={c.id}
               data-testid={`channel-switch-${c.id}`}
               onSelect={() => setActiveChannelId(c.id)}
-              className="gap-2"
+              className={cn("gap-2", !isConnected && "opacity-60")}
             >
               <span
                 className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -100,6 +114,7 @@ export function ChannelSwitcher({ collapsed }: { collapsed: boolean }) {
                 aria-hidden="true"
               />
               <span className="flex-1 truncate">{c.label}</span>
+              <ChannelStatusDot status={c.status} />
               {selected && (
                 <Check className="w-3.5 h-3.5 text-foreground/70" />
               )}
@@ -115,7 +130,13 @@ export function ChannelSwitcher({ collapsed }: { collapsed: boolean }) {
               className="gap-2"
             >
               <Layers className="w-3.5 h-3.5 text-foreground/70" />
-              <span className="flex-1">Semua channel</span>
+              <div className="flex-1 min-w-0">
+                <div>Semua channel</div>
+                <div className="text-[10px] text-foreground/50 flex items-center gap-1 mt-0.5">
+                  <Wifi className="w-2.5 h-2.5" />
+                  Hanya channel terhubung
+                </div>
+              </div>
               {isAll && <Check className="w-3.5 h-3.5 text-foreground/70" />}
             </DropdownMenuItem>
           </>

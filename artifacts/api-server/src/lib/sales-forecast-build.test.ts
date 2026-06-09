@@ -11,12 +11,32 @@ const stages: ForecastStage[] = [
   { id: 2, name: "Negosiasi" },
 ];
 
+const NOW = new Date("2025-01-10T00:00:00Z");
+const DAY_MS = 86_400_000;
+
 function open(
   stageId: number | null,
   estimatedValueIdr: number,
   leadScore: number
 ): ForecastOpportunity {
-  return { status: "open", stageId, estimatedValueIdr, leadScore };
+  return { status: "open", stageId, estimatedValueIdr, leadScore, createdAt: NOW, updatedAt: NOW };
+}
+
+function closed(
+  status: "won" | "lost",
+  stageId: number | null,
+  estimatedValueIdr: number,
+  leadScore: number,
+  cycleDays = 7
+): ForecastOpportunity {
+  return {
+    status,
+    stageId,
+    estimatedValueIdr,
+    leadScore,
+    createdAt: new Date(NOW.getTime() - cycleDays * DAY_MS),
+    updatedAt: NOW,
+  };
 }
 
 describe("computeSalesForecast", () => {
@@ -69,9 +89,9 @@ describe("computeSalesForecast", () => {
 
   it("computes win rate from closed deals and ignores open ones", () => {
     const opps: ForecastOpportunity[] = [
-      { status: "won", stageId: 2, estimatedValueIdr: 5_000_000, leadScore: 90 },
-      { status: "won", stageId: 2, estimatedValueIdr: 1_000_000, leadScore: 90 },
-      { status: "lost", stageId: 1, estimatedValueIdr: 2_000_000, leadScore: 10 },
+      closed("won", 2, 5_000_000, 90),
+      closed("won", 2, 1_000_000, 90),
+      closed("lost", 1, 2_000_000, 10),
       open(1, 9_000_000, 50),
     ];
     const r = computeSalesForecast(opps, stages);
@@ -118,5 +138,44 @@ describe("computeSalesForecast", () => {
     assert.equal(r.openValueIdr, 1_000_000);
     // First deal has NaN value (->0); second has NaN score (prob 0).
     assert.equal(r.weightedForecastIdr, 0);
+  });
+
+  it("computes avgDealSizeIdr as average open pipeline value", () => {
+    const r = computeSalesForecast(
+      [open(1, 1_000_000, 50), open(1, 3_000_000, 50)],
+      stages
+    );
+    assert.equal(r.avgDealSizeIdr, 2_000_000);
+    assert.equal(r.openCount, 2);
+  });
+
+  it("returns zero avgDealSizeIdr and salesVelocityIdr when no open deals", () => {
+    const r = computeSalesForecast([], stages);
+    assert.equal(r.avgDealSizeIdr, 0);
+    assert.equal(r.salesVelocityIdr, 0);
+    assert.equal(r.avgCycleDays, 0);
+  });
+
+  it("computes avgCycleDays from won and lost deals", () => {
+    const opps: ForecastOpportunity[] = [
+      closed("won", 1, 1_000_000, 80, 10),   // 10 days cycle
+      closed("lost", 2, 500_000, 20, 20),    // 20 days cycle
+    ];
+    const r = computeSalesForecast(opps, stages);
+    assert.equal(r.avgCycleDays, 15); // (10+20)/2
+  });
+
+  it("computes salesVelocityIdr correctly", () => {
+    // openCount=2, avgDealSize=1_000_000, winRatePct=100, avgCycleDays=10
+    // velocity = (2 × 1_000_000 × 1.0) / 10 = 200_000/day
+    const opps: ForecastOpportunity[] = [
+      open(1, 1_000_000, 100),
+      open(1, 1_000_000, 100),
+      closed("won", 1, 500_000, 80, 10),
+    ];
+    const r = computeSalesForecast(opps, stages);
+    assert.equal(r.avgCycleDays, 10);
+    assert.equal(r.winRatePct, 100);
+    assert.equal(r.salesVelocityIdr, 200_000);
   });
 });

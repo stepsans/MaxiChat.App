@@ -10,6 +10,7 @@ import {
   LogOut,
   Trash2,
   Send,
+  Star,
 } from "lucide-react";
 import {
   useListChannels,
@@ -412,6 +413,24 @@ function ChannelRow({
     },
   });
 
+  const setDefault = useUpdateChannel({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
+        toast({ title: "Channel default diperbarui" });
+      },
+      onError: (err) =>
+        toast({
+          title: "Gagal",
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Gagal",
+          variant: "destructive",
+        }),
+    },
+  });
+
   const pair = usePairChannel({
     mutation: {
       onSuccess: () => onPair(channel.id),
@@ -511,6 +530,12 @@ function ChannelRow({
             <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-foreground/10 text-foreground/70">
               {KIND_LABEL[channel.kind] ?? channel.kind}
             </span>
+            {channel.isDefault && (
+              <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                <Star className="w-2.5 h-2.5 fill-current" />
+                Default
+              </span>
+            )}
           </div>
           <div className="text-xs text-foreground/55 mt-0.5">
             {isWhatsapp && channel.ownerPhone ? `+${channel.ownerPhone}` : null}
@@ -594,7 +619,31 @@ function ChannelRow({
           </Button>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-border/60">
+      <div className="flex flex-wrap gap-2 pt-2 border-t border-border/60">
+        {canEdit && (
+          <Button
+            size="sm"
+            variant={channel.isDefault ? "default" : "outline"}
+            className={cn("mr-auto", !channel.isDefault && "text-foreground/60")}
+            disabled={channel.isDefault || setDefault.isPending}
+            onClick={() =>
+              setDefault.mutate({ id: channel.id, data: { isDefault: true } })
+            }
+            data-testid={`channel-set-default-${channel.id}`}
+          >
+            {setDefault.isPending ? (
+              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+            ) : (
+              <Star
+                className={cn(
+                  "w-3 h-3 mr-1",
+                  channel.isDefault && "fill-current"
+                )}
+              />
+            )}
+            {channel.isDefault ? "Channel Default" : "Jadikan Default"}
+          </Button>
+        )}
         {canPairWa && (
           <Button
             size="sm"
