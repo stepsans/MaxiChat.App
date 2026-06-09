@@ -160,6 +160,13 @@ export const opportunityFollowUpsTable = pgTable(
     status: text("status").notNull().default("pending"),
     // The AI-drafted message body to send at `scheduledAt`.
     generatedMessage: text("generated_message"),
+    // TRUE once a human has taken ownership of this touch (edited/queued the
+    // draft via the manual controls). The auto-follow-up engine treats such a
+    // pending row as an OPEN TASK and defers — it neither auto-sends nor cancels
+    // it. Distinct from the engine's own pending rows (recommendation with a
+    // null message, or an auto-send rollback that still carries a message), so
+    // `generatedMessage IS NOT NULL` alone can't be used to detect a human task.
+    manualDraft: boolean("manual_draft").notNull().default(false),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

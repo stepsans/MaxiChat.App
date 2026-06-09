@@ -172,12 +172,31 @@ async function decideForOpportunity(
     recent.filter((m) => m.direction === "inbound")
   );
 
+  // A human has an OPEN TASK on this deal when there is a still-`pending`
+  // follow-up they took ownership of (edited/queued via the manual controls →
+  // `manualDraft`). The engine defers to them: it neither auto-sends another
+  // touch nor cancels their queued draft. Engine-owned pending rows
+  // (recommendations / auto-send rollbacks) have manualDraft=false, so a failed
+  // auto-send still retries normally.
+  const [openTask] = await db
+    .select({ id: opportunityFollowUpsTable.id })
+    .from(opportunityFollowUpsTable)
+    .where(
+      and(
+        eq(opportunityFollowUpsTable.opportunityId, opp.id),
+        eq(opportunityFollowUpsTable.status, "pending"),
+        eq(opportunityFollowUpsTable.manualDraft, true)
+      )
+    )
+    .limit(1);
+  const hasOpenTask = openTask != null;
+
   const decision = decideFollowUp({
     status: opp.status,
     waitingStatus: opp.waitingStatus,
     sentCount,
     stopRequested,
-    hasOpenTask: false,
+    hasOpenTask,
     lastMeaningfulAt,
     lastFollowUpAt,
     intervalHours: settings.intervalHours,
@@ -202,9 +221,13 @@ async function processOwner(
       const { decision } = await decideForOpportunity(opp, settings, now);
 
       if (!decision.due) {
-        // Any non-due state (customer replied, closed, capped, stop) clears a
+        // An `open_task` deferral means a human has a queued draft on this deal
+        // — leave it untouched (cancelling would delete their work). Every other
+        // non-due state (customer replied, closed, capped, stop) clears a
         // lingering recommendation so the UI doesn't keep nagging.
-        cancelled += await cancelPendingRecommendations(opp.id);
+        if (decision.reason !== "open_task") {
+          cancelled += await cancelPendingRecommendations(opp.id);
+        }
         continue;
       }
 
@@ -279,8 +302,14 @@ async function processOwner(
           ],
           // Re-claim a stale `pending` recommendation for this same sequence
           // (toggle was off, now on) and attach the freshly drafted message.
+          // Guard `manualDraft=false` so a human who took ownership in the
+          // window between the decision and this claim is never clobbered —
+          // the conflict then updates nothing, returns no row, and we back off.
           set: { generatedMessage: draft.text },
-          setWhere: eq(opportunityFollowUpsTable.status, "pending"),
+          setWhere: and(
+            eq(opportunityFollowUpsTable.status, "pending"),
+            eq(opportunityFollowUpsTable.manualDraft, false)
+          ),
         })
         .returning({
           id: opportunityFollowUpsTable.id,
@@ -347,6 +376,11 @@ async function processOwner(
 // per-candidate `cancelPendingRecommendations` path would never see it again
 // and a stale "follow-up disarankan" would linger forever. `IS DISTINCT FROM`
 // is used so a NULL waitingStatus also counts as "not waiting_customer".
+//
+// Human-owned drafts (`manualDraft=true`) are EXCLUDED: this sweep only clears
+// the engine's own recommendations. A human-queued touch is the rep's task —
+// only they cancel it (PATCH cancel), upholding the invariant that the engine
+// never deletes a human's queued draft.
 async function cancelStalePendingFollowUps(): Promise<number> {
   const cancelled = await db
     .update(opportunityFollowUpsTable)
@@ -354,6 +388,7 @@ async function cancelStalePendingFollowUps(): Promise<number> {
     .where(
       and(
         eq(opportunityFollowUpsTable.status, "pending"),
+        eq(opportunityFollowUpsTable.manualDraft, false),
         sql`EXISTS (
           SELECT 1 FROM ${opportunitiesTable} o
           WHERE o.id = ${opportunityFollowUpsTable.opportunityId}

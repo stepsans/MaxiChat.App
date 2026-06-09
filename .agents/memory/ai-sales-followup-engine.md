@@ -24,6 +24,23 @@ NULL `waitingStatus` also counts as "not waiting" (plain `<>`/`ne` skips NULLs).
 **Why:** code review flagged that replied deals leave orphaned recommendations because the
 sweep filter excludes them.
 
+**`hasOpenTask` = human-owned pending draft, marked by `manual_draft` boolean on
+`opportunity_follow_ups` (NOT by `generatedMessage IS NOT NULL`).** There is no separate
+tasks table. `generatedMessage` cannot mark human ownership because the auto-send rollback
+leaves an engine row pending WITH a message (for retry). The PATCH edit endpoint sets
+`manualDraft=true` on a non-empty draft (empty clears it → released to engine). When a
+pending `manualDraft=true` row exists, `decideFollowUp` returns `open_task` (checked before
+max/anchor) and the engine defers.
+
+**Invariant: the engine never deletes a human's queued draft.** Three paths must all respect
+`manualDraft`: (1) `processOwner` skips `cancelPendingRecommendations` when
+`decision.reason==='open_task'`; (2) `cancelStalePendingFollowUps` adds `manualDraft=false`
+to its WHERE so the stale-sweep only clears engine recommendations; (3) the auto-send
+`onConflictDoUpdate` `setWhere` adds `manualDraft=false` so a human who takes ownership in
+the window between the decision and the claim is never clobbered (conflict updates nothing →
+no row returned → engine backs off). **Why:** code review flagged the stale-sweep and the
+conflict-race as paths that bypassed the `open_task` guard.
+
 **Exactly-once send:** holds within a single sequential sweep (for-loop + unique
 `(opportunity_id, sequence)` index + nextSequence = sentCount+1). Deployment is a single
 Reserved VM (one process), and the scheduler has an in-process `followUpSweepRunning` guard

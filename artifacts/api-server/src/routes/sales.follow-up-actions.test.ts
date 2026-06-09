@@ -219,6 +219,30 @@ describe("PATCH /sales/opportunities/:id/follow-ups/:followUpId", () => {
       .where(eq(opportunityFollowUpsTable.id, pendingFollowUpId))
       .limit(1);
     assert.equal(row.generatedMessage, "Pesan yang sudah diedit.");
+    // Queuing a draft makes this the human's OPEN TASK so the auto-follow-up
+    // engine defers (won't auto-send or cancel it).
+    assert.equal(row.manualDraft, true);
+  });
+
+  it("clearing the drafted message releases the open task (manualDraft=false)", async (t) => {
+    if (!ran) return t.skip("no DATABASE_URL");
+    const res = await fetch(
+      `${baseUrl}/sales/opportunities/${oppId}/follow-ups/${pendingFollowUpId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ generatedMessage: "" }),
+      }
+    );
+    assert.equal(res.status, 200);
+
+    const [row] = await db
+      .select()
+      .from(opportunityFollowUpsTable)
+      .where(eq(opportunityFollowUpsTable.id, pendingFollowUpId))
+      .limit(1);
+    assert.equal(row.generatedMessage, null);
+    assert.equal(row.manualDraft, false);
   });
 
   it("400s when editing a non-pending (already sent) follow-up", async (t) => {

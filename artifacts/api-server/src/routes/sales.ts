@@ -1461,6 +1461,10 @@ router.patch(
     if (body.generatedMessage !== undefined) {
       const text = body.generatedMessage?.trim() ?? "";
       patch.generatedMessage = text.length > 0 ? text : null;
+      // A human queued a draft → this touch becomes their OPEN TASK, so the
+      // auto-follow-up engine defers (won't auto-send or cancel it). Clearing
+      // the draft releases it back to the engine.
+      patch.manualDraft = text.length > 0;
     }
     if (body.status === "cancelled") patch.status = "cancelled";
     patch.updatedAt = new Date();
