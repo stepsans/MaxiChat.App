@@ -172,6 +172,10 @@ const DEFAULT_AUTO_CREATE_THRESHOLD = 70;
 // threshold means only staleness matters until the owner raises the bar.
 const DEFAULT_STALE_DAYS_THRESHOLD = 14;
 const DEFAULT_HIGH_VALUE_THRESHOLD_IDR = 0;
+// Auto Follow-Up defaults: engine OFF (AI only recommends, never sends) with a
+// 48h silence window before the next follow-up touch is due.
+const DEFAULT_AUTO_FOLLOW_UP_ENABLED = false;
+const DEFAULT_FOLLOW_UP_INTERVAL_HOURS = 48;
 
 // Verify a chat is visible to THIS caller. Two-layer check, mirroring the chat
 // endpoints: (1) the chat's channel must belong to the tenant owner, and (2) the
@@ -1039,6 +1043,10 @@ router.get(
         row?.staleDaysThreshold ?? DEFAULT_STALE_DAYS_THRESHOLD,
       highValueThresholdIdr:
         row?.highValueThresholdIdr ?? DEFAULT_HIGH_VALUE_THRESHOLD_IDR,
+      autoFollowUpEnabled:
+        row?.autoFollowUpEnabled ?? DEFAULT_AUTO_FOLLOW_UP_ENABLED,
+      followUpIntervalHours:
+        row?.followUpIntervalHours ?? DEFAULT_FOLLOW_UP_INTERVAL_HOURS,
     });
   }
 );
@@ -1093,10 +1101,23 @@ router.patch(
       return;
     }
     if (
+      body.followUpIntervalHours != null &&
+      (!Number.isInteger(body.followUpIntervalHours) ||
+        body.followUpIntervalHours < 1 ||
+        body.followUpIntervalHours > 8760)
+    ) {
+      res.status(400).json({
+        error: "Interval follow-up harus bilangan bulat 1–8760 jam",
+      });
+      return;
+    }
+    if (
       body.autoCreateEnabled === undefined &&
       body.autoCreateThreshold === undefined &&
       body.staleDaysThreshold === undefined &&
-      body.highValueThresholdIdr === undefined
+      body.highValueThresholdIdr === undefined &&
+      body.autoFollowUpEnabled === undefined &&
+      body.followUpIntervalHours === undefined
     ) {
       res.status(400).json({ error: "Tidak ada perubahan" });
       return;
@@ -1114,6 +1135,10 @@ router.patch(
       updateSet.staleDaysThreshold = body.staleDaysThreshold;
     if (body.highValueThresholdIdr !== undefined)
       updateSet.highValueThresholdIdr = body.highValueThresholdIdr;
+    if (body.autoFollowUpEnabled !== undefined)
+      updateSet.autoFollowUpEnabled = body.autoFollowUpEnabled;
+    if (body.followUpIntervalHours !== undefined)
+      updateSet.followUpIntervalHours = body.followUpIntervalHours;
 
     const [row] = await db
       .insert(salesAssistantSettingsTable)
@@ -1127,6 +1152,10 @@ router.patch(
           body.staleDaysThreshold ?? DEFAULT_STALE_DAYS_THRESHOLD,
         highValueThresholdIdr:
           body.highValueThresholdIdr ?? DEFAULT_HIGH_VALUE_THRESHOLD_IDR,
+        autoFollowUpEnabled:
+          body.autoFollowUpEnabled ?? DEFAULT_AUTO_FOLLOW_UP_ENABLED,
+        followUpIntervalHours:
+          body.followUpIntervalHours ?? DEFAULT_FOLLOW_UP_INTERVAL_HOURS,
       })
       .onConflictDoUpdate({
         target: salesAssistantSettingsTable.ownerUserId,
@@ -1139,6 +1168,8 @@ router.patch(
       autoCreateThreshold: row!.autoCreateThreshold,
       staleDaysThreshold: row!.staleDaysThreshold,
       highValueThresholdIdr: row!.highValueThresholdIdr,
+      autoFollowUpEnabled: row!.autoFollowUpEnabled,
+      followUpIntervalHours: row!.followUpIntervalHours,
     });
   }
 );

@@ -23,4 +23,10 @@ export interface SalesAssistantSettingsUpdate {
   staleDaysThreshold?: number;
   /** @minimum 0 */
   highValueThresholdIdr?: bigint;
+  autoFollowUpEnabled?: boolean;
+  /**
+     * @minimum 1
+     * @maximum 8760
+     */
+  followUpIntervalHours?: number;
 }

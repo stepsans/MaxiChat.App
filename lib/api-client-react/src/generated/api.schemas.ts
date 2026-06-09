@@ -688,7 +688,7 @@ export interface SalesInsight {
 }
 
 /**
- * Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).
+ * Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health + Auto Follow-Up).
  */
 export interface SalesAssistantSettings {
   /** When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity. */
@@ -710,6 +710,14 @@ export interface SalesAssistantSettings {
      * @minimum 0
      */
   highValueThresholdIdr: number;
+  /** When true, the engine generates and SENDS sequenced follow-ups (max 3) for deals waiting on the customer. When false (default), the AI only recommends a follow-up and never sends. */
+  autoFollowUpEnabled: boolean;
+  /**
+     * Hours of silence (since the Last Meaningful Interaction) before the next follow-up touch is due. Tenant picks 24/48/72/168 or custom.
+     * @minimum 1
+     * @maximum 8760
+     */
+  followUpIntervalHours: number;
 }
 
 /**
@@ -729,6 +737,12 @@ export interface SalesAssistantSettingsUpdate {
   staleDaysThreshold?: number;
   /** @minimum 0 */
   highValueThresholdIdr?: number;
+  autoFollowUpEnabled?: boolean;
+  /**
+     * @minimum 1
+     * @maximum 8760
+     */
+  followUpIntervalHours?: number;
 }
 
 /**

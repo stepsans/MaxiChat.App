@@ -25,6 +25,7 @@ import {
   stripTrailingTag,
   CHATBOT_TAG,
   AI_TAG,
+  FOLLOW_UP_TAG,
 } from "../lib/sender-tag.js";
 import { logger } from "../lib/logger";
 import { resolveAiClient } from "../lib/ai-provider";
@@ -314,6 +315,77 @@ export async function getActiveSocket(
 // socket. Synchronous: reads the in-memory ctx map directly.
 export function getSockForChannel(channelId: number): WASocket | null {
   return channelCtxs.get(channelId)?.sock ?? null;
+}
+
+// Send an AI Sales Assistant auto follow-up on the chat's OWN channel and
+// persist it like any other outbound message. WhatsApp-only: the engine never
+// calls this for non-WhatsApp chats. Returns true only when the message was
+// actually transmitted (Baileys has no echo-send, so a DB row alone never
+// reaches the customer — the engine relies on this boolean to decide whether to
+// mark the follow-up `sent` vs leave it pending for retry).
+//
+// Applies the same outbound pacing as every other automated send (random
+// human-like delay + a "typing…" presence) so the number isn't flagged for
+// rapid-fire bot sends, and signs the message with the follow-up tag so the
+// operator can see in the transcript that it was machine-generated.
+export async function sendFollowUpOnChannel(
+  channelId: number,
+  chatId: number,
+  text: string,
+  delayBounds: { min: number | null | undefined; max: number | null | undefined },
+): Promise<boolean> {
+  const sock = getSockForChannel(channelId);
+  if (!sock) return false;
+
+  const [chat] = await db
+    .select()
+    .from(chatsTable)
+    .where(eq(chatsTable.id, chatId))
+    .limit(1);
+  if (!chat) return false;
+
+  // Reconstruct the JID from the stored phone number (same rule as elsewhere:
+  // groups store the full "<id>@g.us", DMs store "+<digits>").
+  let jid: string;
+  if (chat.phoneNumber.endsWith("@g.us") || chat.phoneNumber.includes("@")) {
+    jid = chat.phoneNumber;
+  } else {
+    const digits = chat.phoneNumber.replace(/[^\d]/g, "");
+    if (!digits) return false;
+    jid = `${digits}@s.whatsapp.net`;
+  }
+
+  const body = withTag(text, FOLLOW_UP_TAG);
+  try {
+    await typingPause(sock, jid, flowSendDelayMs(delayBounds.min, delayBounds.max));
+    const sent = await sock.sendMessage(jid, { text: body });
+    if (!sent?.key?.id) return false;
+
+    await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId,
+        direction: "outbound",
+        content: body,
+        isAiGenerated: true,
+        waMessageId: sent.key.id,
+      })
+      .onConflictDoNothing({
+        target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId],
+      });
+
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: body, lastMessageAt: new Date() })
+      .where(eq(chatsTable.id, chatId));
+    return true;
+  } catch (err) {
+    logger.error(
+      { err: (err as Error)?.message, channelId, chatId },
+      "follow-up send failed",
+    );
+    return false;
+  }
 }
 
 // Primary channel id + its live socket for any signed-in user. Needed when an

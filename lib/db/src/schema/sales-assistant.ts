@@ -304,6 +304,18 @@ export const salesAssistantSettingsTable = pgTable(
     highValueThresholdIdr: bigint("high_value_threshold_idr", { mode: "number" })
       .notNull()
       .default(0),
+    // Auto Follow-Up engine config. When false (default), the AI only RECOMMENDS
+    // a follow-up (surfaced in the UI) and never sends. When true, the engine
+    // generates + sends sequenced follow-ups (max 3) for opportunities waiting on
+    // the customer, paced + on the chat's own channel.
+    autoFollowUpEnabled: boolean("auto_follow_up_enabled")
+      .notNull()
+      .default(false),
+    // Hours of silence (since the Last Meaningful Interaction) before the next
+    // follow-up touch is due. Tenant picks 24/48/72/168 or a custom value.
+    followUpIntervalHours: integer("follow_up_interval_hours")
+      .notNull()
+      .default(48),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -358,6 +370,8 @@ export const insertSalesAssistantSettingsSchema = createInsertSchema(
     autoCreateThreshold: z.number().int().min(0).max(100).optional(),
     staleDaysThreshold: z.number().int().min(1).max(365).optional(),
     highValueThresholdIdr: z.number().int().min(0).optional(),
+    autoFollowUpEnabled: z.boolean().optional(),
+    followUpIntervalHours: z.number().int().min(1).max(8760).optional(),
   }
 ).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
 

@@ -5058,14 +5058,18 @@ export const getSalesAssistantSettingsResponseStaleDaysThresholdMax = 365;
 
 export const getSalesAssistantSettingsResponseHighValueThresholdIdrMin = 0;
 
+export const getSalesAssistantSettingsResponseFollowUpIntervalHoursMax = 8760;
+
 
 
 export const GetSalesAssistantSettingsResponse = zod.object({
   "autoCreateEnabled": zod.boolean().describe('When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity.'),
   "autoCreateThreshold": zod.number().min(getSalesAssistantSettingsResponseAutoCreateThresholdMin).max(getSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.'),
   "staleDaysThreshold": zod.number().min(1).max(getSalesAssistantSettingsResponseStaleDaysThresholdMax).describe('Days without activity before an open deal counts as stale (Pipeline Health).'),
-  "highValueThresholdIdr": zod.number().min(getSalesAssistantSettingsResponseHighValueThresholdIdrMin).describe('Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).')
-}).describe('Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).')
+  "highValueThresholdIdr": zod.number().min(getSalesAssistantSettingsResponseHighValueThresholdIdrMin).describe('Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).'),
+  "autoFollowUpEnabled": zod.boolean().describe('When true, the engine generates and SENDS sequenced follow-ups (max 3) for deals waiting on the customer. When false (default), the AI only recommends a follow-up and never sends.'),
+  "followUpIntervalHours": zod.number().min(1).max(getSalesAssistantSettingsResponseFollowUpIntervalHoursMax).describe('Hours of silence (since the Last Meaningful Interaction) before the next follow-up touch is due. Tenant picks 24\/48\/72\/168 or custom.')
+}).describe('Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health + Auto Follow-Up).')
 
 
 /**
@@ -5078,13 +5082,17 @@ export const updateSalesAssistantSettingsBodyStaleDaysThresholdMax = 365;
 
 export const updateSalesAssistantSettingsBodyHighValueThresholdIdrMin = 0;
 
+export const updateSalesAssistantSettingsBodyFollowUpIntervalHoursMax = 8760;
+
 
 
 export const UpdateSalesAssistantSettingsBody = zod.object({
   "autoCreateEnabled": zod.boolean().optional(),
   "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsBodyAutoCreateThresholdMin).max(updateSalesAssistantSettingsBodyAutoCreateThresholdMax).optional(),
   "staleDaysThreshold": zod.number().min(1).max(updateSalesAssistantSettingsBodyStaleDaysThresholdMax).optional(),
-  "highValueThresholdIdr": zod.number().min(updateSalesAssistantSettingsBodyHighValueThresholdIdrMin).optional()
+  "highValueThresholdIdr": zod.number().min(updateSalesAssistantSettingsBodyHighValueThresholdIdrMin).optional(),
+  "autoFollowUpEnabled": zod.boolean().optional(),
+  "followUpIntervalHours": zod.number().min(1).max(updateSalesAssistantSettingsBodyFollowUpIntervalHoursMax).optional()
 }).describe('Partial update of the tenant\'s AI Sales Assistant settings.')
 
 export const updateSalesAssistantSettingsResponseAutoCreateThresholdMin = 0;
@@ -5094,14 +5102,18 @@ export const updateSalesAssistantSettingsResponseStaleDaysThresholdMax = 365;
 
 export const updateSalesAssistantSettingsResponseHighValueThresholdIdrMin = 0;
 
+export const updateSalesAssistantSettingsResponseFollowUpIntervalHoursMax = 8760;
+
 
 
 export const UpdateSalesAssistantSettingsResponse = zod.object({
   "autoCreateEnabled": zod.boolean().describe('When true, a chat scoring >= autoCreateThreshold auto-creates an opportunity.'),
   "autoCreateThreshold": zod.number().min(updateSalesAssistantSettingsResponseAutoCreateThresholdMin).max(updateSalesAssistantSettingsResponseAutoCreateThresholdMax).describe('Lead-score threshold (0–100) that triggers auto-create when enabled.'),
   "staleDaysThreshold": zod.number().min(1).max(updateSalesAssistantSettingsResponseStaleDaysThresholdMax).describe('Days without activity before an open deal counts as stale (Pipeline Health).'),
-  "highValueThresholdIdr": zod.number().min(updateSalesAssistantSettingsResponseHighValueThresholdIdrMin).describe('Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).')
-}).describe('Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).')
+  "highValueThresholdIdr": zod.number().min(updateSalesAssistantSettingsResponseHighValueThresholdIdrMin).describe('Minimum estimated value (whole Rupiah) for an open stale deal to be flagged High Risk. 0 = value never excludes (only staleness matters).'),
+  "autoFollowUpEnabled": zod.boolean().describe('When true, the engine generates and SENDS sequenced follow-ups (max 3) for deals waiting on the customer. When false (default), the AI only recommends a follow-up and never sends.'),
+  "followUpIntervalHours": zod.number().min(1).max(updateSalesAssistantSettingsResponseFollowUpIntervalHoursMax).describe('Hours of silence (since the Last Meaningful Interaction) before the next follow-up touch is due. Tenant picks 24\/48\/72\/168 or custom.')
+}).describe('Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health + Auto Follow-Up).')
 
 
 /**

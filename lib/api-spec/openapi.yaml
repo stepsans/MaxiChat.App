@@ -5957,13 +5957,15 @@ components:
 
     SalesAssistantSettings:
       type: object
-      description: Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health).
+      description: Per-tenant AI Sales Assistant configuration (auto-create + Pipeline Health + Auto Follow-Up).
       required:
         [
           autoCreateEnabled,
           autoCreateThreshold,
           staleDaysThreshold,
           highValueThresholdIdr,
+          autoFollowUpEnabled,
+          followUpIntervalHours,
         ]
       properties:
         autoCreateEnabled:
@@ -5986,6 +5988,19 @@ components:
           description: >-
             Minimum estimated value (whole Rupiah) for an open stale deal to be
             flagged High Risk. 0 = value never excludes (only staleness matters).
+        autoFollowUpEnabled:
+          type: boolean
+          description: >-
+            When true, the engine generates and SENDS sequenced follow-ups
+            (max 3) for deals waiting on the customer. When false (default), the
+            AI only recommends a follow-up and never sends.
+        followUpIntervalHours:
+          type: integer
+          minimum: 1
+          maximum: 8760
+          description: >-
+            Hours of silence (since the Last Meaningful Interaction) before the
+            next follow-up touch is due. Tenant picks 24/48/72/168 or custom.
 
     SalesAssistantSettingsUpdate:
       type: object
@@ -6005,6 +6020,12 @@ components:
           type: integer
           format: int64
           minimum: 0
+        autoFollowUpEnabled:
+          type: boolean
+        followUpIntervalHours:
+          type: integer
+          minimum: 1
+          maximum: 8760
 
     ReorderStagesInput:
       type: object

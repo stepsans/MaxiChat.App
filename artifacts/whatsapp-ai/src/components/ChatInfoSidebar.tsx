@@ -2098,6 +2098,35 @@ function SalesInsightTab({
     updateSettings.mutate({ data: { autoCreateThreshold: n } });
   }
 
+  // Auto Follow-Up timing. Presets cover the common silence windows; "Custom"
+  // reveals a free-form hours input (1–8760). The committed value is in hours.
+  const FOLLOW_UP_PRESETS = [24, 48, 72, 168] as const;
+  const [followUpCustom, setFollowUpCustom] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState<string>("");
+  useEffect(() => {
+    if (!settings) return;
+    const hrs = settings.followUpIntervalHours;
+    setFollowUpCustom(
+      !FOLLOW_UP_PRESETS.includes(hrs as (typeof FOLLOW_UP_PRESETS)[number])
+    );
+    setFollowUpDraft(String(hrs));
+  }, [settings?.followUpIntervalHours]);
+
+  function commitFollowUpInterval(raw: string) {
+    if (!settings) return;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 8760) {
+      setFollowUpDraft(String(settings.followUpIntervalHours));
+      toast({
+        variant: "destructive",
+        description: "Interval follow-up harus bilangan bulat 1–8760 jam.",
+      });
+      return;
+    }
+    if (n === settings.followUpIntervalHours) return;
+    updateSettings.mutate({ data: { followUpIntervalHours: n } });
+  }
+
   const running = analyze.isPending;
 
   return (
@@ -2194,6 +2223,98 @@ function SalesInsightTab({
               }}
               className="h-8 w-20 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
             />
+          </div>
+
+          <div className="pt-3 border-t border-[hsl(var(--wa-divider))] space-y-3">
+            <p className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+              Auto Follow-Up
+            </p>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-foreground">
+                Kirim follow-up otomatis (maks. 3×)
+              </span>
+              <Switch
+                data-testid="switch-auto-follow-up"
+                checked={settings.autoFollowUpEnabled}
+                disabled={updateSettings.isPending}
+                onCheckedChange={(checked) =>
+                  updateSettings.mutate({
+                    data: { autoFollowUpEnabled: checked },
+                  })
+                }
+              />
+            </div>
+            <p className="text-[11px] leading-relaxed text-[hsl(var(--wa-meta))]">
+              {settings.autoFollowUpEnabled
+                ? "AI menyusun & mengirim pesan follow-up ke customer yang belum membalas, dengan jeda alami. Berhenti otomatis bila customer membalas atau minta berhenti."
+                : "Nonaktif: AI hanya merekomendasikan follow-up (tidak mengirim). Aktifkan agar dikirim otomatis."}
+            </p>
+            <div className="space-y-1.5">
+              <span className="text-xs text-foreground">
+                Kirim setelah hening
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {FOLLOW_UP_PRESETS.map((h) => {
+                  const active =
+                    !followUpCustom && settings.followUpIntervalHours === h;
+                  return (
+                    <button
+                      key={h}
+                      type="button"
+                      data-testid={`button-follow-up-preset-${h}`}
+                      disabled={updateSettings.isPending}
+                      onClick={() => {
+                        setFollowUpCustom(false);
+                        commitFollowUpInterval(String(h));
+                      }}
+                      className={cn(
+                        "rounded-md border px-2 py-1 text-[11px] transition-colors",
+                        active
+                          ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))]/10 text-foreground"
+                          : "border-[hsl(var(--wa-divider))] text-[hsl(var(--wa-meta))] hover:text-foreground"
+                      )}
+                    >
+                      {h === 168 ? "7 hari" : `${h} jam`}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  data-testid="button-follow-up-preset-custom"
+                  disabled={updateSettings.isPending}
+                  onClick={() => setFollowUpCustom(true)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[11px] transition-colors",
+                    followUpCustom
+                      ? "border-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))]/10 text-foreground"
+                      : "border-[hsl(var(--wa-divider))] text-[hsl(var(--wa-meta))] hover:text-foreground"
+                  )}
+                >
+                  Custom
+                </button>
+              </div>
+              {followUpCustom ? (
+                <div className="flex items-center gap-2 pt-1">
+                  <Input
+                    data-testid="input-follow-up-custom-hours"
+                    type="number"
+                    min={1}
+                    max={8760}
+                    value={followUpDraft}
+                    disabled={updateSettings.isPending}
+                    onChange={(e) => setFollowUpDraft(e.target.value)}
+                    onBlur={(e) => commitFollowUpInterval(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                    className="h-8 w-24 text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                  />
+                  <span className="text-[11px] text-[hsl(var(--wa-meta))]">
+                    jam (1–8760)
+                  </span>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

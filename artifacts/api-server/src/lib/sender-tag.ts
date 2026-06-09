@@ -14,6 +14,7 @@ export function withTag(text: string | null | undefined, tag: string): string {
 
 export const CHATBOT_TAG = "Chatbot";
 export const AI_TAG = "powered by AI";
+export const FOLLOW_UP_TAG = "follow-up otomatis";
 
 // Strip a trailing `\n\n_<anything>_` signature from a stored outbound
 // message before feeding it back to the LLM as conversation history.

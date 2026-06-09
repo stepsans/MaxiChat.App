@@ -10,6 +10,7 @@ import { startRetentionPurger } from "./lib/retention-purge";
 import { startDunningScheduler } from "./lib/dunning";
 import { backfillInvoicesFromPayments } from "./lib/invoices";
 import { startMonthlyCloseScheduler } from "./lib/monthly-close";
+import { startFollowUpScheduler } from "./lib/follow-up-engine";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -126,6 +127,11 @@ async function main(): Promise<void> {
     // tenant per period (idempotent per (owner, period) via the deterministic
     // invoice number + unique index).
     startMonthlyCloseScheduler();
+    // AI Sales Assistant: Auto Follow-Up engine. Sweeps open opportunities
+    // waiting on the customer and (only when a tenant enables the toggle)
+    // generates + sends paced, sequenced follow-ups (max 3); default OFF =
+    // store a recommendation only, never sends.
+    startFollowUpScheduler();
     // Billing v2 (FASE A): backfill immutable invoices for any already-paid
     // payments that predate the invoices table. Idempotent + best-effort, so it
     // never blocks boot (the NOT EXISTS filter makes it a no-op once caught up).
