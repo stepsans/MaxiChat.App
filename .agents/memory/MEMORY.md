@@ -71,3 +71,4 @@
 - [AI Sales auto follow-up engine](ai-sales-followup-engine.md) — cancel-on-reply must be a SEPARATE sweep (replied deals drop out of candidate filter); toggle default OFF=recommend-only; exactly-once relies on single-process + in-process guard.
 - [Entitlement gate before AI spend](entitlement-gate-before-ai-spend.md) — entitled-only AI features must check entitlement BEFORE the model call/persist (resolve owner from trigger id first), not after; chat-keyed reads also need per-channel scope.
 - [Trial onboarding & health score](trial-onboarding-health.md) — admin trial routes are non-OpenAPI raw-fetch; scope tenant-owners as parentUserId IS NULL AND role!='admin'; "{n}h"=hari not hours; refreshChecklist triggers best-effort, WA one in whatsapp.ts.
+- [Prod vs dev DB separation](prod-vs-dev-database-separation.md) — published app uses a SEPARATE prod DB; agent psql/writes hit dev only, prod is read-only; change owner/seed creds via flag-gated reseed + re-publish.

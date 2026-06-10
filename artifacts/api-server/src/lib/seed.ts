@@ -30,7 +30,7 @@ const SEED_USERS: ReadonlyArray<{
 }> = [
   {
     email: "stephensan86@gmail.com",
-    password: "AdminMaxipro$",
+    password: "MaxiChat123",
     // Sole super admin. Owns the pre-existing 628111198000 data (474 chats),
     // pinned so it survives the auth migration.
     role: "admin",
@@ -135,6 +135,32 @@ export async function runSeed(): Promise<void> {
         .where(eq(usersTable.email, seed.email))
         .limit(1);
       if (winner) userIdsByEmail.set(seed.email, winner.id);
+    }
+  }
+
+  // One-time owner password (re)set, gated behind an explicit env flag so the
+  // bootstrap-only invariant above still holds by default. When
+  // RESEED_OWNER_PASSWORD=1, force the pinned super admin's credentials back to
+  // the seed values (password + Infinity owner) on boot. This is the supported
+  // way to standardize the owner login in the PRODUCTION database, which is a
+  // separate database from development and cannot be written to directly. Unset
+  // the flag once the password is confirmed to stop overwriting on every boot.
+  if (process.env.RESEED_OWNER_PASSWORD === "1") {
+    const owner = SEED_USERS.find((u) => u.ownerPhone);
+    if (owner) {
+      const passwordHash = await bcrypt.hash(owner.password, 12);
+      await db
+        .update(usersTable)
+        .set({
+          passwordHash,
+          status: "active",
+          isInfinityOwner: owner.isInfinityOwner ?? false,
+        })
+        .where(eq(usersTable.email, owner.email));
+      logger.warn(
+        { email: owner.email },
+        "RESEED_OWNER_PASSWORD set — owner password and Infinity flag force-reset from seed"
+      );
     }
   }
 
