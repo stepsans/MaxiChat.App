@@ -72,4 +72,3 @@ defaultBucketID = "replit-objstore-97186961-0c2e-42fc-a73e-fb4a480d1ffb"
 [userenv]
 
 [userenv.shared]
-RESEED_OWNER_PASSWORD = "1"
