@@ -275,15 +275,26 @@ let dripSchedulerStarted = false;
 export function startDripScheduler(): void {
   if (dripSchedulerStarted) return;
   dripSchedulerStarted = true;
+  // Guard each tick so a transient DB error (e.g. a dropped connection) is
+  // logged instead of bubbling up as an unhandledRejection that exits the
+  // whole process (crash loop in prod).
+  const safeEvaluate = () =>
+    evaluateDripTriggers().catch((err: unknown) => {
+      logger.error({ err }, "drip evaluateDripTriggers tick failed");
+    });
+  const safeProcess = () =>
+    processDripQueue().catch((err: unknown) => {
+      logger.error({ err }, "drip processDripQueue tick failed");
+    });
   // Evaluate triggers every 15 minutes.
   setTimeout(() => {
-    void evaluateDripTriggers();
-    setInterval(() => void evaluateDripTriggers(), 15 * 60_000);
+    void safeEvaluate();
+    setInterval(() => void safeEvaluate(), 15 * 60_000);
   }, 2 * 60_000); // Start 2 minutes after boot.
   // Process the queue every 5 minutes.
   setTimeout(() => {
-    void processDripQueue();
-    setInterval(() => void processDripQueue(), 5 * 60_000);
+    void safeProcess();
+    setInterval(() => void safeProcess(), 5 * 60_000);
   }, 3 * 60_000); // Start 3 minutes after boot.
   logger.info("Drip campaign scheduler started");
 }

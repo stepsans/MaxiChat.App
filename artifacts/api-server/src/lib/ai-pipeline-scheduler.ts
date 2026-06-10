@@ -40,8 +40,14 @@ let schedulerStarted = false;
 export function startAiPipelineScheduler(): void {
   if (schedulerStarted) return;
   schedulerStarted = true;
-  // Cutoff analysis: every minute.
-  setInterval(() => void processPendingCutoffs(), 60_000);
+  // Cutoff analysis: every minute. Guard the tick so a transient DB error
+  // (e.g. a dropped connection) is logged instead of bubbling up as an
+  // unhandledRejection that exits the whole process (crash loop in prod).
+  setInterval(() => {
+    processPendingCutoffs().catch((err: unknown) => {
+      console.error("[ai-pipeline-scheduler] cutoff tick failed:", err);
+    });
+  }, 60_000);
   // Follow-up sender: every 5 minutes.
   setInterval(() => void processPendingFollowupsWrap(), 5 * 60_000);
 }
