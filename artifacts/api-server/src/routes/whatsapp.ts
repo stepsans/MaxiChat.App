@@ -104,7 +104,14 @@ interface ChannelCtx {
   epoch: number;
   // Digits-only phone of THIS channel's currently linked WA account.
   ownerPhone: string | null;
+  // Consecutive disconnect count since last successful open. Used for
+  // exponential backoff and to stop reconnecting after MAX_RECONNECT_RETRIES
+  // so a zombie number (banned, never-paired, QR-expired loop) can't spin
+  // forever and exhaust memory / DB connections on a single-VM deployment.
+  retryCount: number;
 }
+
+const MAX_RECONNECT_RETRIES = 10;
 
 const channelCtxs = new Map<number, ChannelCtx>();
 
@@ -117,6 +124,7 @@ function getCtxByChannel(channelId: number, userId: number): ChannelCtx {
       isConnecting: false,
       epoch: 0,
       ownerPhone: null,
+      retryCount: 0,
     };
     channelCtxs.set(channelId, c);
   }
@@ -224,6 +232,10 @@ export async function startBaileysForChannel(
   userId: number,
   channelId: number,
 ): Promise<void> {
+  // Manual reconnect via UI resets the retry counter so a number that hit
+  // MAX_RECONNECT_RETRIES can be brought back without restarting the server.
+  const ctx = getCtxByChannel(channelId, userId);
+  ctx.retryCount = 0;
   await startBaileys(userId, channelId);
 }
 
@@ -3122,6 +3134,7 @@ async function startBaileys(userId: number, channelId: number) {
           connectedAt: new Date().toISOString(),
         });
         ctx.isConnecting = false;
+        ctx.retryCount = 0;
         rescheduleSyncFallback();
         // Best-effort: refresh the onboarding checklist now that WhatsApp is
         // live (flips waConnected → true). Never let it disturb the socket.
@@ -3164,6 +3177,18 @@ async function startBaileys(userId: number, channelId: number) {
         ctx.sock = null;
         ctx.isConnecting = false;
         ctx.ownerPhone = null;
+        ctx.retryCount += 1;
+        if (ctx.retryCount > MAX_RECONNECT_RETRIES) {
+          // Too many consecutive failures — stop reconnecting. A zombie number
+          // (banned, never-paired QR loop, or repeatedly kicked) would otherwise
+          // spin every 1-3 s forever, leaking Baileys sockets and DB connections
+          // until the process OOMs. The user can reconnect manually via the UI.
+          logger.warn(
+            { channelId, userId, retryCount: ctx.retryCount },
+            "Stopped auto-reconnect after max retries — reconnect manually via UI",
+          );
+          return;
+        }
         if (loggedOut) {
           // The session is dead — the number was logged out remotely (from
           // the phone or by WhatsApp) or the on-disk creds went stale. With
@@ -3184,16 +3209,20 @@ async function startBaileys(userId: number, channelId: number) {
                 "Failed to wipe auth dir after logout",
               ),
             );
+          // Exponential backoff starting at 1 s, capped at 5 minutes.
+          const delay = Math.min(1000 * 2 ** (ctx.retryCount - 1), 300_000);
           setTimeout(
             () => startBaileys(userId, channelId).catch(() => {}),
-            1000,
+            delay,
           );
         } else {
           // Transient drop (network, restart-required, etc.): resume with the
           // existing creds rather than forcing a re-pair.
+          // Exponential backoff starting at 3 s, capped at 5 minutes.
+          const delay = Math.min(3000 * 2 ** (ctx.retryCount - 1), 300_000);
           setTimeout(
             () => startBaileys(userId, channelId).catch(() => {}),
-            3000,
+            delay,
           );
         }
       }
