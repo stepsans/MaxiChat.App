@@ -128,6 +128,13 @@ function scoreBand(score: number): { label: string; className: string } {
   return { label: "Rendah", className: "bg-muted text-muted-foreground" };
 }
 
+function avatarColor(name: string): string {
+  const palette = ["#6366f1", "#8b5cf6", "#ec4899", "#14b8a6", "#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#f97316", "#0ea5e9"];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return palette[Math.abs(h) % palette.length];
+}
+
 function timeAgo(iso: string | null): string {
   if (!iso) return "Belum ada aktivitas";
   const then = new Date(iso).getTime();
@@ -526,6 +533,7 @@ export default function Pipeline() {
                             highRisk={highRiskIds.has(o.id)}
                             canDrag={perm.canEdit}
                             onClick={() => setDetailId(o.id)}
+                            agents={team?.agents ?? []}
                           />
                         ))}
                         {items.length === 0 ? (
@@ -543,6 +551,7 @@ export default function Pipeline() {
                     highRisk={highRiskIds.has(activeOpp.id)}
                     canDrag
                     dragging
+                    agents={team?.agents ?? []}
                   />
                 ) : null}
               </DragOverlay>
@@ -636,16 +645,24 @@ function StageColumn({
 // ---------------------------------------------------------------------------
 
 function OpportunityCard({
-  opp, highRisk, canDrag, dragging, onClick,
+  opp, highRisk, canDrag, dragging, onClick, agents,
 }: {
   opp: Opportunity; highRisk: boolean; canDrag: boolean;
   dragging?: boolean; onClick?: () => void;
+  agents?: Array<{ id: number; name?: string | null; email: string }>;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: opp.id,
     disabled: !canDrag,
   });
   const band = scoreBand(opp.leadScore);
+  const displayName = opp.contactName || opp.contactPhone;
+  const bgColor = avatarColor(displayName);
+  const assignee = opp.assignedUserId != null
+    ? (agents ?? []).find((a) => a.id === opp.assignedUserId)
+    : null;
+  const assigneeName = assignee ? (assignee.name ?? assignee.email) : null;
+
   return (
     <div
       ref={setNodeRef}
@@ -683,12 +700,15 @@ function OpportunityCard({
                 className="w-6 h-6 rounded-full shrink-0 object-cover"
               />
             ) : (
-              <div className="w-6 h-6 rounded-full bg-muted shrink-0 flex items-center justify-center text-[10px] font-medium text-muted-foreground">
-                {(opp.contactName || opp.contactPhone).charAt(0).toUpperCase()}
+              <div
+                className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-white"
+                style={{ background: bgColor }}
+              >
+                {displayName.charAt(0).toUpperCase()}
               </div>
             )}
-            <span className="text-sm font-medium truncate">
-              {opp.contactName || opp.contactPhone}
+            <span className="text-sm font-medium truncate flex-1 min-w-0">
+              {displayName}
             </span>
             {highRisk ? (
               <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
@@ -716,7 +736,7 @@ function OpportunityCard({
           <div className="mt-1.5 text-sm font-semibold ml-[30px]">
             {formatRupiah(opp.estimatedValueIdr)}
           </div>
-          <div className="flex items-center gap-1.5 mt-1.5 ml-[30px]">
+          <div className="flex items-center gap-1.5 mt-1.5 ml-[30px] flex-wrap">
             <span
               className={cn(
                 "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
@@ -729,6 +749,11 @@ function OpportunityCard({
             {opp.intentCategory ? (
               <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground truncate">
                 {opp.intentCategory}
+              </span>
+            ) : null}
+            {opp.waitingStatus === "waiting_customer" ? (
+              <span className="rounded bg-orange-100 text-orange-700 px-1.5 py-0.5 text-[10px] font-medium">
+                ⏳ Perlu FU
               </span>
             ) : null}
           </div>
@@ -752,8 +777,20 @@ function OpportunityCard({
             </div>
           ) : null}
 
-          <div className="mt-1 text-[10px] text-muted-foreground ml-[30px]">
-            {timeAgo(opp.lastActivityAt)}
+          {/* Footer: last activity + assignee */}
+          <div className="flex items-center justify-between mt-1.5 ml-[30px]">
+            <span className="text-[10px] text-muted-foreground">
+              {timeAgo(opp.lastActivityAt)}
+            </span>
+            {assigneeName ? (
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                style={{ background: avatarColor(assigneeName) }}
+                title={assigneeName}
+              >
+                {assigneeName.charAt(0).toUpperCase()}
+              </div>
+            ) : null}
           </div>
         </button>
       </div>

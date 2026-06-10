@@ -13,7 +13,17 @@
       "Bash(netstat -tlnp)",
       "Bash(pnpm --filter @workspace/api-server run build)",
       "Bash(node --enable-source-maps ./dist/index.mjs)",
-      "Bash(echo \"API server PID: $!\")"
+      "Bash(echo \"API server PID: $!\")",
+      "Bash(pnpm run *)",
+      "Bash(pnpm --filter @workspace/db run typecheck)",
+      "Bash(pnpm --filter @workspace/api-spec run codegen)",
+      "Bash(pnpm --filter @workspace/whatsapp-ai exec tsc --noEmit)",
+      "Bash(npx drizzle-kit *)",
+      "Bash(pnpm --filter \"@workspace/api-server\" tsc --noEmit)",
+      "Bash(git status *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(pnpm --filter whatsapp-ai exec tsc --noEmit)"
     ]
   }
 }
