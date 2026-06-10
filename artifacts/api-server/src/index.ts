@@ -11,6 +11,7 @@ import { startDunningScheduler } from "./lib/dunning";
 import { backfillInvoicesFromPayments } from "./lib/invoices";
 import { startMonthlyCloseScheduler } from "./lib/monthly-close";
 import { startFollowUpScheduler } from "./lib/follow-up-engine";
+import { startAiPipelineScheduler } from "./lib/ai-pipeline-scheduler";
 import { startDripScheduler } from "./lib/drip-engine";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
@@ -133,6 +134,8 @@ async function main(): Promise<void> {
     // generates + sends paced, sequenced follow-ups (max 3); default OFF =
     // store a recommendation only, never sends.
     startFollowUpScheduler();
+    // AI Pipeline: cut-off analysis sweeper (every 1 min) + follow-up sender (every 5 min).
+    startAiPipelineScheduler();
     // Trial onboarding: behavior-based drip campaign engine. Evaluates active
     // trial tenants and enqueues/sends nudge emails (no-op when Resend is
     // unconfigured — logs only). Default-safe, additive.

@@ -20,6 +20,9 @@ import Usage from "@/pages/Usage";
 import Billing from "@/pages/Billing";
 import Analytics from "@/pages/Analytics";
 import Pipeline from "@/pages/Pipeline";
+import AIPipeline from "@/pages/AIPipeline";
+import AIPipelineNew from "@/pages/AIPipelineNew";
+import AIPipelineDetail from "@/pages/AIPipelineDetail";
 import Products from "@/pages/Products";
 import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
@@ -122,6 +125,10 @@ function AuthGate() {
         <Route path="/profile" component={Profile} />
         <Route path="/analytics" component={Analytics} />
         <Route path="/pipeline" component={Pipeline} />
+        <Route path="/ai-pipeline" component={AIPipeline} />
+        <Route path="/ai-pipeline/new" component={AIPipelineNew} />
+        <Route path="/ai-pipeline/:id/edit" component={AIPipelineDetail} />
+        <Route path="/ai-pipeline/:id" component={AIPipelineDetail} />
           <Route component={NotFound} />
         </Switch>
       </Layout>

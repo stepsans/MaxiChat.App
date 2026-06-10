@@ -4586,11 +4586,146 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /sales/pipelines:
+    get:
+      operationId: listPipelines
+      tags: [sales]
+      summary: List all sales pipelines for the tenant (auto-seeds one default on first access)
+      responses:
+        "200":
+          description: List of pipelines with their stages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pipeline"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createPipeline
+      tags: [sales]
+      summary: Create a new sales pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineCreate"
+      responses:
+        "201":
+          description: Created pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sales/pipelines/{id}:
+    patch:
+      operationId: updatePipeline
+      tags: [sales]
+      summary: Update a sales pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineUpdate"
+      responses:
+        "200":
+          description: Updated pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deletePipeline
+      tags: [sales]
+      summary: Archive (soft-delete) a pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pipeline archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+        "400":
+          description: Cannot delete default or non-empty pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /sales/stages:
     get:
       operationId: listSalesStages
       tags: [sales]
       summary: List pipeline stages (auto-seeds 7 defaults on first access)
+      parameters:
+        - name: pipelineId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter stages to a specific pipeline
       responses:
         "200":
           description: The tenant's pipeline stages, ordered by sortOrder
@@ -5286,6 +5421,581 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ============================================================
+  # AI Pipeline
+  # ============================================================
+
+  /ai-pipelines:
+    get:
+      operationId: listAiPipelines
+      tags: [ai-pipeline]
+      summary: List all AI Pipelines for the current tenant
+      responses:
+        "200":
+          description: List of pipelines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiPipeline"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createAiPipeline
+      tags: [ai-pipeline]
+      summary: Create a new AI Pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiPipelineCreate"
+      responses:
+        "201":
+          description: Created pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipeline"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}:
+    get:
+      operationId: getAiPipeline
+      tags: [ai-pipeline]
+      summary: Get a single AI Pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pipeline detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipeline"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateAiPipeline
+      tags: [ai-pipeline]
+      summary: Update an AI Pipeline configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiPipelineCreate"
+      responses:
+        "200":
+          description: Updated pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipeline"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAiPipeline
+      tags: [ai-pipeline]
+      summary: Delete an AI Pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/toggle:
+    patch:
+      operationId: toggleAiPipeline
+      tags: [ai-pipeline]
+      summary: Toggle active/inactive status of an AI Pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipeline"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/run-now:
+    post:
+      operationId: runAiPipelineNow
+      tags: [ai-pipeline]
+      summary: Manually trigger a cut-off analysis run
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Cut-off log entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineCutoffLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A run is already in progress for this pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/analyses:
+    get:
+      operationId: listAiPipelineAnalyses
+      tags: [ai-pipeline]
+      summary: List analysis results for a pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: scoreRange
+          in: query
+          schema:
+            type: string
+        - name: channelId
+          in: query
+          schema:
+            type: integer
+        - name: enteredPipeline
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Paginated analysis results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineAnalysisList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/analyses/{aid}:
+    get:
+      operationId: getAiPipelineAnalysis
+      tags: [ai-pipeline]
+      summary: Get a single analysis result
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: aid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Analysis detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineAnalysis"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/entries:
+    get:
+      operationId: listAiPipelineEntries
+      tags: [ai-pipeline]
+      summary: List pipeline entries
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: channelId
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Paginated entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineEntryList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/entries/{eid}:
+    get:
+      operationId: getAiPipelineEntry
+      tags: [ai-pipeline]
+      summary: Get a single pipeline entry with follow-up logs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entry detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAiPipelineEntry
+      tags: [ai-pipeline]
+      summary: Update a pipeline entry status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eid
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+      responses:
+        "200":
+          description: Updated entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/entries/{eid}/do-not-followup:
+    post:
+      operationId: doNotFollowupAiPipelineEntry
+      tags: [ai-pipeline]
+      summary: Mark a pipeline entry as do-not-follow-up
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eid
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Entry updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/dashboard-stats:
+    get:
+      operationId: getAiPipelineDashboardStats
+      tags: [ai-pipeline]
+      summary: Get dashboard stats for a pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineDashboardStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/cutoff-logs:
+    get:
+      operationId: listAiPipelineCutoffLogs
+      tags: [ai-pipeline]
+      summary: List cut-off run history for a pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Cut-off logs, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiPipelineCutoffLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     GroupParticipant:
@@ -5687,6 +6397,65 @@ components:
           type: boolean
       required: [success]
 
+    Pipeline:
+      type: object
+      description: A named kanban sales pipeline belonging to the tenant.
+      required: [id, name, pipelineType, color, isDefault, isArchived, sortOrder, stages, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        pipelineType:
+          type: string
+          enum: [sales, service, custom]
+        color:
+          type: string
+        isDefault:
+          type: boolean
+        isArchived:
+          type: boolean
+        sortOrder:
+          type: integer
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesStage"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PipelineCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        color:
+          type: string
+        pipelineType:
+          type: string
+          enum: [sales, service, custom]
+
+    PipelineUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        color:
+          type: string
+        isDefault:
+          type: boolean
+        isArchived:
+          type: boolean
+        sortOrder:
+          type: integer
+
     SalesStage:
       type: object
       description: A column in the tenant's sales pipeline (kanban board).
@@ -5718,8 +6487,11 @@ components:
 
     SalesStageInput:
       type: object
-      required: [name]
+      required: [name, pipelineId]
       properties:
+        pipelineId:
+          type: integer
+          description: The pipeline this stage belongs to.
         name:
           type: string
           minLength: 1
@@ -5811,6 +6583,47 @@ components:
           type: array
           items:
             type: string
+        pipelineId:
+          type: ["integer", "null"]
+        intentKey:
+          type: ["string", "null"]
+        intentType:
+          type: ["string", "null"]
+        scoreReason:
+          type: ["string", "null"]
+        recommendation:
+          type: ["string", "null"]
+        analyzedAt:
+          type: ["string", "null"]
+          format: date-time
+        analyzedMessageIds:
+          type: ["array", "null"]
+          items:
+            type: string
+        keyQuotes:
+          type: ["array", "null"]
+          items:
+            type: string
+        profilePicUrl:
+          type: ["string", "null"]
+        channelLabel:
+          type: ["string", "null"]
+        channelColor:
+          type: ["string", "null"]
+        stageName:
+          type: ["string", "null"]
+        pipelineName:
+          type: ["string", "null"]
+        products:
+          type: array
+          items:
+            type: object
+            required: [productName]
+            properties:
+              productId:
+                type: ["integer", "null"]
+              productName:
+                type: string
         aiNotes:
           type: ["string", "null"]
         lastActivityAt:
@@ -5971,6 +6784,9 @@ components:
           lostCount,
           wonValueIdr,
           winRatePct,
+          avgDealSizeIdr,
+          salesVelocityIdr,
+          avgCycleDays,
           byStage,
         ]
       properties:
@@ -5995,6 +6811,17 @@ components:
         winRatePct:
           type: integer
           description: won / (won + lost) × 100, rounded to a whole percent (0 when none closed).
+        avgDealSizeIdr:
+          type: integer
+          format: int64
+          description: Average estimated value per open opportunity (whole Rupiah).
+        salesVelocityIdr:
+          type: integer
+          format: int64
+          description: Revenue generated per day in Rupiah (openCount × avgDealSize × winRate%) / avgCycleDays.
+        avgCycleDays:
+          type: integer
+          description: Average days from creation to close across won and lost deals.
         byStage:
           type: array
           description: Per-stage open count, value, and weighted forecast.
@@ -6227,6 +7054,9 @@ components:
       description: New top-to-bottom order of pipeline stage ids for the tenant's board.
       required: [stageIds]
       properties:
+        pipelineId:
+          type: integer
+          description: Scope the reorder to a specific pipeline.
         stageIds:
           type: array
           description: >-
@@ -9386,4 +10216,397 @@ components:
           type: string
           nullable: true
           description: "Last-paired phone number (digits). Present once the socket has connected at least once."
+
+    # ============================================================
+    # AI Pipeline schemas
+    # ============================================================
+
+    AiPipelineCreate:
+      type: object
+      required: [name, channelIds]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        description:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+          default: true
+        scoreThreshold:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 70
+        opportunityThreshold:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 80
+        autoCreateOpportunity:
+          type: boolean
+          default: false
+        autoFollowupEnabled:
+          type: boolean
+          default: false
+        followupIntervals:
+          type: array
+          items:
+            type: string
+          default: ["24h", "48h", "72h"]
+        cutoffTimes:
+          type: array
+          items:
+            type: string
+          default: ["12:00", "23:59"]
+        channelIds:
+          type: array
+          items:
+            type: integer
+          minItems: 1
+        excludeLabelIds:
+          type: array
+          items:
+            type: integer
+
+    AiPipeline:
+      type: object
+      required: [id, name, isActive, scoreThreshold, opportunityThreshold, autoCreateOpportunity, autoFollowupEnabled, followupIntervals, cutoffTimes, channelIds, excludeLabelIds, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        scoreThreshold:
+          type: integer
+        opportunityThreshold:
+          type: integer
+        autoCreateOpportunity:
+          type: boolean
+        autoFollowupEnabled:
+          type: boolean
+        followupIntervals:
+          type: array
+          items:
+            type: string
+        cutoffTimes:
+          type: array
+          items:
+            type: string
+        channelIds:
+          type: array
+          items:
+            type: integer
+        excludeLabelIds:
+          type: array
+          items:
+            type: integer
+        lastRunAt:
+          type: string
+          format: date-time
+          nullable: true
+        todayStats:
+          type: object
+          properties:
+            analyzed:
+              type: integer
+            enteredPipeline:
+              type: integer
+            opportunitiesCreated:
+              type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AiPipelineAnalysis:
+      type: object
+      required: [id, pipelineId, contactPhone, channelId, cutoffDatetime, score, enteredPipeline, createdAt]
+      properties:
+        id:
+          type: integer
+        pipelineId:
+          type: integer
+        contactPhone:
+          type: string
+        contactName:
+          type: string
+          nullable: true
+        channelId:
+          type: integer
+        channelType:
+          type: string
+          nullable: true
+        cutoffDatetime:
+          type: string
+          format: date-time
+        cutoffWindowStart:
+          type: string
+          format: date-time
+        cutoffWindowEnd:
+          type: string
+          format: date-time
+        score:
+          type: integer
+        previousScore:
+          type: integer
+          nullable: true
+        scoreBreakdown:
+          type: object
+          nullable: true
+          properties:
+            buying_signal:
+              type: integer
+            urgency:
+              type: integer
+            engagement:
+              type: integer
+            commitment:
+              type: integer
+            product_fit:
+              type: integer
+            barrier_adjustment:
+              type: integer
+        status:
+          type: string
+          nullable: true
+        estimatedValue:
+          type: integer
+          nullable: true
+        productInterest:
+          type: string
+          nullable: true
+        recommendation:
+          type: string
+          nullable: true
+        scoreReason:
+          type: string
+          nullable: true
+        aiNotes:
+          type: string
+          nullable: true
+        enteredPipeline:
+          type: boolean
+        pipelineEntryId:
+          type: integer
+          nullable: true
+        opportunityId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AiPipelineAnalysisList:
+      type: object
+      required: [data, total, page, pageSize]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiPipelineAnalysis"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    AiPipelineFollowupLog:
+      type: object
+      required: [id, entryId, followupNumber, messageSent, sentAt, wasReplied, status]
+      properties:
+        id:
+          type: integer
+        entryId:
+          type: integer
+        followupNumber:
+          type: integer
+        messageSent:
+          type: string
+        sentAt:
+          type: string
+          format: date-time
+        wasReplied:
+          type: boolean
+        repliedAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+
+    AiPipelineEntry:
+      type: object
+      required: [id, pipelineId, contactPhone, channelId, currentScore, status, followupCount, enteredAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        pipelineId:
+          type: integer
+        analysisId:
+          type: integer
+        contactPhone:
+          type: string
+        contactName:
+          type: string
+          nullable: true
+        channelId:
+          type: integer
+        channelType:
+          type: string
+          nullable: true
+        currentScore:
+          type: integer
+        estimatedValue:
+          type: integer
+          nullable: true
+        productInterest:
+          type: string
+          nullable: true
+        status:
+          type: string
+        followupCount:
+          type: integer
+        lastFollowupAt:
+          type: string
+          format: date-time
+          nullable: true
+        nextFollowupAt:
+          type: string
+          format: date-time
+          nullable: true
+        doNotFollowup:
+          type: boolean
+        doNotFollowupReason:
+          type: string
+          nullable: true
+        scoreHistory:
+          type: array
+          items:
+            type: object
+            properties:
+              score:
+                type: integer
+              date:
+                type: string
+              cutoffWindow:
+                type: string
+        opportunityId:
+          type: integer
+          nullable: true
+        followupLogs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiPipelineFollowupLog"
+        enteredAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AiPipelineEntryList:
+      type: object
+      required: [data, total, page, pageSize]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiPipelineEntry"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    AiPipelineDashboardStats:
+      type: object
+      required: [today, scoreDistribution, recentAnalyses, cutoffTimeline]
+      properties:
+        today:
+          type: object
+          required: [analyzed, enteredPipeline, opportunitiesCreated, followupsSent]
+          properties:
+            analyzed:
+              type: integer
+            enteredPipeline:
+              type: integer
+            opportunitiesCreated:
+              type: integer
+            followupsSent:
+              type: integer
+        scoreDistribution:
+          type: array
+          items:
+            type: object
+            properties:
+              range:
+                type: string
+              count:
+                type: integer
+              color:
+                type: string
+        recentAnalyses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiPipelineAnalysis"
+        cutoffTimeline:
+          type: array
+          items:
+            type: object
+            properties:
+              scheduledTime:
+                type: string
+                format: date-time
+              status:
+                type: string
+              completedAt:
+                type: string
+                format: date-time
+                nullable: true
+
+    AiPipelineCutoffLog:
+      type: object
+      required: [id, pipelineId, scheduledTime, status, contactsProcessed, contactsEnteredPipeline, opportunitiesCreated, createdAt]
+      properties:
+        id:
+          type: integer
+        pipelineId:
+          type: integer
+        scheduledTime:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        contactsProcessed:
+          type: integer
+        contactsEnteredPipeline:
+          type: integer
+        opportunitiesCreated:
+          type: integer
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
 

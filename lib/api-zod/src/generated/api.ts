@@ -4688,8 +4688,125 @@ export const CreateGroupResponse = zod.object({
 
 
 /**
+ * @summary List all sales pipelines for the tenant (auto-seeds one default on first access)
+ */
+export const ListPipelinesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "pipelineType": zod.enum(['sales', 'service', 'custom']),
+  "color": zod.string(),
+  "isDefault": zod.boolean(),
+  "isArchived": zod.boolean(),
+  "sortOrder": zod.number(),
+  "stages": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "sortOrder": zod.number().describe('Ascending display order on the board.'),
+  "isWon": zod.boolean().describe('Terminal \"deal won\" column.'),
+  "isLost": zod.boolean().describe('Terminal \"deal lost\" column.'),
+  "color": zod.string().nullable().describe('Optional hex color for the column header.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A column in the tenant\'s sales pipeline (kanban board).')),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A named kanban sales pipeline belonging to the tenant.')
+export const ListPipelinesResponse = zod.array(ListPipelinesResponseItem)
+
+
+/**
+ * @summary Create a new sales pipeline
+ */
+export const createPipelineBodyNameMax = 80;
+
+
+
+export const CreatePipelineBody = zod.object({
+  "name": zod.string().max(createPipelineBodyNameMax),
+  "color": zod.string().optional(),
+  "pipelineType": zod.enum(['sales', 'service', 'custom']).optional()
+})
+
+
+/**
+ * @summary Update a sales pipeline
+ */
+export const UpdatePipelineParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updatePipelineBodyNameMax = 80;
+
+
+
+export const UpdatePipelineBody = zod.object({
+  "name": zod.string().max(updatePipelineBodyNameMax).optional(),
+  "color": zod.string().optional(),
+  "isDefault": zod.boolean().optional(),
+  "isArchived": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdatePipelineResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "pipelineType": zod.enum(['sales', 'service', 'custom']),
+  "color": zod.string(),
+  "isDefault": zod.boolean(),
+  "isArchived": zod.boolean(),
+  "sortOrder": zod.number(),
+  "stages": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "sortOrder": zod.number().describe('Ascending display order on the board.'),
+  "isWon": zod.boolean().describe('Terminal \"deal won\" column.'),
+  "isLost": zod.boolean().describe('Terminal \"deal lost\" column.'),
+  "color": zod.string().nullable().describe('Optional hex color for the column header.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A column in the tenant\'s sales pipeline (kanban board).')),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A named kanban sales pipeline belonging to the tenant.')
+
+
+/**
+ * @summary Archive (soft-delete) a pipeline
+ */
+export const DeletePipelineParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeletePipelineResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "pipelineType": zod.enum(['sales', 'service', 'custom']),
+  "color": zod.string(),
+  "isDefault": zod.boolean(),
+  "isArchived": zod.boolean(),
+  "sortOrder": zod.number(),
+  "stages": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "sortOrder": zod.number().describe('Ascending display order on the board.'),
+  "isWon": zod.boolean().describe('Terminal \"deal won\" column.'),
+  "isLost": zod.boolean().describe('Terminal \"deal lost\" column.'),
+  "color": zod.string().nullable().describe('Optional hex color for the column header.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A column in the tenant\'s sales pipeline (kanban board).')),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('A named kanban sales pipeline belonging to the tenant.')
+
+
+/**
  * @summary List pipeline stages (auto-seeds 7 defaults on first access)
  */
+export const ListSalesStagesQueryParams = zod.object({
+  "pipelineId": zod.coerce.number().optional().describe('Filter stages to a specific pipeline')
+})
+
 export const ListSalesStagesResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -4715,6 +4832,7 @@ export const createSalesStageBodyColorMax = 20;
 
 
 export const CreateSalesStageBody = zod.object({
+  "pipelineId": zod.number().describe('The pipeline this stage belongs to.'),
   "name": zod.string().min(1).max(createSalesStageBodyNameMax),
   "sortOrder": zod.number().min(createSalesStageBodySortOrderMin).optional(),
   "isWon": zod.boolean().optional(),
@@ -4774,6 +4892,7 @@ export const DeleteSalesStageResponse = zod.object({
  * @summary Reorder the tenant's pipeline stages
  */
 export const ReorderSalesStagesBody = zod.object({
+  "pipelineId": zod.number().optional().describe('Scope the reorder to a specific pipeline.'),
   "stageIds": zod.array(zod.number()).describe('All of the tenant\'s pipeline stage ids, in the desired display order. sortOrder is reassigned by array index.')
 }).describe('New top-to-bottom order of pipeline stage ids for the tenant\'s board.')
 
@@ -4812,6 +4931,23 @@ export const ListOpportunitiesResponseItem = zod.object({
   "status": zod.enum(['open', 'won', 'lost']),
   "waitingStatus": zod.string().nullable(),
   "productInterest": zod.array(zod.string()),
+  "pipelineId": zod.number().nullish(),
+  "intentKey": zod.string().nullish(),
+  "intentType": zod.string().nullish(),
+  "scoreReason": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "analyzedAt": zod.coerce.date().nullish(),
+  "analyzedMessageIds": zod.array(zod.string()).nullish(),
+  "keyQuotes": zod.array(zod.string()).nullish(),
+  "profilePicUrl": zod.string().nullish(),
+  "channelLabel": zod.string().nullish(),
+  "channelColor": zod.string().nullish(),
+  "stageName": zod.string().nullish(),
+  "pipelineName": zod.string().nullish(),
+  "products": zod.array(zod.object({
+  "productId": zod.number().nullish(),
+  "productName": zod.string()
+})).optional(),
   "aiNotes": zod.string().nullable(),
   "lastActivityAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
@@ -4876,6 +5012,23 @@ export const GetOpportunityResponse = zod.object({
   "status": zod.enum(['open', 'won', 'lost']),
   "waitingStatus": zod.string().nullable(),
   "productInterest": zod.array(zod.string()),
+  "pipelineId": zod.number().nullish(),
+  "intentKey": zod.string().nullish(),
+  "intentType": zod.string().nullish(),
+  "scoreReason": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "analyzedAt": zod.coerce.date().nullish(),
+  "analyzedMessageIds": zod.array(zod.string()).nullish(),
+  "keyQuotes": zod.array(zod.string()).nullish(),
+  "profilePicUrl": zod.string().nullish(),
+  "channelLabel": zod.string().nullish(),
+  "channelColor": zod.string().nullish(),
+  "stageName": zod.string().nullish(),
+  "pipelineName": zod.string().nullish(),
+  "products": zod.array(zod.object({
+  "productId": zod.number().nullish(),
+  "productName": zod.string()
+})).optional(),
   "aiNotes": zod.string().nullable(),
   "lastActivityAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
@@ -4934,6 +5087,23 @@ export const UpdateOpportunityResponse = zod.object({
   "status": zod.enum(['open', 'won', 'lost']),
   "waitingStatus": zod.string().nullable(),
   "productInterest": zod.array(zod.string()),
+  "pipelineId": zod.number().nullish(),
+  "intentKey": zod.string().nullish(),
+  "intentType": zod.string().nullish(),
+  "scoreReason": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "analyzedAt": zod.coerce.date().nullish(),
+  "analyzedMessageIds": zod.array(zod.string()).nullish(),
+  "keyQuotes": zod.array(zod.string()).nullish(),
+  "profilePicUrl": zod.string().nullish(),
+  "channelLabel": zod.string().nullish(),
+  "channelColor": zod.string().nullish(),
+  "stageName": zod.string().nullish(),
+  "pipelineName": zod.string().nullish(),
+  "products": zod.array(zod.object({
+  "productId": zod.number().nullish(),
+  "productName": zod.string()
+})).optional(),
   "aiNotes": zod.string().nullable(),
   "lastActivityAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date(),
@@ -5032,6 +5202,9 @@ export const GetSalesForecastResponse = zod.object({
   "lostCount": zod.number(),
   "wonValueIdr": zod.number().describe('Sum of estimated value across won opportunities (whole Rupiah).'),
   "winRatePct": zod.number().describe('won \/ (won + lost) × 100, rounded to a whole percent (0 when none closed).'),
+  "avgDealSizeIdr": zod.number().describe('Average estimated value per open opportunity (whole Rupiah).'),
+  "salesVelocityIdr": zod.number().describe('Revenue generated per day in Rupiah (openCount × avgDealSize × winRate%) \/ avgCycleDays.'),
+  "avgCycleDays": zod.number().describe('Average days from creation to close across won and lost deals.'),
   "byStage": zod.array(zod.object({
   "stageId": zod.number().nullable(),
   "stageName": zod.string(),
@@ -5219,5 +5392,622 @@ export const ListSalesAuditEventsResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 }).describe('An append-only AI\/sales activity log entry.')
 export const ListSalesAuditEventsResponse = zod.array(ListSalesAuditEventsResponseItem)
+
+
+/**
+ * @summary List all AI Pipelines for the current tenant
+ */
+export const ListAiPipelinesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number(),
+  "autoCreateOpportunity": zod.boolean(),
+  "autoFollowupEnabled": zod.boolean(),
+  "followupIntervals": zod.array(zod.string()),
+  "cutoffTimes": zod.array(zod.string()),
+  "channelIds": zod.array(zod.number()),
+  "excludeLabelIds": zod.array(zod.number()),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "todayStats": zod.object({
+  "analyzed": zod.number().optional(),
+  "enteredPipeline": zod.number().optional(),
+  "opportunitiesCreated": zod.number().optional()
+}).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListAiPipelinesResponse = zod.array(ListAiPipelinesResponseItem)
+
+
+/**
+ * @summary Create a new AI Pipeline
+ */
+export const createAiPipelineBodyNameMin = 3;
+export const createAiPipelineBodyNameMax = 100;
+
+export const createAiPipelineBodyIsActiveDefault = true;
+export const createAiPipelineBodyScoreThresholdDefault = 70;
+export const createAiPipelineBodyScoreThresholdMin = 0;
+export const createAiPipelineBodyScoreThresholdMax = 100;
+
+export const createAiPipelineBodyOpportunityThresholdDefault = 80;
+export const createAiPipelineBodyOpportunityThresholdMin = 0;
+export const createAiPipelineBodyOpportunityThresholdMax = 100;
+
+export const createAiPipelineBodyAutoCreateOpportunityDefault = false;
+export const createAiPipelineBodyAutoFollowupEnabledDefault = false;
+export const createAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
+export const createAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
+
+
+export const CreateAiPipelineBody = zod.object({
+  "name": zod.string().min(createAiPipelineBodyNameMin).max(createAiPipelineBodyNameMax),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean().default(createAiPipelineBodyIsActiveDefault),
+  "scoreThreshold": zod.number().min(createAiPipelineBodyScoreThresholdMin).max(createAiPipelineBodyScoreThresholdMax).default(createAiPipelineBodyScoreThresholdDefault),
+  "opportunityThreshold": zod.number().min(createAiPipelineBodyOpportunityThresholdMin).max(createAiPipelineBodyOpportunityThresholdMax).default(createAiPipelineBodyOpportunityThresholdDefault),
+  "autoCreateOpportunity": zod.boolean().default(createAiPipelineBodyAutoCreateOpportunityDefault),
+  "autoFollowupEnabled": zod.boolean().default(createAiPipelineBodyAutoFollowupEnabledDefault),
+  "followupIntervals": zod.array(zod.string()).default(createAiPipelineBodyFollowupIntervalsDefault),
+  "cutoffTimes": zod.array(zod.string()).default(createAiPipelineBodyCutoffTimesDefault),
+  "channelIds": zod.array(zod.number()).min(1),
+  "excludeLabelIds": zod.array(zod.number()).optional()
+})
+
+
+/**
+ * @summary Get a single AI Pipeline
+ */
+export const GetAiPipelineParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAiPipelineResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number(),
+  "autoCreateOpportunity": zod.boolean(),
+  "autoFollowupEnabled": zod.boolean(),
+  "followupIntervals": zod.array(zod.string()),
+  "cutoffTimes": zod.array(zod.string()),
+  "channelIds": zod.array(zod.number()),
+  "excludeLabelIds": zod.array(zod.number()),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "todayStats": zod.object({
+  "analyzed": zod.number().optional(),
+  "enteredPipeline": zod.number().optional(),
+  "opportunitiesCreated": zod.number().optional()
+}).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update an AI Pipeline configuration
+ */
+export const UpdateAiPipelineParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateAiPipelineBodyNameMin = 3;
+export const updateAiPipelineBodyNameMax = 100;
+
+export const updateAiPipelineBodyIsActiveDefault = true;
+export const updateAiPipelineBodyScoreThresholdDefault = 70;
+export const updateAiPipelineBodyScoreThresholdMin = 0;
+export const updateAiPipelineBodyScoreThresholdMax = 100;
+
+export const updateAiPipelineBodyOpportunityThresholdDefault = 80;
+export const updateAiPipelineBodyOpportunityThresholdMin = 0;
+export const updateAiPipelineBodyOpportunityThresholdMax = 100;
+
+export const updateAiPipelineBodyAutoCreateOpportunityDefault = false;
+export const updateAiPipelineBodyAutoFollowupEnabledDefault = false;
+export const updateAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
+export const updateAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
+
+
+export const UpdateAiPipelineBody = zod.object({
+  "name": zod.string().min(updateAiPipelineBodyNameMin).max(updateAiPipelineBodyNameMax),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean().default(updateAiPipelineBodyIsActiveDefault),
+  "scoreThreshold": zod.number().min(updateAiPipelineBodyScoreThresholdMin).max(updateAiPipelineBodyScoreThresholdMax).default(updateAiPipelineBodyScoreThresholdDefault),
+  "opportunityThreshold": zod.number().min(updateAiPipelineBodyOpportunityThresholdMin).max(updateAiPipelineBodyOpportunityThresholdMax).default(updateAiPipelineBodyOpportunityThresholdDefault),
+  "autoCreateOpportunity": zod.boolean().default(updateAiPipelineBodyAutoCreateOpportunityDefault),
+  "autoFollowupEnabled": zod.boolean().default(updateAiPipelineBodyAutoFollowupEnabledDefault),
+  "followupIntervals": zod.array(zod.string()).default(updateAiPipelineBodyFollowupIntervalsDefault),
+  "cutoffTimes": zod.array(zod.string()).default(updateAiPipelineBodyCutoffTimesDefault),
+  "channelIds": zod.array(zod.number()).min(1),
+  "excludeLabelIds": zod.array(zod.number()).optional()
+})
+
+export const UpdateAiPipelineResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number(),
+  "autoCreateOpportunity": zod.boolean(),
+  "autoFollowupEnabled": zod.boolean(),
+  "followupIntervals": zod.array(zod.string()),
+  "cutoffTimes": zod.array(zod.string()),
+  "channelIds": zod.array(zod.number()),
+  "excludeLabelIds": zod.array(zod.number()),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "todayStats": zod.object({
+  "analyzed": zod.number().optional(),
+  "enteredPipeline": zod.number().optional(),
+  "opportunitiesCreated": zod.number().optional()
+}).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete an AI Pipeline
+ */
+export const DeleteAiPipelineParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary Toggle active/inactive status of an AI Pipeline
+ */
+export const ToggleAiPipelineParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ToggleAiPipelineResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number(),
+  "autoCreateOpportunity": zod.boolean(),
+  "autoFollowupEnabled": zod.boolean(),
+  "followupIntervals": zod.array(zod.string()),
+  "cutoffTimes": zod.array(zod.string()),
+  "channelIds": zod.array(zod.number()),
+  "excludeLabelIds": zod.array(zod.number()),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "todayStats": zod.object({
+  "analyzed": zod.number().optional(),
+  "enteredPipeline": zod.number().optional(),
+  "opportunitiesCreated": zod.number().optional()
+}).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Manually trigger a cut-off analysis run
+ */
+export const RunAiPipelineNowParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RunAiPipelineNowResponse = zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "scheduledTime": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
+  "status": zod.string(),
+  "contactsProcessed": zod.number(),
+  "contactsEnteredPipeline": zod.number(),
+  "opportunitiesCreated": zod.number(),
+  "errorMessage": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List analysis results for a pipeline
+ */
+export const ListAiPipelineAnalysesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const listAiPipelineAnalysesQueryPageSizeMax = 200;
+
+
+
+export const ListAiPipelineAnalysesQueryParams = zod.object({
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "scoreRange": zod.coerce.string().optional(),
+  "channelId": zod.coerce.number().optional(),
+  "enteredPipeline": zod.coerce.boolean().optional(),
+  "search": zod.coerce.string().optional(),
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(listAiPipelineAnalysesQueryPageSizeMax).optional()
+})
+
+export const ListAiPipelineAnalysesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "cutoffDatetime": zod.coerce.date(),
+  "cutoffWindowStart": zod.coerce.date().optional(),
+  "cutoffWindowEnd": zod.coerce.date().optional(),
+  "score": zod.number(),
+  "previousScore": zod.number().nullish(),
+  "scoreBreakdown": zod.object({
+  "buying_signal": zod.number().optional(),
+  "urgency": zod.number().optional(),
+  "engagement": zod.number().optional(),
+  "commitment": zod.number().optional(),
+  "product_fit": zod.number().optional(),
+  "barrier_adjustment": zod.number().optional()
+}).nullish(),
+  "status": zod.string().nullish(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "scoreReason": zod.string().nullish(),
+  "aiNotes": zod.string().nullish(),
+  "enteredPipeline": zod.boolean(),
+  "pipelineEntryId": zod.number().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "pageSize": zod.number()
+})
+
+
+/**
+ * @summary Get a single analysis result
+ */
+export const GetAiPipelineAnalysisParams = zod.object({
+  "id": zod.coerce.number(),
+  "aid": zod.coerce.number()
+})
+
+export const GetAiPipelineAnalysisResponse = zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "cutoffDatetime": zod.coerce.date(),
+  "cutoffWindowStart": zod.coerce.date().optional(),
+  "cutoffWindowEnd": zod.coerce.date().optional(),
+  "score": zod.number(),
+  "previousScore": zod.number().nullish(),
+  "scoreBreakdown": zod.object({
+  "buying_signal": zod.number().optional(),
+  "urgency": zod.number().optional(),
+  "engagement": zod.number().optional(),
+  "commitment": zod.number().optional(),
+  "product_fit": zod.number().optional(),
+  "barrier_adjustment": zod.number().optional()
+}).nullish(),
+  "status": zod.string().nullish(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "scoreReason": zod.string().nullish(),
+  "aiNotes": zod.string().nullish(),
+  "enteredPipeline": zod.boolean(),
+  "pipelineEntryId": zod.number().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List pipeline entries
+ */
+export const ListAiPipelineEntriesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const listAiPipelineEntriesQueryPageSizeMax = 200;
+
+
+
+export const ListAiPipelineEntriesQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "channelId": zod.coerce.number().optional(),
+  "search": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(listAiPipelineEntriesQueryPageSizeMax).optional()
+})
+
+export const ListAiPipelineEntriesResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "analysisId": zod.number().optional(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "currentScore": zod.number(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "status": zod.string(),
+  "followupCount": zod.number(),
+  "lastFollowupAt": zod.coerce.date().nullish(),
+  "nextFollowupAt": zod.coerce.date().nullish(),
+  "doNotFollowup": zod.boolean().optional(),
+  "doNotFollowupReason": zod.string().nullish(),
+  "scoreHistory": zod.array(zod.object({
+  "score": zod.number().optional(),
+  "date": zod.string().optional(),
+  "cutoffWindow": zod.string().optional()
+})).optional(),
+  "opportunityId": zod.number().nullish(),
+  "followupLogs": zod.array(zod.object({
+  "id": zod.number(),
+  "entryId": zod.number(),
+  "followupNumber": zod.number(),
+  "messageSent": zod.string(),
+  "sentAt": zod.coerce.date(),
+  "wasReplied": zod.boolean(),
+  "repliedAt": zod.coerce.date().nullish(),
+  "status": zod.string()
+})).optional(),
+  "enteredAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "pageSize": zod.number()
+})
+
+
+/**
+ * @summary Get a single pipeline entry with follow-up logs
+ */
+export const GetAiPipelineEntryParams = zod.object({
+  "id": zod.coerce.number(),
+  "eid": zod.coerce.number()
+})
+
+export const GetAiPipelineEntryResponse = zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "analysisId": zod.number().optional(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "currentScore": zod.number(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "status": zod.string(),
+  "followupCount": zod.number(),
+  "lastFollowupAt": zod.coerce.date().nullish(),
+  "nextFollowupAt": zod.coerce.date().nullish(),
+  "doNotFollowup": zod.boolean().optional(),
+  "doNotFollowupReason": zod.string().nullish(),
+  "scoreHistory": zod.array(zod.object({
+  "score": zod.number().optional(),
+  "date": zod.string().optional(),
+  "cutoffWindow": zod.string().optional()
+})).optional(),
+  "opportunityId": zod.number().nullish(),
+  "followupLogs": zod.array(zod.object({
+  "id": zod.number(),
+  "entryId": zod.number(),
+  "followupNumber": zod.number(),
+  "messageSent": zod.string(),
+  "sentAt": zod.coerce.date(),
+  "wasReplied": zod.boolean(),
+  "repliedAt": zod.coerce.date().nullish(),
+  "status": zod.string()
+})).optional(),
+  "enteredAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a pipeline entry status
+ */
+export const UpdateAiPipelineEntryParams = zod.object({
+  "id": zod.coerce.number(),
+  "eid": zod.coerce.number()
+})
+
+export const UpdateAiPipelineEntryBody = zod.object({
+  "status": zod.string().optional()
+})
+
+export const UpdateAiPipelineEntryResponse = zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "analysisId": zod.number().optional(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "currentScore": zod.number(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "status": zod.string(),
+  "followupCount": zod.number(),
+  "lastFollowupAt": zod.coerce.date().nullish(),
+  "nextFollowupAt": zod.coerce.date().nullish(),
+  "doNotFollowup": zod.boolean().optional(),
+  "doNotFollowupReason": zod.string().nullish(),
+  "scoreHistory": zod.array(zod.object({
+  "score": zod.number().optional(),
+  "date": zod.string().optional(),
+  "cutoffWindow": zod.string().optional()
+})).optional(),
+  "opportunityId": zod.number().nullish(),
+  "followupLogs": zod.array(zod.object({
+  "id": zod.number(),
+  "entryId": zod.number(),
+  "followupNumber": zod.number(),
+  "messageSent": zod.string(),
+  "sentAt": zod.coerce.date(),
+  "wasReplied": zod.boolean(),
+  "repliedAt": zod.coerce.date().nullish(),
+  "status": zod.string()
+})).optional(),
+  "enteredAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Mark a pipeline entry as do-not-follow-up
+ */
+export const DoNotFollowupAiPipelineEntryParams = zod.object({
+  "id": zod.coerce.number(),
+  "eid": zod.coerce.number()
+})
+
+export const DoNotFollowupAiPipelineEntryBody = zod.object({
+  "reason": zod.string().optional()
+})
+
+export const DoNotFollowupAiPipelineEntryResponse = zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "analysisId": zod.number().optional(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "currentScore": zod.number(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "status": zod.string(),
+  "followupCount": zod.number(),
+  "lastFollowupAt": zod.coerce.date().nullish(),
+  "nextFollowupAt": zod.coerce.date().nullish(),
+  "doNotFollowup": zod.boolean().optional(),
+  "doNotFollowupReason": zod.string().nullish(),
+  "scoreHistory": zod.array(zod.object({
+  "score": zod.number().optional(),
+  "date": zod.string().optional(),
+  "cutoffWindow": zod.string().optional()
+})).optional(),
+  "opportunityId": zod.number().nullish(),
+  "followupLogs": zod.array(zod.object({
+  "id": zod.number(),
+  "entryId": zod.number(),
+  "followupNumber": zod.number(),
+  "messageSent": zod.string(),
+  "sentAt": zod.coerce.date(),
+  "wasReplied": zod.boolean(),
+  "repliedAt": zod.coerce.date().nullish(),
+  "status": zod.string()
+})).optional(),
+  "enteredAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get dashboard stats for a pipeline
+ */
+export const GetAiPipelineDashboardStatsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAiPipelineDashboardStatsResponse = zod.object({
+  "today": zod.object({
+  "analyzed": zod.number(),
+  "enteredPipeline": zod.number(),
+  "opportunitiesCreated": zod.number(),
+  "followupsSent": zod.number()
+}),
+  "scoreDistribution": zod.array(zod.object({
+  "range": zod.string().optional(),
+  "count": zod.number().optional(),
+  "color": zod.string().optional()
+})),
+  "recentAnalyses": zod.array(zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "cutoffDatetime": zod.coerce.date(),
+  "cutoffWindowStart": zod.coerce.date().optional(),
+  "cutoffWindowEnd": zod.coerce.date().optional(),
+  "score": zod.number(),
+  "previousScore": zod.number().nullish(),
+  "scoreBreakdown": zod.object({
+  "buying_signal": zod.number().optional(),
+  "urgency": zod.number().optional(),
+  "engagement": zod.number().optional(),
+  "commitment": zod.number().optional(),
+  "product_fit": zod.number().optional(),
+  "barrier_adjustment": zod.number().optional()
+}).nullish(),
+  "status": zod.string().nullish(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "scoreReason": zod.string().nullish(),
+  "aiNotes": zod.string().nullish(),
+  "enteredPipeline": zod.boolean(),
+  "pipelineEntryId": zod.number().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "createdAt": zod.coerce.date()
+})),
+  "cutoffTimeline": zod.array(zod.object({
+  "scheduledTime": zod.coerce.date().optional(),
+  "status": zod.string().optional(),
+  "completedAt": zod.coerce.date().nullish()
+}))
+})
+
+
+/**
+ * @summary List cut-off run history for a pipeline
+ */
+export const ListAiPipelineCutoffLogsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListAiPipelineCutoffLogsQueryParams = zod.object({
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListAiPipelineCutoffLogsResponseItem = zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "scheduledTime": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
+  "status": zod.string(),
+  "contactsProcessed": zod.number(),
+  "contactsEnteredPipeline": zod.number(),
+  "opportunitiesCreated": zod.number(),
+  "errorMessage": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListAiPipelineCutoffLogsResponse = zod.array(ListAiPipelineCutoffLogsResponseItem)
 
 

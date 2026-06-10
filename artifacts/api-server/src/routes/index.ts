@@ -41,6 +41,7 @@ import databaseRouter from "./database";
 import pushRouter from "./push";
 import storageRouter from "./storage";
 import salesRouter from "./sales";
+import aiPipelineRouter from "./ai-pipeline";
 import waOtpRouter from "./wa-otp";
 import onboardingRouter from "./onboarding";
 import { requireAuth, requireAdmin } from "../lib/auth";
@@ -102,6 +103,7 @@ router.use("/link-preview", linkPreviewRouter);
 // AI Sales Assistant (Enterprise-only; the router self-gates on
 // requireSalesAssistant + per-route opportunity permissions).
 router.use("/sales", salesRouter);
+router.use("/ai-pipelines", aiPipelineRouter);
 router.use("/billing", billingRouter);
 router.use("/retention", retentionRouter);
 router.use("/database", databaseRouter);

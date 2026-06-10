@@ -363,13 +363,20 @@ export interface SuccessResponse {
   success: boolean;
 }
 
+export type PipelinePipelineType = typeof PipelinePipelineType[keyof typeof PipelinePipelineType];
+
+
+export const PipelinePipelineType = {
+  sales: 'sales',
+  service: 'service',
+  custom: 'custom',
+} as const;
+
 /**
  * A column in the tenant's sales pipeline (kanban board).
  */
 export interface SalesStage {
   id: number;
-  /** Pipeline this stage belongs to. */
-  pipelineId: number;
   name: string;
   /** Ascending display order on the board. */
   sortOrder: number;
@@ -387,16 +394,13 @@ export interface SalesStage {
 }
 
 /**
- * A tenant-owned sales pipeline (e.g. "Pipeline Sales", "Pipeline Service").
+ * A named kanban sales pipeline belonging to the tenant.
  */
 export interface Pipeline {
   id: number;
   name: string;
-  /** 'sales' | 'service' | 'custom' */
-  pipelineType: string;
-  /** Hex color for the pipeline tab/badge. */
+  pipelineType: PipelinePipelineType;
   color: string;
-  /** Whether this pipeline is the default for AI routing. */
   isDefault: boolean;
   isArchived: boolean;
   sortOrder: number;
@@ -405,22 +409,33 @@ export interface Pipeline {
   updatedAt: string;
 }
 
-export interface PipelineInput {
+export type PipelineCreatePipelineType = typeof PipelineCreatePipelineType[keyof typeof PipelineCreatePipelineType];
+
+
+export const PipelineCreatePipelineType = {
+  sales: 'sales',
+  service: 'service',
+  custom: 'custom',
+} as const;
+
+export interface PipelineCreate {
+  /** @maxLength 80 */
   name: string;
-  pipelineType?: string;
   color?: string;
+  pipelineType?: PipelineCreatePipelineType;
 }
 
 export interface PipelineUpdate {
+  /** @maxLength 80 */
   name?: string;
   color?: string;
-  isArchived?: boolean;
   isDefault?: boolean;
+  isArchived?: boolean;
   sortOrder?: number;
 }
 
 export interface SalesStageInput {
-  /** Pipeline this stage belongs to (required for multi-pipeline). */
+  /** The pipeline this stage belongs to. */
   pipelineId: number;
   /**
      * @minLength 1
@@ -467,20 +482,15 @@ export const OpportunityStatus = {
   lost: 'lost',
 } as const;
 
+export type OpportunityProductsItem = {
+  /** @nullable */
+  productId?: number | null;
+  productName: string;
+};
+
 /**
  * A sales opportunity (deal) attached to a chat.
  */
-export interface KeyQuotes {
-  positive: string[];
-  negative: string[];
-  verbatim: string[];
-}
-
-export interface OpportunityProduct {
-  productId: number | null;
-  productName: string;
-}
-
 export interface Opportunity {
   id: number;
   /**
@@ -490,17 +500,11 @@ export interface Opportunity {
   assignedUserId: number | null;
   chatId: number;
   channelId: number;
-  /** Pipeline this opportunity belongs to. @nullable */
-  pipelineId: number | null;
   contactPhone: string;
   /** @nullable */
   contactName: string | null;
   /** @nullable */
   stageId: number | null;
-  /** AI-generated intent cluster slug. @nullable */
-  intentKey: string | null;
-  /** purchase | service | renewal | other */
-  intentType: string;
   /** AI lead score 0–100. */
   leadScore: number;
   /** @nullable */
@@ -512,32 +516,38 @@ export interface Opportunity {
   waitingStatus: string | null;
   productInterest: string[];
   /** @nullable */
-  scoreReason: string | null;
+  pipelineId?: number | null;
+  /** @nullable */
+  intentKey?: string | null;
+  /** @nullable */
+  intentType?: string | null;
+  /** @nullable */
+  scoreReason?: string | null;
+  /** @nullable */
+  recommendation?: string | null;
+  /** @nullable */
+  analyzedAt?: string | null;
+  /** @nullable */
+  analyzedMessageIds?: string[] | null;
+  /** @nullable */
+  keyQuotes?: string[] | null;
+  /** @nullable */
+  profilePicUrl?: string | null;
+  /** @nullable */
+  channelLabel?: string | null;
+  /** @nullable */
+  channelColor?: string | null;
+  /** @nullable */
+  stageName?: string | null;
+  /** @nullable */
+  pipelineName?: string | null;
+  products?: OpportunityProductsItem[];
   /** @nullable */
   aiNotes: string | null;
-  /** @nullable */
-  recommendation: string | null;
-  /** @nullable */
-  analyzedAt: string | null;
-  /** IDs of messages in the analysis window. */
-  analyzedMessageIds: number[];
-  keyQuotes: KeyQuotes;
   /** @nullable */
   lastActivityAt: string | null;
   createdAt: string;
   updatedAt: string;
-  // Enriched from JOINs (present in list + single GET responses)
-  /** @nullable */
-  profilePicUrl: string | null;
-  /** @nullable */
-  channelLabel: string | null;
-  /** @nullable */
-  channelColor: string | null;
-  /** @nullable */
-  stageName: string | null;
-  /** @nullable */
-  pipelineName: string | null;
-  products: OpportunityProduct[];
 }
 
 export type OpportunityInputStatus = typeof OpportunityInputStatus[keyof typeof OpportunityInputStatus];
@@ -552,14 +562,6 @@ export const OpportunityInputStatus = {
 export interface OpportunityInput {
   /** The chat to attach this opportunity to (must be in the tenant). */
   chatId: number;
-  /** Pipeline to assign; defaults to the owner's default pipeline. @nullable */
-  pipelineId?: number | null;
-  /**
-   * AI-detected intent key for this opportunity. When provided, used as dedup
-   * key (chat_id + intent_key) so re-clicking "Buat" for the same candidate
-   * upserts rather than creates a duplicate. @nullable
-   */
-  intentKey?: string | null;
   /** @nullable */
   assignedUserId?: number | null;
   /** @nullable */
@@ -718,12 +720,12 @@ export interface SalesForecast {
   wonValueIdr: number;
   /** won / (won + lost) × 100, rounded to a whole percent (0 when none closed). */
   winRatePct: number;
-  /** Average estimated value across open deals (0 when pipeline empty). */
+  /** Average estimated value per open opportunity (whole Rupiah). */
   avgDealSizeIdr: number;
-  /** Average days from opportunity creation to close (won or lost). 0 when no closed deals. */
-  avgCycleDays: number;
-  /** Sales velocity in Rupiah/day: (openCount × avgDealSize × winRate%) / avgCycleDays. */
+  /** Revenue generated per day in Rupiah (openCount × avgDealSize × winRate%) / avgCycleDays. */
   salesVelocityIdr: number;
+  /** Average days from creation to close across won and lost deals. */
+  avgCycleDays: number;
   /** Per-stage open count, value, and weighted forecast. */
   byStage: SalesForecastByStageItem[];
 }
@@ -825,35 +827,6 @@ export interface SalesInsight {
      * @nullable
      */
   lastActivityAt: string | null;
-  /** All opportunities detected for this chat (multi-pipeline, multi-intent). */
-  opportunities: Array<{
-    id: number;
-    pipelineId: number | null;
-    pipelineName: string | null;
-    stageId: number | null;
-    stageName: string | null;
-    intentKey: string | null;
-    intentType: string;
-    leadScore: number;
-    lastActivityAt: string | null;
-  }>;
-  /**
-   * Raw AI-detected candidates from the latest analysis run.
-   * Includes candidates not yet persisted as opportunities (auto-create OFF).
-   * Use intentKey to match against existing opportunities to avoid showing "Buat" for already-created ones.
-   */
-  detectedCandidates: Array<{
-    intentKey: string;
-    intentType: string;
-    pipelineType: string;
-    products: string[];
-    intentCategory: string;
-    leadScore: number;
-    estimatedValueIdr: number;
-    scoreReason: string | null;
-    aiNotes: string | null;
-    recommendation: string | null;
-  }>;
 }
 
 /**
@@ -918,9 +891,9 @@ export interface SalesAssistantSettingsUpdate {
  * New top-to-bottom order of pipeline stage ids for the tenant's board.
  */
 export interface ReorderStagesInput {
-  /** Pipeline the stages belong to (required). */
-  pipelineId: number;
-  /** All stage ids in this pipeline, in the desired display order. sortOrder is reassigned by array index. */
+  /** Scope the reorder to a specific pipeline. */
+  pipelineId?: number;
+  /** All of the tenant's pipeline stage ids, in the desired display order. sortOrder is reassigned by array index. */
   stageIds: number[];
 }
 
@@ -1225,7 +1198,6 @@ export type WhatsappStatusStatus = typeof WhatsappStatusStatus[keyof typeof What
 
 export const WhatsappStatusStatus = {
   connected: 'connected',
-  syncing: 'syncing',
   disconnected: 'disconnected',
   connecting: 'connecting',
   qr_ready: 'qr_ready',
@@ -3786,7 +3758,6 @@ export const ChannelStatus = {
   connecting: 'connecting',
   qr_ready: 'qr_ready',
   connected: 'connected',
-  syncing: 'syncing',
   error: 'error',
 } as const;
 
@@ -3804,8 +3775,6 @@ export interface Channel {
   status: ChannelStatus;
   /** WhatsApp-only: paired phone number (digits) */
   ownerPhone?: string | null;
-  /** When true this channel opens by default on app load */
-  isDefault: boolean;
   /** Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind. */
   metadata?: unknown | null;
   createdAt: string;
@@ -3841,8 +3810,6 @@ export interface ChannelUpdate {
      * @maxLength 40
      */
   icon?: string;
-  /** Set to true to make this the default channel on app load. Clears the flag on all sibling channels. */
-  isDefault?: boolean;
 }
 
 export interface TelegramConnect {
@@ -3875,6 +3842,187 @@ export interface ChannelPairQr {
   qrCode?: string | null;
   /** Last-paired phone number (digits). Present once the socket has connected at least once. */
   ownerPhone?: string | null;
+}
+
+export interface AiPipelineCreate {
+  /**
+     * @minLength 3
+     * @maxLength 100
+     */
+  name: string;
+  description?: string | null;
+  isActive?: boolean;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  scoreThreshold?: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  opportunityThreshold?: number;
+  autoCreateOpportunity?: boolean;
+  autoFollowupEnabled?: boolean;
+  followupIntervals?: string[];
+  cutoffTimes?: string[];
+  /** @minItems 1 */
+  channelIds: number[];
+  excludeLabelIds?: number[];
+}
+
+export type AiPipelineTodayStats = {
+  analyzed?: number;
+  enteredPipeline?: number;
+  opportunitiesCreated?: number;
+};
+
+export interface AiPipeline {
+  id: number;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+  scoreThreshold: number;
+  opportunityThreshold: number;
+  autoCreateOpportunity: boolean;
+  autoFollowupEnabled: boolean;
+  followupIntervals: string[];
+  cutoffTimes: string[];
+  channelIds: number[];
+  excludeLabelIds: number[];
+  lastRunAt?: string | null;
+  todayStats?: AiPipelineTodayStats;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AiPipelineAnalysisScoreBreakdown = {
+  buying_signal?: number;
+  urgency?: number;
+  engagement?: number;
+  commitment?: number;
+  product_fit?: number;
+  barrier_adjustment?: number;
+} | null;
+
+export interface AiPipelineAnalysis {
+  id: number;
+  pipelineId: number;
+  contactPhone: string;
+  contactName?: string | null;
+  channelId: number;
+  channelType?: string | null;
+  cutoffDatetime: string;
+  cutoffWindowStart?: string;
+  cutoffWindowEnd?: string;
+  score: number;
+  previousScore?: number | null;
+  scoreBreakdown?: AiPipelineAnalysisScoreBreakdown;
+  status?: string | null;
+  estimatedValue?: number | null;
+  productInterest?: string | null;
+  recommendation?: string | null;
+  scoreReason?: string | null;
+  aiNotes?: string | null;
+  enteredPipeline: boolean;
+  pipelineEntryId?: number | null;
+  opportunityId?: number | null;
+  createdAt: string;
+}
+
+export interface AiPipelineAnalysisList {
+  data: AiPipelineAnalysis[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AiPipelineFollowupLog {
+  id: number;
+  entryId: number;
+  followupNumber: number;
+  messageSent: string;
+  sentAt: string;
+  wasReplied: boolean;
+  repliedAt?: string | null;
+  status: string;
+}
+
+export type AiPipelineEntryScoreHistoryItem = {
+  score?: number;
+  date?: string;
+  cutoffWindow?: string;
+};
+
+export interface AiPipelineEntry {
+  id: number;
+  pipelineId: number;
+  analysisId?: number;
+  contactPhone: string;
+  contactName?: string | null;
+  channelId: number;
+  channelType?: string | null;
+  currentScore: number;
+  estimatedValue?: number | null;
+  productInterest?: string | null;
+  status: string;
+  followupCount: number;
+  lastFollowupAt?: string | null;
+  nextFollowupAt?: string | null;
+  doNotFollowup?: boolean;
+  doNotFollowupReason?: string | null;
+  scoreHistory?: AiPipelineEntryScoreHistoryItem[];
+  opportunityId?: number | null;
+  followupLogs?: AiPipelineFollowupLog[];
+  enteredAt: string;
+  updatedAt: string;
+}
+
+export interface AiPipelineEntryList {
+  data: AiPipelineEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export type AiPipelineDashboardStatsToday = {
+  analyzed: number;
+  enteredPipeline: number;
+  opportunitiesCreated: number;
+  followupsSent: number;
+};
+
+export type AiPipelineDashboardStatsScoreDistributionItem = {
+  range?: string;
+  count?: number;
+  color?: string;
+};
+
+export type AiPipelineDashboardStatsCutoffTimelineItem = {
+  scheduledTime?: string;
+  status?: string;
+  completedAt?: string | null;
+};
+
+export interface AiPipelineDashboardStats {
+  today: AiPipelineDashboardStatsToday;
+  scoreDistribution: AiPipelineDashboardStatsScoreDistributionItem[];
+  recentAnalyses: AiPipelineAnalysis[];
+  cutoffTimeline: AiPipelineDashboardStatsCutoffTimelineItem[];
+}
+
+export interface AiPipelineCutoffLog {
+  id: number;
+  pipelineId: number;
+  scheduledTime: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  status: string;
+  contactsProcessed: number;
+  contactsEnteredPipeline: number;
+  opportunitiesCreated: number;
+  errorMessage?: string | null;
+  createdAt: string;
 }
 
 export type GetMyBillingTrendParams = {
@@ -4100,6 +4248,13 @@ export type ForwardMessage200 = {
   results: ForwardMessage200ResultsItem[];
 };
 
+export type ListSalesStagesParams = {
+/**
+ * Filter stages to a specific pipeline
+ */
+pipelineId?: number;
+};
+
 export type ListOpportunitiesParams = {
 /**
  * Filter to a single pipeline stage.
@@ -4109,10 +4264,6 @@ stageId?: number;
  * Filter by lifecycle status.
  */
 status?: ListOpportunitiesStatus;
-/**
- * Filter by pipeline.
- */
-pipelineId?: number;
 };
 
 export type ListOpportunitiesStatus = typeof ListOpportunitiesStatus[keyof typeof ListOpportunitiesStatus];
@@ -4134,6 +4285,53 @@ opportunityId?: number;
  * @minimum 1
  * @maximum 200
  */
+limit?: number;
+};
+
+export type ListAiPipelineAnalysesParams = {
+dateFrom?: string;
+dateTo?: string;
+scoreRange?: string;
+channelId?: number;
+enteredPipeline?: boolean;
+search?: string;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+pageSize?: number;
+};
+
+export type ListAiPipelineEntriesParams = {
+status?: string;
+channelId?: number;
+search?: string;
+dateFrom?: string;
+dateTo?: string;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+pageSize?: number;
+};
+
+export type UpdateAiPipelineEntryBody = {
+  status?: string;
+};
+
+export type DoNotFollowupAiPipelineEntryBody = {
+  reason?: string;
+};
+
+export type ListAiPipelineCutoffLogsParams = {
 limit?: number;
 };
 

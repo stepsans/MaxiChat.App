@@ -33,3 +33,4 @@ export * from "./sales-assistant";
 export * from "./wa-otp";
 export * from "./onboarding";
 export * from "./drip-campaign";
+export * from "./ai-pipeline";
