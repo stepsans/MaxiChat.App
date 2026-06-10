@@ -48,3 +48,9 @@ id = "oASqtk6ugUKFOtdfW1Pkl"
 uri = "file://.local/exports/maxichat-full.tar.gz"
 type = "unspecified"
 title = "MaxiChat — SEMUANYA (source code + database + script + .ts/.json/.md)"
+
+[[outputs]]
+id = "Ho-yLWgmzruj7U35lGrVk"
+uri = "file://exports/maxichat-source.tar.gz"
+type = "unspecified"
+title = "MaxiChat — Source Code Lengkap (.tar.gz)"
