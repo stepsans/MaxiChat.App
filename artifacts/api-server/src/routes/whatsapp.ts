@@ -3341,6 +3341,15 @@ async function startBaileys(userId: number, channelId: number) {
           if (!inserted) continue;
           if (parsed.fromMe) continue;
           if (parsed.isGroup) continue;
+          // Route new unclassified chats. Fire-and-forget so the reply path
+          // is never delayed. Only triggers once (tag stays non-"none" after).
+          if (chat.tag === "none") {
+            void import("../lib/chat-classifier").then(({ classifyAndTagChat }) =>
+              classifyAndTagChat(chat.id, parsed.messageContent, mediaOwnerUserId).catch(
+                () => {},
+              ),
+            );
+          }
           // Auto-reply is the only place where a stale epoch genuinely
           // matters (we shouldn't reply on behalf of a disconnected
           // socket). Persistence above is safe even after a reconnect.

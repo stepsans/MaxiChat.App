@@ -42,6 +42,7 @@ import pushRouter from "./push";
 import storageRouter from "./storage";
 import salesRouter from "./sales";
 import aiPipelineRouter from "./ai-pipeline";
+import chatClassifierRouter from "./chat-classifier";
 import waOtpRouter from "./wa-otp";
 import onboardingRouter from "./onboarding";
 import { requireAuth, requireAdmin } from "../lib/auth";
@@ -104,6 +105,7 @@ router.use("/link-preview", linkPreviewRouter);
 // requireSalesAssistant + per-route opportunity permissions).
 router.use("/sales", salesRouter);
 router.use("/ai-pipelines", aiPipelineRouter);
+router.use("/chat-classifier", chatClassifierRouter);
 router.use("/billing", billingRouter);
 router.use("/retention", retentionRouter);
 router.use("/database", databaseRouter);
