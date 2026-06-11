@@ -20,7 +20,7 @@ import {
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   role: text("role").notNull().default("user"),
   status: text("status").notNull().default("pending"),
   // Display name shown in the UI (nullable for backward-compat with pre-name accounts).

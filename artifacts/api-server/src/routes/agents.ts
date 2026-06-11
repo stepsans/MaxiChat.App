@@ -2,7 +2,6 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
-import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { db, usersTable, plansTable } from "@workspace/db";
@@ -72,10 +71,9 @@ const ProfilePhotoUrlSchema = z
 
 const CreateBody = z.object({
   email: z.string(),
-  password: z.string().min(8).max(200),
   name: z.string().trim().min(1).max(80),
   teamRole: TeamRoleSchema,
-  mobilePhone: MobilePhoneSchema,
+  mobilePhone: MobilePhoneSchema.optional(),
   profilePhotoUrl: ProfilePhotoUrlSchema.optional(),
 });
 
@@ -84,10 +82,7 @@ const UpdateBody = z.object({
   teamRole: TeamRoleSchema.optional(),
   status: StatusSchema.optional(),
   mobilePhone: MobilePhoneSchema.optional(),
-  // Pass "" to clear, otherwise must be a media URL.
   profilePhotoUrl: ProfilePhotoUrlSchema.optional(),
-  // Reset password — sent only when admin explicitly types a new one.
-  password: z.string().min(8).max(200).optional(),
 });
 
 // Resolve who the "owner" account is for the current session:
@@ -258,42 +253,73 @@ router.post("/", async (req, res): Promise<void> => {
       return;
     }
 
-    const passwordHash = await bcrypt.hash(parsed.data.password, 12);
     const inserted = await db
       .insert(usersTable)
       .values({
         email,
-        passwordHash,
         role: "user",
         status: "active",
         name: parsed.data.name,
-        mobilePhone: parsed.data.mobilePhone,
+        mobilePhone: parsed.data.mobilePhone ?? null,
         profilePhotoUrl: parsed.data.profilePhotoUrl || null,
         parentUserId: owner.ownerId,
         teamRole: parsed.data.teamRole,
-        // Inherit parent's plan column so a future "what plan am I on?" query
-        // on the agent row returns something sensible, but resolveOwner()
-        // always reads from the parent for limit enforcement.
         plan: owner.plan,
         approvedAt: new Date(),
+        // emailVerifiedAt stays null until the agent accepts the invitation
       })
       .onConflictDoNothing({ target: usersTable.email })
       .returning();
     if (inserted.length === 0) {
-      res
-        .status(409)
-        .json({ error: "Email sudah terdaftar di sistem. Pakai email lain." });
+      res.status(409).json({ error: "Email sudah terdaftar di sistem. Pakai email lain." });
       return;
     }
     // Best-effort onboarding checklist refresh (flips teamMemberAdded → true).
+    try { await refreshChecklist(owner.ownerId); } catch { /* best-effort */ }
+
+    // Send invitation email
     try {
-      await refreshChecklist(owner.ownerId);
-    } catch {
-      /* best-effort */
+      const { createAgentInvitation, getAppUrl } = await import("../lib/agent-invitation");
+      const { sendAgentInvitationEmail } = await import("../lib/email");
+      const [ownerRow] = await db.select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, owner.ownerId)).limit(1);
+      const { token } = await createAgentInvitation(inserted[0].id, owner.ownerId, email);
+      await sendAgentInvitationEmail(email, ownerRow?.name || ownerRow?.email || "Super Admin", token, await getAppUrl());
+    } catch (emailErr) {
+      req.log.error({ emailErr }, "Failed to send invitation — agent created but invite not sent");
     }
-    res.status(201).json(serialize(inserted[0]));
+
+    res.status(201).json({ ...serialize(inserted[0]), emailVerified: false });
   } catch (err) {
     req.log.error({ err }, "Create agent failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /agents/resend-invite/:id
+router.post("/resend-invite/:id", async (req, res): Promise<void> => {
+  const userId = getSessionUserId(req)!;
+  try {
+    const owner = await resolveOwner(userId);
+    if (!owner || owner.teamRole !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin yang dapat melakukan ini" }); return;
+    }
+    const agentId = Number(req.params.id);
+    if (!Number.isInteger(agentId) || agentId <= 0) { res.status(400).json({ error: "Id tidak valid" }); return; }
+    const [agent] = await db.select().from(usersTable)
+      .where(and(eq(usersTable.id, agentId), eq(usersTable.parentUserId, owner.ownerId))).limit(1);
+    if (!agent) { res.status(404).json({ error: "Agent tidak ditemukan." }); return; }
+    if (agent.emailVerifiedAt) { res.status(400).json({ error: "Email agent sudah terverifikasi." }); return; }
+
+    const { createAgentInvitation, getAppUrl } = await import("../lib/agent-invitation");
+    const { sendAgentInvitationEmail } = await import("../lib/email");
+    const [ownerRow] = await db.select({ name: usersTable.name, email: usersTable.email })
+      .from(usersTable).where(eq(usersTable.id, owner.ownerId)).limit(1);
+    const { token } = await createAgentInvitation(agent.id, owner.ownerId, agent.email);
+    await sendAgentInvitationEmail(agent.email, ownerRow?.name || ownerRow?.email || "Super Admin", token, await getAppUrl());
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "POST /agents/resend-invite failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -334,9 +360,6 @@ router.patch("/:id", async (req, res): Promise<void> => {
     if (parsed.data.mobilePhone !== undefined) patch.mobilePhone = parsed.data.mobilePhone;
     if (parsed.data.profilePhotoUrl !== undefined) {
       patch.profilePhotoUrl = parsed.data.profilePhotoUrl || null;
-    }
-    if (parsed.data.password !== undefined) {
-      patch.passwordHash = await bcrypt.hash(parsed.data.password, 12);
     }
     if (Object.keys(patch).length === 0) {
       res.json(serialize(target));

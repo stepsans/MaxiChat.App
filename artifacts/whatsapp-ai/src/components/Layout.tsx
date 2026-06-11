@@ -502,9 +502,32 @@ export default function Layout({
       </aside>
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <ImpersonateBanner user={user} />
         <ReadOnlyBanner />
         {children}
       </main>
+    </div>
+  );
+}
+
+function ImpersonateBanner({ user }: { user?: AuthUser }) {
+  const u = user as any;
+  if (!u?.isImpersonated) return null;
+  return (
+    <div className="flex items-center justify-center gap-4 px-4 py-2.5 bg-amber-400 text-amber-900 text-sm font-medium sticky top-0 z-50">
+      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+      <span>
+        Mode {u.impersonateMode === "read_only" ? "Read Only" : "Full Access"} — Anda melihat dashboard tenant ini sebagai Owner
+      </span>
+      <button
+        onClick={async () => {
+          await fetch("/api/admin/impersonate/stop", { method: "POST", credentials: "include" });
+          window.location.href = "/";
+        }}
+        className="bg-amber-900 text-amber-100 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-amber-800 ml-2"
+      >
+        Kembali ke Admin Panel
+      </button>
     </div>
   );
 }

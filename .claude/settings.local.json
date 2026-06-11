@@ -23,7 +23,30 @@
       "Bash(git status *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(pnpm --filter whatsapp-ai exec tsc --noEmit)"
+      "Bash(pnpm --filter whatsapp-ai exec tsc --noEmit)",
+      "Bash(pnpm --filter @workspace/api-server typecheck)",
+      "Bash(git push *)",
+      "Bash(awk NR>=3333 && NR<=3382 *)",
+      "Bash(pnpm --filter @workspace/api-server run typecheck)",
+      "Bash(pnpm --filter @workspace/api-server add nodemailer)",
+      "Bash(pnpm --filter @workspace/api-server add -D @types/nodemailer)",
+      "Bash(pnpm --filter @workspace/api-server exec tsc --noEmit)",
+      "Bash(pnpm --filter @workspace/admin exec tsc --noEmit)",
+      "Bash(xargs cat)",
+      "Bash(pkill -f \"api-server\")",
+      "Bash(pnpm --filter api-server build)",
+      "Bash(pnpm --filter db push)",
+      "Bash(pnpm --filter db push -- --force)",
+      "Bash(pnpm --filter api-server start)",
+      "Bash(python3 *)",
+      "Bash(env)",
+      "Bash(PORT=5000 node --enable-source-maps /home/runner/workspace/artifacts/api-server/dist/index.mjs)",
+      "Read(//tmp/**)",
+      "Bash(pkill -f \"dist/index.mjs\")",
+      "Bash(fuser -k 8081/tcp)",
+      "Bash(awk '{print $10}')",
+      "Bash(kill 386 387)",
+      "Bash(PORT=21603 BASE_PATH=/ pnpm --filter whatsapp-ai dev)"
     ]
   }
 }

@@ -7,8 +7,10 @@ import {
   aiUsageEventsTable,
   onboardingChecklistTable,
   subscriptionsTable,
+  platformSettingsTable,
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
+import { invalidateSmtpCache } from "../lib/email";
 import { computeBillingPeriod } from "../lib/billing-period";
 import {
   AdminUpdatePricingBody,
@@ -650,6 +652,108 @@ router.post("/users/:id/grant-trial", async (req, res): Promise<void> => {
     });
   } catch (err) {
     req.log.error({ err }, "POST /admin/users/:id/grant-trial failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /admin/impersonate/stop — must come before /:tenantId to avoid ambiguity
+router.post("/impersonate/stop", async (req, res): Promise<void> => {
+  try {
+    const imp = (req.session as any).impersonating;
+    if (!imp) { res.status(400).json({ error: "Tidak sedang impersonate." }); return; }
+    req.session.userId = imp.originalAdminId;
+    delete (req.session as any).impersonating;
+    await new Promise<void>((resolve, reject) =>
+      req.session.save((err) => (err ? reject(err) : resolve()))
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "POST /admin/impersonate/stop failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /admin/impersonate/:tenantId
+router.post("/impersonate/:tenantId", async (req, res): Promise<void> => {
+  try {
+    const adminId = getSessionUserId(req)!;
+    const tenantId = Number(req.params.tenantId);
+    const mode = req.body?.mode === "full" ? "full" : "read_only";
+    if (!Number.isInteger(tenantId) || tenantId <= 0) { res.status(400).json({ error: "tenantId tidak valid." }); return; }
+    const [tenant] = await db.select({ id: usersTable.id, email: usersTable.email, name: usersTable.name, teamRole: usersTable.teamRole })
+      .from(usersTable).where(eq(usersTable.id, tenantId)).limit(1);
+    if (!tenant || tenant.teamRole !== "super_admin") { res.status(404).json({ error: "Tenant tidak ditemukan." }); return; }
+    (req.session as any).impersonating = { tenantId: tenant.id, mode, originalAdminId: adminId };
+    req.session.userId = tenant.id;
+    await new Promise<void>((resolve, reject) =>
+      req.session.save((err) => (err ? reject(err) : resolve()))
+    );
+    res.json({ ok: true, tenantId: tenant.id, mode, tenantEmail: tenant.email, tenantName: tenant.name });
+  } catch (err) {
+    req.log.error({ err }, "POST /admin/impersonate failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /admin/platform-settings
+router.get("/platform-settings", async (req, res): Promise<void> => {
+  try {
+    const rows = await db.select().from(platformSettingsTable);
+    const m: Record<string, string> = {};
+    for (const r of rows) m[r.key] = r.value;
+    res.json({
+      smtpHost: m["smtp_host"] || null,
+      smtpPort: m["smtp_port"] ? parseInt(m["smtp_port"]) : null,
+      smtpSecure: m["smtp_secure"] === "true",
+      smtpUser: m["smtp_user"] || null,
+      smtpPassConfigured: !!m["smtp_pass"],
+      smtpFrom: m["smtp_from"] || null,
+      smtpFromName: m["smtp_from_name"] || null,
+      ownerEmail: m["owner_email"] || null,
+      appUrl: m["app_url"] || null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "GET /admin/platform-settings failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /admin/platform-settings
+router.put("/platform-settings", async (req, res): Promise<void> => {
+  try {
+    const updates: Record<string, string> = {};
+    if (typeof req.body.smtpHost === "string") updates["smtp_host"] = req.body.smtpHost.trim();
+    if (typeof req.body.smtpPort === "number") updates["smtp_port"] = String(req.body.smtpPort);
+    if (typeof req.body.smtpSecure === "boolean") updates["smtp_secure"] = String(req.body.smtpSecure);
+    if (typeof req.body.smtpUser === "string") updates["smtp_user"] = req.body.smtpUser.trim();
+    if (typeof req.body.smtpPass === "string" && req.body.smtpPass.trim()) updates["smtp_pass"] = req.body.smtpPass.trim();
+    if (typeof req.body.smtpFrom === "string") updates["smtp_from"] = req.body.smtpFrom.trim();
+    if (typeof req.body.smtpFromName === "string") updates["smtp_from_name"] = req.body.smtpFromName.trim();
+    if (typeof req.body.ownerEmail === "string") updates["owner_email"] = req.body.ownerEmail.toLowerCase().trim();
+    if (typeof req.body.appUrl === "string") updates["app_url"] = req.body.appUrl.trim();
+
+    for (const [key, value] of Object.entries(updates)) {
+      await db.insert(platformSettingsTable).values({ key, value })
+        .onConflictDoUpdate({ target: platformSettingsTable.key, set: { value, updatedAt: new Date() } });
+    }
+    invalidateSmtpCache();
+
+    const rows = await db.select().from(platformSettingsTable);
+    const m: Record<string, string> = {};
+    for (const r of rows) m[r.key] = r.value;
+    res.json({
+      smtpHost: m["smtp_host"] || null,
+      smtpPort: m["smtp_port"] ? parseInt(m["smtp_port"]) : null,
+      smtpSecure: m["smtp_secure"] === "true",
+      smtpUser: m["smtp_user"] || null,
+      smtpPassConfigured: !!m["smtp_pass"],
+      smtpFrom: m["smtp_from"] || null,
+      smtpFromName: m["smtp_from_name"] || null,
+      ownerEmail: m["owner_email"] || null,
+      appUrl: m["app_url"] || null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "PUT /admin/platform-settings failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

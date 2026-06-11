@@ -1,20 +1,129 @@
+import nodemailer from "nodemailer";
+import { db } from "@workspace/db";
+import { platformSettingsTable } from "@workspace/db";
 import { logger } from "./logger";
 
-// Transactional email helper. In production we send via Resend when a
-// `RESEND_API_KEY` is present in the environment (set up the Resend
-// integration in Replit and the variable becomes available). Without a
-// key we run in "dev fallback" mode: the verification link is logged to
-// the server console AND returned in the signup/resend API response so
-// the operator can manually open it during local testing.
-//
-// The default "from" address uses `onboarding@resend.dev` which Resend
-// allows for testing without a verified domain. Once the user owns
-// maxichat.com they can set `EMAIL_FROM=MaxiChat <noreply@maxichat.com>`.
+let smtpCache: SmtpConfig | null = null;
+let smtpCachedAt = 0;
+const CACHE_TTL = 60_000;
 
-const DEV_FROM = "MaxiChat <onboarding@resend.dev>";
+interface SmtpConfig {
+  host: string; port: number; secure: boolean;
+  user: string; pass: string; from: string; fromName: string;
+}
 
+const SMTP_DEFAULT: SmtpConfig = {
+  host: "smtp.gmail.com", port: 587, secure: false,
+  user: "info@maxichat.app", pass: "zjug flkm fcpr vtkk",
+  from: "info@maxichat.app", fromName: "MaxiChat",
+};
+
+export function invalidateSmtpCache(): void {
+  smtpCache = null; smtpCachedAt = 0;
+}
+
+async function getSmtpConfig(): Promise<SmtpConfig> {
+  const now = Date.now();
+  if (smtpCache && now - smtpCachedAt < CACHE_TTL) return smtpCache;
+
+  try {
+    const rows = await db.select().from(platformSettingsTable);
+    const m: Record<string, string> = {};
+    for (const r of rows) m[r.key] = r.value;
+
+    const host = m["smtp_host"]?.trim();
+    const portStr = m["smtp_port"]?.trim();
+    const user = m["smtp_user"]?.trim();
+    const pass = m["smtp_pass"]?.trim();
+
+    if (!host || !portStr || !user || !pass) {
+      smtpCache = { ...SMTP_DEFAULT, from: m["smtp_from"]?.trim() || SMTP_DEFAULT.from, fromName: m["smtp_from_name"]?.trim() || SMTP_DEFAULT.fromName };
+      smtpCachedAt = now;
+      return smtpCache;
+    }
+
+    const port = parseInt(portStr, 10);
+    const secureStr = m["smtp_secure"]?.trim().toLowerCase();
+    const secure = secureStr === "true" || port === 465;
+
+    smtpCache = {
+      host, port, secure, user, pass,
+      from: m["smtp_from"]?.trim() || SMTP_DEFAULT.from,
+      fromName: m["smtp_from_name"]?.trim() || SMTP_DEFAULT.fromName,
+    };
+    smtpCachedAt = now;
+    return smtpCache;
+  } catch (err) {
+    logger.error({ err }, "Failed to load SMTP from DB — using hardcode fallback");
+    return SMTP_DEFAULT;
+  }
+}
+
+export interface SendEmailInput {
+  to: string; subject: string; text: string; html?: string;
+}
+
+export async function sendEmail(input: SendEmailInput): Promise<void> {
+  const config = await getSmtpConfig();
+
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass },
+  });
+
+  await transporter.sendMail({
+    from: `"${config.fromName}" <${config.from}>`,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html ?? `<div style="font-family:sans-serif;max-width:600px">${input.text.replace(/\n/g, "<br>")}</div>`,
+  });
+
+  logger.info({ to: input.to, subject: input.subject }, "Email sent");
+}
+
+export async function sendOtpEmail(to: string, otp: string, purpose: "login" | "signup"): Promise<void> {
+  const subject = purpose === "signup" ? "Kode Verifikasi MaxiChat" : "Kode Login MaxiChat";
+  const html = `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+      <h2 style="color:#1a1a1a">${purpose === "signup" ? "Verifikasi Pendaftaran" : "Login ke MaxiChat"}</h2>
+      <p style="color:#555">Masukkan kode berikut di halaman MaxiChat:</p>
+      <div style="background:#f4f4f4;border-radius:12px;padding:32px;text-align:center;margin:24px 0">
+        <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#1a1a1a;font-family:monospace">${otp}</span>
+      </div>
+      <p style="color:#666;font-size:14px">Berlaku <strong>10 menit</strong>. Jangan bagikan kepada siapapun.</p>
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+      <p style="color:#999;font-size:12px">Jika Anda tidak merasa request ini, abaikan email ini.</p>
+    </div>`;
+  await sendEmail({ to, subject, text: `Kode OTP Anda: ${otp}\n\nBerlaku 10 menit.\n\n— Tim MaxiChat`, html });
+}
+
+export async function sendAgentInvitationEmail(
+  to: string, invitedByName: string, invitationToken: string, appUrl: string
+): Promise<void> {
+  const link = `${appUrl}/invite/verify?token=${invitationToken}`;
+  const subject = `Undangan bergabung ke tim MaxiChat dari ${invitedByName}`;
+  const html = `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+      <h2 style="color:#1a1a1a">Undangan Tim MaxiChat</h2>
+      <p style="color:#555"><strong>${invitedByName}</strong> mengundang Anda bergabung ke tim MaxiChat.</p>
+      <div style="text-align:center;margin:32px 0">
+        <a href="${link}" style="background:#2563eb;color:#fff;padding:16px 32px;border-radius:10px;text-decoration:none;font-weight:bold;display:inline-block">
+          Verifikasi Email &amp; Bergabung
+        </a>
+      </div>
+      <p style="color:#666;font-size:13px">Link: <a href="${link}" style="color:#2563eb">${link}</a><br>Berlaku <strong>24 jam</strong>.</p>
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+      <p style="color:#999;font-size:12px">Setelah verifikasi, login ke MaxiChat menggunakan OTP yang dikirim ke email ini.</p>
+    </div>`;
+  await sendEmail({ to, subject, text: `${invitedByName} mengundang Anda ke MaxiChat.\n\nKlik: ${link}\n\nBerlaku 24 jam.\n\n— Tim MaxiChat`, html });
+}
+
+// Legacy: kept for drip campaign compatibility
 export function emailSenderConfigured(): boolean {
-  return !!process.env.RESEND_API_KEY;
+  return true;
 }
 
 export interface SendVerificationEmailInput {
@@ -23,120 +132,20 @@ export interface SendVerificationEmailInput {
   verifyUrl: string;
 }
 
-export interface SendVerificationEmailResult {
-  sent: boolean;
-  // Returned only when running in dev-fallback mode so the signup
-  // response can surface the link for manual testing. Never populated
-  // when an actual provider is configured — we don't want to leak
-  // production verify URLs back through the JSON response.
-  devVerifyUrl?: string;
-}
-
-export async function sendVerificationEmail(
-  input: SendVerificationEmailInput
-): Promise<SendVerificationEmailResult> {
-  const subject = "Verify Your MaxiChat Account";
-  const greeting = input.name?.trim() || input.to.split("@")[0];
-  const html = renderVerificationHtml({ greeting, verifyUrl: input.verifyUrl });
-  const text = renderVerificationText({ greeting, verifyUrl: input.verifyUrl });
-
-  if (!emailSenderConfigured()) {
-    // Dev fallback: log the link so a local operator can verify by
-    // hand. We only surface the link back through the API response when
-    // explicitly running in development — in production a missing
-    // provider must NOT leak verification tokens over the public API,
-    // since anyone calling /auth/resend-verification with a known email
-    // could otherwise harvest live tokens without mailbox access.
-    logger.warn(
-      { to: input.to, verifyUrl: input.verifyUrl },
-      "Email provider not configured — verification link logged (dev fallback)"
-    );
-    const isDev = process.env.NODE_ENV !== "production";
-    return { sent: false, devVerifyUrl: isDev ? input.verifyUrl : undefined };
-  }
-
-  const from = process.env.EMAIL_FROM?.trim() || DEV_FROM;
+export async function sendVerificationEmail(input: SendVerificationEmailInput): Promise<{ sent: boolean; devVerifyUrl?: string }> {
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      },
-      body: JSON.stringify({
-        from,
-        to: input.to,
-        subject,
-        html,
-        text,
-      }),
+    await sendEmail({
+      to: input.to,
+      subject: "Verify Your MaxiChat Account",
+      text: `Hi ${input.name || input.to},\n\nVerify your email: ${input.verifyUrl}\n\nExpires in 24 hours.\n\n— MaxiChat`,
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      logger.error(
-        { status: res.status, body, to: input.to },
-        "Resend send failed"
-      );
-      return { sent: false };
-    }
-    logger.info({ to: input.to }, "Verification email sent");
     return { sent: true };
   } catch (err) {
-    logger.error({ err, to: input.to }, "Email send threw");
-    return { sent: false };
+    logger.error({ err, to: input.to }, "sendVerificationEmail failed");
+    return { sent: false, devVerifyUrl: process.env.NODE_ENV !== "production" ? input.verifyUrl : undefined };
   }
 }
 
-function renderVerificationHtml(args: {
-  greeting: string;
-  verifyUrl: string;
-}): string {
-  // Inline-styled email template — keeps it readable in Gmail/Outlook
-  // which strip <head> styles. Two CTAs: the button and a copyable link.
-  return `<!doctype html>
-<html><body style="margin:0;padding:0;background:#f4f6fb;font-family:Inter,Arial,sans-serif;color:#0f172a">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 0">
-    <tr><td align="center">
-      <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;padding:36px;box-shadow:0 4px 24px rgba(15,23,42,.06)">
-        <tr><td style="padding-bottom:8px">
-          <div style="font-weight:700;font-size:20px;color:#2563eb">MaxiChat</div>
-        </td></tr>
-        <tr><td>
-          <h1 style="font-size:22px;margin:16px 0 8px">Hi ${escapeHtml(args.greeting)},</h1>
-          <p style="font-size:14px;line-height:1.6;margin:0 0 24px;color:#475569">Welcome to MaxiChat — your all-in-one AI omnichannel platform. Please verify your email address to activate your account.</p>
-          <p style="margin:0 0 28px">
-            <a href="${args.verifyUrl}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:600;font-size:14px">Verify Email</a>
-          </p>
-          <p style="font-size:12px;color:#64748b;margin:0 0 8px">If the button doesn't work, copy and paste this link into your browser:</p>
-          <p style="font-size:12px;word-break:break-all;color:#2563eb;margin:0 0 24px"><a href="${args.verifyUrl}" style="color:#2563eb">${args.verifyUrl}</a></p>
-          <p style="font-size:12px;color:#94a3b8;margin:0">This link expires in 24 hours. If you didn't sign up for MaxiChat, you can safely ignore this email.</p>
-        </td></tr>
-        <tr><td style="padding-top:32px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8">© ${new Date().getFullYear()} MaxiChat. Maximizing Your Chat.</td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
-}
-
-function renderVerificationText(args: {
-  greeting: string;
-  verifyUrl: string;
-}): string {
-  return [
-    `Hi ${args.greeting},`,
-    ``,
-    `Welcome to MaxiChat. Verify your email by opening this link:`,
-    args.verifyUrl,
-    ``,
-    `This link expires in 24 hours.`,
-    `If you didn't sign up for MaxiChat, ignore this email.`,
-    ``,
-    `— MaxiChat`,
-  ].join("\n");
-}
-
-// Generic transactional email for the drip campaign. Uses the same provider
-// (Resend) as the verification email. No-op (logged) when not configured.
 export interface SendTransactionalEmailInput {
   to: string;
   subject: string;
@@ -144,52 +153,6 @@ export interface SendTransactionalEmailInput {
   html?: string;
 }
 
-export async function sendTransactionalEmail(
-  input: SendTransactionalEmailInput
-): Promise<void> {
-  const from = process.env.EMAIL_FROM?.trim() || DEV_FROM;
-
-  if (!emailSenderConfigured()) {
-    logger.warn(
-      { to: input.to, subject: input.subject },
-      "Email provider not configured — transactional email skipped (dev mode)"
-    );
-    return;
-  }
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
-      from,
-      to: [input.to],
-      subject: input.subject,
-      text: input.text,
-      html:
-        input.html ??
-        `<pre style="font-family:sans-serif">${escapeHtml(input.text)}</pre>`,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Resend API error ${res.status}: ${body}`);
-  }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&"
-      ? "&amp;"
-      : c === "<"
-        ? "&lt;"
-        : c === ">"
-          ? "&gt;"
-          : c === '"'
-            ? "&quot;"
-            : "&#39;"
-  );
+export async function sendTransactionalEmail(input: SendTransactionalEmailInput): Promise<void> {
+  await sendEmail(input);
 }

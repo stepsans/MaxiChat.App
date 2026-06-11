@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import bcrypt from "bcryptjs";
 import { and, eq, sql } from "drizzle-orm";
 import {
   db,
@@ -18,30 +17,19 @@ import { logger } from "./logger";
 const DEFAULT_WA_COLOR = "#25D366";
 const DEFAULT_WA_ICON = "whatsapp";
 
-// Fixed allowlist — only these three accounts may sign in. Passwords are
-// hashed at startup; bcrypt comparison is constant-time per-hash so plain
-// equality of the cleartext password between accounts is fine.
 const SEED_USERS: ReadonlyArray<{
   email: string;
-  password: string;
   role: "admin" | "user";
   ownerPhone?: string;
   isInfinityOwner?: boolean;
 }> = [
   {
     email: "stephensan86@gmail.com",
-    password: "MaxiChat123",
-    // Sole super admin. Owns the pre-existing 628111198000 data (474 chats),
-    // pinned so it survives the auth migration.
     role: "admin",
     ownerPhone: "628111198000",
-    // Owner Infinity Plan: unlimited everything, never read-only / billed.
-    // Also applied to the live DB via raw psql; set here so a fresh environment
-    // (re-seed) grants it too. Only ever true for this single account.
     isInfinityOwner: true,
   },
-  { email: "jc171088@gmail.com", password: "AdminMaxipro$", role: "user" },
-  { email: "test@maxipro.co.id", password: "AdminMaxipro$", role: "user" },
+
 ];
 
 const AUTH_ROOT = path.join(process.cwd(), ".whatsapp-auth");
@@ -90,10 +78,63 @@ async function ensureChannelIsDefault(): Promise<void> {
   `);
 }
 
+async function ensureNewTables(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "platform_settings" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "key" text NOT NULL,
+      "value" text NOT NULL,
+      "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+      CONSTRAINT "platform_settings_key_unique" UNIQUE ("key")
+    );
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "email_otps" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "email" text NOT NULL,
+      "otp_hash" text NOT NULL,
+      "purpose" text NOT NULL DEFAULT 'login',
+      "attempt_count" integer NOT NULL DEFAULT 0,
+      "resend_count" integer NOT NULL DEFAULT 0,
+      "expires_at" timestamp with time zone NOT NULL,
+      "verified_at" timestamp with time zone,
+      "user_id" integer REFERENCES "users"("id") ON DELETE CASCADE,
+      "ip_address" text,
+      "created_at" timestamp with time zone DEFAULT now() NOT NULL
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "email_otp_email_idx" ON "email_otps" ("email");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "email_otp_user_idx" ON "email_otps" ("user_id");
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "agent_invitations" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "email" text NOT NULL,
+      "token_hash" text NOT NULL,
+      "invited_by_user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "agent_user_id" integer NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "expires_at" timestamp with time zone NOT NULL,
+      "accepted_at" timestamp with time zone,
+      "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+      CONSTRAINT "agent_invitations_token_hash_unique" UNIQUE ("token_hash")
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_inv_email_idx" ON "agent_invitations" ("email");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_inv_agent_idx" ON "agent_invitations" ("agent_user_id");
+  `);
+}
+
 export async function runSeed(): Promise<void> {
   // Must run before any request hits the session middleware, since the
   // express-session store assumes the table exists.
   await ensureSessionTable();
+  await ensureNewTables();
   await ensureChannelIsDefault();
 
   const userIdsByEmail = new Map<string, number>();
@@ -111,15 +152,14 @@ export async function runSeed(): Promise<void> {
       userIdsByEmail.set(seed.email, existing.id);
       continue;
     }
-    const passwordHash = await bcrypt.hash(seed.password, 12);
     const [row] = await db
       .insert(usersTable)
       .values({
         email: seed.email,
-        passwordHash,
         role: seed.role,
         status: "active",
         approvedAt: new Date(),
+        emailVerifiedAt: seed.role === "admin" ? new Date() : undefined,
         isInfinityOwner: seed.isInfinityOwner ?? false,
       })
       // Defend against a concurrent insert (two boots racing) — fall back
@@ -138,29 +178,22 @@ export async function runSeed(): Promise<void> {
     }
   }
 
-  // One-time owner password (re)set, gated behind an explicit env flag so the
-  // bootstrap-only invariant above still holds by default. When
-  // RESEED_OWNER_PASSWORD=1, force the pinned super admin's credentials back to
-  // the seed values (password + Infinity owner) on boot. This is the supported
-  // way to standardize the owner login in the PRODUCTION database, which is a
-  // separate database from development and cannot be written to directly. Unset
-  // the flag once the password is confirmed to stop overwriting on every boot.
+  // Ensure admin seed users have emailVerifiedAt set (idempotent fix for existing rows)
+  for (const seed of SEED_USERS.filter((u) => u.role === "admin")) {
+    await db.update(usersTable)
+      .set({ emailVerifiedAt: new Date() })
+      .where(and(eq(usersTable.email, seed.email), sql`email_verified_at IS NULL`));
+  }
+
+  // One-time owner status/infinity reset, gated behind an explicit env flag.
   if (process.env.RESEED_OWNER_PASSWORD === "1") {
     const owner = SEED_USERS.find((u) => u.ownerPhone);
     if (owner) {
-      const passwordHash = await bcrypt.hash(owner.password, 12);
       await db
         .update(usersTable)
-        .set({
-          passwordHash,
-          status: "active",
-          isInfinityOwner: owner.isInfinityOwner ?? false,
-        })
+        .set({ status: "active", isInfinityOwner: owner.isInfinityOwner ?? false })
         .where(eq(usersTable.email, owner.email));
-      logger.warn(
-        { email: owner.email },
-        "RESEED_OWNER_PASSWORD set — owner password and Infinity flag force-reset from seed"
-      );
+      logger.warn({ email: owner.email }, "RESEED_OWNER_PASSWORD set — owner status and Infinity flag force-reset");
     }
   }
 

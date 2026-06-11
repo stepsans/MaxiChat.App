@@ -3330,17 +3330,25 @@ async function startBaileys(userId: number, channelId: number) {
           );
           if (!parsed) continue;
 
+          // Only "notify" is a genuinely live inbound message.
+          // "append" / "prepend" are history catch-up chunks that arrive
+          // during reconnect sync; "replace" is an edit. None of them
+          // should increment unread, trigger auto-reply, or spend AI tokens
+          // on classification — those side-effects are for new messages only.
+          const isLive = type === "notify";
+
           const { chat, inserted, messageId } = await persistWaMessage(
             userId,
             channelId,
             parsed,
             {
-              incrementUnread: true,
+              incrementUnread: isLive,
             },
           );
           if (!inserted) continue;
           if (parsed.fromMe) continue;
           if (parsed.isGroup) continue;
+          if (!isLive) continue;
           // Route new unclassified chats. Fire-and-forget so the reply path
           // is never delayed. Only triggers once (tag stays non-"none" after).
           if (chat.tag === "none") {

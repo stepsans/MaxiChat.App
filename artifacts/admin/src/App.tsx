@@ -13,6 +13,7 @@ import {
   Package,
   CreditCard,
   Rocket,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import Login from "./pages/Login";
 import Users from "./pages/Users";
@@ -23,6 +24,7 @@ import Billing from "./pages/Billing";
 import Analytics from "./pages/Analytics";
 import PaymentGateway from "./pages/PaymentGateway";
 import TrialMonitor from "./pages/TrialMonitor";
+import PlatformSettings from "./pages/PlatformSettings";
 import { useLogoutMutation } from "./lib/useLogoutMutation";
 
 const queryClient = new QueryClient();
@@ -35,7 +37,8 @@ type AdminTab =
   | "gateway"
   | "billing"
   | "analytics"
-  | "trial";
+  | "trial"
+  | "platform";
 
 function Shell() {
   const queryClientCtx = useQueryClient();
@@ -147,6 +150,7 @@ function Shell() {
             { key: "gateway", label: "Gateway Pembayaran", Icon: CreditCard },
             { key: "pricing", label: "Harga Pemakaian", Icon: Tag },
             { key: "usage", label: "Pemakaian Token", Icon: Cpu },
+            { key: "platform", label: "Platform Settings", Icon: SettingsIcon },
           ] as const
         ).map(({ key, label, Icon }) => (
           <button
@@ -173,6 +177,7 @@ function Shell() {
         {tab === "gateway" && <PaymentGateway />}
         {tab === "pricing" && <Pricing />}
         {tab === "usage" && <TokenUsage />}
+        {tab === "platform" && <PlatformSettings />}
       </main>
     </div>
   );

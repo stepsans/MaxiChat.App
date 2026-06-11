@@ -16,6 +16,7 @@ import { startDripScheduler } from "./lib/drip-engine";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
+import { seedPlatformSettingsDefaults } from "./lib/seed-platform-settings";
 
 // Baileys downloads WhatsApp media over undici. When a media server closes the
 // socket mid-stream (common during history sync of expired/403 media), undici
@@ -99,6 +100,11 @@ async function main(): Promise<void> {
   } catch (e) {
     logger.error({ err: e }, "Fatal: runSeed() failed; aborting startup");
     process.exit(1);
+  }
+  try {
+    await seedPlatformSettingsDefaults();
+  } catch (e) {
+    logger.warn({ err: e }, "seedPlatformSettingsDefaults failed (non-fatal — tables may not exist yet)");
   }
 
   app.listen(port, (err) => {

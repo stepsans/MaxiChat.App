@@ -69,11 +69,13 @@ function AuthGate() {
   const status = (error as any)?.status;
   const isUnauthed = status === 401 || (!isLoading && !isAuthed);
   // Routes that should always be reachable without a session — sign-up,
-  // email verification, and the login form itself. Anything else bounces
-  // unauthenticated users to /login.
+  // email verification, login, and agent invitation verify.
   const path = location.split("?")[0];
   const isPublicRoute =
-    path === "/login" || path === "/signup" || path === "/verify-email";
+    path === "/login" ||
+    path === "/signup" ||
+    path === "/verify-email" ||
+    path === "/invite/verify";
 
   useEffect(() => {
     if (isUnauthed && !isPublicRoute) navigate("/login");
@@ -96,6 +98,7 @@ function AuthGate() {
         <Route path="/login" component={Login} />
         <Route path="/signup" component={SignUp} />
         <Route path="/verify-email" component={VerifyEmail} />
+        <Route path="/invite/verify" component={Login} />
         <Route component={Login} />
       </Switch>
     );

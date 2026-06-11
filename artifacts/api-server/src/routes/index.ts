@@ -65,6 +65,19 @@ router.use("/auth/wa-otp", waOtpRouter);
 // Everything below requires a signed-in session.
 router.use(requireAuth);
 
+// Read-only enforcement for impersonate mode: blocks writes when mode=read_only.
+router.use((req, res, next) => {
+  const imp = (req.session as any)?.impersonating;
+  if (imp?.mode === "read_only" && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    const allowed = ["/auth/logout", "/admin/impersonate/stop"];
+    if (!allowed.some((p) => req.path.startsWith(p))) {
+      res.status(403).json({ error: "Mode read-only: perubahan data tidak diizinkan." });
+      return;
+    }
+  }
+  next();
+});
+
 // Read-only enforcement for expired/suspended tenants: blocks writes (the
 // operator namespace /admin and read-only /billing are exempt; admins always
 // pass). Mounted before the resource routers so a single gate covers them all.
