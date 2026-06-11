@@ -695,23 +695,30 @@ router.post("/impersonate/:tenantId", async (req, res): Promise<void> => {
   }
 });
 
+function buildPlatformSettingsResponse(m: Record<string, string>) {
+  return {
+    resendApiKeyConfigured: !!m["resend_api_key"],
+    resendFrom: m["resend_from"] || null,
+    resendFromName: m["resend_from_name"] || null,
+    smtpHost: m["smtp_host"] || null,
+    smtpPort: m["smtp_port"] ? parseInt(m["smtp_port"]) : null,
+    smtpSecure: m["smtp_secure"] === "true",
+    smtpUser: m["smtp_user"] || null,
+    smtpPassConfigured: !!m["smtp_pass"],
+    smtpFrom: m["smtp_from"] || null,
+    smtpFromName: m["smtp_from_name"] || null,
+    ownerEmail: m["owner_email"] || null,
+    appUrl: m["app_url"] || null,
+  };
+}
+
 // GET /admin/platform-settings
 router.get("/platform-settings", async (req, res): Promise<void> => {
   try {
     const rows = await db.select().from(platformSettingsTable);
     const m: Record<string, string> = {};
     for (const r of rows) m[r.key] = r.value;
-    res.json({
-      smtpHost: m["smtp_host"] || null,
-      smtpPort: m["smtp_port"] ? parseInt(m["smtp_port"]) : null,
-      smtpSecure: m["smtp_secure"] === "true",
-      smtpUser: m["smtp_user"] || null,
-      smtpPassConfigured: !!m["smtp_pass"],
-      smtpFrom: m["smtp_from"] || null,
-      smtpFromName: m["smtp_from_name"] || null,
-      ownerEmail: m["owner_email"] || null,
-      appUrl: m["app_url"] || null,
-    });
+    res.json(buildPlatformSettingsResponse(m));
   } catch (err) {
     req.log.error({ err }, "GET /admin/platform-settings failed");
     res.status(500).json({ error: "Internal server error" });
@@ -722,6 +729,9 @@ router.get("/platform-settings", async (req, res): Promise<void> => {
 router.put("/platform-settings", async (req, res): Promise<void> => {
   try {
     const updates: Record<string, string> = {};
+    if (typeof req.body.resendApiKey === "string" && req.body.resendApiKey.trim()) updates["resend_api_key"] = req.body.resendApiKey.trim();
+    if (typeof req.body.resendFrom === "string") updates["resend_from"] = req.body.resendFrom.trim();
+    if (typeof req.body.resendFromName === "string") updates["resend_from_name"] = req.body.resendFromName.trim();
     if (typeof req.body.smtpHost === "string") updates["smtp_host"] = req.body.smtpHost.trim();
     if (typeof req.body.smtpPort === "number") updates["smtp_port"] = String(req.body.smtpPort);
     if (typeof req.body.smtpSecure === "boolean") updates["smtp_secure"] = String(req.body.smtpSecure);
@@ -741,17 +751,7 @@ router.put("/platform-settings", async (req, res): Promise<void> => {
     const rows = await db.select().from(platformSettingsTable);
     const m: Record<string, string> = {};
     for (const r of rows) m[r.key] = r.value;
-    res.json({
-      smtpHost: m["smtp_host"] || null,
-      smtpPort: m["smtp_port"] ? parseInt(m["smtp_port"]) : null,
-      smtpSecure: m["smtp_secure"] === "true",
-      smtpUser: m["smtp_user"] || null,
-      smtpPassConfigured: !!m["smtp_pass"],
-      smtpFrom: m["smtp_from"] || null,
-      smtpFromName: m["smtp_from_name"] || null,
-      ownerEmail: m["owner_email"] || null,
-      appUrl: m["app_url"] || null,
-    });
+    res.json(buildPlatformSettingsResponse(m));
   } catch (err) {
     req.log.error({ err }, "PUT /admin/platform-settings failed");
     res.status(500).json({ error: "Internal server error" });

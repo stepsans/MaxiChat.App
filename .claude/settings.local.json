@@ -46,7 +46,12 @@
       "Bash(fuser -k 8081/tcp)",
       "Bash(awk '{print $10}')",
       "Bash(kill 386 387)",
-      "Bash(PORT=21603 BASE_PATH=/ pnpm --filter whatsapp-ai dev)"
+      "Bash(PORT=21603 BASE_PATH=/ pnpm --filter whatsapp-ai dev)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm build *)",
+      "Bash(kill 14231)",
+      "Bash(PORT=23744 BASE_PATH=/admin/ pnpm --filter admin dev)",
+      "Bash(pnpm exec *)"
     ]
   }
 }

@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [resendCount, setResendCount] = useState(0);
   const [countdown, setCountdown] = useState(0);
 
@@ -49,6 +50,7 @@ export default function LoginPage() {
       });
       if (!ok) { setError(data.error || "Gagal mengirim OTP."); return; }
       setExpiresAt(data.expiresAt);
+      setDevOtp(data.devOtp ?? null);
       setCountdown(60);
       setStep("otp");
     } catch { setError("Terjadi kesalahan."); } finally { setLoading(false); }
@@ -238,6 +240,12 @@ export default function LoginPage() {
                   </p>
                 )}
               </div>
+              {devOtp && (
+                <div className="bg-yellow-50 border border-yellow-300 rounded-2xl px-4 py-3 text-center">
+                  <p className="text-xs text-yellow-700 font-medium mb-1">🛠 Dev Mode — Kode OTP:</p>
+                  <p className="text-2xl font-mono font-bold text-yellow-800 tracking-widest">{devOtp}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Kode OTP (6 digit)
