@@ -117,5 +117,6 @@ export function snapshotFromConfig(
     allowanceGradeD: cfg.allowanceGradeD,
     allowanceGradeE: cfg.allowanceGradeE,
     complaintHandlingEnabled: cfg.complaintHandlingEnabled,
+    includeOwnerInEvaluation: cfg.includeOwnerInEvaluation,
   };
 }

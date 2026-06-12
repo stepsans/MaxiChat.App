@@ -29,6 +29,9 @@ export interface AcrConfigSnapshot {
   allowanceGradeE: number;
 
   complaintHandlingEnabled: boolean;
+  // Optional for backward-compat with snapshots taken before the toggle
+  // existed; absent = false (owner not evaluated).
+  includeOwnerInEvaluation?: boolean;
 }
 
 export function validateConfigInput(cfg: AcrConfigSnapshot): string | null {

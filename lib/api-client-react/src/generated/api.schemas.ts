@@ -4115,6 +4115,8 @@ export interface AcrConfigInput {
   allowanceGradeD: number;
   allowanceGradeE: number;
   complaintHandlingEnabled: boolean;
+  /** Evaluate the tenant owner as an agent too (testing / solo CS). */
+  includeOwnerInEvaluation: boolean;
   autoScheduleEnabled: boolean;
   autoScheduleFrequency?: AcrConfigInputAutoScheduleFrequency;
   /**

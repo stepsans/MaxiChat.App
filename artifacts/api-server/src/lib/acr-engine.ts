@@ -184,8 +184,14 @@ async function executeJob(job: AcrJobRow): Promise<void> {
   const channelKind = new Map(channels.map((c) => [c.id, c.kind]));
   const channelIds = channels.map((c) => c.id);
 
-  // Evaluable team members: supervisors + agents under this owner, PLUS the
-  // owner themselves — small tenants often have the owner doing CS directly.
+  // Evaluable team members: supervisors + agents under this owner. The owner
+  // themselves is included only when the config toggle says so (solo-CS
+  // tenants / testing) — snapshot-controlled, so re-runs stay consistent.
+  const includeOwner = cfg.includeOwnerInEvaluation === true;
+  const memberWhere = and(
+    eq(usersTable.parentUserId, ownerUserId),
+    inArray(usersTable.teamRole, ["supervisor", "agent"])
+  );
   const memberRows = await db
     .select({
       id: usersTable.id,
@@ -194,15 +200,7 @@ async function executeJob(job: AcrJobRow): Promise<void> {
       teamRole: usersTable.teamRole,
     })
     .from(usersTable)
-    .where(
-      or(
-        eq(usersTable.id, ownerUserId),
-        and(
-          eq(usersTable.parentUserId, ownerUserId),
-          inArray(usersTable.teamRole, ["supervisor", "agent"])
-        )
-      )
-    );
+    .where(includeOwner ? or(eq(usersTable.id, ownerUserId), memberWhere) : memberWhere);
   const requestedIds =
     job.agentUserIds && job.agentUserIds.length > 0
       ? new Set(job.agentUserIds)

@@ -52,6 +52,7 @@ type FormState = {
   allowanceGradeD: number;
   allowanceGradeE: number;
   complaintHandlingEnabled: boolean;
+  includeOwnerInEvaluation: boolean;
   autoScheduleEnabled: boolean;
   autoScheduleFrequency: "weekly" | "monthly" | "custom";
   autoScheduleDayOfMonth: number;
@@ -81,6 +82,7 @@ const DEFAULTS: FormState = {
   allowanceGradeD: 0,
   allowanceGradeE: 0,
   complaintHandlingEnabled: true,
+  includeOwnerInEvaluation: false,
   autoScheduleEnabled: false,
   autoScheduleFrequency: "monthly",
   autoScheduleDayOfMonth: 1,
@@ -111,6 +113,7 @@ function fromConfig(c: AcrConfig): FormState {
     allowanceGradeD: c.allowanceGradeD,
     allowanceGradeE: c.allowanceGradeE,
     complaintHandlingEnabled: c.complaintHandlingEnabled,
+    includeOwnerInEvaluation: c.includeOwnerInEvaluation ?? false,
     autoScheduleEnabled: c.autoScheduleEnabled,
     autoScheduleFrequency:
       c.autoScheduleFrequency === "weekly" || c.autoScheduleFrequency === "custom"
@@ -450,6 +453,21 @@ export default function AIChatReportSettings() {
             <Switch
               checked={form.complaintHandlingEnabled}
               onCheckedChange={(v) => set("complaintHandlingEnabled", v)}
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div>
+              <Label>Ikutkan super admin dalam penilaian</Label>
+              <p className="text-xs text-muted-foreground">
+                Super admin tenant ini ikut dinilai sebagai agent. Berguna saat super admin
+                menangani chat sendiri atau untuk testing. Pesan lama tanpa atribusi agent
+                juga akan dihitung sebagai milik super admin saat aktif.
+              </p>
+            </div>
+            <Switch
+              checked={form.includeOwnerInEvaluation}
+              onCheckedChange={(v) => set("includeOwnerInEvaluation", v)}
+              data-testid="acr-include-owner"
             />
           </div>
         </CardContent>

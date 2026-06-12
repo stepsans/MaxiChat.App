@@ -11189,6 +11189,7 @@ components:
           allowanceGradeD,
           allowanceGradeE,
           complaintHandlingEnabled,
+          includeOwnerInEvaluation,
           autoScheduleEnabled,
         ]
       properties:
@@ -11214,6 +11215,9 @@ components:
         allowanceGradeD: { type: integer }
         allowanceGradeE: { type: integer }
         complaintHandlingEnabled: { type: boolean }
+        includeOwnerInEvaluation:
+          type: boolean
+          description: Evaluate the tenant owner as an agent too (testing / solo CS).
         autoScheduleEnabled: { type: boolean }
         autoScheduleFrequency:
           type: string

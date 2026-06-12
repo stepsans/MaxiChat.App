@@ -64,6 +64,12 @@ export const acrConfigsTable = pgTable(
 
     complaintHandlingEnabled: boolean("complaint_handling_enabled").notNull().default(true),
 
+    // Opt-in: evaluate the tenant owner (super_admin) as an agent too.
+    // Useful for single-operator tenants and testing; off by default.
+    includeOwnerInEvaluation: boolean("include_owner_in_evaluation")
+      .notNull()
+      .default(false),
+
     autoScheduleEnabled: boolean("auto_schedule_enabled").notNull().default(false),
     // 'weekly' | 'monthly' | 'custom'
     autoScheduleFrequency: text("auto_schedule_frequency").notNull().default("monthly"),

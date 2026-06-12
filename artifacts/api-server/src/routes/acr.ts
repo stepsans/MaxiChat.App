@@ -100,6 +100,7 @@ function serializeConfig(c: AcrConfigRow) {
     allowanceGradeD: c.allowanceGradeD,
     allowanceGradeE: c.allowanceGradeE,
     complaintHandlingEnabled: c.complaintHandlingEnabled,
+    includeOwnerInEvaluation: c.includeOwnerInEvaluation,
     autoScheduleEnabled: c.autoScheduleEnabled,
     autoScheduleFrequency: c.autoScheduleFrequency,
     autoScheduleDayOfMonth: c.autoScheduleDayOfMonth,
@@ -405,6 +406,7 @@ router.put(
         allowanceGradeD: b.allowanceGradeD,
         allowanceGradeE: b.allowanceGradeE,
         complaintHandlingEnabled: b.complaintHandlingEnabled,
+        includeOwnerInEvaluation: b.includeOwnerInEvaluation === true,
         autoScheduleEnabled: b.autoScheduleEnabled,
         autoScheduleFrequency: frequency,
         autoScheduleDayOfMonth: b.autoScheduleDayOfMonth ?? 1,
@@ -456,24 +458,26 @@ router.post(
       return;
     }
 
-    // agent_ids must belong to this tenant (supervisor/agent members).
+    const cfg = await getOrCreateConfig(caller.ownerUserId);
+
+    // agent_ids must belong to this tenant (supervisor/agent members; the
+    // owner only when the include-owner toggle is on).
     let agentIds: number[] | null = null;
     if (Array.isArray(parsed.data.agentIds) && parsed.data.agentIds.length > 0) {
       const candidates = parsed.data.agentIds.filter((n) => Number.isInteger(n));
+      const memberWhere = and(
+        eq(usersTable.parentUserId, caller.ownerUserId),
+        inArray(usersTable.teamRole, ["supervisor", "agent"])
+      );
       const valid = await db
         .select({ id: usersTable.id })
         .from(usersTable)
         .where(
           and(
             inArray(usersTable.id, candidates.length ? candidates : [-1]),
-            or(
-              // The owner is evaluable too (self-service CS / testing).
-              eq(usersTable.id, caller.ownerUserId),
-              and(
-                eq(usersTable.parentUserId, caller.ownerUserId),
-                inArray(usersTable.teamRole, ["supervisor", "agent"])
-              )
-            )
+            cfg.includeOwnerInEvaluation
+              ? or(eq(usersTable.id, caller.ownerUserId), memberWhere)
+              : memberWhere
           )
         );
       agentIds = valid.map((v) => v.id);
@@ -482,8 +486,6 @@ router.post(
         return;
       }
     }
-
-    const cfg = await getOrCreateConfig(caller.ownerUserId);
     const [job] = await db
       .insert(acrJobsTable)
       .values({
@@ -1080,6 +1082,13 @@ router.get(
       res.status(403).json({ error: "Tidak diizinkan." });
       return;
     }
+    // The owner appears in the picker only when the include-owner toggle is
+    // on (solo-CS tenants / testing).
+    const cfg = await getOrCreateConfig(caller.ownerUserId);
+    const memberWhere = and(
+      eq(usersTable.parentUserId, caller.ownerUserId),
+      inArray(usersTable.teamRole, ["supervisor", "agent"])
+    );
     const rows = await db
       .select({
         id: usersTable.id,
@@ -1089,15 +1098,9 @@ router.get(
       })
       .from(usersTable)
       .where(
-        or(
-          // Owner included: small tenants do CS themselves (and it makes
-          // single-account testing possible).
-          eq(usersTable.id, caller.ownerUserId),
-          and(
-            eq(usersTable.parentUserId, caller.ownerUserId),
-            inArray(usersTable.teamRole, ["supervisor", "agent"])
-          )
-        )
+        cfg.includeOwnerInEvaluation
+          ? or(eq(usersTable.id, caller.ownerUserId), memberWhere)
+          : memberWhere
       );
     res.json(rows.map((r) => ({ ...r, teamRole: r.teamRole ?? "super_admin" })));
   }
