@@ -19,7 +19,6 @@ import AIStudio from "@/pages/AIStudio";
 import Usage from "@/pages/Usage";
 import Billing from "@/pages/Billing";
 import Analytics from "@/pages/Analytics";
-import Pipeline from "@/pages/Pipeline";
 import AIPipeline from "@/pages/AIPipeline";
 import AIPipelineNew from "@/pages/AIPipelineNew";
 import AIPipelineDetail from "@/pages/AIPipelineDetail";
@@ -129,7 +128,6 @@ function AuthGate() {
         <Route path="/billing" component={Billing} />
         <Route path="/profile" component={Profile} />
         <Route path="/analytics" component={Analytics} />
-        <Route path="/pipeline" component={Pipeline} />
         <Route path="/workboard" component={WorkBoard} />
         <Route path="/workboard/:boardId" component={BoardDetail} />
         <Route path="/ai-pipeline" component={AIPipeline} />
