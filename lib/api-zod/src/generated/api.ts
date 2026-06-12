@@ -5397,6 +5397,12 @@ export const ListSalesAuditEventsResponse = zod.array(ListSalesAuditEventsRespon
 /**
  * @summary List all AI Pipelines for the current tenant
  */
+export const listAiPipelinesResponseStaleDaysThresholdMax = 365;
+
+export const listAiPipelinesResponseHighValueThresholdIdrMin = 0;
+
+
+
 export const ListAiPipelinesResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -5410,6 +5416,8 @@ export const ListAiPipelinesResponseItem = zod.object({
   "cutoffTimes": zod.array(zod.string()),
   "channelIds": zod.array(zod.number()),
   "excludeLabelIds": zod.array(zod.number()),
+  "staleDaysThreshold": zod.number().min(1).max(listAiPipelinesResponseStaleDaysThresholdMax),
+  "highValueThresholdIdr": zod.number().min(listAiPipelinesResponseHighValueThresholdIdrMin),
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),
@@ -5441,6 +5449,12 @@ export const createAiPipelineBodyAutoCreateOpportunityDefault = false;
 export const createAiPipelineBodyAutoFollowupEnabledDefault = false;
 export const createAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
 export const createAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
+export const createAiPipelineBodyStaleDaysThresholdDefault = 14;
+export const createAiPipelineBodyStaleDaysThresholdMax = 365;
+
+export const createAiPipelineBodyHighValueThresholdIdrDefault = 0;
+export const createAiPipelineBodyHighValueThresholdIdrMin = 0;
+
 
 
 export const CreateAiPipelineBody = zod.object({
@@ -5454,7 +5468,9 @@ export const CreateAiPipelineBody = zod.object({
   "followupIntervals": zod.array(zod.string()).default(createAiPipelineBodyFollowupIntervalsDefault),
   "cutoffTimes": zod.array(zod.string()).default(createAiPipelineBodyCutoffTimesDefault),
   "channelIds": zod.array(zod.number()).min(1),
-  "excludeLabelIds": zod.array(zod.number()).optional()
+  "excludeLabelIds": zod.array(zod.number()).optional(),
+  "staleDaysThreshold": zod.number().min(1).max(createAiPipelineBodyStaleDaysThresholdMax).default(createAiPipelineBodyStaleDaysThresholdDefault).describe('Days without activity before an open opportunity is flagged high-risk for this pipeline.'),
+  "highValueThresholdIdr": zod.number().min(createAiPipelineBodyHighValueThresholdIdrMin).default(createAiPipelineBodyHighValueThresholdIdrDefault).describe('Minimum estimated value (whole Rupiah) for an opportunity to be flagged high-risk. 0 = value never excludes.')
 })
 
 
@@ -5464,6 +5480,12 @@ export const CreateAiPipelineBody = zod.object({
 export const GetAiPipelineParams = zod.object({
   "id": zod.coerce.number()
 })
+
+export const getAiPipelineResponseStaleDaysThresholdMax = 365;
+
+export const getAiPipelineResponseHighValueThresholdIdrMin = 0;
+
+
 
 export const GetAiPipelineResponse = zod.object({
   "id": zod.number(),
@@ -5478,6 +5500,8 @@ export const GetAiPipelineResponse = zod.object({
   "cutoffTimes": zod.array(zod.string()),
   "channelIds": zod.array(zod.number()),
   "excludeLabelIds": zod.array(zod.number()),
+  "staleDaysThreshold": zod.number().min(1).max(getAiPipelineResponseStaleDaysThresholdMax),
+  "highValueThresholdIdr": zod.number().min(getAiPipelineResponseHighValueThresholdIdrMin),
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),
@@ -5512,6 +5536,12 @@ export const updateAiPipelineBodyAutoCreateOpportunityDefault = false;
 export const updateAiPipelineBodyAutoFollowupEnabledDefault = false;
 export const updateAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
 export const updateAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
+export const updateAiPipelineBodyStaleDaysThresholdDefault = 14;
+export const updateAiPipelineBodyStaleDaysThresholdMax = 365;
+
+export const updateAiPipelineBodyHighValueThresholdIdrDefault = 0;
+export const updateAiPipelineBodyHighValueThresholdIdrMin = 0;
+
 
 
 export const UpdateAiPipelineBody = zod.object({
@@ -5525,8 +5555,16 @@ export const UpdateAiPipelineBody = zod.object({
   "followupIntervals": zod.array(zod.string()).default(updateAiPipelineBodyFollowupIntervalsDefault),
   "cutoffTimes": zod.array(zod.string()).default(updateAiPipelineBodyCutoffTimesDefault),
   "channelIds": zod.array(zod.number()).min(1),
-  "excludeLabelIds": zod.array(zod.number()).optional()
+  "excludeLabelIds": zod.array(zod.number()).optional(),
+  "staleDaysThreshold": zod.number().min(1).max(updateAiPipelineBodyStaleDaysThresholdMax).default(updateAiPipelineBodyStaleDaysThresholdDefault).describe('Days without activity before an open opportunity is flagged high-risk for this pipeline.'),
+  "highValueThresholdIdr": zod.number().min(updateAiPipelineBodyHighValueThresholdIdrMin).default(updateAiPipelineBodyHighValueThresholdIdrDefault).describe('Minimum estimated value (whole Rupiah) for an opportunity to be flagged high-risk. 0 = value never excludes.')
 })
+
+export const updateAiPipelineResponseStaleDaysThresholdMax = 365;
+
+export const updateAiPipelineResponseHighValueThresholdIdrMin = 0;
+
+
 
 export const UpdateAiPipelineResponse = zod.object({
   "id": zod.number(),
@@ -5541,6 +5579,8 @@ export const UpdateAiPipelineResponse = zod.object({
   "cutoffTimes": zod.array(zod.string()),
   "channelIds": zod.array(zod.number()),
   "excludeLabelIds": zod.array(zod.number()),
+  "staleDaysThreshold": zod.number().min(1).max(updateAiPipelineResponseStaleDaysThresholdMax),
+  "highValueThresholdIdr": zod.number().min(updateAiPipelineResponseHighValueThresholdIdrMin),
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),
@@ -5567,6 +5607,12 @@ export const ToggleAiPipelineParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const toggleAiPipelineResponseStaleDaysThresholdMax = 365;
+
+export const toggleAiPipelineResponseHighValueThresholdIdrMin = 0;
+
+
+
 export const ToggleAiPipelineResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -5580,6 +5626,8 @@ export const ToggleAiPipelineResponse = zod.object({
   "cutoffTimes": zod.array(zod.string()),
   "channelIds": zod.array(zod.number()),
   "excludeLabelIds": zod.array(zod.number()),
+  "staleDaysThreshold": zod.number().min(1).max(toggleAiPipelineResponseStaleDaysThresholdMax),
+  "highValueThresholdIdr": zod.number().min(toggleAiPipelineResponseHighValueThresholdIdrMin),
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),

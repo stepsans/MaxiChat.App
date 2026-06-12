@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useListAiPipelines,
   useToggleAiPipeline,
   useDeleteAiPipeline,
+  useUpdateAiPipeline,
   getListAiPipelinesQueryKey,
+  getGetPipelineHealthQueryKey,
   type AiPipeline,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,6 +17,7 @@ import {
   Pencil,
   Power,
   MoreVertical,
+  ShieldAlert,
   Trash2,
   Clock,
   Zap,
@@ -24,10 +27,21 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -85,8 +99,54 @@ function PipelineCardSkeleton() {
 function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
   const [, navigate] = useLocation();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [riskOpen, setRiskOpen] = useState(false);
+  const [staleDraft, setStaleDraft] = useState("");
+  const [highValueDraft, setHighValueDraft] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (riskOpen) {
+      setStaleDraft(String(pipeline.staleDaysThreshold));
+      setHighValueDraft(String(pipeline.highValueThresholdIdr));
+    }
+  }, [riskOpen, pipeline.staleDaysThreshold, pipeline.highValueThresholdIdr]);
+
+  const { mutate: updatePipeline, isPending: savingRisk } = useUpdateAiPipeline({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAiPipelinesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetPipelineHealthQueryKey() });
+        setRiskOpen(false);
+        toast({ description: "Setelan risiko disimpan." });
+      },
+      onError: () => {
+        toast({ variant: "destructive", description: "Gagal menyimpan setelan risiko." });
+      },
+    },
+  });
+
+  function submitRisk() {
+    const stale = Number(staleDraft);
+    const highValue = Number(highValueDraft);
+    if (!Number.isInteger(stale) || stale < 1 || stale > 365) {
+      toast({ variant: "destructive", description: "Hari tidak aktif harus bilangan bulat 1–365." });
+      return;
+    }
+    if (!Number.isInteger(highValue) || highValue < 0) {
+      toast({ variant: "destructive", description: "Nilai minimum harus bilangan bulat ≥ 0." });
+      return;
+    }
+    updatePipeline({
+      id: pipeline.id,
+      data: {
+        name: pipeline.name,
+        channelIds: pipeline.channelIds,
+        staleDaysThreshold: stale,
+        highValueThresholdIdr: highValue,
+      },
+    });
+  }
 
   const { mutate: toggle, isPending: toggling } = useToggleAiPipeline({
     mutation: {
@@ -209,6 +269,11 @@ function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setRiskOpen(true)}>
+                  <ShieldAlert className="h-4 w-4 mr-2 text-destructive" />
+                  Setelan Risiko
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
                   onClick={() => setDeleteOpen(true)}
@@ -221,6 +286,64 @@ function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
           </div>
         </div>
       </div>
+
+      {/* Per-pipeline risk settings */}
+      <Dialog open={riskOpen} onOpenChange={setRiskOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-destructive" />
+              Setelan Risiko — {pipeline.name}
+            </DialogTitle>
+            <DialogDescription>
+              Peluang dari pipeline ini akan ditandai berisiko tinggi jika
+              memenuhi kedua kriteria di bawah.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor={`stale-${pipeline.id}`}>Tidak aktif selama (hari)</Label>
+              <Input
+                id={`stale-${pipeline.id}`}
+                type="number"
+                min={1}
+                max={365}
+                value={staleDraft}
+                onChange={(e) => setStaleDraft(e.target.value)}
+                placeholder="14"
+              />
+              <p className="text-xs text-muted-foreground">
+                Peluang tanpa aktivitas ≥ N hari dianggap stagnan. Rentang: 1–365.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`highval-${pipeline.id}`}>Nilai minimum (Rupiah)</Label>
+              <Input
+                id={`highval-${pipeline.id}`}
+                type="number"
+                min={0}
+                step={1000}
+                value={highValueDraft}
+                onChange={(e) => setHighValueDraft(e.target.value)}
+                placeholder="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                Hanya peluang dengan estimasi nilai ≥ angka ini yang masuk
+                hitungan. Isi <strong>0</strong> agar semua nilai ikut terdeteksi.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRiskOpen(false)} disabled={savingRisk}>
+              Batal
+            </Button>
+            <Button onClick={submitRisk} disabled={savingRisk}>
+              {savingRisk ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : null}
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

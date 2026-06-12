@@ -1004,7 +1004,15 @@ function extractChatListMeta(c: Record<string, unknown>): {
   if (Object.prototype.hasOwnProperty.call(c, "pinned")) {
     const p = (c as { pinned?: unknown }).pinned;
     if (typeof p === "number" && p > 0) {
-      meta.pinnedAt = new Date(p * 1000);
+      // Baileys/WhatsApp occasionally sends a garbage `pinned` value (e.g. a
+      // microsecond or otherwise out-of-range epoch). Unbounded, `p * 1000`
+      // yields an absurd Date (year 041970) that Postgres rejects with
+      // "time zone displacement out of range", crashing the whole history-sync
+      // transaction. Only accept a plausible epoch-seconds value.
+      const MAX_PINNED_EPOCH_SECONDS = 4102444800; // 2100-01-01
+      if (p <= MAX_PINNED_EPOCH_SECONDS) {
+        meta.pinnedAt = new Date(p * 1000);
+      }
     } else if (p === 0 || p === null) {
       meta.pinnedAt = null;
     }
@@ -3016,7 +3024,14 @@ async function startBaileys(userId: number, channelId: number) {
       printQRInTerminal: false,
       msgRetryCounterCache,
       logger: (await import("pino")).default({ level: "warn" }),
-      syncFullHistory: true,
+      // Full-history sync makes WhatsApp dump the ENTIRE chat history (thousands
+      // of messages, each triggering a media download + link preview) on EVERY
+      // (re)connect. Under conflict/replaced reconnect loops this floods the
+      // event loop and wedges the whole process. Disable full backfill, but keep
+      // processing the (small) RECENT sync so messages received while the socket
+      // was disconnected are still caught up and `isLatest` still promotes the
+      // channel out of the "syncing" state.
+      syncFullHistory: false,
       shouldSyncHistoryMessage: () => true,
     });
     ctx.sock = sock;

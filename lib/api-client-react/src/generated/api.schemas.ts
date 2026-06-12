@@ -3869,6 +3869,17 @@ export interface AiPipelineCreate {
   /** @minItems 1 */
   channelIds: number[];
   excludeLabelIds?: number[];
+  /**
+     * Days without activity before an open opportunity is flagged high-risk for this pipeline.
+     * @minimum 1
+     * @maximum 365
+     */
+  staleDaysThreshold?: number;
+  /**
+     * Minimum estimated value (whole Rupiah) for an opportunity to be flagged high-risk. 0 = value never excludes.
+     * @minimum 0
+     */
+  highValueThresholdIdr?: number;
 }
 
 export type AiPipelineTodayStats = {
@@ -3890,6 +3901,13 @@ export interface AiPipeline {
   cutoffTimes: string[];
   channelIds: number[];
   excludeLabelIds: number[];
+  /**
+     * @minimum 1
+     * @maximum 365
+     */
+  staleDaysThreshold: number;
+  /** @minimum 0 */
+  highValueThresholdIdr: number;
   lastRunAt?: string | null;
   todayStats?: AiPipelineTodayStats;
   createdAt: string;

@@ -79,6 +79,8 @@ async function buildPipelineResponse(pipeline: typeof aiPipelinesTable.$inferSel
     cutoffTimes: pipeline.cutoffTimes,
     channelIds: channels.map((c) => c.channelId),
     excludeLabelIds: excludeLabels.map((l) => l.labelId),
+    staleDaysThreshold: pipeline.staleDaysThreshold,
+    highValueThresholdIdr: pipeline.highValueThresholdIdr,
     lastRunAt: lastLog[0]?.completedAt?.toISOString() ?? null,
     todayStats,
     createdAt: pipeline.createdAt.toISOString(),
@@ -196,7 +198,7 @@ router.post("/", async (req: Request, res: Response) => {
   const {
     name, description, isActive, scoreThreshold, opportunityThreshold,
     autoCreateOpportunity, autoFollowupEnabled, followupIntervals, cutoffTimes,
-    channelIds, excludeLabelIds,
+    channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
   } = parsed.data;
 
   const [pipeline] = await db
@@ -212,6 +214,8 @@ router.post("/", async (req: Request, res: Response) => {
       autoFollowupEnabled: autoFollowupEnabled ?? false,
       followupIntervals: followupIntervals ?? ["24h", "48h", "72h"],
       cutoffTimes: cutoffTimes ?? ["12:00", "23:59"],
+      staleDaysThreshold: staleDaysThreshold ?? 14,
+      highValueThresholdIdr: highValueThresholdIdr ?? 0,
     })
     .returning();
 
@@ -260,7 +264,7 @@ router.put("/:id", async (req: Request, res: Response) => {
   const {
     name, description, isActive, scoreThreshold, opportunityThreshold,
     autoCreateOpportunity, autoFollowupEnabled, followupIntervals, cutoffTimes,
-    channelIds, excludeLabelIds,
+    channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
   } = parsed.data;
 
   const [updated] = await db
@@ -275,6 +279,8 @@ router.put("/:id", async (req: Request, res: Response) => {
       autoFollowupEnabled: autoFollowupEnabled ?? pipeline.autoFollowupEnabled,
       followupIntervals: followupIntervals ?? pipeline.followupIntervals,
       cutoffTimes: cutoffTimes ?? pipeline.cutoffTimes,
+      staleDaysThreshold: staleDaysThreshold ?? pipeline.staleDaysThreshold,
+      highValueThresholdIdr: highValueThresholdIdr ?? pipeline.highValueThresholdIdr,
       updatedAt: new Date(),
     })
     .where(eq(aiPipelinesTable.id, id))

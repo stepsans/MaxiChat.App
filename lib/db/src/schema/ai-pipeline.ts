@@ -49,6 +49,12 @@ export const aiPipelinesTable = pgTable(
       .$type<string[]>()
       .notNull()
       .default(["12:00", "23:59"]),
+    // Pipeline Health risk thresholds — mirrored from sales_assistant_settings
+    // but scoped per pipeline so each can have independent sensitivity.
+    staleDaysThreshold: integer("stale_days_threshold").notNull().default(14),
+    highValueThresholdIdr: bigint("high_value_threshold_idr", { mode: "number" })
+      .notNull()
+      .default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
