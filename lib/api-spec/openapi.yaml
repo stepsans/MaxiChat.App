@@ -7439,7 +7439,7 @@ components:
       properties:
         status:
           type: string
-          enum: [connected, disconnected, connecting, qr_ready]
+          enum: [connected, disconnected, connecting, qr_ready, syncing]
         qrCode:
           type: ["string", "null"]
         phoneNumber:
@@ -10137,7 +10137,7 @@ components:
 
     Channel:
       type: object
-      required: [id, userId, kind, label, color, icon, status, createdAt, updatedAt]
+      required: [id, userId, kind, label, color, icon, status, isDefault, createdAt, updatedAt]
       properties:
         id: { type: integer }
         userId: { type: integer, description: "Owning super_admin user id" }
@@ -10147,7 +10147,10 @@ components:
         icon: { type: string, description: "Icon key the frontend maps to a lucide / brand icon" }
         status:
           type: string
-          enum: [disconnected, connecting, qr_ready, connected, error]
+          enum: [disconnected, connecting, qr_ready, connected, syncing, error]
+        isDefault:
+          type: boolean
+          description: "Whether this is the tenant's default channel (single per owner)"
         ownerPhone:
           type: string
           nullable: true
@@ -10189,6 +10192,9 @@ components:
           type: string
           minLength: 1
           maxLength: 40
+        isDefault:
+          type: boolean
+          description: "Set true to make this the tenant's default channel"
 
     TelegramConnect:
       type: object

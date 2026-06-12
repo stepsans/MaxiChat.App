@@ -1262,7 +1262,7 @@ export const HealthCheckResponse = zod.object({
  * @summary Get WhatsApp connection status
  */
 export const GetWhatsappStatusResponse = zod.object({
-  "status": zod.enum(['connected', 'disconnected', 'connecting', 'qr_ready']),
+  "status": zod.enum(['connected', 'disconnected', 'connecting', 'qr_ready', 'syncing']),
   "qrCode": zod.string().nullish(),
   "phoneNumber": zod.string().nullish(),
   "connectedAt": zod.string().nullish()
@@ -1273,7 +1273,7 @@ export const GetWhatsappStatusResponse = zod.object({
  * @summary Initiate WhatsApp connection and get QR code
  */
 export const ConnectWhatsappResponse = zod.object({
-  "status": zod.enum(['connected', 'disconnected', 'connecting', 'qr_ready']),
+  "status": zod.enum(['connected', 'disconnected', 'connecting', 'qr_ready', 'syncing']),
   "qrCode": zod.string().nullish(),
   "phoneNumber": zod.string().nullish(),
   "connectedAt": zod.string().nullish()
@@ -1284,7 +1284,7 @@ export const ConnectWhatsappResponse = zod.object({
  * @summary Disconnect WhatsApp session
  */
 export const DisconnectWhatsappResponse = zod.object({
-  "status": zod.enum(['connected', 'disconnected', 'connecting', 'qr_ready']),
+  "status": zod.enum(['connected', 'disconnected', 'connecting', 'qr_ready', 'syncing']),
   "qrCode": zod.string().nullish(),
   "phoneNumber": zod.string().nullish(),
   "connectedAt": zod.string().nullish()
@@ -2003,7 +2003,8 @@ export const ListChannelsResponseItem = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
+  "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2044,7 +2045,8 @@ export const GetChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
+  "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2069,7 +2071,8 @@ export const updateChannelBodyIconMax = 40;
 export const UpdateChannelBody = zod.object({
   "label": zod.string().min(1).max(updateChannelBodyLabelMax).optional(),
   "color": zod.string().regex(updateChannelBodyColorRegExp).optional(),
-  "icon": zod.string().min(1).max(updateChannelBodyIconMax).optional()
+  "icon": zod.string().min(1).max(updateChannelBodyIconMax).optional(),
+  "isDefault": zod.boolean().optional().describe('Set true to make this the tenant\'s default channel')
 })
 
 export const UpdateChannelResponse = zod.object({
@@ -2079,7 +2082,8 @@ export const UpdateChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
+  "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2109,7 +2113,8 @@ export const PairChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
+  "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2154,7 +2159,8 @@ export const ConnectTelegramChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
+  "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2176,7 +2182,8 @@ export const DisconnectTelegramChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
+  "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2198,7 +2205,8 @@ export const UnpairChannelResponse = zod.object({
   "label": zod.string().describe('Human label shown in the switcher'),
   "color": zod.string().describe('Hex color (e.g. #25D366)'),
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
-  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'error']),
+  "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
+  "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),

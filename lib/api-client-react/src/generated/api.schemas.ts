@@ -1201,6 +1201,7 @@ export const WhatsappStatusStatus = {
   disconnected: 'disconnected',
   connecting: 'connecting',
   qr_ready: 'qr_ready',
+  syncing: 'syncing',
 } as const;
 
 export interface WhatsappStatus {
@@ -3758,6 +3759,7 @@ export const ChannelStatus = {
   connecting: 'connecting',
   qr_ready: 'qr_ready',
   connected: 'connected',
+  syncing: 'syncing',
   error: 'error',
 } as const;
 
@@ -3773,6 +3775,8 @@ export interface Channel {
   /** Icon key the frontend maps to a lucide / brand icon */
   icon: string;
   status: ChannelStatus;
+  /** Whether this is the tenant's default channel (single per owner) */
+  isDefault: boolean;
   /** WhatsApp-only: paired phone number (digits) */
   ownerPhone?: string | null;
   /** Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind. */
@@ -3810,6 +3814,8 @@ export interface ChannelUpdate {
      * @maxLength 40
      */
   icon?: string;
+  /** Set true to make this the tenant's default channel */
+  isDefault?: boolean;
 }
 
 export interface TelegramConnect {

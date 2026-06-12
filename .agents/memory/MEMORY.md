@@ -76,5 +76,6 @@
 - [Trial onboarding & health score](trial-onboarding-health.md) — admin trial routes are non-OpenAPI raw-fetch; scope tenant-owners as parentUserId IS NULL AND role!='admin'; "{n}h"=hari not hours; refreshChecklist triggers best-effort, WA one in whatsapp.ts.
 - [Prod vs dev DB separation](prod-vs-dev-database-separation.md) — published app uses a SEPARATE prod DB; agent psql/writes hit dev only, prod is read-only; change owner/seed creds via flag-gated reseed + re-publish.
 - [api-server dev build-then-start (no watch)](api-server-stale-build-no-watch.md) — source edits don't take effect till the workflow restarts; a stale build can run old behavior while git looks correct; restart before judging a fix.
+- [@types/react version skew](types-react-version-skew.md) — "Two different types with this name exist" in web UI files = Expo's 19.1.x vs web 19.2.x @types/react dup, not a real bug; don't patch the component, a global override risks mobile typecheck.
 - [Radix Select empty value](radix-select-empty-value.md) — Radix `Select.Item value=""` crashes the tree; use a sentinel (e.g. `__none__`) and map back to ""/null in state.
 - [WA dev/prod session conflict](wa-session-conflict-dev-prod.md) — `syncing→disconnected` ~12-20s loop = WhatsApp 440 conflict (two Baileys on same creds: editor + live VM), not a bug; run number in ONE env only.
