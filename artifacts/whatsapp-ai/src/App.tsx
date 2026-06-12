@@ -28,6 +28,8 @@ import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
 import Credentials from "@/pages/Credentials";
 import AIReview from "@/pages/AIReview";
+import WorkBoard from "@/pages/WorkBoard";
+import BoardDetail from "@/pages/WorkBoard/BoardDetail";
 import Agents from "@/pages/Agents";
 import Profile from "@/pages/Profile";
 import Login from "@/pages/Login";
@@ -128,6 +130,8 @@ function AuthGate() {
         <Route path="/profile" component={Profile} />
         <Route path="/analytics" component={Analytics} />
         <Route path="/pipeline" component={Pipeline} />
+        <Route path="/workboard" component={WorkBoard} />
+        <Route path="/workboard/:boardId" component={BoardDetail} />
         <Route path="/ai-pipeline" component={AIPipeline} />
         <Route path="/ai-pipeline/new" component={AIPipelineNew} />
         <Route path="/ai-pipeline/:id/edit" component={AIPipelineDetail} />

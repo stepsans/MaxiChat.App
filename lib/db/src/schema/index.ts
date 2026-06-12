@@ -37,3 +37,4 @@ export * from "./ai-pipeline";
 export * from "./email-otp";
 export * from "./agent-invitations";
 export * from "./platform-settings";
+export * from "./workboard";

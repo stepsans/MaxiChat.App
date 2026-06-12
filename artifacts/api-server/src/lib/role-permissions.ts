@@ -27,6 +27,8 @@ export const PERMISSION_MENUS = [
   // AI Sales Assistant (Enterprise-only). Full CRUD; agents are scoped to
   // their own assigned opportunities by the route layer, not this matrix.
   "opportunities",
+  // WorkBoard: multi-board task management with invite & permission system.
+  "workboard",
   // View-only menus: only canView is meaningful (no create/edit/delete routes).
   "dashboard",
   "aiStudio",
@@ -79,6 +81,8 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // AI Sales Assistant: supervisors get full configurable access by default
     // (manage every opportunity in the tenant). Owner may dial this back.
     opportunities: allow(true, true, true, true),
+    // WorkBoard: supervisors get full access by default.
+    workboard: allow(true, true, true, true),
     // View-only menus — supervisors see Dashboard & AI Studio by default;
     // Pemakaian Token & AI Review stay super_admin-only until granted.
     dashboard: allow(true, false, false, false),
@@ -104,6 +108,8 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // opportunities (enforced by opportunityScopeWhere in the route layer). No
     // create (deals are auto-detected) and no delete.
     opportunities: allow(true, false, true, false),
+    // WorkBoard: agents can view and create tasks (but not delete boards).
+    workboard: allow(true, true, true, false),
     // View-only menus — agents see none of these by default.
     dashboard: allow(false, false, false, false),
     aiStudio: allow(false, false, false, false),

@@ -2986,12 +2986,13 @@ async function startBaileys(userId: number, channelId: number) {
   // (or until the first batch does it lazily if there's a race).
   let connPreSyncCutoff: Map<string, Date | null> | null = null;
 
-  // Resettable "syncing → connected" fallback. We give the sync 2 minutes
-  // initially, and reset the timer on every incoming history batch. This
-  // means a long initial sync (many batches) never cuts the overlay short
-  // while still promoting to "connected" if Baileys goes quiet (isLatest
-  // never fires or history is empty).
-  const SYNC_FALLBACK_MS = 120_000;
+  // Resettable "syncing → connected" fallback. With syncFullHistory disabled
+  // there is no long full-history replay, so the recent sync is small (a few
+  // batches at most). We give it 30 s of quiet, resetting the timer on every
+  // incoming history batch, then promote to "connected" even if `isLatest`
+  // never fires (e.g. a resume with no new history) or history is empty. This
+  // guarantees the frontend overlay can never spin indefinitely.
+  const SYNC_FALLBACK_MS = 30_000;
   let syncFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   const rescheduleSyncFallback = () => {
     if (syncFallbackTimer != null) clearTimeout(syncFallbackTimer);
@@ -3139,8 +3140,8 @@ async function startBaileys(userId: number, channelId: number) {
         // Set "syncing" so the frontend shows the loading overlay while
         // Baileys replays missed messages via messaging-history.set.
         // The handler below promotes to "connected" when isLatest fires.
-        // rescheduleSyncFallback fires after 2 minutes of silence and is
-        // reset on each incoming history batch so long syncs never cut short.
+        // rescheduleSyncFallback fires after 30 s of silence and is reset on
+        // each incoming history batch so a multi-batch sync never cuts short.
         void syncChannelStatus(channelId, {
           status: "syncing",
           ownerPhone: normalised,
@@ -3460,7 +3461,7 @@ async function startBaileys(userId: number, channelId: number) {
       );
 
       // We're still receiving history — reset the fallback so the overlay
-      // stays up until all batches have been processed (or 2 minutes of silence).
+      // stays up until all batches have been processed (or 30 s of silence).
       rescheduleSyncFallback();
 
       // Use the connection-scoped snapshot for missed-message detection so
@@ -3590,7 +3591,7 @@ async function startBaileys(userId: number, channelId: number) {
       logger.info({ ingested }, "messaging-history.set done");
       // When Baileys signals this is the final history batch, promote the
       // channel from "syncing" to "connected" so the frontend reveals the
-      // chat list. If isLatest never fires the 15 s fallback above covers it.
+      // chat list. If isLatest never fires the 30 s fallback above covers it.
       if (isLatest) {
         void syncChannelStatus(channelId, { status: "connected" });
       }
