@@ -101,6 +101,8 @@ export default function TaskModal({
         assigneeIds,
       });
       onClose();
+    } catch {
+      // error already surfaced via mutation onError → toast; don't propagate to React
     } finally {
       setSaving(false);
     }
@@ -112,6 +114,8 @@ export default function TaskModal({
     try {
       await onDelete();
       onClose();
+    } catch {
+      // error already surfaced via mutation onError → toast
     } finally {
       setDeleting(false);
     }

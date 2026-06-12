@@ -54,7 +54,9 @@
       "Bash(pnpm exec *)",
       "Bash(sed -i 's|\"./src/lib/chat-classifier\"|\"/home/runner/workspace/artifacts/api-server/src/lib/chat-classifier\"|' /tmp/test-direction.ts)",
       "Bash(npx tsx *)",
-      "Bash(pnpm *)"
+      "Bash(pnpm *)",
+      "Bash(PORT=5001 node /home/runner/workspace/artifacts/api-server/dist/index.mjs)",
+      "Bash(kill %1)"
     ]
   }
 }

@@ -1,4 +1,4 @@
-import app from "./app";
+import app, { setReady } from "./app";
 import { startProductSyncScheduler } from "./routes/products-sync";
 import { startKnowledgeSyncScheduler } from "./routes/knowledge-sync";
 import { startShortcutSyncScheduler } from "./routes/shortcuts-sync";
@@ -90,11 +90,27 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Run startup seeding (session table, user upserts, legacy auth migration)
-// BEFORE binding the port. If the session table doesn't exist yet, any
-// request that hits the express-session middleware will fail — so we must
-// not accept traffic until seed has finished. Fail-fast on seed errors.
+// Bind the port immediately so the deployment healthcheck passes within
+// seconds. The readiness gate in app.ts returns 503 for all non-healthcheck
+// routes until seed completes, so clients know to retry rather than hitting
+// broken session/DB state. Seed operations (which establish the first DB
+// connection and may take 10-60s on a cold prod DB) run after the port is
+// bound — fail-fast on seed errors, non-fatal on platform-settings seed.
 async function main(): Promise<void> {
+  // Step 1: bind the port so healthchecks pass immediately.
+  await new Promise<void>((resolve, reject) => {
+    app.listen(port, (err?: Error) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        reject(err);
+        return;
+      }
+      logger.info({ port }, "Server listening");
+      resolve();
+    });
+  }).catch(() => process.exit(1));
+
+  // Step 2: run seed operations (may block for up to ~60s on cold DB).
   try {
     await runSeed();
   } catch (e) {
@@ -107,56 +123,52 @@ async function main(): Promise<void> {
     logger.warn({ err: e }, "seedPlatformSettingsDefaults failed (non-fatal — tables may not exist yet)");
   }
 
-  app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
-    logger.info({ port }, "Server listening");
-    // Baileys reconnects happen after the server is up so any per-user
-    // pairing UI is immediately reachable.
-    initWhatsapp().catch((e) =>
-      logger.error({ err: e }, "initWhatsapp failed (non-fatal)")
+  // Step 3: open to traffic — all routes now respond normally.
+  setReady();
+
+  // Step 4: start background workers. Baileys reconnects happen after the
+  // server is fully ready so any per-user pairing UI is immediately reachable.
+  initWhatsapp().catch((e) =>
+    logger.error({ err: e }, "initWhatsapp failed (non-fatal)")
+  );
+  // Auto-sync ticker for Google-Sheet → products bindings. Per-config rows
+  // with autoSyncEnabled=true are re-pulled at their configured interval.
+  startProductSyncScheduler();
+  startKnowledgeSyncScheduler();
+  startShortcutSyncScheduler();
+  startSalesOrderSyncScheduler();
+  startAiReviewScheduler();
+  startUsageSnapshotScheduler();
+  startManualPaymentPoller();
+  startRetentionPurger();
+  // Billing v2 (FASE F): dunning escalation sweep. Inert until the operator
+  // enables dunning, so prepaid tenants are never auto-suspended by default.
+  startDunningScheduler();
+  // Billing v2 (FASE B): raise recurring monthly_close invoices per active
+  // tenant per period (idempotent per (owner, period) via the deterministic
+  // invoice number + unique index).
+  startMonthlyCloseScheduler();
+  // AI Sales Assistant: Auto Follow-Up engine. Sweeps open opportunities
+  // waiting on the customer and (only when a tenant enables the toggle)
+  // generates + sends paced, sequenced follow-ups (max 3); default OFF =
+  // store a recommendation only, never sends.
+  startFollowUpScheduler();
+  // AI Pipeline: cut-off analysis sweeper (every 1 min) + follow-up sender (every 5 min).
+  startAiPipelineScheduler();
+  // Trial onboarding: behavior-based drip campaign engine. Evaluates active
+  // trial tenants and enqueues/sends nudge emails (no-op when Resend is
+  // unconfigured — logs only). Default-safe, additive.
+  startDripScheduler();
+  // Billing v2 (FASE A): backfill immutable invoices for any already-paid
+  // payments that predate the invoices table. Idempotent + best-effort, so it
+  // never blocks boot (the NOT EXISTS filter makes it a no-op once caught up).
+  backfillInvoicesFromPayments()
+    .then((n) => {
+      if (n > 0) logger.info({ created: n }, "invoice backfill complete");
+    })
+    .catch((err) =>
+      logger.error({ err }, "invoice backfill failed (non-fatal)")
     );
-    // Auto-sync ticker for Google-Sheet → products bindings. Per-config rows
-    // with autoSyncEnabled=true are re-pulled at their configured interval.
-    startProductSyncScheduler();
-    startKnowledgeSyncScheduler();
-    startShortcutSyncScheduler();
-    startSalesOrderSyncScheduler();
-    startAiReviewScheduler();
-    startUsageSnapshotScheduler();
-    startManualPaymentPoller();
-    startRetentionPurger();
-    // Billing v2 (FASE F): dunning escalation sweep. Inert until the operator
-    // enables dunning, so prepaid tenants are never auto-suspended by default.
-    startDunningScheduler();
-    // Billing v2 (FASE B): raise recurring monthly_close invoices per active
-    // tenant per period (idempotent per (owner, period) via the deterministic
-    // invoice number + unique index).
-    startMonthlyCloseScheduler();
-    // AI Sales Assistant: Auto Follow-Up engine. Sweeps open opportunities
-    // waiting on the customer and (only when a tenant enables the toggle)
-    // generates + sends paced, sequenced follow-ups (max 3); default OFF =
-    // store a recommendation only, never sends.
-    startFollowUpScheduler();
-    // AI Pipeline: cut-off analysis sweeper (every 1 min) + follow-up sender (every 5 min).
-    startAiPipelineScheduler();
-    // Trial onboarding: behavior-based drip campaign engine. Evaluates active
-    // trial tenants and enqueues/sends nudge emails (no-op when Resend is
-    // unconfigured — logs only). Default-safe, additive.
-    startDripScheduler();
-    // Billing v2 (FASE A): backfill immutable invoices for any already-paid
-    // payments that predate the invoices table. Idempotent + best-effort, so it
-    // never blocks boot (the NOT EXISTS filter makes it a no-op once caught up).
-    backfillInvoicesFromPayments()
-      .then((n) => {
-        if (n > 0) logger.info({ created: n }, "invoice backfill complete");
-      })
-      .catch((err) =>
-        logger.error({ err }, "invoice backfill failed (non-fatal)")
-      );
-  });
 }
 
 main();
