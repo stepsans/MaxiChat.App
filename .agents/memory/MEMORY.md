@@ -76,3 +76,4 @@
 - [Trial onboarding & health score](trial-onboarding-health.md) — admin trial routes are non-OpenAPI raw-fetch; scope tenant-owners as parentUserId IS NULL AND role!='admin'; "{n}h"=hari not hours; refreshChecklist triggers best-effort, WA one in whatsapp.ts.
 - [Prod vs dev DB separation](prod-vs-dev-database-separation.md) — published app uses a SEPARATE prod DB; agent psql/writes hit dev only, prod is read-only; change owner/seed creds via flag-gated reseed + re-publish.
 - [api-server dev build-then-start (no watch)](api-server-stale-build-no-watch.md) — source edits don't take effect till the workflow restarts; a stale build can run old behavior while git looks correct; restart before judging a fix.
+- [Radix Select empty value](radix-select-empty-value.md) — Radix `Select.Item value=""` crashes the tree; use a sentinel (e.g. `__none__`) and map back to ""/null in state.

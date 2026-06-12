@@ -47,6 +47,10 @@ const PRIORITY_LABELS: Record<string, string> = {
   high: "Tinggi",
 };
 
+// Radix Select forbids an empty-string item value, so we use a sentinel for the
+// "no column" option and map it back to "" in component state.
+const NO_COLUMN_VALUE = "__none__";
+
 export default function TaskModal({
   open,
   onClose,
@@ -169,12 +173,16 @@ export default function TaskModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Status / Kolom</Label>
-              <Select value={columnId} onValueChange={setColumnId} disabled={readOnly}>
+              <Select
+                value={columnId === "" ? NO_COLUMN_VALUE : columnId}
+                onValueChange={(v) => setColumnId(v === NO_COLUMN_VALUE ? "" : v)}
+                disabled={readOnly}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih kolom" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tidak ada kolom</SelectItem>
+                  <SelectItem value={NO_COLUMN_VALUE}>Tidak ada kolom</SelectItem>
                   {columns.map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
                       {c.name}
