@@ -32,9 +32,6 @@ import {
   Bot,
   UserCheck,
   Search,
-  Flame,
-  TrendingUp,
-  Snowflake,
   MessageSquare,
   Trash2,
   Pin,
@@ -84,17 +81,18 @@ function readableText(hex: string): string {
   return luminance > 0.6 ? "#111827" : "#ffffff";
 }
 
-const tagColors: Record<string, string> = {
-  hot_lead: "bg-orange-500/15 text-orange-300 border-orange-500/30",
-  cold: "bg-orange-500/15 text-orange-300 border-orange-500/30",
-  closing: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  none: "",
-};
-
-const tagIcons: Record<string, React.ElementType> = {
-  hot_lead: Flame,
-  cold: Snowflake,
-  closing: TrendingUp,
+// Visual marker for the manual lead classification (separate from the
+// auto-routing `tag`). Shown as a small coloured pill in the chat list so the
+// operator can tell at a glance which chats are leads.
+const leadStatusMeta: Record<string, { label: string; className: string }> = {
+  lead: {
+    label: "Lead",
+    className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  },
+  not_lead: {
+    label: "Not Lead",
+    className: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  },
 };
 
 interface Props {
@@ -103,7 +101,7 @@ interface Props {
 
 export default function ChatListPane({ selectedChatId }: Props) {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [tagFilter, setTagFilter] = useState("all");
+  const [leadFilter, setLeadFilter] = useState("all");
   const [labelFilter, setLabelFilter] = useState("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -178,7 +176,8 @@ export default function ChatListPane({ selectedChatId }: Props) {
   const filtered = allChats.filter((c) => {
     const matchScope = scope === "group" ? isGroupChat(c) : !isGroupChat(c);
     const matchStatus = statusFilter === "all" || c.status === statusFilter;
-    const matchTag = tagFilter === "all" || c.tag === tagFilter;
+    const matchLead =
+      leadFilter === "all" || (c.leadStatus ?? "none") === leadFilter;
     const matchLabel =
       labelFilter === "all" ||
       (c.labels ?? []).some((l) => String(l.id) === labelFilter);
@@ -190,13 +189,13 @@ export default function ChatListPane({ selectedChatId }: Props) {
       c.phoneNumber.includes(search) ||
       contentMatchIds.has(c.id);
     return (
-      matchScope && matchStatus && matchTag && matchLabel && matchUnread && matchSearch
+      matchScope && matchStatus && matchLead && matchLabel && matchUnread && matchSearch
     );
   });
 
   const activeFilters =
     (statusFilter !== "all" ? 1 : 0) +
-    (tagFilter !== "all" ? 1 : 0) +
+    (leadFilter !== "all" ? 1 : 0) +
     (labelFilter !== "all" ? 1 : 0) +
     (unreadOnly ? 1 : 0);
 
@@ -261,12 +260,12 @@ export default function ChatListPane({ selectedChatId }: Props) {
               <DropdownMenuRadioItem value="closed">Closed</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs">Tag</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={tagFilter} onValueChange={setTagFilter}>
+            <DropdownMenuLabel className="text-xs">Lead</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={leadFilter} onValueChange={setLeadFilter}>
               <DropdownMenuRadioItem value="all">Semua</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="hot_lead">Hot Lead</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="cold">Cold</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="closing">Closing</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="lead">Lead</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="not_lead">Not Lead</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="none">Not Tag</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             {availableLabels.length > 0 && (
               <>
@@ -294,7 +293,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                 <DropdownMenuItem
                   onClick={() => {
                     setStatusFilter("all");
-                    setTagFilter("all");
+                    setLeadFilter("all");
                     setLabelFilter("all");
                     setUnreadOnly(false);
                   }}
@@ -347,7 +346,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
         ) : (
           <div>
             {filtered.map((chat) => {
-              const TagIcon = tagIcons[chat.tag];
+              const leadMeta = leadStatusMeta[chat.leadStatus ?? "none"];
               const isSelected = selectedChatId === chat.id;
               const chatChannel =
                 showChannelBadge && chat.channelId != null
@@ -449,15 +448,16 @@ export default function ChatListPane({ selectedChatId }: Props) {
                             <Bot className="w-2.5 h-2.5" />
                           </Badge>
                         )}
-                        {chat.tag !== "none" && TagIcon && (
+                        {leadMeta && (
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[9px] h-4 w-4 p-0 flex items-center justify-center flex-shrink-0",
-                              tagColors[chat.tag]
+                              "text-[9px] h-4 px-1 flex items-center justify-center flex-shrink-0",
+                              leadMeta.className
                             )}
+                            data-testid={`chat-lead-badge-${chat.id}`}
                           >
-                            <TagIcon className="w-2.5 h-2.5" />
+                            {leadMeta.label}
                           </Badge>
                         )}
                         {(chat.unreadCount ?? 0) > 0 && (

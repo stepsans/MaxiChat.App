@@ -1233,6 +1233,18 @@ export const ChatTag = {
   closing: 'closing',
 } as const;
 
+/**
+ * Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
+ */
+export type ChatLeadStatus = typeof ChatLeadStatus[keyof typeof ChatLeadStatus];
+
+
+export const ChatLeadStatus = {
+  none: 'none',
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
 export interface CustomerLabel {
   id: number;
   name: string;
@@ -1266,6 +1278,8 @@ export interface Chat {
   labels: CustomerLabel[];
   status: ChatStatus;
   tag: ChatTag;
+  /** Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list. */
+  leadStatus?: ChatLeadStatus;
   isHumanTakeover: boolean;
   /** @nullable */
   lastMessage: string | null;
@@ -1404,6 +1418,18 @@ export const ChatWithMessagesTag = {
   closing: 'closing',
 } as const;
 
+/**
+ * Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
+ */
+export type ChatWithMessagesLeadStatus = typeof ChatWithMessagesLeadStatus[keyof typeof ChatWithMessagesLeadStatus];
+
+
+export const ChatWithMessagesLeadStatus = {
+  none: 'none',
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
 export interface ChatWithMessages {
   id: number;
   /** The channel this chat belongs to. Used to scope channel-restricted resources (e.g. shortcuts) to the active chat. */
@@ -1426,6 +1452,8 @@ export interface ChatWithMessages {
   labels: CustomerLabel[];
   status: ChatWithMessagesStatus;
   tag: ChatWithMessagesTag;
+  /** Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list. */
+  leadStatus?: ChatWithMessagesLeadStatus;
   isHumanTakeover: boolean;
   /** @nullable */
   lastMessage: string | null;
@@ -1493,9 +1521,23 @@ export const ChatUpdateTag = {
   closing: 'closing',
 } as const;
 
+/**
+ * Manual lead classification, independent of the auto-routing tag.
+ */
+export type ChatUpdateLeadStatus = typeof ChatUpdateLeadStatus[keyof typeof ChatUpdateLeadStatus];
+
+
+export const ChatUpdateLeadStatus = {
+  none: 'none',
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
 export interface ChatUpdate {
   status?: ChatUpdateStatus;
   tag?: ChatUpdateTag;
+  /** Manual lead classification, independent of the auto-routing tag. */
+  leadStatus?: ChatUpdateLeadStatus;
   /**
      * Editable display name for the contact (overrides contactName in the header).
      * @nullable
@@ -1651,12 +1693,14 @@ export interface AnalyticsSummary {
   aiHandled: number;
   needsHuman: number;
   closed: number;
-  hotLeads: number;
-  closingLeads: number;
-  coldLeads: number;
+  /** Count of chats manually marked as Lead. */
+  leads: number;
+  /** Count of chats manually marked as Not Lead. */
+  notLeads: number;
   totalMessages: number;
   todayChats: number;
-  closingRate: number;
+  /** Percentage of chats marked as Lead, out of all chats. */
+  leadRate: number;
   /** Count of chats carrying each customer label, scoped to the current account. Sorted by count descending. */
   chatsByLabel: LabelCount[];
 }

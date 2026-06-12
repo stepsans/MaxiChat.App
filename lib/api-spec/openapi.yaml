@@ -8018,6 +8018,10 @@ components:
         tag:
           type: string
           enum: [none, hot_lead, cold, closing]
+        leadStatus:
+          type: string
+          enum: [none, lead, not_lead]
+          description: Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
         isHumanTakeover:
           type: boolean
         lastMessage:
@@ -8162,6 +8166,10 @@ components:
         tag:
           type: string
           enum: [none, hot_lead, cold, closing]
+        leadStatus:
+          type: string
+          enum: [none, lead, not_lead]
+          description: Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
         isHumanTakeover:
           type: boolean
         lastMessage:
@@ -8249,6 +8257,10 @@ components:
         tag:
           type: string
           enum: [none, hot_lead, cold, closing]
+        leadStatus:
+          type: string
+          enum: [none, lead, not_lead]
+          description: Manual lead classification, independent of the auto-routing tag.
         nickname:
           type: ["string", "null"]
           description: Editable display name for the contact (overrides contactName in the header).
@@ -8461,7 +8473,7 @@ components:
 
     AnalyticsSummary:
       type: object
-      required: [totalChats, aiHandled, needsHuman, closed, hotLeads, closingLeads, coldLeads, totalMessages, todayChats, closingRate, chatsByLabel]
+      required: [totalChats, aiHandled, needsHuman, closed, leads, notLeads, totalMessages, todayChats, leadRate, chatsByLabel]
       properties:
         totalChats:
           type: integer
@@ -8471,18 +8483,19 @@ components:
           type: integer
         closed:
           type: integer
-        hotLeads:
+        leads:
           type: integer
-        closingLeads:
+          description: Count of chats manually marked as Lead.
+        notLeads:
           type: integer
-        coldLeads:
-          type: integer
+          description: Count of chats manually marked as Not Lead.
         totalMessages:
           type: integer
         todayChats:
           type: integer
-        closingRate:
+        leadRate:
           type: number
+          description: Percentage of chats marked as Lead, out of all chats.
         chatsByLabel:
           type: array
           description: Count of chats carrying each customer label, scoped to the current account. Sorted by count descending.

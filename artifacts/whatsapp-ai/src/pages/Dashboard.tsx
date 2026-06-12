@@ -244,28 +244,22 @@ export default function Dashboard() {
                 color="bg-yellow-500/10 text-yellow-400"
               />
               <StatCard
-                title="Closing Rate"
-                value={`${summary?.closingRate ?? 0}%`}
+                title="Lead Rate"
+                value={`${summary?.leadRate ?? 0}%`}
                 icon={TrendingUp}
                 color="bg-emerald-500/10 text-emerald-400"
               />
               <StatCard
-                title="Hot Leads"
-                value={summary?.hotLeads ?? 0}
+                title="Leads"
+                value={summary?.leads ?? 0}
                 icon={Flame}
-                color="bg-orange-500/10 text-orange-400"
+                color="bg-emerald-500/10 text-emerald-400"
               />
               <StatCard
-                title="Closing Leads"
-                value={summary?.closingLeads ?? 0}
-                icon={TrendingUp}
-                color="bg-amber-500/10 text-amber-400"
-              />
-              <StatCard
-                title="Cold Leads"
-                value={summary?.coldLeads ?? 0}
+                title="Not Leads"
+                value={summary?.notLeads ?? 0}
                 icon={Users}
-                color="bg-slate-500/10 text-slate-400"
+                color="bg-rose-500/10 text-rose-400"
               />
               <StatCard
                 title="Total Messages"

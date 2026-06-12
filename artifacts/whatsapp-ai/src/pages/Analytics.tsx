@@ -39,9 +39,8 @@ export default function Analytics() {
 
   const tagData = summary
     ? [
-        { name: "Hot Lead", value: summary.hotLeads },
-        { name: "Closing", value: summary.closingLeads },
-        { name: "Cold", value: summary.coldLeads },
+        { name: "Lead", value: summary.leads },
+        { name: "Not Lead", value: summary.notLeads },
       ]
     : [];
 
@@ -73,11 +72,11 @@ export default function Analytics() {
                   <p className="text-xs text-muted-foreground mt-0.5">{summary?.todayChats ?? 0} today</p>
                 </CardContent>
               </Card>
-              <Card data-testid="stat-closing-rate">
+              <Card data-testid="stat-lead-rate">
                 <CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Closing Rate</p>
-                  <p className="text-2xl font-bold mt-1 text-primary">{summary?.closingRate ?? 0}%</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{summary?.closingLeads ?? 0} closing</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Lead Rate</p>
+                  <p className="text-2xl font-bold mt-1 text-primary">{summary?.leadRate ?? 0}%</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{summary?.leads ?? 0} lead</p>
                 </CardContent>
               </Card>
               <Card data-testid="stat-ai-handled">

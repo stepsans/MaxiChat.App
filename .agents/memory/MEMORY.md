@@ -79,3 +79,4 @@
 - [@types/react version skew](types-react-version-skew.md) — "Two different types with this name exist" in web UI files = Expo's 19.1.x vs web 19.2.x @types/react dup, not a real bug; don't patch the component, a global override risks mobile typecheck.
 - [Radix Select empty value](radix-select-empty-value.md) — Radix `Select.Item value=""` crashes the tree; use a sentinel (e.g. `__none__`) and map back to ""/null in state.
 - [WA dev/prod session conflict](wa-session-conflict-dev-prod.md) — `syncing→disconnected` ~12-20s loop = WhatsApp 440 conflict (two Baileys on same creds: editor + live VM), not a bug; run number in ONE env only.
+- [leadStatus vs tag separation](lead-status-vs-tag.md) — chats.tag is auto-router-owned; manual lead labels live in a separate chats.lead_status column, never reuse tag.

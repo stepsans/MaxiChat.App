@@ -21,7 +21,7 @@ import {
   getGetCommonGroupsQueryKey,
   type Chat,
   type ChatUpdateStatus,
-  type ChatUpdateTag,
+  type ChatUpdateLeadStatus,
 } from "@workspace/api-client-react";
 
 import { useColors } from "@/hooks/useColors";
@@ -32,11 +32,10 @@ const STATUS_OPTIONS: { value: ChatUpdateStatus; label: string }[] = [
   { value: "closed", label: "Selesai" },
 ];
 
-const TAG_OPTIONS: { value: ChatUpdateTag; label: string }[] = [
+const LEAD_OPTIONS: { value: ChatUpdateLeadStatus; label: string }[] = [
   { value: "none", label: "Tanpa Tag" },
-  { value: "hot_lead", label: "Hot Lead" },
-  { value: "cold", label: "Cold" },
-  { value: "closing", label: "Closing" },
+  { value: "lead", label: "Lead" },
+  { value: "not_lead", label: "Not Lead" },
 ];
 
 export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
@@ -100,9 +99,9 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
     }
   };
 
-  const setTag = async (tag: ChatUpdateTag) => {
+  const setLead = async (leadStatus: ChatUpdateLeadStatus) => {
     try {
-      await updateChat.mutateAsync({ id: chatId, data: { tag } });
+      await updateChat.mutateAsync({ id: chatId, data: { leadStatus } });
       invalidate();
     } catch {
       // ignore
@@ -237,17 +236,17 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
         })}
       </View>
 
-      {/* Tag */}
+      {/* Lead */}
       <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-        Tag
+        Lead
       </Text>
       <View style={styles.pillWrap}>
-        {TAG_OPTIONS.map((o) => {
-          const active = chat.tag === o.value;
+        {LEAD_OPTIONS.map((o) => {
+          const active = (chat.leadStatus ?? "none") === o.value;
           return (
             <TouchableOpacity
               key={o.value}
-              onPress={() => setTag(o.value)}
+              onPress={() => setLead(o.value)}
               style={[
                 styles.pill,
                 {

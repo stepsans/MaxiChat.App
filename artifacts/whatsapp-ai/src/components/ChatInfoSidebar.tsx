@@ -112,6 +112,7 @@ type ChatLike = {
   customerCode?: string | null;
   labels: ChatLabel[];
   tag: string;
+  leadStatus?: string;
   status: string;
   isHumanTakeover: boolean;
   assignedUserId?: number | null;
@@ -128,6 +129,7 @@ interface Props {
     company?: string | null;
     customerCode?: string | null;
     tag?: string;
+    leadStatus?: string;
     status?: string;
   }) => void;
   onTakeover: (checked: boolean) => void;
@@ -2198,23 +2200,22 @@ export function ChatInfoSidebar({
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
-                Tag
+                Lead
               </Label>
               <Select
-                value={chat.tag}
-                onValueChange={(val) => onUpdate({ tag: val })}
+                value={chat.leadStatus ?? "none"}
+                onValueChange={(val) => onUpdate({ leadStatus: val })}
               >
                 <SelectTrigger
-                  data-testid="select-chat-tag"
+                  data-testid="select-chat-lead"
                   className="h-9 w-full text-xs bg-transparent border-[hsl(var(--wa-divider))]"
                 >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No tag</SelectItem>
-                  <SelectItem value="hot_lead">Hot Lead</SelectItem>
-                  <SelectItem value="cold">Cold</SelectItem>
-                  <SelectItem value="closing">Closing</SelectItem>
+                  <SelectItem value="none">Not Tag</SelectItem>
+                  <SelectItem value="lead">Lead</SelectItem>
+                  <SelectItem value="not_lead">Not Lead</SelectItem>
                 </SelectContent>
               </Select>
             </div>

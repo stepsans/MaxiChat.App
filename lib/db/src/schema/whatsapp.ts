@@ -36,6 +36,7 @@ export const chatsTable = pgTable(
     customerCode: text("customer_code"),
     status: text("status").notNull().default("ai_handled"),
     tag: text("tag").notNull().default("none"),
+    leadStatus: text("lead_status").notNull().default("none"),
     isHumanTakeover: boolean("is_human_takeover").notNull().default(false),
     lastMessage: text("last_message"),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
