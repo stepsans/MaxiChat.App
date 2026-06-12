@@ -239,10 +239,14 @@ async function executeJob(job: AcrJobRow): Promise<void> {
   // the OWNER — historical rows predate the sent_by_user_id column, and in a
   // single-operator tenant every human outbound is effectively the owner's.
   // Group chats and status broadcasts are out of scope for CS evaluation.
+  // Group by the raw columns and resolve the author fallback chain in JS —
+  // a parameterised COALESCE in both SELECT and GROUP BY binds as two
+  // different placeholders, which Postgres rejects as a non-grouped column.
   const outboundRows = await db
     .select({
       chatId: chatMessagesTable.chatId,
-      author: sql<number | null>`COALESCE(${chatMessagesTable.sentByUserId}, ${chatsTable.assignedUserId}, ${ownerUserId})`,
+      sentByUserId: chatMessagesTable.sentByUserId,
+      assignedUserId: chatsTable.assignedUserId,
       contactName: chatsTable.contactName,
       channelId: chatsTable.channelId,
       msgCount: sql<number>`count(*)::int`,
@@ -262,27 +266,49 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     )
     .groupBy(
       chatMessagesTable.chatId,
-      sql`COALESCE(${chatMessagesTable.sentByUserId}, ${chatsTable.assignedUserId}, ${ownerUserId})`,
+      chatMessagesTable.sentByUserId,
+      chatsTable.assignedUserId,
       chatsTable.contactName,
       chatsTable.channelId
     );
 
   // A chat counts once, for its primary responder (most human outbound
   // messages in the period). Authors outside the evaluated member set
-  // (owner, removed users, unattributed rows) don't claim conversations.
+  // (removed users, filtered-out agents) don't claim conversations. Rows are
+  // grouped per raw column pair, so sum counts per resolved author first.
+  const countByChatAuthor = new Map<
+    string,
+    { chatId: number; agentId: number; count: number; contactName: string; channelId: number }
+  >();
+  for (const row of outboundRows) {
+    const author = row.sentByUserId ?? row.assignedUserId ?? ownerUserId;
+    if (!members.has(author)) continue;
+    const key = `${row.chatId}|${author}`;
+    const prev = countByChatAuthor.get(key);
+    if (prev) {
+      prev.count += row.msgCount;
+    } else {
+      countByChatAuthor.set(key, {
+        chatId: row.chatId,
+        agentId: author,
+        count: row.msgCount,
+        contactName: row.contactName,
+        channelId: row.channelId,
+      });
+    }
+  }
   const byChat = new Map<
     number,
     { best: number; agentId: number; contactName: string; channelId: number }
   >();
-  for (const row of outboundRows) {
-    if (row.author == null || !members.has(row.author)) continue;
-    const prev = byChat.get(row.chatId);
-    if (!prev || row.msgCount > prev.best) {
-      byChat.set(row.chatId, {
-        best: row.msgCount,
-        agentId: row.author,
-        contactName: row.contactName,
-        channelId: row.channelId,
+  for (const entry of countByChatAuthor.values()) {
+    const prev = byChat.get(entry.chatId);
+    if (!prev || entry.count > prev.best) {
+      byChat.set(entry.chatId, {
+        best: entry.count,
+        agentId: entry.agentId,
+        contactName: entry.contactName,
+        channelId: entry.channelId,
       });
     }
   }
