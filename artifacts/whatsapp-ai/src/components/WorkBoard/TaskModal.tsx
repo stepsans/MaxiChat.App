@@ -38,6 +38,7 @@ interface TaskModalProps {
   members: WorkboardMember[];
   task?: WorkboardTask | null;
   readOnly?: boolean;
+  preColumnId?: number;
 }
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -55,6 +56,7 @@ export default function TaskModal({
   members,
   task,
   readOnly = false,
+  preColumnId,
 }: TaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -79,13 +81,15 @@ export default function TaskModal({
     } else {
       setTitle("");
       setDescription("");
-      setColumnId(columns[0] ? String(columns[0].id) : "");
+      // Pre-select the column the user clicked on; fall back to first column
+      const defaultCol = preColumnId ?? columns[0]?.id;
+      setColumnId(defaultCol !== undefined ? String(defaultCol) : "");
       setPriority("medium");
       setDueDate("");
       setTags([]);
       setAssigneeIds([]);
     }
-  }, [task, columns, open]);
+  }, [task, columns, open, preColumnId]);
 
   async function handleSave() {
     if (!title.trim()) return;

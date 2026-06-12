@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import type { WorkboardColumn, WorkboardTask, WorkboardMember } from "@/hooks/useBoardDetail";
 import KanbanColumn from "./KanbanColumn";
@@ -45,7 +45,15 @@ export default function KanbanView({
   }>({ open: false });
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
+  // localTasks used only during optimistic drag-and-drop; reset after server confirms
   const [localTasks, setLocalTasks] = useState<WorkboardTask[] | null>(null);
+  const latestTasksRef = useRef(tasks);
+  latestTasksRef.current = tasks;
+
+  // Reset localTasks when server data refreshes (after a successful move)
+  useEffect(() => {
+    setLocalTasks(null);
+  }, [tasks]);
 
   const displayTasks = localTasks ?? tasks;
 
@@ -63,14 +71,16 @@ export default function KanbanView({
     const taskId = Number(draggableId);
     const newColumnId = Number(destination.droppableId);
 
-    // Optimistic update
-    const updated = (localTasks ?? tasks).map((t) =>
+    // Optimistic update immediately
+    const base = latestTasksRef.current;
+    const updated = base.map((t) =>
       t.id === taskId ? { ...t, columnId: newColumnId, position: destination.index } : t
     );
     setLocalTasks(updated);
 
     try {
       await onMoveTask(taskId, newColumnId, destination.index);
+      // server refetch will trigger the useEffect above to reset localTasks
     } catch {
       setLocalTasks(null);
     }
@@ -78,10 +88,18 @@ export default function KanbanView({
 
   async function handleAddColumn() {
     if (!newColumnName.trim()) return;
-    await onCreateColumn({ name: newColumnName.trim() });
-    setNewColumnName("");
-    setAddColumnOpen(false);
+    try {
+      await onCreateColumn({ name: newColumnName.trim() });
+      setNewColumnName("");
+      setAddColumnOpen(false);
+    } catch {
+      // error shown via toast
+    }
   }
+
+  // Capture taskModal in a ref so onSave closure always has the latest value
+  const taskModalRef = useRef(taskModal);
+  taskModalRef.current = taskModal;
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 h-full">
@@ -145,13 +163,17 @@ export default function KanbanView({
         columns={columns}
         members={members}
         readOnly={!canEdit}
+        // Pass the preColumnId so TaskModal pre-selects the correct column
+        preColumnId={taskModal.preColumnId}
         onSave={async (data) => {
-          if (taskModal.task) {
-            await onUpdateTask(taskModal.task.id, data);
+          const modal = taskModalRef.current;
+          if (modal.task) {
+            await onUpdateTask(modal.task.id, data);
           } else {
             await onCreateTask({
               ...data,
-              columnId: data.columnId ?? taskModal.preColumnId ?? null,
+              // If user explicitly changed the column in modal, use that; else use the clicked column
+              columnId: data.columnId !== undefined ? data.columnId : (modal.preColumnId ?? null),
             });
           }
         }}
