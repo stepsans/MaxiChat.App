@@ -10,7 +10,7 @@ import {
   useListChats,
   getListChatsQueryKey,
 } from "@workspace/api-client-react";
-import { useActiveChannel } from "@/contexts/ChannelContext";
+import { useActiveChannelOptional } from "@/contexts/ChannelContext";
 import {
   DEFAULT_NOTIFICATION_SOUND,
   isNotificationSoundId,
@@ -76,8 +76,15 @@ export function useNotificationSound(): NotificationSoundContextValue {
 // chat's unread count. Channel switches reset the baseline silently so they
 // never trigger a false beep. Mount this once, globally (in Layout).
 export function useChatNotificationSound(): void {
-  const { activeChannelId } = useActiveChannel();
-  const { sound } = useNotificationSound();
+  // Read both contexts defensively. This is a cosmetic side-effect (playing a
+  // ring on new messages); a momentarily-missing provider — e.g. during an HMR
+  // fast-refresh — must never throw and white-screen the whole authenticated
+  // app. Hooks are still called unconditionally to preserve hook order; the
+  // side-effect simply no-ops when a context is absent.
+  const channelCtx = useActiveChannelOptional();
+  const soundCtx = useContext(NotificationSoundContext);
+  const activeChannelId = channelCtx?.activeChannelId ?? null;
+  const sound = soundCtx?.sound ?? DEFAULT_NOTIFICATION_SOUND;
   const { data: chats } = useListChats(
     {},
     { query: { queryKey: getListChatsQueryKey(), refetchInterval: 5000 } },

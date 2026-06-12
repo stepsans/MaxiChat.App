@@ -1,7 +1,8 @@
 - [Express 5 handler conventions](express5-handler-conventions.md) — return types, never `return res.X()`, and the unbraced-if trap when bulk-rewriting that pattern.
 - [google-auth-library is transitive](google-auth-library-transitive.md) — never add as dep; use `InstanceType<typeof google.auth.OAuth2>` from `googleapis`.
 - [Fetch interceptor ref ordering](fetch-interceptor-ref-ordering.md) — header-injecting interceptors that read from a ref MUST update the ref before invalidateQueries, not on next render.
-- [WA history-sync flood wedges process](wa-history-sync-flood.md) — syncFullHistory:true dumps full history on every reconnect → media/link-preview/DB flood wedges event loop → site hangs (TLS ok, no HTTP, logs silent); keep it false + clamp corrupt `pinned` epoch.
+- [WA history-sync flood wedges process](wa-history-sync-flood.md) — syncFullHistory:true floods event loop on every reconnect → site hangs (TLS ok, no HTTP, logs silent); keep it false + clamp corrupt `pinned` epoch.
+- [HMR context desync white-screens app](hmr-context-crash-resilience.md) — "must be used within Provider" from a correctly-nested component = HMR fast-refresh invalidation, not a hierarchy bug; make cosmetic consumers read context non-throwingly.
 - [Baileys messages.upsert pipeline](baileys-message-pipeline.md) — accept all upsert types, epoch-guard is `continue` not `return`, history sync must download media + back-fill on conflict.
 - [Baileys media stream uncaught crash](baileys-media-stream-uncaught.md) — media socket-close emits async stream 'error' AFTER the try/catch → uncaughtException kills whole API; guarded by narrow process handler in index.ts.
 - [Baileys logout re-pair](baileys-logout-repair.md) — a loggedOut channel never emits a QR while stale creds sit on disk; must wipe its auth dir (only on loggedOut, not transient drops) + restart to re-pair.
