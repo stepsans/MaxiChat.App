@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListAgents,
@@ -6,8 +6,10 @@ import {
   useUpdateAgent,
   useDeleteAgent,
   useUpdateTeamSettings,
+  useListAiPipelines,
   getListAgentsQueryKey,
   type TeamAgent,
+  type AiPipeline,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,12 +30,14 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Trash2, Pencil, ShieldCheck, Eye } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, ShieldCheck, Eye, BrainCircuit, Save } from "lucide-react";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PermissionMatrixEditor } from "@/components/PermissionMatrixEditor";
 import { UserPermissionEditor } from "@/components/UserPermissionEditor";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 type FormState = {
   email: string;
@@ -97,6 +101,228 @@ const PLAN_LABEL: Record<string, string> = {
   pro: "Pro",
   business: "Business",
 };
+
+// ─── AI Pipeline Access Tab ──────────────────────────────────────────────────
+
+type RoleDefaults = Record<string, { canView: boolean; canEdit: boolean }>;
+type UserOverride = { canView: boolean | null; canEdit: boolean | null; hasOverride: boolean };
+
+function AiPipelineAccessTab({ agents }: { agents: TeamAgent[] }) {
+  const { data: pipelinesData } = useListAiPipelines();
+  const pipelines: AiPipeline[] = pipelinesData ?? [];
+
+  const [selectedPipeline, setSelectedPipeline] = useState<number | null>(null);
+  const [roleDefaults, setRoleDefaults] = useState<RoleDefaults>({
+    supervisor: { canView: true, canEdit: false },
+    agent: { canView: false, canEdit: false },
+  });
+  const [userOverrides, setUserOverrides] = useState<Record<number, UserOverride>>({});
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (pipelines.length > 0 && selectedPipeline === null) {
+      setSelectedPipeline(pipelines[0].id);
+    }
+  }, [pipelines, selectedPipeline]);
+
+  useEffect(() => {
+    if (!selectedPipeline) return;
+    fetch(`/api/ai-pipeline/${selectedPipeline}/visibility/role-defaults`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setRoleDefaults(d))
+      .catch(() => {});
+    const overrides: Record<number, UserOverride> = {};
+    Promise.all(
+      agents.map((a) =>
+        fetch(`/api/ai-pipeline/${selectedPipeline}/visibility/user/${a.id}`, { credentials: "include" })
+          .then((r) => r.json())
+          .then((d) => { overrides[a.id] = d; })
+          .catch(() => {})
+      )
+    ).then(() => setUserOverrides({ ...overrides }));
+  }, [selectedPipeline, agents]);
+
+  const saveRoleDefaults = async () => {
+    if (!selectedPipeline) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/ai-pipeline/${selectedPipeline}/visibility/role-defaults`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(roleDefaults),
+      });
+      toast({ title: "Pengaturan role tersimpan" });
+    } catch {
+      toast({ title: "Gagal menyimpan", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveUserOverride = async (userId: number, override: { canView: boolean | null; canEdit: boolean | null }) => {
+    if (!selectedPipeline) return;
+    const remove = override.canView === null && override.canEdit === null;
+    await fetch(`/api/ai-pipeline/${selectedPipeline}/visibility/user/${userId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(remove ? { remove: true } : { canView: override.canView ?? false, canEdit: override.canEdit ?? false }),
+    });
+    setUserOverrides((prev) => ({
+      ...prev,
+      [userId]: remove
+        ? { canView: null, canEdit: null, hasOverride: false }
+        : { canView: override.canView, canEdit: override.canEdit, hasOverride: true },
+    }));
+  };
+
+  if (pipelines.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground py-8 text-center">
+        Belum ada AI Pipeline. Buat pipeline terlebih dahulu di menu <strong>AI Pipeline</strong>.
+      </div>
+    );
+  }
+
+  const pipeline = pipelines.find((p) => p.id === selectedPipeline);
+
+  return (
+    <div className="space-y-6">
+      {/* Pipeline selector */}
+      <div className="space-y-2">
+        <Label>Pilih Pipeline</Label>
+        <Select
+          value={selectedPipeline?.toString() ?? ""}
+          onValueChange={(v) => setSelectedPipeline(parseInt(v, 10))}
+        >
+          <SelectTrigger className="w-72">
+            <SelectValue placeholder="Pilih pipeline..." />
+          </SelectTrigger>
+          <SelectContent>
+            {pipelines.map((p) => (
+              <SelectItem key={p.id} value={p.id.toString()}>
+                <span className="flex items-center gap-2">
+                  <BrainCircuit className="h-3.5 w-3.5 text-muted-foreground" />
+                  {p.name}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {pipeline && (
+          <p className="text-xs text-muted-foreground">{pipeline.description ?? ""}</p>
+        )}
+      </div>
+
+      {selectedPipeline && (
+        <>
+          {/* Role defaults */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Default per Role</p>
+                <p className="text-xs text-muted-foreground">Berlaku untuk semua anggota kecuali ada override individual</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={saveRoleDefaults} disabled={saving} className="gap-1">
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Simpan
+              </Button>
+            </div>
+            <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 gap-y-3 items-center">
+              <span className="text-xs font-medium text-muted-foreground uppercase">Role</span>
+              <span className="text-xs font-medium text-muted-foreground uppercase">Lihat</span>
+              <span className="text-xs font-medium text-muted-foreground uppercase">Edit</span>
+              {(["supervisor", "agent"] as const).map((role) => (
+                <>
+                  <span key={`${role}-label`} className="text-sm capitalize">{role}</span>
+                  <Switch
+                    key={`${role}-view`}
+                    checked={roleDefaults[role]?.canView ?? false}
+                    onCheckedChange={(v) =>
+                      setRoleDefaults((prev) => ({ ...prev, [role]: { ...prev[role], canView: v } }))
+                    }
+                  />
+                  <Switch
+                    key={`${role}-edit`}
+                    checked={roleDefaults[role]?.canEdit ?? false}
+                    onCheckedChange={(v) =>
+                      setRoleDefaults((prev) => ({ ...prev, [role]: { ...prev[role], canEdit: v } }))
+                    }
+                  />
+                </>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-user overrides */}
+          <div className="border rounded-lg p-4 space-y-4">
+            <div>
+              <p className="text-sm font-medium">Override per Pengguna</p>
+              <p className="text-xs text-muted-foreground">Override individual mengalahkan default role di atas</p>
+            </div>
+            {agents.length === 0 && (
+              <p className="text-sm text-muted-foreground">Belum ada anggota tim.</p>
+            )}
+            <div className="space-y-3">
+              {agents.map((agent) => {
+                const ov = userOverrides[agent.id];
+                const effectiveView = ov?.hasOverride ? (ov.canView ?? false) : (roleDefaults[agent.teamRole]?.canView ?? false);
+                const effectiveEdit = ov?.hasOverride ? (ov.canEdit ?? false) : (roleDefaults[agent.teamRole]?.canEdit ?? false);
+                return (
+                  <div key={agent.id} className="flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{agent.name}</p>
+                      <p className="text-xs text-muted-foreground">{agent.teamRole} · {agent.email}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Lihat</span>
+                        <Switch
+                          checked={effectiveView}
+                          onCheckedChange={(v) => saveUserOverride(agent.id, {
+                            canView: v,
+                            canEdit: ov?.hasOverride ? (ov.canEdit ?? false) : effectiveEdit,
+                          })}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Edit</span>
+                        <Switch
+                          checked={effectiveEdit}
+                          onCheckedChange={(v) => saveUserOverride(agent.id, {
+                            canView: ov?.hasOverride ? (ov.canView ?? false) : effectiveView,
+                            canEdit: v,
+                          })}
+                        />
+                      </div>
+                      {ov?.hasOverride && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground"
+                          onClick={() => saveUserOverride(agent.id, { canView: null, canEdit: null })}
+                        >
+                          Reset
+                        </Button>
+                      )}
+                    </div>
+                    {ov?.hasOverride && (
+                      <Badge variant="secondary" className="text-xs shrink-0">override</Badge>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Agents() {
   const qc = useQueryClient();
@@ -318,12 +544,16 @@ export default function Agents() {
             <TabsTrigger value="team" data-testid="tab-team">Anggota Tim</TabsTrigger>
             <TabsTrigger value="perm" data-testid="tab-permission">Permission per Role</TabsTrigger>
             <TabsTrigger value="user-perm" data-testid="tab-user-permission">Permission per User</TabsTrigger>
+            <TabsTrigger value="ai-pipeline-access" data-testid="tab-ai-pipeline-access">Akses AI Pipeline</TabsTrigger>
           </TabsList>
           <TabsContent value="perm" className="mt-0">
             <PermissionMatrixEditor />
           </TabsContent>
           <TabsContent value="user-perm" className="mt-0">
             <UserPermissionEditor />
+          </TabsContent>
+          <TabsContent value="ai-pipeline-access" className="mt-0">
+            <AiPipelineAccessTab agents={data?.agents ?? []} />
           </TabsContent>
           <TabsContent value="team" className="mt-0">
 

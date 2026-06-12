@@ -221,6 +221,12 @@ export const chatMessagesTable = pgTable(
     // local content overwrite). Null = never edited. The UI shows a "diedit"
     // badge when set.
     editedAt: timestamp("edited_at", { withTimezone: true }),
+    // Team member (users.id) who authored this OUTBOUND message via the
+    // dashboard (manual reply, media, product, quotation, shortcut sends).
+    // Null for inbound rows, AI/chatbot sends, and historical rows — readers
+    // (AI Chat Report) fall back to chats.assignedUserId for attribution.
+    // Plain integer (no FK) to match assignedUserId's cross-schema pattern.
+    sentByUserId: integer("sent_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

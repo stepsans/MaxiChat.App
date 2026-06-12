@@ -56,7 +56,10 @@
       "Bash(npx tsx *)",
       "Bash(pnpm *)",
       "Bash(PORT=5001 node /home/runner/workspace/artifacts/api-server/dist/index.mjs)",
-      "Bash(kill %1)"
+      "Bash(kill %1)",
+      "Bash(grep -v \"mockup-sandbox\\\\|Scope\\\\|artifacts/admin\\\\|artifacts/mobile\\\\|artifacts/whatsapp-ai\\\\|artifacts/api-server\\\\|typecheck: Done\\\\|typecheck\\\\$\")",
+      "Bash(git stash *)",
+      "Bash(kill 207 323 555 568 569)"
     ]
   }
 }

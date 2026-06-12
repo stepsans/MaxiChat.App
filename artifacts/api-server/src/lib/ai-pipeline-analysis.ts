@@ -16,7 +16,6 @@ import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
 import { createHash } from "crypto";
 import { scheduleCutoffLogs } from "./ai-pipeline-scheduler";
-import { createOpportunityFromAnalysis } from "./ai-pipeline-opportunity";
 import { scheduleFollowups } from "./ai-pipeline-followup";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -107,7 +106,6 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
 
   let contactsProcessed = 0;
   let contactsEnteredPipeline = 0;
-  let opportunitiesCreated = 0;
 
   try {
     const pipeline = await db.query.aiPipelinesTable.findFirst({
@@ -266,34 +264,6 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           contactsEnteredPipeline++;
         }
 
-        // Auto-create opportunity if threshold exceeded.
-        if (
-          pipeline.autoCreateOpportunity &&
-          result.score >= (pipeline.opportunityThreshold ?? 80) &&
-          entryResult.entryId
-        ) {
-          try {
-            await createOpportunityFromAnalysis({
-              analysisId: analysis.id,
-              entryId: entryResult.entryId,
-              pipelineId: pipeline.id,
-              ownerUserId: pipeline.ownerUserId,
-              contactPhone: chat.phoneNumber,
-              contactName: chat.contactName,
-              channelId: chat.channelId,
-              score: result.score,
-              estimatedValue: result.estimatedValue || null,
-              productInterest: result.productInterest || null,
-              scoreReason: result.scoreReason || null,
-              recommendation: result.recommendation || null,
-            });
-            opportunitiesCreated++;
-          } catch (err) {
-            // Non-fatal: opportunity creation is best-effort.
-            console.error("[ai-pipeline] opportunity creation failed:", err);
-          }
-        }
-
         // Schedule follow-ups if enabled.
         if (
           pipeline.autoFollowupEnabled &&
@@ -325,7 +295,6 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
         completedAt: new Date(),
         contactsProcessed,
         contactsEnteredPipeline,
-        opportunitiesCreated,
       })
       .where(eq(aiPipelineCutoffLogsTable.id, cutoffLogId));
 

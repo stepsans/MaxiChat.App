@@ -10,8 +10,12 @@ import {
   aiPipelineEntriesTable,
   aiPipelineFollowupLogsTable,
   aiPipelineCutoffLogsTable,
+  aiPipelinePromptVersionsTable,
+  aiPipelineVisibilityTable,
+  aiPipelineUserVisibilityTable,
   channelsTable,
   customerLabelsTable,
+  usersTable,
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
@@ -19,6 +23,7 @@ import {
   CreateAiPipelineBody,
 } from "@workspace/api-zod";
 import { scheduleCutoffLogs } from "../lib/ai-pipeline-scheduler";
+import { resolveAiClient } from "../lib/ai-provider";
 
 const router = Router();
 
@@ -72,8 +77,6 @@ async function buildPipelineResponse(pipeline: typeof aiPipelinesTable.$inferSel
     description: pipeline.description,
     isActive: pipeline.isActive,
     scoreThreshold: pipeline.scoreThreshold,
-    opportunityThreshold: pipeline.opportunityThreshold,
-    autoCreateOpportunity: pipeline.autoCreateOpportunity,
     autoFollowupEnabled: pipeline.autoFollowupEnabled,
     followupIntervals: pipeline.followupIntervals,
     cutoffTimes: pipeline.cutoffTimes,
@@ -81,6 +84,9 @@ async function buildPipelineResponse(pipeline: typeof aiPipelinesTable.$inferSel
     excludeLabelIds: excludeLabels.map((l) => l.labelId),
     staleDaysThreshold: pipeline.staleDaysThreshold,
     highValueThresholdIdr: pipeline.highValueThresholdIdr,
+    customPrompt: pipeline.customPrompt ?? null,
+    promptVersion: pipeline.promptVersion,
+    directionFilter: pipeline.directionFilter,
     lastRunAt: lastLog[0]?.completedAt?.toISOString() ?? null,
     todayStats,
     createdAt: pipeline.createdAt.toISOString(),
@@ -92,7 +98,7 @@ async function buildTodayStats(pipelineId: number) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const [analyzed, entered, opportunities, followups] = await Promise.all([
+  const [analyzed, entered, followups] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(aiPipelineAnalysesTable)
@@ -114,16 +120,6 @@ async function buildTodayStats(pipelineId: number) {
       ),
     db
       .select({ count: sql<number>`count(*)::int` })
-      .from(aiPipelineEntriesTable)
-      .where(
-        and(
-          eq(aiPipelineEntriesTable.pipelineId, pipelineId),
-          gte(aiPipelineEntriesTable.enteredAt, todayStart),
-          sql`${aiPipelineEntriesTable.opportunityId} IS NOT NULL`
-        )
-      ),
-    db
-      .select({ count: sql<number>`count(*)::int` })
       .from(aiPipelineFollowupLogsTable)
       .where(
         and(
@@ -136,7 +132,6 @@ async function buildTodayStats(pipelineId: number) {
   return {
     analyzed: analyzed[0]?.count ?? 0,
     enteredPipeline: entered[0]?.count ?? 0,
-    opportunitiesCreated: opportunities[0]?.count ?? 0,
     followupsSent: followups[0]?.count ?? 0,
   };
 }
@@ -185,6 +180,51 @@ router.get("/", async (req: Request, res: Response) => {
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
+// ─── Test prompt (no pipeline ID — for wizard preview) ───────────────────────
+
+router.post("/test-prompt", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const { prompt, sampleMessages } = req.body as { prompt?: string; sampleMessages?: string };
+  if (!prompt || !sampleMessages) {
+    res.status(400).json({ error: "prompt and sampleMessages required" });
+    return;
+  }
+  if (prompt.length < 80 || prompt.length > 1500) {
+    res.status(400).json({ error: "prompt must be 80–1500 characters" });
+    return;
+  }
+
+  const resolved = await resolveAiClient(ownerUserId);
+
+  const systemPrompt = `${prompt}\n\nAnalyze the following conversation and respond with a JSON object containing: score (0-100), status (string), recommendation (string), scoreReason (string).`;
+
+  const completion = await resolved.client.chat.completions.create({
+    model: resolved.model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Conversation:\n${sampleMessages}` },
+    ],
+    response_format: { type: "json_object" },
+    max_tokens: 500,
+  });
+
+  const raw = completion.choices[0]?.message?.content ?? "{}";
+  let parsedResult: Record<string, unknown> = {};
+  try { parsedResult = JSON.parse(raw); } catch { /* leave empty */ }
+
+  res.json({
+    score: parsedResult.score ?? null,
+    status: parsedResult.status ?? null,
+    recommendation: parsedResult.recommendation ?? null,
+    scoreReason: parsedResult.scoreReason ?? null,
+    rawResponse: raw,
+  });
+});
+
+// ─── Create ───────────────────────────────────────────────────────────────────
+
 router.post("/", async (req: Request, res: Response) => {
   const ownerUserId = await resolveOwner(req, res);
   if (!ownerUserId) return;
@@ -196,9 +236,10 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   const {
-    name, description, isActive, scoreThreshold, opportunityThreshold,
-    autoCreateOpportunity, autoFollowupEnabled, followupIntervals, cutoffTimes,
+    name, description, isActive, scoreThreshold,
+    autoFollowupEnabled, followupIntervals, cutoffTimes,
     channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
+    customPrompt, directionFilter,
   } = parsed.data;
 
   const [pipeline] = await db
@@ -209,15 +250,26 @@ router.post("/", async (req: Request, res: Response) => {
       description: description ?? null,
       isActive: isActive ?? true,
       scoreThreshold: scoreThreshold ?? 70,
-      opportunityThreshold: opportunityThreshold ?? 80,
-      autoCreateOpportunity: autoCreateOpportunity ?? false,
       autoFollowupEnabled: autoFollowupEnabled ?? false,
       followupIntervals: followupIntervals ?? ["24h", "48h", "72h"],
       cutoffTimes: cutoffTimes ?? ["12:00", "23:59"],
       staleDaysThreshold: staleDaysThreshold ?? 14,
       highValueThresholdIdr: highValueThresholdIdr ?? 0,
+      customPrompt: customPrompt ?? null,
+      directionFilter: directionFilter ?? true,
     })
     .returning();
+
+  if (customPrompt) {
+    const userId = getSessionUserId(req)!;
+    await db.insert(aiPipelinePromptVersionsTable).values({
+      pipelineId: pipeline.id,
+      ownerUserId,
+      version: 1,
+      promptText: customPrompt,
+      changedBy: userId,
+    });
+  }
 
   await upsertChannelsAndLabels(pipeline.id, channelIds ?? [], excludeLabelIds ?? []);
 
@@ -262,10 +314,14 @@ router.put("/:id", async (req: Request, res: Response) => {
   }
 
   const {
-    name, description, isActive, scoreThreshold, opportunityThreshold,
-    autoCreateOpportunity, autoFollowupEnabled, followupIntervals, cutoffTimes,
+    name, description, isActive, scoreThreshold,
+    autoFollowupEnabled, followupIntervals, cutoffTimes,
     channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
+    customPrompt, directionFilter,
   } = parsed.data;
+
+  const promptChanged = customPrompt !== undefined && customPrompt !== pipeline.customPrompt;
+  const nextVersion = promptChanged ? pipeline.promptVersion + 1 : pipeline.promptVersion;
 
   const [updated] = await db
     .update(aiPipelinesTable)
@@ -274,17 +330,29 @@ router.put("/:id", async (req: Request, res: Response) => {
       description: description ?? null,
       isActive: isActive ?? pipeline.isActive,
       scoreThreshold: scoreThreshold ?? pipeline.scoreThreshold,
-      opportunityThreshold: opportunityThreshold ?? pipeline.opportunityThreshold,
-      autoCreateOpportunity: autoCreateOpportunity ?? pipeline.autoCreateOpportunity,
       autoFollowupEnabled: autoFollowupEnabled ?? pipeline.autoFollowupEnabled,
       followupIntervals: followupIntervals ?? pipeline.followupIntervals,
       cutoffTimes: cutoffTimes ?? pipeline.cutoffTimes,
       staleDaysThreshold: staleDaysThreshold ?? pipeline.staleDaysThreshold,
       highValueThresholdIdr: highValueThresholdIdr ?? pipeline.highValueThresholdIdr,
+      customPrompt: customPrompt !== undefined ? (customPrompt ?? null) : pipeline.customPrompt,
+      promptVersion: nextVersion,
+      directionFilter: directionFilter ?? pipeline.directionFilter,
       updatedAt: new Date(),
     })
     .where(eq(aiPipelinesTable.id, id))
     .returning();
+
+  if (promptChanged && customPrompt) {
+    const userId = getSessionUserId(req)!;
+    await db.insert(aiPipelinePromptVersionsTable).values({
+      pipelineId: id,
+      ownerUserId,
+      version: nextVersion,
+      promptText: customPrompt,
+      changedBy: userId,
+    });
+  }
 
   await upsertChannelsAndLabels(id, channelIds ?? [], excludeLabelIds ?? []);
 
@@ -398,7 +466,6 @@ router.post("/:id/run-now", async (req: Request, res: Response) => {
     status: log.status,
     contactsProcessed: log.contactsProcessed,
     contactsEnteredPipeline: log.contactsEnteredPipeline,
-    opportunitiesCreated: log.opportunitiesCreated,
     errorMessage: log.errorMessage,
     createdAt: log.createdAt.toISOString(),
   });
@@ -505,7 +572,6 @@ function serializeAnalysis(a: typeof aiPipelineAnalysesTable.$inferSelect) {
     aiNotes: a.aiNotes,
     enteredPipeline: a.enteredPipeline,
     pipelineEntryId: a.pipelineEntryId,
-    opportunityId: a.opportunityId,
     createdAt: a.createdAt.toISOString(),
   };
 }
@@ -630,7 +696,6 @@ async function serializeEntry(e: typeof aiPipelineEntriesTable.$inferSelect, wit
     doNotFollowup: e.doNotFollowup,
     doNotFollowupReason: e.doNotFollowupReason,
     scoreHistory: e.scoreHistory,
-    opportunityId: e.opportunityId,
     enteredAt: e.enteredAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
     followupLogs: [] as ReturnType<typeof serializeFollowupLog>[],
@@ -804,6 +869,213 @@ router.post("/:id/entries/:eid/do-not-followup", async (req: Request, res: Respo
   res.json(await serializeEntry(updated, true));
 });
 
+// ─── Prompt versions ─────────────────────────────────────────────────────────
+
+router.get("/:id/prompt-versions", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const versions = await db
+    .select({
+      id: aiPipelinePromptVersionsTable.id,
+      version: aiPipelinePromptVersionsTable.version,
+      promptText: aiPipelinePromptVersionsTable.promptText,
+      changedAt: aiPipelinePromptVersionsTable.changedAt,
+      changeNote: aiPipelinePromptVersionsTable.changeNote,
+      changedByName: usersTable.name,
+    })
+    .from(aiPipelinePromptVersionsTable)
+    .leftJoin(usersTable, eq(aiPipelinePromptVersionsTable.changedBy, usersTable.id))
+    .where(eq(aiPipelinePromptVersionsTable.pipelineId, id))
+    .orderBy(desc(aiPipelinePromptVersionsTable.version));
+
+  res.json(versions.map((v) => ({
+    ...v,
+    changedAt: v.changedAt.toISOString(),
+  })));
+});
+
+// ─── Visibility ───────────────────────────────────────────────────────────────
+
+router.get("/:id/visibility/role-defaults", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const rows = await db
+    .select()
+    .from(aiPipelineVisibilityTable)
+    .where(
+      and(
+        eq(aiPipelineVisibilityTable.pipelineId, id),
+        eq(aiPipelineVisibilityTable.ownerUserId, ownerUserId)
+      )
+    );
+
+  const defaults: Record<string, { canView: boolean; canEdit: boolean }> = {
+    supervisor: { canView: true, canEdit: false },
+    agent: { canView: false, canEdit: false },
+  };
+  for (const row of rows) {
+    defaults[row.role] = { canView: row.canView, canEdit: row.canEdit };
+  }
+
+  res.json(defaults);
+});
+
+router.put("/:id/visibility/role-defaults", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const body = req.body as Record<string, { canView?: boolean; canEdit?: boolean }>;
+  const allowedRoles = ["supervisor", "agent"];
+
+  for (const role of Object.keys(body)) {
+    if (!allowedRoles.includes(role)) continue;
+    const { canView = false, canEdit = false } = body[role] ?? {};
+    await db
+      .insert(aiPipelineVisibilityTable)
+      .values({ ownerUserId, pipelineId: id, role, canView, canEdit, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [
+          aiPipelineVisibilityTable.ownerUserId,
+          aiPipelineVisibilityTable.pipelineId,
+          aiPipelineVisibilityTable.role,
+        ],
+        set: { canView, canEdit, updatedAt: new Date() },
+      });
+  }
+
+  res.status(204).end();
+});
+
+router.get("/:id/visibility/user/:userId", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  const targetUserId = parseInt(String(req.params.userId), 10);
+  if (isNaN(id) || isNaN(targetUserId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const override = await db.query.aiPipelineUserVisibilityTable.findFirst({
+    where: and(
+      eq(aiPipelineUserVisibilityTable.pipelineId, id),
+      eq(aiPipelineUserVisibilityTable.userId, targetUserId)
+    ),
+  });
+
+  res.json(override
+    ? { canView: override.canView, canEdit: override.canEdit, hasOverride: true }
+    : { canView: null, canEdit: null, hasOverride: false }
+  );
+});
+
+router.put("/:id/visibility/user/:userId", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  const targetUserId = parseInt(String(req.params.userId), 10);
+  if (isNaN(id) || isNaN(targetUserId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const { canView, canEdit, remove } = req.body as { canView?: boolean; canEdit?: boolean; remove?: boolean };
+
+  if (remove) {
+    await db
+      .delete(aiPipelineUserVisibilityTable)
+      .where(
+        and(
+          eq(aiPipelineUserVisibilityTable.pipelineId, id),
+          eq(aiPipelineUserVisibilityTable.userId, targetUserId)
+        )
+      );
+    res.status(204).end();
+    return;
+  }
+
+  await db
+    .insert(aiPipelineUserVisibilityTable)
+    .values({ userId: targetUserId, pipelineId: id, canView: canView ?? false, canEdit: canEdit ?? false, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [aiPipelineUserVisibilityTable.userId, aiPipelineUserVisibilityTable.pipelineId],
+      set: { canView: canView ?? false, canEdit: canEdit ?? false, updatedAt: new Date() },
+    });
+
+  res.status(204).end();
+});
+
+// ─── Test prompt ──────────────────────────────────────────────────────────────
+
+router.post("/:id/test-prompt", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const { prompt, sampleMessages } = req.body as { prompt?: string; sampleMessages?: string };
+  if (!prompt || !sampleMessages) {
+    res.status(400).json({ error: "prompt and sampleMessages required" });
+    return;
+  }
+  if (prompt.length < 80 || prompt.length > 1500) {
+    res.status(400).json({ error: "prompt must be 80–1500 characters" });
+    return;
+  }
+
+  const resolved = await resolveAiClient(ownerUserId);
+
+  const systemPrompt = `${prompt}\n\nAnalyze the following conversation and respond with a JSON object containing: score (0-100), status (string), recommendation (string), scoreReason (string).`;
+
+  const completion = await resolved.client.chat.completions.create({
+    model: resolved.model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `Conversation:\n${sampleMessages}` },
+    ],
+    response_format: { type: "json_object" },
+    max_tokens: 500,
+  });
+
+  const raw = completion.choices[0]?.message?.content ?? "{}";
+  let parsedResult: Record<string, unknown> = {};
+  try { parsedResult = JSON.parse(raw); } catch { /* leave empty */ }
+
+  res.json({
+    score: parsedResult.score ?? null,
+    status: parsedResult.status ?? null,
+    recommendation: parsedResult.recommendation ?? null,
+    scoreReason: parsedResult.scoreReason ?? null,
+    rawResponse: raw,
+  });
+});
+
 // ─── Cutoff logs ──────────────────────────────────────────────────────────────
 
 router.get("/:id/cutoff-logs", async (req: Request, res: Response) => {
@@ -835,11 +1107,130 @@ router.get("/:id/cutoff-logs", async (req: Request, res: Response) => {
       status: l.status,
       contactsProcessed: l.contactsProcessed,
       contactsEnteredPipeline: l.contactsEnteredPipeline,
-      opportunitiesCreated: l.opportunitiesCreated,
       errorMessage: l.errorMessage,
       createdAt: l.createdAt.toISOString(),
     }))
   );
+});
+
+// ─── Info stats (for the ⓘ modal on the pipeline list page) ──────────────────
+
+router.get("/:id/info-stats", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [
+    channelRows,
+    labelRows,
+    activeContactsResult,
+    lateFollowupsResult,
+    totalValueResult,
+    analyzedTodayResult,
+    lastPromptVersion,
+  ] = await Promise.all([
+    db
+      .select({ id: channelsTable.id, label: channelsTable.label, kind: channelsTable.kind })
+      .from(aiPipelineChannelsTable)
+      .innerJoin(channelsTable, eq(aiPipelineChannelsTable.channelId, channelsTable.id))
+      .where(eq(aiPipelineChannelsTable.pipelineId, id)),
+    db
+      .select({ id: customerLabelsTable.id, name: customerLabelsTable.name })
+      .from(aiPipelineExcludeLabelsTable)
+      .innerJoin(customerLabelsTable, eq(aiPipelineExcludeLabelsTable.labelId, customerLabelsTable.id))
+      .where(eq(aiPipelineExcludeLabelsTable.pipelineId, id)),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(aiPipelineEntriesTable)
+      .where(
+        and(
+          eq(aiPipelineEntriesTable.pipelineId, id),
+          sql`${aiPipelineEntriesTable.status} NOT IN ('closed_won','closed_lost','do_not_followup')`
+        )
+      ),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(aiPipelineEntriesTable)
+      .where(
+        and(
+          eq(aiPipelineEntriesTable.pipelineId, id),
+          sql`${aiPipelineEntriesTable.nextFollowupAt} < NOW()`,
+          sql`${aiPipelineEntriesTable.status} NOT IN ('closed_won','closed_lost','do_not_followup','replied')`
+        )
+      ),
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${aiPipelineEntriesTable.estimatedValue}),0)::bigint` })
+      .from(aiPipelineEntriesTable)
+      .where(
+        and(
+          eq(aiPipelineEntriesTable.pipelineId, id),
+          sql`${aiPipelineEntriesTable.status} NOT IN ('closed_won','closed_lost','do_not_followup')`
+        )
+      ),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(aiPipelineAnalysesTable)
+      .where(
+        and(
+          eq(aiPipelineAnalysesTable.pipelineId, id),
+          gte(aiPipelineAnalysesTable.createdAt, todayStart)
+        )
+      ),
+    db
+      .select({
+        changedAt: aiPipelinePromptVersionsTable.changedAt,
+        changedByName: usersTable.name,
+      })
+      .from(aiPipelinePromptVersionsTable)
+      .leftJoin(usersTable, eq(aiPipelinePromptVersionsTable.changedBy, usersTable.id))
+      .where(eq(aiPipelinePromptVersionsTable.pipelineId, id))
+      .orderBy(desc(aiPipelinePromptVersionsTable.version))
+      .limit(1),
+  ]);
+
+  const threshold = pipeline.scoreThreshold;
+  let thresholdCategory: string;
+  let thresholdColor: string;
+  if (threshold <= 40) { thresholdCategory = "Dingin"; thresholdColor = "#EF4444"; }
+  else if (threshold <= 60) { thresholdCategory = "Hangat"; thresholdColor = "#F59E0B"; }
+  else if (threshold <= 79) { thresholdCategory = "Potensial"; thresholdColor = "#3B82F6"; }
+  else { thresholdCategory = "Panas"; thresholdColor = "#10B981"; }
+
+  res.json({
+    pipeline: {
+      id: pipeline.id,
+      name: pipeline.name,
+      scoreThreshold: pipeline.scoreThreshold,
+      autoFollowupEnabled: pipeline.autoFollowupEnabled,
+      followupIntervals: pipeline.followupIntervals,
+      cutoffTimes: pipeline.cutoffTimes,
+      directionFilter: pipeline.directionFilter,
+      channels: channelRows.map((c) => ({ id: c.id, name: c.label, type: c.kind })),
+      excludeLabels: labelRows.map((l) => ({ id: l.id, name: l.name })),
+      customPrompt: pipeline.customPrompt ?? null,
+      promptLastUpdatedAt: lastPromptVersion[0]?.changedAt?.toISOString() ?? null,
+      promptLastUpdatedBy: lastPromptVersion[0]?.changedByName ?? null,
+    },
+    stats: {
+      activeContacts: activeContactsResult[0]?.count ?? 0,
+      lateFollowups: lateFollowupsResult[0]?.count ?? 0,
+      totalEstimatedValue: Number(totalValueResult[0]?.total ?? 0),
+      analyzedToday: analyzedTodayResult[0]?.count ?? 0,
+    },
+    scoreBreakdownExplanation: {
+      threshold,
+      thresholdCategory,
+      thresholdColor,
+    },
+  });
 });
 
 export default router;

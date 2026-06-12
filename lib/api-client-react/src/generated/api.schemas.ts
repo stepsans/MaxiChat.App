@@ -3863,12 +3863,6 @@ export interface AiPipelineCreate {
      * @maximum 100
      */
   scoreThreshold?: number;
-  /**
-     * @minimum 0
-     * @maximum 100
-     */
-  opportunityThreshold?: number;
-  autoCreateOpportunity?: boolean;
   autoFollowupEnabled?: boolean;
   followupIntervals?: string[];
   cutoffTimes?: string[];
@@ -3886,12 +3880,15 @@ export interface AiPipelineCreate {
      * @minimum 0
      */
   highValueThresholdIdr?: number;
+  /** Custom AI classification prompt overriding the default. */
+  customPrompt?: string | null;
+  /** When true, skip conversations where the agent/owner sends the majority of messages. */
+  directionFilter?: boolean;
 }
 
 export type AiPipelineTodayStats = {
   analyzed?: number;
   enteredPipeline?: number;
-  opportunitiesCreated?: number;
 };
 
 export interface AiPipeline {
@@ -3900,8 +3897,6 @@ export interface AiPipeline {
   description?: string | null;
   isActive: boolean;
   scoreThreshold: number;
-  opportunityThreshold: number;
-  autoCreateOpportunity: boolean;
   autoFollowupEnabled: boolean;
   followupIntervals: string[];
   cutoffTimes: string[];
@@ -3914,6 +3909,9 @@ export interface AiPipeline {
   staleDaysThreshold: number;
   /** @minimum 0 */
   highValueThresholdIdr: number;
+  customPrompt?: string | null;
+  promptVersion?: number;
+  directionFilter?: boolean;
   lastRunAt?: string | null;
   todayStats?: AiPipelineTodayStats;
   createdAt: string;
@@ -3950,7 +3948,6 @@ export interface AiPipelineAnalysis {
   aiNotes?: string | null;
   enteredPipeline: boolean;
   pipelineEntryId?: number | null;
-  opportunityId?: number | null;
   createdAt: string;
 }
 
@@ -3996,7 +3993,6 @@ export interface AiPipelineEntry {
   doNotFollowup?: boolean;
   doNotFollowupReason?: string | null;
   scoreHistory?: AiPipelineEntryScoreHistoryItem[];
-  opportunityId?: number | null;
   followupLogs?: AiPipelineFollowupLog[];
   enteredAt: string;
   updatedAt: string;
@@ -4012,7 +4008,6 @@ export interface AiPipelineEntryList {
 export type AiPipelineDashboardStatsToday = {
   analyzed: number;
   enteredPipeline: number;
-  opportunitiesCreated: number;
   followupsSent: number;
 };
 
@@ -4044,9 +4039,419 @@ export interface AiPipelineCutoffLog {
   status: string;
   contactsProcessed: number;
   contactsEnteredPipeline: number;
-  opportunitiesCreated: number;
   errorMessage?: string | null;
   createdAt: string;
+}
+
+export type AcrConfigInputAutoScheduleFrequency = typeof AcrConfigInputAutoScheduleFrequency[keyof typeof AcrConfigInputAutoScheduleFrequency];
+
+
+export const AcrConfigInputAutoScheduleFrequency = {
+  weekly: 'weekly',
+  monthly: 'monthly',
+  custom: 'custom',
+} as const;
+
+export interface AcrConfigInput {
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  weightResponseTime: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  weightLanguageQuality: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  weightAnswerQuality: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  weightComplaintHandling: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  weightMissedChat: number;
+  /** @minimum 1 */
+  slaExcellentMinutes: number;
+  /** @minimum 1 */
+  slaGoodMinutes: number;
+  /** @minimum 1 */
+  slaAcceptableMinutes: number;
+  /** @minimum 1 */
+  slaPoorMinutes: number;
+  /** @minimum 1 */
+  slaCriticalMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  gradeAThreshold: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  gradeBThreshold: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  gradeCThreshold: number;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  gradeDThreshold: number;
+  /** Whole-integer Rupiah. */
+  allowanceGradeA: number;
+  allowanceGradeB: number;
+  allowanceGradeC: number;
+  allowanceGradeD: number;
+  allowanceGradeE: number;
+  complaintHandlingEnabled: boolean;
+  autoScheduleEnabled: boolean;
+  autoScheduleFrequency?: AcrConfigInputAutoScheduleFrequency;
+  /**
+     * @minimum 1
+     * @maximum 28
+     */
+  autoScheduleDayOfMonth?: number;
+  /**
+     * @minimum 1
+     * @maximum 7
+     */
+  autoScheduleDayOfWeek?: number;
+  /**
+     * @minimum 1
+     * @maximum 90
+     */
+  autoScheduleEveryDays?: number;
+  autoScheduleNotifyUserIds?: number[];
+}
+
+export type AcrConfig = AcrConfigInput & ({
+  id: string;
+  autoScheduleNextRunAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+});
+
+export interface AcrJobCreate {
+  /** YYYY-MM-DD in the tenant timezone. Default today - 30 days. */
+  periodStart: string;
+  periodEnd: string;
+  /** Empty/omitted = evaluate all agents. */
+  agentIds?: number[];
+}
+
+export type AcrJobStatus = typeof AcrJobStatus[keyof typeof AcrJobStatus];
+
+
+export const AcrJobStatus = {
+  pending: 'pending',
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface AcrJob {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  requestedByUserId?: number | null;
+  requestedByName?: string | null;
+  isAutoScheduled?: boolean;
+  status: AcrJobStatus;
+  progressTotal?: number;
+  progressCompleted?: number;
+  totalAgentsEvaluated?: number;
+  totalConversationsAnalyzed?: number;
+  totalMessagesAnalyzed?: number;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
+  archivedAt?: string | null;
+  /** True when this is the newest job covering its exact period. */
+  isLatestForPeriod?: boolean;
+}
+
+export interface AcrJobList {
+  jobs: AcrJob[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AcrJobProgress {
+  status: string;
+  progressTotal: number;
+  progressCompleted: number;
+  pct: number;
+}
+
+export type AcrAgentScoreGrade = typeof AcrAgentScoreGrade[keyof typeof AcrAgentScoreGrade];
+
+
+export const AcrAgentScoreGrade = {
+  A: 'A',
+  B: 'B',
+  C: 'C',
+  D: 'D',
+  E: 'E',
+} as const;
+
+export interface AcrAgentScore {
+  id: string;
+  jobId: string;
+  agentUserId: number;
+  agentName?: string | null;
+  agentEmail?: string | null;
+  agentRole: string;
+  totalScore: number;
+  scoreResponseTime?: number;
+  scoreLanguageQuality?: number;
+  scoreAnswerQuality?: number;
+  scoreComplaintHandling?: number;
+  scoreMissedChat?: number;
+  avgResponseTimeMinutes?: number | null;
+  totalConversations?: number;
+  totalMessagesSent?: number;
+  totalMissedChats?: number;
+  totalComplaints?: number;
+  complaintsResolved?: number;
+  insufficientData?: boolean;
+  grade: AcrAgentScoreGrade;
+  /** Whole-integer Rupiah from the job's config snapshot. */
+  allowanceAmount?: number;
+  aiSummary?: string | null;
+  aiStrengths?: string | null;
+  aiImprovements?: string | null;
+  redFlagCount?: number;
+  hasCriticalViolation?: boolean;
+}
+
+export type AcrCoachingInsightsTeamComparison = {
+  avgResponseTimeTeam?: number;
+  avgScoreTeam?: number;
+  agentRank?: number;
+  totalAgents?: number;
+} | null;
+
+export interface AcrCoachingInsights {
+  topImprovements?: string[];
+  bestConversationId?: string | null;
+  worstConversationId?: string | null;
+  bestConversationExcerpt?: string | null;
+  worstConversationExcerpt?: string | null;
+  worstConversationAnnotation?: string | null;
+  teamComparison?: AcrCoachingInsightsTeamComparison;
+}
+
+export interface AcrTrendPoint {
+  jobId: string;
+  periodStart: string;
+  periodEnd: string;
+  totalScore: number;
+  scoreResponseTime?: number;
+  scoreLanguageQuality?: number;
+  scoreAnswerQuality?: number;
+  scoreComplaintHandling?: number;
+  scoreMissedChat?: number;
+}
+
+export type AcrRedFlagViolationType = typeof AcrRedFlagViolationType[keyof typeof AcrRedFlagViolationType];
+
+
+export const AcrRedFlagViolationType = {
+  customer_angry: 'customer_angry',
+  rude_language: 'rude_language',
+  no_reply_critical: 'no_reply_critical',
+  customer_ignored: 'customer_ignored',
+  answer_caused_dropout: 'answer_caused_dropout',
+} as const;
+
+export type AcrRedFlagViolationSeverity = typeof AcrRedFlagViolationSeverity[keyof typeof AcrRedFlagViolationSeverity];
+
+
+export const AcrRedFlagViolationSeverity = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+} as const;
+
+export interface AcrRedFlag {
+  id: string;
+  jobId: string;
+  agentScoreId?: string;
+  agentUserId: number;
+  agentName?: string | null;
+  chatId?: number | null;
+  contactName?: string | null;
+  channelId?: number | null;
+  channelType?: string | null;
+  conversationExcerpt?: string | null;
+  violationType: AcrRedFlagViolationType;
+  violationSeverity: AcrRedFlagViolationSeverity;
+  aiExplanation: string;
+  aiRecommendation?: string | null;
+  scoreImpactDimension?: string | null;
+  scoreImpactPoints?: number | null;
+  occurredAt?: string | null;
+  messageTimestamp?: string | null;
+  createdAt?: string;
+}
+
+export interface AcrRedFlagList {
+  redFlags: AcrRedFlag[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AcrConversationScore {
+  id: string;
+  jobId: string;
+  agentScoreId?: string;
+  agentUserId: number;
+  chatId?: number | null;
+  contactName?: string | null;
+  channelId?: number | null;
+  channelType?: string | null;
+  firstMessageAt?: string | null;
+  lastMessageAt?: string | null;
+  totalMessages?: number;
+  agentMessages?: number;
+  customerMessages?: number;
+  avgResponseTimeMinutes?: number | null;
+  firstResponseTimeMinutes?: number | null;
+  maxResponseTimeMinutes?: number | null;
+  hasMissedMessage?: boolean;
+  hasComplaint?: boolean;
+  complaintResolved?: boolean;
+  convScoreResponseTime?: number | null;
+  convScoreLanguageQuality?: number | null;
+  convScoreAnswerQuality?: number | null;
+  convScoreComplaintHandling?: number | null;
+  convScoreMissedChat?: number | null;
+  convTotalScore?: number | null;
+  hasRedFlag?: boolean;
+  redFlagTypes?: string[] | null;
+  aiNotes?: string | null;
+  answerCausedCustomerSilent?: boolean;
+}
+
+export interface AcrConversationList {
+  conversations: AcrConversationScore[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AcrLeaderboardEntry {
+  rank: number;
+  /** Score change vs the previous job; null when not comparable. */
+  delta?: number | null;
+  agentUserId: number;
+  /** Masked (null) for agent callers viewing other agents. */
+  agentName?: string | null;
+  agentRole?: string;
+  totalScore: number;
+  grade: string;
+  allowanceAmount?: number;
+  isSelf: boolean;
+}
+
+export interface AcrLeaderboard {
+  entries: AcrLeaderboardEntry[];
+  periodStart: string;
+  periodEnd: string;
+}
+
+export interface AcrTeamSummary {
+  avgScore: number;
+  bestAgentName?: string | null;
+  bestAgentScore?: number | null;
+  needsAttentionCount: number;
+  totalRedFlags: number;
+}
+
+/**
+ * KPI weights from the job's immutable config snapshot.
+ */
+export type AcrJobResultsWeights = {
+  weightResponseTime: number;
+  weightLanguageQuality: number;
+  weightAnswerQuality: number;
+  weightComplaintHandling: number;
+  weightMissedChat: number;
+};
+
+export type AcrJobResultsGradeDistribution = {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+};
+
+export type AcrJobResultsDimensionAverages = {
+  responseTime: number;
+  languageQuality: number;
+  answerQuality: number;
+  complaintHandling: number;
+  missedChat: number;
+};
+
+export type AcrJobResultsTeamTrendItem = {
+  jobId: string;
+  periodStart: string;
+  periodEnd: string;
+  avgScore: number;
+};
+
+export interface AcrJobResults {
+  job: AcrJob;
+  /** KPI weights from the job's immutable config snapshot. */
+  weights: AcrJobResultsWeights;
+  agents: AcrAgentScore[];
+  summary: AcrTeamSummary;
+  gradeDistribution: AcrJobResultsGradeDistribution;
+  dimensionAverages: AcrJobResultsDimensionAverages;
+  teamTrend: AcrJobResultsTeamTrendItem[];
+}
+
+export interface AcrAgentDetail {
+  score: AcrAgentScore;
+  coachingInsights?: AcrCoachingInsights | null;
+  redFlags: AcrRedFlag[];
+  trend: AcrTrendPoint[];
+  deltaVsPrevious?: number | null;
+}
+
+export interface AcrNotification {
+  id: string;
+  redFlagId?: string | null;
+  jobId?: string | null;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+  agentName?: string | null;
+  violationType?: string | null;
+  contactName?: string | null;
+}
+
+export interface AcrTeamMember {
+  id: number;
+  name?: string | null;
+  email: string;
+  teamRole: string;
 }
 
 export type GetMyBillingTrendParams = {
@@ -4357,5 +4762,44 @@ export type DoNotFollowupAiPipelineEntryBody = {
 
 export type ListAiPipelineCutoffLogsParams = {
 limit?: number;
+};
+
+export type ListAcrJobsParams = {
+page?: number;
+limit?: number;
+archived?: boolean;
+};
+
+export type ListAcrRedFlagsParams = {
+agentId?: number;
+violationType?: string;
+severity?: string;
+page?: number;
+limit?: number;
+};
+
+export type ListAcrConversationsParams = {
+page?: number;
+limit?: number;
+hasRedFlag?: boolean;
+hasComplaint?: boolean;
+sort?: ListAcrConversationsSort;
+};
+
+export type ListAcrConversationsSort = typeof ListAcrConversationsSort[keyof typeof ListAcrConversationsSort];
+
+
+export const ListAcrConversationsSort = {
+  latest: 'latest',
+  score_asc: 'score_asc',
+  response_desc: 'response_desc',
+} as const;
+
+export type GetMyAcrScoresParams = {
+jobId?: string;
+};
+
+export type ListAcrNotificationsParams = {
+unreadOnly?: boolean;
 };
 

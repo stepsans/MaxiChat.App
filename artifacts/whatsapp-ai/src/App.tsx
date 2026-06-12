@@ -22,6 +22,9 @@ import Analytics from "@/pages/Analytics";
 import AIPipeline from "@/pages/AIPipeline";
 import AIPipelineNew from "@/pages/AIPipelineNew";
 import AIPipelineDetail from "@/pages/AIPipelineDetail";
+import AIChatReport from "@/pages/AIChatReport";
+import AIChatReportDetail from "@/pages/AIChatReportDetail";
+import AIChatReportSettings from "@/pages/AIChatReportSettings";
 import Products from "@/pages/Products";
 import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
@@ -130,6 +133,9 @@ function AuthGate() {
         <Route path="/analytics" component={Analytics} />
         <Route path="/workboard" component={WorkBoard} />
         <Route path="/workboard/:boardId" component={BoardDetail} />
+        <Route path="/ai-chat-report" component={AIChatReport} />
+        <Route path="/ai-chat-report/settings" component={AIChatReportSettings} />
+        <Route path="/ai-chat-report/:jobId" component={AIChatReportDetail} />
         <Route path="/ai-pipeline" component={AIPipeline} />
         <Route path="/ai-pipeline/new" component={AIPipelineNew} />
         <Route path="/ai-pipeline/:id/edit" component={AIPipelineDetail} />

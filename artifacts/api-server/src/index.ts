@@ -12,6 +12,7 @@ import { backfillInvoicesFromPayments } from "./lib/invoices";
 import { startMonthlyCloseScheduler } from "./lib/monthly-close";
 import { startFollowUpScheduler } from "./lib/follow-up-engine";
 import { startAiPipelineScheduler } from "./lib/ai-pipeline-scheduler";
+import { startAcrScheduler } from "./lib/acr-scheduler";
 import { startDripScheduler } from "./lib/drip-engine";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
@@ -155,6 +156,9 @@ async function main(): Promise<void> {
   startFollowUpScheduler();
   // AI Pipeline: cut-off analysis sweeper (every 1 min) + follow-up sender (every 5 min).
   startAiPipelineScheduler();
+  // AI Chat Report: auto-schedule sweeper (every 5 min). Inert until a tenant
+  // enables "Laporan Otomatis" in the ACR settings.
+  startAcrScheduler();
   // Trial onboarding: behavior-based drip campaign engine. Evaluates active
   // trial tenants and enqueues/sends nudge emails (no-op when Resend is
   // unconfigured — logs only). Default-safe, additive.

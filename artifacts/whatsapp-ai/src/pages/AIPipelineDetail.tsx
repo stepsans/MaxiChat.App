@@ -81,6 +81,9 @@ import {
   Lightbulb,
   Calendar,
   Send,
+  Sparkles,
+  FlaskConical,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -313,10 +316,9 @@ function DashboardTab({ pipelineId }: { pipelineId: number }) {
       {/* ── Aktivitas Hari Ini ── */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Aktivitas Hari Ini</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <StatCard label="Dianalisa AI" value={stats.today.analyzed} icon={BrainCircuit} color="bg-purple-500" />
           <StatCard label="Masuk Pipeline" value={stats.today.enteredPipeline} icon={Target} color="bg-blue-500" />
-          <StatCard label="Opportunity Dibuat" value={stats.today.opportunitiesCreated} icon={TrendingUp} color="bg-green-500" />
           <StatCard label="Follow-up Dikirim" value={stats.today.followupsSent} icon={MessageSquare} color="bg-orange-500" />
         </div>
       </div>
@@ -1103,12 +1105,6 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                       <span className="text-xs">{formatDate(analysis.cutoffWindowEnd)}</span>
                     </div>
                   ) : null}
-                  {entry.opportunityId ? (
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                      <span className="text-xs text-green-600">Terhubung ke Opportunity #{entry.opportunityId}</span>
-                    </div>
-                  ) : null}
                 </div>
 
                 {/* Value + score summary row */}
@@ -1704,12 +1700,6 @@ function EntryCard({
                 Terlambat
               </span>
             )}
-            {entry.opportunityId && (
-              <span className="text-[10px] text-green-700 flex items-center gap-0.5">
-                <CheckCircle2 className="w-3 h-3" />
-                Opp
-              </span>
-            )}
           </div>
 
           {/* Product interest */}
@@ -1935,6 +1925,14 @@ const FOLLOWUP_PRESETS = [
   { label: "7 hari", value: "168h" },
 ];
 
+const PROMPT_TEMPLATES = [
+  { label: "Sales Umum", value: `Kamu adalah AI analis sales yang bertugas menilai percakapan WhatsApp dengan calon pembeli. Evaluasi tingkat ketertarikan, urgensi pembelian, dan peluang konversi berdasarkan sinyal dalam percakapan. Berikan skor 0-100 dan rekomendasi tindak lanjut yang spesifik.` },
+  { label: "Properti", value: `Kamu adalah AI analis properti yang menganalisa percakapan calon pembeli/penyewa. Perhatikan budget, lokasi yang diinginkan, timeline keputusan, dan sinyal serius seperti pertanyaan spesifik tentang spesifikasi, harga final, atau kunjungan survei. Berikan skor 0-100.` },
+  { label: "Keuangan/Asuransi", value: `Kamu adalah AI analis produk keuangan dan asuransi. Analisa percakapan untuk mendeteksi kebutuhan finansial, toleransi risiko, kemampuan bayar premi, dan urgensi perlindungan. Identifikasi apakah calon klien dalam tahap eksplorasi atau siap membeli. Berikan skor 0-100.` },
+  { label: "E-commerce", value: `Kamu adalah AI analis e-commerce yang mengevaluasi percakapan calon pembeli toko online. Perhatikan pertanyaan tentang stok, harga, diskon, pengiriman, dan tanda-tanda akan checkout. Bedakan antara browser biasa dan pembeli serius. Berikan skor 0-100.` },
+  { label: "Jasa/Service", value: `Kamu adalah AI analis bisnis jasa yang menganalisa percakapan calon klien. Identifikasi kebutuhan spesifik, anggaran, timeline proyek, dan level keputusan (pengambil keputusan vs. penanya biasa). Perhatikan sinyal seperti pertanyaan harga detail atau permintaan proposal. Berikan skor 0-100.` },
+];
+
 function computeWindows(times: string[]): Array<{ time: string; window: string }> {
   const sorted = [...times].sort();
   return sorted.map((time, i) => {
@@ -1964,13 +1962,50 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
   const [isActive, setIsActive] = useState(pipeline.isActive);
   const [cutoffTimes, setCutoffTimes] = useState<string[]>(pipeline.cutoffTimes);
   const [scoreThreshold, setScoreThreshold] = useState(pipeline.scoreThreshold);
-  const [autoCreateOpportunity, setAutoCreateOpportunity] = useState(pipeline.autoCreateOpportunity ?? false);
-  const [opportunityThreshold, setOpportunityThreshold] = useState(pipeline.opportunityThreshold ?? 80);
   const [autoFollowupEnabled, setAutoFollowupEnabled] = useState(pipeline.autoFollowupEnabled ?? false);
   const [followupIntervals, setFollowupIntervals] = useState<string[]>(
     (pipeline.followupIntervals as string[] | null) ?? []
   );
+  const [customPrompt, setCustomPrompt] = useState(pipeline.customPrompt ?? "");
+  const [directionFilter, setDirectionFilter] = useState(pipeline.directionFilter ?? true);
+  const [sampleMessages, setSampleMessages] = useState("");
+  const [testResult, setTestResult] = useState<{ score: number | null; status: string | null; recommendation: string | null } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [promptVersions, setPromptVersions] = useState<Array<{ id: number; version: number; promptText: string; changedAt: string; changedByName: string | null }>>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const promptLen = customPrompt.length;
+  const promptValid = promptLen === 0 || (promptLen >= 80 && promptLen <= 1500);
+
+  const loadHistory = async () => {
+    const res = await fetch(`/api/ai-pipeline/${pipeline.id}/prompt-versions`, { credentials: "include" });
+    if (res.ok) setPromptVersions(await res.json());
+  };
+
+  const runTest = async () => {
+    if (!customPrompt || customPrompt.length < 80) return;
+    if (!sampleMessages.trim()) { setTestError("Masukkan contoh percakapan terlebih dahulu"); return; }
+    setIsTesting(true);
+    setTestResult(null);
+    setTestError(null);
+    try {
+      const res = await fetch(`/api/ai-pipeline/${pipeline.id}/test-prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ prompt: customPrompt, sampleMessages: sampleMessages.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setTestError((err as any).error ?? "Gagal menguji prompt");
+      } else {
+        setTestResult(await res.json());
+      }
+    } catch { setTestError("Gagal terhubung ke server"); }
+    finally { setIsTesting(false); }
+  };
 
   const { mutate: update, isPending: saving } = useUpdateAiPipeline({
     mutation: {
@@ -2009,10 +2044,10 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
         excludeLabelIds,
         cutoffTimes: [...cutoffTimes].sort(),
         scoreThreshold,
-        opportunityThreshold,
-        autoCreateOpportunity,
         autoFollowupEnabled,
         followupIntervals: followupIntervals.slice(0, 3),
+        customPrompt: customPrompt.trim() || undefined,
+        directionFilter,
       },
     });
   };
@@ -2041,6 +2076,130 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
           <span className="text-sm">{isActive ? "Aktif" : "Nonaktif"}</span>
           <Switch checked={isActive} onCheckedChange={setIsActive} />
         </div>
+      </div>
+
+      {/* AI Prompt section */}
+      <div className="border rounded-lg p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Brain className="h-4 w-4 text-muted-foreground" />
+            <Label>Custom Prompt AI</Label>
+            {pipeline.promptVersion && pipeline.promptVersion > 1 && (
+              <Badge variant="secondary" className="text-xs">v{pipeline.promptVersion}</Badge>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-xs text-muted-foreground"
+            onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadHistory(); }}
+          >
+            <History className="h-3.5 w-3.5" />
+            Riwayat
+          </Button>
+        </div>
+
+        {showHistory && (
+          <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+            <p className="text-xs font-medium text-muted-foreground uppercase">Riwayat Perubahan Prompt</p>
+            {promptVersions.length === 0 && (
+              <p className="text-xs text-muted-foreground">Belum ada perubahan prompt tersimpan.</p>
+            )}
+            {promptVersions.map((v) => (
+              <div key={v.id} className="border rounded p-2 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium">v{v.version}</span>
+                  <span className="text-xs text-muted-foreground">{v.changedByName ?? "–"} · {new Date(v.changedAt).toLocaleDateString("id-ID")}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => { setCustomPrompt(v.promptText); setShowHistory(false); }}
+                  >
+                    Pakai
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground line-clamp-2">{v.promptText}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {PROMPT_TEMPLATES.map((t) => (
+            <Button
+              key={t.label}
+              variant={customPrompt === t.value ? "default" : "outline"}
+              size="sm"
+              className="gap-1"
+              onClick={() => setCustomPrompt(t.value)}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {t.label}
+            </Button>
+          ))}
+          {customPrompt.length > 0 && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setCustomPrompt("")}>
+              Reset ke default
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Textarea
+            placeholder="Tulis instruksi untuk AI, minimal 80 karakter... (biarkan kosong untuk menggunakan prompt bawaan)"
+            rows={5}
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            maxLength={1500}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>
+              {promptLen > 0 && !promptValid && <span className="text-destructive">Minimal 80 karakter</span>}
+            </span>
+            <span className={promptLen > 1400 ? "text-yellow-600" : ""}>{promptLen}/1500</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-sm">Filter Arah Percakapan</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">Lewati percakapan di mana agen mengirim lebih banyak pesan</p>
+          </div>
+          <Switch checked={directionFilter} onCheckedChange={setDirectionFilter} />
+        </div>
+
+        {customPrompt.length >= 80 && (
+          <div className="space-y-2 border-t pt-3">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-medium">Uji Prompt</p>
+            </div>
+            <Textarea
+              placeholder="Tempel contoh percakapan di sini untuk menguji prompt..."
+              rows={3}
+              value={sampleMessages}
+              onChange={(e) => setSampleMessages(e.target.value)}
+            />
+            <Button variant="outline" size="sm" onClick={runTest} disabled={isTesting} className="gap-2">
+              {isTesting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Jalankan Test
+            </Button>
+            {testError && <p className="text-xs text-destructive">{testError}</p>}
+            {testResult && (
+              <div className="rounded-lg bg-muted/50 border p-3 space-y-1 text-sm">
+                <div className="flex items-center gap-3">
+                  <span className="text-muted-foreground">Skor:</span>
+                  <span className="font-bold">{testResult.score ?? "–"}</span>
+                  {testResult.status && <span className="text-muted-foreground">{testResult.status}</span>}
+                </div>
+                {testResult.recommendation && (
+                  <p className="text-xs text-muted-foreground">{testResult.recommendation}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -2127,23 +2286,6 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
       <div className="space-y-3">
         <Label>Skor Minimum Pipeline: {scoreThreshold}</Label>
         <Slider min={0} max={100} step={1} value={[scoreThreshold]} onValueChange={([v]) => setScoreThreshold(v)} />
-      </div>
-
-      <div className="space-y-3 border rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <Label>Buat Opportunity Otomatis</Label>
-          <Switch checked={autoCreateOpportunity} onCheckedChange={setAutoCreateOpportunity} />
-        </div>
-        {autoCreateOpportunity && (
-          <div className="pt-2 border-t space-y-2">
-            <Label className="text-sm">Skor Minimum: {Math.max(opportunityThreshold, scoreThreshold)}</Label>
-            <Slider
-              min={scoreThreshold} max={100} step={1}
-              value={[Math.max(opportunityThreshold, scoreThreshold)]}
-              onValueChange={([v]) => setOpportunityThreshold(v)}
-            />
-          </div>
-        )}
       </div>
 
       <div className="space-y-3 border rounded-lg p-4">

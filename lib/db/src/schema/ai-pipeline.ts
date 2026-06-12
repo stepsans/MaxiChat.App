@@ -35,9 +35,6 @@ export const aiPipelinesTable = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     // Minimum score to enter the pipeline (0-100).
     scoreThreshold: integer("score_threshold").notNull().default(70),
-    // Minimum score to auto-create an opportunity (0-100).
-    opportunityThreshold: integer("opportunity_threshold").notNull().default(80),
-    autoCreateOpportunity: boolean("auto_create_opportunity").notNull().default(false),
     autoFollowupEnabled: boolean("auto_followup_enabled").notNull().default(false),
     // Array of hours (e.g. ["24h", "48h", "72h"]).
     followupIntervals: jsonb("followup_intervals")
@@ -55,6 +52,9 @@ export const aiPipelinesTable = pgTable(
     highValueThresholdIdr: bigint("high_value_threshold_idr", { mode: "number" })
       .notNull()
       .default(0),
+    customPrompt: text("custom_prompt"),
+    promptVersion: integer("prompt_version").notNull().default(1),
+    directionFilter: boolean("direction_filter").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -155,7 +155,6 @@ export const aiPipelineAnalysesTable = pgTable(
     contextHash: text("context_hash"),
     enteredPipeline: boolean("entered_pipeline").notNull().default(false),
     pipelineEntryId: integer("pipeline_entry_id"),
-    opportunityId: integer("opportunity_id"),
     // Full raw AI response JSON.
     rawAnalysis: jsonb("raw_analysis").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -204,7 +203,6 @@ export const aiPipelineEntriesTable = pgTable(
       .$type<Array<{ score: number; date: string; cutoffWindow: string }>>()
       .notNull()
       .default([]),
-    opportunityId: integer("opportunity_id"),
     enteredAt: timestamp("entered_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -263,7 +261,6 @@ export const aiPipelineCutoffLogsTable = pgTable(
     status: text("status").notNull().default("pending"),
     contactsProcessed: integer("contacts_processed").notNull().default(0),
     contactsEnteredPipeline: integer("contacts_entered_pipeline").notNull().default(0),
-    opportunitiesCreated: integer("opportunities_created").notNull().default(0),
     retryCount: integer("retry_count").notNull().default(0),
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -271,6 +268,64 @@ export const aiPipelineCutoffLogsTable = pgTable(
   (t) => [
     index("ai_pipeline_cutoff_logs_pipeline_idx").on(t.pipelineId),
     index("ai_pipeline_cutoff_logs_status_time_idx").on(t.status, t.scheduledTime),
+  ]
+);
+
+// Audit log for each AI prompt change.
+export const aiPipelinePromptVersionsTable = pgTable(
+  "ai_pipeline_prompt_versions",
+  {
+    id:          serial("id").primaryKey(),
+    pipelineId:  integer("pipeline_id").notNull()
+                   .references(() => aiPipelinesTable.id, { onDelete: "cascade" }),
+    ownerUserId: integer("owner_user_id").notNull()
+                   .references(() => usersTable.id, { onDelete: "cascade" }),
+    version:     integer("version").notNull(),
+    promptText:  text("prompt_text").notNull(),
+    changedBy:   integer("changed_by").notNull()
+                   .references(() => usersTable.id),
+    changedAt:   timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
+    changeNote:  text("change_note"),
+  },
+  (t) => [
+    index("ai_pipeline_prompt_versions_pipeline_idx").on(t.pipelineId, t.version),
+  ]
+);
+
+// Visibility defaults per role per pipeline.
+export const aiPipelineVisibilityTable = pgTable(
+  "ai_pipeline_visibility",
+  {
+    id:          serial("id").primaryKey(),
+    ownerUserId: integer("owner_user_id").notNull()
+                   .references(() => usersTable.id, { onDelete: "cascade" }),
+    pipelineId:  integer("pipeline_id").notNull()
+                   .references(() => aiPipelinesTable.id, { onDelete: "cascade" }),
+    role:        text("role").notNull(),
+    canView:     boolean("can_view").notNull().default(false),
+    canEdit:     boolean("can_edit").notNull().default(false),
+    updatedAt:   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ai_pipeline_visibility_unique").on(t.ownerUserId, t.pipelineId, t.role),
+  ]
+);
+
+// Per-user override that wins over the role default.
+export const aiPipelineUserVisibilityTable = pgTable(
+  "ai_pipeline_user_visibility",
+  {
+    id:         serial("id").primaryKey(),
+    userId:     integer("user_id").notNull()
+                  .references(() => usersTable.id, { onDelete: "cascade" }),
+    pipelineId: integer("pipeline_id").notNull()
+                  .references(() => aiPipelinesTable.id, { onDelete: "cascade" }),
+    canView:    boolean("can_view").notNull().default(false),
+    canEdit:    boolean("can_edit").notNull().default(false),
+    updatedAt:  timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ai_pipeline_user_visibility_unique").on(t.userId, t.pipelineId),
   ]
 );
 
@@ -282,7 +337,6 @@ export const insertAiPipelineSchema = createInsertSchema(aiPipelinesTable, {
   name: z.string().trim().min(3).max(100),
   description: z.string().trim().max(500).nullable().optional(),
   scoreThreshold: z.number().int().min(0).max(100).optional(),
-  opportunityThreshold: z.number().int().min(0).max(100).optional(),
   followupIntervals: z.array(z.string()).optional(),
   cutoffTimes: z.array(z.string()).optional(),
 }).omit({ id: true, ownerUserId: true, createdAt: true, updatedAt: true });
@@ -298,3 +352,6 @@ export type AiPipelineAnalysisRow = typeof aiPipelineAnalysesTable.$inferSelect;
 export type AiPipelineEntryRow = typeof aiPipelineEntriesTable.$inferSelect;
 export type AiPipelineFollowupLogRow = typeof aiPipelineFollowupLogsTable.$inferSelect;
 export type AiPipelineCutoffLogRow = typeof aiPipelineCutoffLogsTable.$inferSelect;
+export type AiPipelinePromptVersionRow = typeof aiPipelinePromptVersionsTable.$inferSelect;
+export type AiPipelineVisibilityRow = typeof aiPipelineVisibilityTable.$inferSelect;
+export type AiPipelineUserVisibilityRow = typeof aiPipelineUserVisibilityTable.$inferSelect;

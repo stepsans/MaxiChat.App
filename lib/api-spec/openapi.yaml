@@ -5996,6 +5996,545 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ── AI Chat Report (ACR) ──────────────────────────────────────────────────
+  # CSV/PDF export endpoints are binary streams and deliberately NOT in this
+  # spec (same convention as the PDF invoice endpoint) — downloaded via raw
+  # fetch → blob on the client.
+  /acr/config:
+    get:
+      operationId: getAcrConfig
+      tags: [acr]
+      summary: Get the tenant's AI Chat Report KPI configuration
+      responses:
+        "200":
+          description: Active config (created with defaults on first read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrConfig"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateAcrConfig
+      tags: [acr]
+      summary: Update the KPI configuration (super admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcrConfigInput"
+      responses:
+        "200":
+          description: Saved config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrConfig"
+        "400":
+          description: Validation error (weights must sum to 100, SLA ascending, grades descending)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not super admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs:
+    get:
+      operationId: listAcrJobs
+      tags: [acr]
+      summary: List evaluation jobs for the tenant
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10 }
+        - name: archived
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Paged job list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrJobList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createAcrJob
+      tags: [acr]
+      summary: Create and asynchronously run a new evaluation job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcrJobCreate"
+      responses:
+        "201":
+          description: Job created (runs async; poll progress)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrJob"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}:
+    get:
+      operationId: getAcrJob
+      tags: [acr]
+      summary: Get one job (status, progress, stats)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Job detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrJob"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}/archive:
+    patch:
+      operationId: archiveAcrJob
+      tags: [acr]
+      summary: Soft-delete a job (super admin only)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Archived job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrJob"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not super admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}/progress:
+    get:
+      operationId: getAcrJobProgress
+      tags: [acr]
+      summary: Poll job progress (frontend polls every 3s while running)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Progress snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrJobProgress"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}/results:
+    get:
+      operationId: getAcrJobResults
+      tags: [acr]
+      summary: Job summary — all agent scores, grade distribution, team trend
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Results (agents scoped to caller's role)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrJobResults"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}/agents/{agentId}:
+    get:
+      operationId: getAcrAgentDetail
+      tags: [acr]
+      summary: One agent's full breakdown, coaching insights, red flags, trend
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: agentId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Agent detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrAgentDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Out of caller's scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}/red-flags:
+    get:
+      operationId: listAcrRedFlags
+      tags: [acr]
+      summary: List red flags detected in a job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: agentId
+          in: query
+          schema: { type: integer }
+        - name: violationType
+          in: query
+          schema: { type: string }
+        - name: severity
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Paged red flag list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrRedFlagList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}/conversations/{agentId}:
+    get:
+      operationId: listAcrConversations
+      tags: [acr]
+      summary: List one agent's analyzed conversations in a job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: agentId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: hasRedFlag
+          in: query
+          schema: { type: boolean }
+        - name: hasComplaint
+          in: query
+          schema: { type: boolean }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [latest, score_asc, response_desc]
+      responses:
+        "200":
+          description: Paged conversation list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrConversationList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Out of caller's scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/jobs/{jobId}/leaderboard:
+    get:
+      operationId: getAcrLeaderboard
+      tags: [acr]
+      summary: Agent ranking for a job, with delta vs the previous job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Leaderboard (agents see only themselves named)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrLeaderboard"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/my-scores:
+    get:
+      operationId: getMyAcrScores
+      tags: [acr]
+      summary: Current user's own score (agents cannot read other agents)
+      parameters:
+        - name: jobId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Own score for the requested (or latest) job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrAgentDetail"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No score found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/team-members:
+    get:
+      operationId: listAcrTeamMembers
+      tags: [acr]
+      summary: Evaluable team members (supervisors + agents) for the agent picker
+      responses:
+        "200":
+          description: Member list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AcrTeamMember"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/notifications:
+    get:
+      operationId: listAcrNotifications
+      tags: [acr]
+      summary: Red-flag notifications for the signed-in user
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AcrNotification"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/notifications/{notifId}/read:
+    patch:
+      operationId: markAcrNotificationRead
+      tags: [acr]
+      summary: Mark one notification as read
+      parameters:
+        - name: notifId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/notifications/read-all:
+    patch:
+      operationId: markAllAcrNotificationsRead
+      tags: [acr]
+      summary: Mark all of the user's notifications as read
+      responses:
+        "200":
+          description: Marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+
 components:
   schemas:
     GroupParticipant:
@@ -10246,14 +10785,6 @@ components:
           minimum: 0
           maximum: 100
           default: 70
-        opportunityThreshold:
-          type: integer
-          minimum: 0
-          maximum: 100
-          default: 80
-        autoCreateOpportunity:
-          type: boolean
-          default: false
         autoFollowupEnabled:
           type: boolean
           default: false
@@ -10287,10 +10818,18 @@ components:
           minimum: 0
           default: 0
           description: Minimum estimated value (whole Rupiah) for an opportunity to be flagged high-risk. 0 = value never excludes.
+        customPrompt:
+          type: string
+          nullable: true
+          description: Custom AI classification prompt overriding the default.
+        directionFilter:
+          type: boolean
+          default: true
+          description: When true, skip conversations where the agent/owner sends the majority of messages.
 
     AiPipeline:
       type: object
-      required: [id, name, isActive, scoreThreshold, opportunityThreshold, autoCreateOpportunity, autoFollowupEnabled, followupIntervals, cutoffTimes, channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr, createdAt, updatedAt]
+      required: [id, name, isActive, scoreThreshold, autoFollowupEnabled, followupIntervals, cutoffTimes, channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -10303,10 +10842,6 @@ components:
           type: boolean
         scoreThreshold:
           type: integer
-        opportunityThreshold:
-          type: integer
-        autoCreateOpportunity:
-          type: boolean
         autoFollowupEnabled:
           type: boolean
         followupIntervals:
@@ -10332,6 +10867,13 @@ components:
         highValueThresholdIdr:
           type: integer
           minimum: 0
+        customPrompt:
+          type: string
+          nullable: true
+        promptVersion:
+          type: integer
+        directionFilter:
+          type: boolean
         lastRunAt:
           type: string
           format: date-time
@@ -10342,8 +10884,6 @@ components:
             analyzed:
               type: integer
             enteredPipeline:
-              type: integer
-            opportunitiesCreated:
               type: integer
         createdAt:
           type: string
@@ -10421,9 +10961,6 @@ components:
         enteredPipeline:
           type: boolean
         pipelineEntryId:
-          type: integer
-          nullable: true
-        opportunityId:
           type: integer
           nullable: true
         createdAt:
@@ -10525,9 +11062,6 @@ components:
                 type: string
               cutoffWindow:
                 type: string
-        opportunityId:
-          type: integer
-          nullable: true
         followupLogs:
           type: array
           items:
@@ -10560,13 +11094,11 @@ components:
       properties:
         today:
           type: object
-          required: [analyzed, enteredPipeline, opportunitiesCreated, followupsSent]
+          required: [analyzed, enteredPipeline, followupsSent]
           properties:
             analyzed:
               type: integer
             enteredPipeline:
-              type: integer
-            opportunitiesCreated:
               type: integer
             followupsSent:
               type: integer
@@ -10602,7 +11134,7 @@ components:
 
     AiPipelineCutoffLog:
       type: object
-      required: [id, pipelineId, scheduledTime, status, contactsProcessed, contactsEnteredPipeline, opportunitiesCreated, createdAt]
+      required: [id, pipelineId, scheduledTime, status, contactsProcessed, contactsEnteredPipeline, createdAt]
       properties:
         id:
           type: integer
@@ -10625,8 +11157,6 @@ components:
           type: integer
         contactsEnteredPipeline:
           type: integer
-        opportunitiesCreated:
-          type: integer
         errorMessage:
           type: string
           nullable: true
@@ -10634,3 +11164,451 @@ components:
           type: string
           format: date-time
 
+    # ── AI Chat Report (ACR) ──────────────────────────────────────────────
+    AcrConfigInput:
+      type: object
+      required:
+        [
+          weightResponseTime,
+          weightLanguageQuality,
+          weightAnswerQuality,
+          weightComplaintHandling,
+          weightMissedChat,
+          slaExcellentMinutes,
+          slaGoodMinutes,
+          slaAcceptableMinutes,
+          slaPoorMinutes,
+          slaCriticalMinutes,
+          gradeAThreshold,
+          gradeBThreshold,
+          gradeCThreshold,
+          gradeDThreshold,
+          allowanceGradeA,
+          allowanceGradeB,
+          allowanceGradeC,
+          allowanceGradeD,
+          allowanceGradeE,
+          complaintHandlingEnabled,
+          autoScheduleEnabled,
+        ]
+      properties:
+        weightResponseTime: { type: integer, minimum: 0, maximum: 100 }
+        weightLanguageQuality: { type: integer, minimum: 0, maximum: 100 }
+        weightAnswerQuality: { type: integer, minimum: 0, maximum: 100 }
+        weightComplaintHandling: { type: integer, minimum: 0, maximum: 100 }
+        weightMissedChat: { type: integer, minimum: 0, maximum: 100 }
+        slaExcellentMinutes: { type: integer, minimum: 1 }
+        slaGoodMinutes: { type: integer, minimum: 1 }
+        slaAcceptableMinutes: { type: integer, minimum: 1 }
+        slaPoorMinutes: { type: integer, minimum: 1 }
+        slaCriticalMinutes: { type: integer, minimum: 1 }
+        gradeAThreshold: { type: integer, minimum: 1, maximum: 100 }
+        gradeBThreshold: { type: integer, minimum: 1, maximum: 100 }
+        gradeCThreshold: { type: integer, minimum: 1, maximum: 100 }
+        gradeDThreshold: { type: integer, minimum: 1, maximum: 100 }
+        allowanceGradeA:
+          type: integer
+          description: Whole-integer Rupiah.
+        allowanceGradeB: { type: integer }
+        allowanceGradeC: { type: integer }
+        allowanceGradeD: { type: integer }
+        allowanceGradeE: { type: integer }
+        complaintHandlingEnabled: { type: boolean }
+        autoScheduleEnabled: { type: boolean }
+        autoScheduleFrequency:
+          type: string
+          enum: [weekly, monthly, custom]
+        autoScheduleDayOfMonth: { type: integer, minimum: 1, maximum: 28 }
+        autoScheduleDayOfWeek: { type: integer, minimum: 1, maximum: 7 }
+        autoScheduleEveryDays: { type: integer, minimum: 1, maximum: 90 }
+        autoScheduleNotifyUserIds:
+          type: array
+          items: { type: integer }
+
+    AcrConfig:
+      allOf:
+        - $ref: "#/components/schemas/AcrConfigInput"
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string }
+            autoScheduleNextRunAt:
+              type: string
+              format: date-time
+              nullable: true
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    AcrJobCreate:
+      type: object
+      required: [periodStart, periodEnd]
+      properties:
+        periodStart:
+          type: string
+          format: date
+          description: YYYY-MM-DD in the tenant timezone. Default today - 30 days.
+        periodEnd:
+          type: string
+          format: date
+        agentIds:
+          type: array
+          items: { type: integer }
+          description: Empty/omitted = evaluate all agents.
+
+    AcrJob:
+      type: object
+      required: [id, periodStart, periodEnd, status]
+      properties:
+        id: { type: string }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        requestedByUserId: { type: integer, nullable: true }
+        requestedByName: { type: string, nullable: true }
+        isAutoScheduled: { type: boolean }
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        progressTotal: { type: integer }
+        progressCompleted: { type: integer }
+        totalAgentsEvaluated: { type: integer }
+        totalConversationsAnalyzed: { type: integer }
+        totalMessagesAnalyzed: { type: integer }
+        errorMessage: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        archivedAt: { type: string, format: date-time, nullable: true }
+        isLatestForPeriod:
+          type: boolean
+          description: True when this is the newest job covering its exact period.
+
+    AcrJobList:
+      type: object
+      required: [jobs, total, page, limit]
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrJob"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    AcrJobProgress:
+      type: object
+      required: [status, progressTotal, progressCompleted, pct]
+      properties:
+        status: { type: string }
+        progressTotal: { type: integer }
+        progressCompleted: { type: integer }
+        pct: { type: number }
+
+    AcrAgentScore:
+      type: object
+      required: [id, jobId, agentUserId, agentRole, totalScore, grade]
+      properties:
+        id: { type: string }
+        jobId: { type: string }
+        agentUserId: { type: integer }
+        agentName: { type: string, nullable: true }
+        agentEmail: { type: string, nullable: true }
+        agentRole: { type: string }
+        totalScore: { type: number }
+        scoreResponseTime: { type: number }
+        scoreLanguageQuality: { type: number }
+        scoreAnswerQuality: { type: number }
+        scoreComplaintHandling: { type: number }
+        scoreMissedChat: { type: number }
+        avgResponseTimeMinutes: { type: number, nullable: true }
+        totalConversations: { type: integer }
+        totalMessagesSent: { type: integer }
+        totalMissedChats: { type: integer }
+        totalComplaints: { type: integer }
+        complaintsResolved: { type: integer }
+        insufficientData: { type: boolean }
+        grade:
+          type: string
+          enum: [A, B, C, D, E]
+        allowanceAmount:
+          type: integer
+          description: Whole-integer Rupiah from the job's config snapshot.
+        aiSummary: { type: string, nullable: true }
+        aiStrengths: { type: string, nullable: true }
+        aiImprovements: { type: string, nullable: true }
+        redFlagCount: { type: integer }
+        hasCriticalViolation: { type: boolean }
+
+    AcrCoachingInsights:
+      type: object
+      properties:
+        topImprovements:
+          type: array
+          items: { type: string }
+        bestConversationId: { type: string, nullable: true }
+        worstConversationId: { type: string, nullable: true }
+        bestConversationExcerpt: { type: string, nullable: true }
+        worstConversationExcerpt: { type: string, nullable: true }
+        worstConversationAnnotation: { type: string, nullable: true }
+        teamComparison:
+          type: object
+          nullable: true
+          properties:
+            avgResponseTimeTeam: { type: number }
+            avgScoreTeam: { type: number }
+            agentRank: { type: integer }
+            totalAgents: { type: integer }
+
+    AcrTrendPoint:
+      type: object
+      required: [jobId, periodStart, periodEnd, totalScore]
+      properties:
+        jobId: { type: string }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        totalScore: { type: number }
+        scoreResponseTime: { type: number }
+        scoreLanguageQuality: { type: number }
+        scoreAnswerQuality: { type: number }
+        scoreComplaintHandling: { type: number }
+        scoreMissedChat: { type: number }
+
+    AcrRedFlag:
+      type: object
+      required: [id, jobId, agentUserId, violationType, violationSeverity, aiExplanation]
+      properties:
+        id: { type: string }
+        jobId: { type: string }
+        agentScoreId: { type: string }
+        agentUserId: { type: integer }
+        agentName: { type: string, nullable: true }
+        chatId: { type: integer, nullable: true }
+        contactName: { type: string, nullable: true }
+        channelId: { type: integer, nullable: true }
+        channelType: { type: string, nullable: true }
+        conversationExcerpt: { type: string, nullable: true }
+        violationType:
+          type: string
+          enum:
+            [
+              customer_angry,
+              rude_language,
+              no_reply_critical,
+              customer_ignored,
+              answer_caused_dropout,
+            ]
+        violationSeverity:
+          type: string
+          enum: [critical, high, medium]
+        aiExplanation: { type: string }
+        aiRecommendation: { type: string, nullable: true }
+        scoreImpactDimension: { type: string, nullable: true }
+        scoreImpactPoints: { type: number, nullable: true }
+        occurredAt: { type: string, format: date-time, nullable: true }
+        messageTimestamp: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AcrRedFlagList:
+      type: object
+      required: [redFlags, total, page, limit]
+      properties:
+        redFlags:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrRedFlag"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    AcrConversationScore:
+      type: object
+      required: [id, jobId, agentUserId]
+      properties:
+        id: { type: string }
+        jobId: { type: string }
+        agentScoreId: { type: string }
+        agentUserId: { type: integer }
+        chatId: { type: integer, nullable: true }
+        contactName: { type: string, nullable: true }
+        channelId: { type: integer, nullable: true }
+        channelType: { type: string, nullable: true }
+        firstMessageAt: { type: string, format: date-time, nullable: true }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+        totalMessages: { type: integer }
+        agentMessages: { type: integer }
+        customerMessages: { type: integer }
+        avgResponseTimeMinutes: { type: number, nullable: true }
+        firstResponseTimeMinutes: { type: number, nullable: true }
+        maxResponseTimeMinutes: { type: number, nullable: true }
+        hasMissedMessage: { type: boolean }
+        hasComplaint: { type: boolean }
+        complaintResolved: { type: boolean }
+        convScoreResponseTime: { type: number, nullable: true }
+        convScoreLanguageQuality: { type: number, nullable: true }
+        convScoreAnswerQuality: { type: number, nullable: true }
+        convScoreComplaintHandling: { type: number, nullable: true }
+        convScoreMissedChat: { type: number, nullable: true }
+        convTotalScore: { type: number, nullable: true }
+        hasRedFlag: { type: boolean }
+        redFlagTypes:
+          type: array
+          items: { type: string }
+          nullable: true
+        aiNotes: { type: string, nullable: true }
+        answerCausedCustomerSilent: { type: boolean }
+
+    AcrConversationList:
+      type: object
+      required: [conversations, total, page, limit]
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrConversationScore"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    AcrLeaderboardEntry:
+      type: object
+      required: [rank, agentUserId, totalScore, grade, isSelf]
+      properties:
+        rank: { type: integer }
+        delta:
+          type: number
+          nullable: true
+          description: Score change vs the previous job; null when not comparable.
+        agentUserId: { type: integer }
+        agentName:
+          type: string
+          nullable: true
+          description: Masked (null) for agent callers viewing other agents.
+        agentRole: { type: string }
+        totalScore: { type: number }
+        grade: { type: string }
+        allowanceAmount: { type: integer }
+        isSelf: { type: boolean }
+
+    AcrLeaderboard:
+      type: object
+      required: [entries, periodStart, periodEnd]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrLeaderboardEntry"
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+
+    AcrTeamSummary:
+      type: object
+      required: [avgScore, needsAttentionCount, totalRedFlags]
+      properties:
+        avgScore: { type: number }
+        bestAgentName: { type: string, nullable: true }
+        bestAgentScore: { type: number, nullable: true }
+        needsAttentionCount: { type: integer }
+        totalRedFlags: { type: integer }
+
+    AcrJobResults:
+      type: object
+      required: [job, agents, summary, gradeDistribution, dimensionAverages, teamTrend, weights]
+      properties:
+        job:
+          $ref: "#/components/schemas/AcrJob"
+        weights:
+          type: object
+          description: KPI weights from the job's immutable config snapshot.
+          required:
+            [
+              weightResponseTime,
+              weightLanguageQuality,
+              weightAnswerQuality,
+              weightComplaintHandling,
+              weightMissedChat,
+            ]
+          properties:
+            weightResponseTime: { type: integer }
+            weightLanguageQuality: { type: integer }
+            weightAnswerQuality: { type: integer }
+            weightComplaintHandling: { type: integer }
+            weightMissedChat: { type: integer }
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrAgentScore"
+        summary:
+          $ref: "#/components/schemas/AcrTeamSummary"
+        gradeDistribution:
+          type: object
+          required: [a, b, c, d, e]
+          properties:
+            a: { type: integer }
+            b: { type: integer }
+            c: { type: integer }
+            d: { type: integer }
+            e: { type: integer }
+        dimensionAverages:
+          type: object
+          required:
+            [responseTime, languageQuality, answerQuality, complaintHandling, missedChat]
+          properties:
+            responseTime: { type: number }
+            languageQuality: { type: number }
+            answerQuality: { type: number }
+            complaintHandling: { type: number }
+            missedChat: { type: number }
+        teamTrend:
+          type: array
+          items:
+            type: object
+            required: [jobId, periodStart, periodEnd, avgScore]
+            properties:
+              jobId: { type: string }
+              periodStart: { type: string, format: date }
+              periodEnd: { type: string, format: date }
+              avgScore: { type: number }
+
+    AcrAgentDetail:
+      type: object
+      required: [score, redFlags, trend]
+      properties:
+        score:
+          $ref: "#/components/schemas/AcrAgentScore"
+        coachingInsights:
+          allOf:
+            - $ref: "#/components/schemas/AcrCoachingInsights"
+          nullable: true
+        redFlags:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrRedFlag"
+        trend:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrTrendPoint"
+        deltaVsPrevious:
+          type: number
+          nullable: true
+
+    AcrNotification:
+      type: object
+      required: [id, isRead, createdAt]
+      properties:
+        id: { type: string }
+        redFlagId: { type: string, nullable: true }
+        jobId: { type: string, nullable: true }
+        isRead: { type: boolean }
+        readAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        agentName: { type: string, nullable: true }
+        violationType: { type: string, nullable: true }
+        contactName: { type: string, nullable: true }
+
+    AcrTeamMember:
+      type: object
+      required: [id, email, teamRole]
+      properties:
+        id: { type: integer }
+        name: { type: string, nullable: true }
+        email: { type: string }
+        teamRole: { type: string }

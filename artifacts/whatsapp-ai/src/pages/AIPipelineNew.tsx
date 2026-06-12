@@ -20,6 +20,8 @@ import {
   X,
   Check,
   Search,
+  Sparkles,
+  FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,12 +174,12 @@ interface FormData {
   name: string;
   description: string;
   isActive: boolean;
+  customPrompt: string;
+  directionFilter: boolean;
   channelIds: number[];
   excludeLabelIds: number[];
   cutoffTimes: string[];
   scoreThreshold: number;
-  autoCreateOpportunity: boolean;
-  opportunityThreshold: number;
   autoFollowupEnabled: boolean;
   followupIntervals: string[];
 }
@@ -186,15 +188,40 @@ const DEFAULT_FORM: FormData = {
   name: "",
   description: "",
   isActive: true,
+  customPrompt: "",
+  directionFilter: true,
   channelIds: [],
   excludeLabelIds: [],
   cutoffTimes: ["12:00", "23:59"],
   scoreThreshold: 70,
-  autoCreateOpportunity: false,
-  opportunityThreshold: 80,
   autoFollowupEnabled: false,
   followupIntervals: ["24h", "48h", "72h"],
 };
+
+// ─── Prompt templates ─────────────────────────────────────────────────────────
+
+const PROMPT_TEMPLATES = [
+  {
+    label: "Sales Umum",
+    value: `Kamu adalah AI analis sales yang bertugas menilai percakapan WhatsApp dengan calon pembeli. Evaluasi tingkat ketertarikan, urgensi pembelian, dan peluang konversi berdasarkan sinyal dalam percakapan. Berikan skor 0-100 dan rekomendasi tindak lanjut yang spesifik.`,
+  },
+  {
+    label: "Properti",
+    value: `Kamu adalah AI analis properti yang menganalisa percakapan calon pembeli/penyewa. Perhatikan budget, lokasi yang diinginkan, timeline keputusan, dan sinyal serius seperti pertanyaan spesifik tentang spesifikasi, harga final, atau kunjungan survei. Berikan skor 0-100.`,
+  },
+  {
+    label: "Keuangan/Asuransi",
+    value: `Kamu adalah AI analis produk keuangan dan asuransi. Analisa percakapan untuk mendeteksi kebutuhan finansial, toleransi risiko, kemampuan bayar premi, dan urgensi perlindungan. Identifikasi apakah calon klien dalam tahap eksplorasi atau siap membeli. Berikan skor 0-100.`,
+  },
+  {
+    label: "E-commerce",
+    value: `Kamu adalah AI analis e-commerce yang mengevaluasi percakapan calon pembeli toko online. Perhatikan pertanyaan tentang stok, harga, diskon, pengiriman, dan tanda-tanda akan checkout. Bedakan antara browser biasa dan pembeli serius. Berikan skor 0-100.`,
+  },
+  {
+    label: "Jasa/Service",
+    value: `Kamu adalah AI analis bisnis jasa yang menganalisa percakapan calon klien. Identifikasi kebutuhan spesifik, anggaran, timeline proyek, dan level keputusan (pengambil keputusan vs. penanya biasa). Perhatikan sinyal seperti pertanyaan harga detail atau permintaan proposal. Berikan skor 0-100.`,
+  },
+];
 
 const FOLLOWUP_PRESETS = [
   { label: "24 jam", value: "24h" },
@@ -277,9 +304,175 @@ function Step1({
   );
 }
 
-// ─── Step 2 ───────────────────────────────────────────────────────────────────
+// ─── Step 2: AI Prompt ────────────────────────────────────────────────────────
 
 function Step2({
+  data,
+  onChange,
+  onBack,
+  onNext,
+}: {
+  data: FormData;
+  onChange: (d: Partial<FormData>) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const [sampleMessages, setSampleMessages] = useState("");
+  const [testResult, setTestResult] = useState<{
+    score: number | null;
+    status: string | null;
+    recommendation: string | null;
+  } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+
+  const promptLen = data.customPrompt.length;
+  const promptValid = promptLen === 0 || (promptLen >= 80 && promptLen <= 1500);
+  const canNext = true; // custom prompt is optional
+
+  const runTest = async () => {
+    if (!data.customPrompt || data.customPrompt.length < 80) return;
+    if (!sampleMessages.trim()) {
+      setTestError("Masukkan contoh percakapan terlebih dahulu");
+      return;
+    }
+    setIsTesting(true);
+    setTestResult(null);
+    setTestError(null);
+    try {
+      const res = await fetch("/api/ai-pipeline/test-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: data.customPrompt, sampleMessages: sampleMessages.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setTestError((err as any).error ?? "Gagal menguji prompt");
+      } else {
+        setTestResult(await res.json());
+      }
+    } catch {
+      setTestError("Gagal terhubung ke server");
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold">Prompt AI</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Kustomisasi instruksi AI untuk pipeline ini. Biarkan kosong untuk menggunakan prompt bawaan.
+        </p>
+      </div>
+
+      {/* Template buttons */}
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Template Cepat</p>
+        <div className="flex flex-wrap gap-2">
+          {PROMPT_TEMPLATES.map((t) => (
+            <Button
+              key={t.label}
+              variant={data.customPrompt === t.value ? "default" : "outline"}
+              size="sm"
+              className="gap-1"
+              onClick={() => onChange({ customPrompt: t.value })}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {t.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Prompt textarea */}
+      <div className="space-y-2">
+        <Label>Custom Prompt <span className="text-muted-foreground font-normal">(opsional)</span></Label>
+        <Textarea
+          placeholder="Tulis instruksi untuk AI, minimal 80 karakter..."
+          rows={6}
+          value={data.customPrompt}
+          onChange={(e) => onChange({ customPrompt: e.target.value })}
+          maxLength={1500}
+        />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>
+            {promptLen > 0 && !promptValid && (
+              <span className="text-destructive">Minimal 80 karakter</span>
+            )}
+          </span>
+          <span className={promptLen > 1400 ? "text-yellow-600" : ""}>{promptLen}/1500</span>
+        </div>
+      </div>
+
+      {/* Direction filter */}
+      <div className="flex items-center justify-between border rounded-lg p-4">
+        <div>
+          <Label>Filter Arah Percakapan</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Lewati percakapan di mana agen/admin mengirim lebih banyak pesan daripada kontak
+          </p>
+        </div>
+        <Switch
+          checked={data.directionFilter}
+          onCheckedChange={(v) => onChange({ directionFilter: v })}
+        />
+      </div>
+
+      {/* Test prompt */}
+      {data.customPrompt.length >= 80 && (
+        <div className="space-y-3 border rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-muted-foreground" />
+            <p className="text-sm font-medium">Uji Prompt</p>
+          </div>
+          <Textarea
+            placeholder="Tempel contoh percakapan di sini untuk menguji prompt..."
+            rows={4}
+            value={sampleMessages}
+            onChange={(e) => setSampleMessages(e.target.value)}
+          />
+          <Button variant="outline" size="sm" onClick={runTest} disabled={isTesting} className="gap-2">
+            {isTesting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Jalankan Test
+          </Button>
+          {testError && <p className="text-xs text-destructive">{testError}</p>}
+          {testResult && (
+            <div className="rounded-lg bg-muted/50 border p-3 space-y-2 text-sm">
+              <div className="flex items-center gap-3">
+                <span className="text-muted-foreground">Skor:</span>
+                <span
+                  className="font-bold text-white px-2 py-0.5 rounded"
+                  style={{ backgroundColor: scoreColor(testResult.score ?? 0) }}
+                >
+                  {testResult.score ?? "–"}
+                </span>
+                {testResult.status && <span className="text-muted-foreground">{testResult.status}</span>}
+              </div>
+              {testResult.recommendation && (
+                <p className="text-xs text-muted-foreground">{testResult.recommendation}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex justify-between pt-4 border-t">
+        <Button variant="outline" onClick={onBack} className="gap-1">
+          <ChevronLeft className="h-4 w-4" /> Kembali
+        </Button>
+        <Button onClick={onNext} disabled={!canNext || (promptLen > 0 && !promptValid)} className="gap-2">
+          Lanjut <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 3: Konfigurasi ──────────────────────────────────────────────────────
+
+function Step3({
   data,
   onChange,
   onBack,
@@ -470,48 +663,7 @@ function Step2({
         </p>
       </div>
 
-      {/* E. Auto-create opportunity */}
-      <div className="space-y-3 border rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <Label>Buat Opportunity Otomatis</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Buat opportunity secara otomatis saat skor mencapai threshold
-            </p>
-          </div>
-          <Switch
-            checked={data.autoCreateOpportunity}
-            onCheckedChange={(v) => onChange({ autoCreateOpportunity: v })}
-          />
-        </div>
-        {data.autoCreateOpportunity && (
-          <div className="space-y-2 pt-2 border-t">
-            <Label className="text-sm">Skor Minimum Buat Opportunity</Label>
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <Slider
-                  min={data.scoreThreshold}
-                  max={100}
-                  step={1}
-                  value={[Math.max(data.opportunityThreshold, data.scoreThreshold)]}
-                  onValueChange={([v]) => onChange({ opportunityThreshold: v })}
-                />
-              </div>
-              <div
-                className="flex items-center justify-center w-16 h-10 rounded-lg font-bold text-white text-sm"
-                style={{ backgroundColor: scoreColor(data.opportunityThreshold) }}
-              >
-                {Math.max(data.opportunityThreshold, data.scoreThreshold)}
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Harus ≥ threshold pipeline ({data.scoreThreshold})
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* F. Auto follow-up */}
+      {/* E. Auto follow-up */}
       <div className="space-y-3 border rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -564,8 +716,6 @@ function Step2({
           <span>{data.cutoffTimes.join(", ")}</span>
           <span className="text-muted-foreground">Threshold pipeline</span>
           <span>{data.scoreThreshold}</span>
-          <span className="text-muted-foreground">Auto opportunity</span>
-          <span>{data.autoCreateOpportunity ? `Aktif (skor ${data.opportunityThreshold})` : "Nonaktif"}</span>
           <span className="text-muted-foreground">Auto follow-up</span>
           <span>
             {data.autoFollowupEnabled
@@ -592,9 +742,9 @@ function Step2({
   );
 }
 
-// ─── Step 3 (success) ─────────────────────────────────────────────────────────
+// ─── Step 4 (success) ────────────────────────────────────────────────────────
 
-function Step3({ pipelineName, pipelineId, onReset }: { pipelineName: string; pipelineId: number; onReset: () => void }) {
+function Step4({ pipelineName, pipelineId, onReset }: { pipelineName: string; pipelineId: number; onReset: () => void }) {
   const [, navigate] = useLocation();
   return (
     <div className="flex flex-col items-center gap-6 py-8 text-center">
@@ -619,7 +769,7 @@ function Step3({ pipelineName, pipelineId, onReset }: { pipelineName: string; pi
 
 export default function AIPipelineNewPage() {
   const [, navigate] = useLocation();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [form, setForm] = useState<FormData>(DEFAULT_FORM);
   const [createdId, setCreatedId] = useState<number>(0);
   const queryClient = useQueryClient();
@@ -633,7 +783,7 @@ export default function AIPipelineNewPage() {
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: getListAiPipelinesQueryKey() });
         setCreatedId(data.id);
-        setStep(3);
+        setStep(4);
       },
       onError: () => {
         toast({ title: "Gagal membuat pipeline", variant: "destructive" });
@@ -647,12 +797,12 @@ export default function AIPipelineNewPage() {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         isActive: form.isActive,
+        customPrompt: form.customPrompt.trim() || undefined,
+        directionFilter: form.directionFilter,
         channelIds: form.channelIds,
         excludeLabelIds: form.excludeLabelIds,
         cutoffTimes: [...form.cutoffTimes].sort(),
         scoreThreshold: form.scoreThreshold,
-        opportunityThreshold: form.opportunityThreshold,
-        autoCreateOpportunity: form.autoCreateOpportunity,
         autoFollowupEnabled: form.autoFollowupEnabled,
         followupIntervals: form.followupIntervals.slice(0, 3),
       },
@@ -664,6 +814,8 @@ export default function AIPipelineNewPage() {
     setStep(1);
     setCreatedId(0);
   };
+
+  const STEP_LABELS = ["Identitas", "AI Prompt", "Konfigurasi"];
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -677,9 +829,9 @@ export default function AIPipelineNewPage() {
       </div>
 
       {/* Step indicator */}
-      {step < 3 && (
+      {step < 4 && (
         <div className="flex items-center gap-2 mb-8">
-          {[1, 2].map((s) => (
+          {[1, 2, 3].map((s) => (
             <div key={s} className="flex items-center gap-2">
               <div
                 className={cn(
@@ -694,9 +846,9 @@ export default function AIPipelineNewPage() {
                 {s < step ? <Check className="h-4 w-4" /> : s}
               </div>
               <span className={cn("text-sm", step === s ? "font-medium" : "text-muted-foreground")}>
-                {s === 1 ? "Identitas" : "Konfigurasi"}
+                {STEP_LABELS[s - 1]}
               </span>
-              {s < 2 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              {s < 3 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
             </div>
           ))}
         </div>
@@ -717,12 +869,20 @@ export default function AIPipelineNewPage() {
             data={form}
             onChange={updateForm}
             onBack={() => setStep(1)}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
+            onNext={() => setStep(3)}
           />
         )}
         {step === 3 && (
           <Step3
+            data={form}
+            onChange={updateForm}
+            onBack={() => setStep(2)}
+            onSubmit={handleSubmit}
+            isSubmitting={isSubmitting}
+          />
+        )}
+        {step === 4 && (
+          <Step4
             pipelineName={form.name}
             pipelineId={createdId}
             onReset={reset}

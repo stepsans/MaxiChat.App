@@ -20,6 +20,7 @@ import {
   CircleDashed,
   BrainCircuit,
   Kanban,
+  ClipboardCheck,
   LogOut,
   Camera,
   Cpu,
@@ -98,6 +99,12 @@ const navGroups: NavGroup[] = [
         requiresAiSalesAssistant: true,
       },
       { href: "/usage", label: "Pemakaian Token", icon: Cpu, menu: "usage" },
+      {
+        href: "/ai-chat-report",
+        label: "AI Chat Report",
+        icon: ClipboardCheck,
+        menu: "acr",
+      },
     ],
   },
   {
