@@ -411,7 +411,6 @@ export default function Pipeline() {
   const visiblePipelines = (pipelines ?? []).filter((p) => !p.isArchived);
 
   return (
-    <>
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b sm:px-6">
@@ -658,6 +657,78 @@ export default function Pipeline() {
           onClose={() => setStageMgmtPipelineId(null)}
         />
       ) : null}
+
+      {/* Risk Settings Dialog */}
+      <Dialog open={riskSettingsOpen} onOpenChange={setRiskSettingsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-destructive" />
+              Setelan Risiko
+            </DialogTitle>
+            <DialogDescription>
+              Peluang terbuka yang memenuhi kedua kriteria di bawah akan
+              ditandai sebagai berisiko tinggi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="risk-stale-days">Tidak aktif selama (hari)</Label>
+              <Input
+                id="risk-stale-days"
+                type="number"
+                min={1}
+                max={365}
+                value={staleDraft}
+                onChange={(e) => setStaleDraft(e.target.value)}
+                placeholder="14"
+                data-testid="input-risk-stale-days"
+              />
+              <p className="text-xs text-muted-foreground">
+                Peluang yang belum ada aktivitas ≥ N hari dianggap stagnan.
+                Rentang: 1–365.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="risk-high-value">Nilai minimum (Rupiah)</Label>
+              <Input
+                id="risk-high-value"
+                type="number"
+                min={0}
+                step={1000}
+                value={highValueDraft}
+                onChange={(e) => setHighValueDraft(e.target.value)}
+                placeholder="0"
+                data-testid="input-risk-high-value"
+              />
+              <p className="text-xs text-muted-foreground">
+                Hanya peluang dengan estimasi nilai ≥ angka ini yang masuk
+                hitungan. Isi <strong>0</strong> agar semua nilai ikut
+                terdeteksi.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRiskSettingsOpen(false)}
+              disabled={updateRiskSettings.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={submitRiskSettings}
+              disabled={updateRiskSettings.isPending}
+              data-testid="button-risk-settings-save"
+            >
+              {updateRiskSettings.isPending ? (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              ) : null}
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1519,78 +1590,5 @@ function AuditTrailPanel({ events, loading }: { events: SalesAuditEvent[] | unde
         )}
       </div>
     </div>
-
-      {/* Risk Settings Dialog */}
-      <Dialog open={riskSettingsOpen} onOpenChange={setRiskSettingsOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-destructive" />
-              Setelan Risiko
-            </DialogTitle>
-            <DialogDescription>
-              Peluang terbuka yang memenuhi kedua kriteria di bawah akan
-              ditandai sebagai berisiko tinggi.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-5 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="risk-stale-days">Tidak aktif selama (hari)</Label>
-              <Input
-                id="risk-stale-days"
-                type="number"
-                min={1}
-                max={365}
-                value={staleDraft}
-                onChange={(e) => setStaleDraft(e.target.value)}
-                placeholder="14"
-                data-testid="input-risk-stale-days"
-              />
-              <p className="text-xs text-muted-foreground">
-                Peluang yang belum ada aktivitas ≥ N hari dianggap stagnan.
-                Rentang: 1–365.
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="risk-high-value">Nilai minimum (Rupiah)</Label>
-              <Input
-                id="risk-high-value"
-                type="number"
-                min={0}
-                step={1000}
-                value={highValueDraft}
-                onChange={(e) => setHighValueDraft(e.target.value)}
-                placeholder="0"
-                data-testid="input-risk-high-value"
-              />
-              <p className="text-xs text-muted-foreground">
-                Hanya peluang dengan estimasi nilai ≥ angka ini yang masuk
-                hitungan. Isi <strong>0</strong> agar semua nilai ikut
-                terdeteksi.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRiskSettingsOpen(false)}
-              disabled={updateRiskSettings.isPending}
-            >
-              Batal
-            </Button>
-            <Button
-              onClick={submitRiskSettings}
-              disabled={updateRiskSettings.isPending}
-              data-testid="button-risk-settings-save"
-            >
-              {updateRiskSettings.isPending ? (
-                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-              ) : null}
-              Simpan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }

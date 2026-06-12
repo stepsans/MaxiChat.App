@@ -53,7 +53,8 @@
       "Bash(PORT=23744 BASE_PATH=/admin/ pnpm --filter admin dev)",
       "Bash(pnpm exec *)",
       "Bash(sed -i 's|\"./src/lib/chat-classifier\"|\"/home/runner/workspace/artifacts/api-server/src/lib/chat-classifier\"|' /tmp/test-direction.ts)",
-      "Bash(npx tsx *)"
+      "Bash(npx tsx *)",
+      "Bash(pnpm *)"
     ]
   }
 }
