@@ -8,7 +8,7 @@
  * (resolveAiClient) so BYOK tenants use their own key/model.
  */
 
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import {
   chatsTable,
   chatMessagesTable,
@@ -201,13 +201,25 @@ FORMAT RESPONS (JSON saja, tanpa teks lain, tanpa backtick):
     teamRoles: ["super_admin", "supervisor"],
     prompt: null,
   },
+
+  // ── AUDIT — percakapan yang di-skip karena outgoing-dominan ─────────────────
+  // (kamu yang menghubungi supplier/pihak lain, bukan customer yang datang)
+  {
+    id: "skipped_outgoing",
+    name: "Skipped — Outgoing",
+    priority: 999,
+    minConfidence: 0,
+    color: "#555555",
+    teamRoles: ["super_admin", "supervisor"],
+    prompt: null,
+  },
 ];
 
 // ─── Role access ───────────────────────────────────────────────────────────────
 
 const ROLE_PIPELINE_ACCESS: Record<string, string[]> = {
-  super_admin: ["complaint", "sales", "service", "billing", "onboarding", "uncategorized"],
-  supervisor: ["complaint", "sales", "service", "billing", "onboarding", "uncategorized"],
+  super_admin: ["complaint", "sales", "service", "billing", "onboarding", "uncategorized", "skipped_outgoing"],
+  supervisor: ["complaint", "sales", "service", "billing", "onboarding", "uncategorized", "skipped_outgoing"],
   agent: ["sales", "service", "onboarding"],
 };
 
@@ -216,6 +228,141 @@ export function getPipelinesForTeamRole(
 ): ChatPipeline[] {
   const allowed = ROLE_PIPELINE_ACCESS[teamRole] ?? ROLE_PIPELINE_ACCESS.agent;
   return CHAT_PIPELINES.filter((p) => allowed.includes(p.id));
+}
+
+// ─── Direction analysis ────────────────────────────────────────────────────────
+// Membedakan customer yang menghubungi kamu (incoming-dominan → klasifikasi)
+// dari kamu yang menghubungi supplier/pihak lain (outgoing-dominan → skip).
+// Berjalan sebelum AI dipanggil, jadi percakapan outgoing tidak menghabiskan token.
+
+export interface DirectionAnalysis {
+  direction: "incoming" | "outgoing" | "mixed" | "unknown";
+  incomingCount: number;
+  outgoingCount: number;
+  incomingRatio: number;
+  shouldClassify: boolean;
+  skipReason: string | null;
+}
+
+export function analyzeDirection(
+  messages: Array<{ fromMe: boolean }>,
+): DirectionAnalysis {
+  if (messages.length === 0) {
+    return {
+      direction: "unknown",
+      incomingCount: 0,
+      outgoingCount: 0,
+      incomingRatio: 0,
+      shouldClassify: false,
+      skipReason: "Tidak ada pesan untuk dianalisis",
+    };
+  }
+
+  const incomingCount = messages.filter((m) => !m.fromMe).length;
+  const outgoingCount = messages.length - incomingCount;
+  const incomingRatio = incomingCount / messages.length;
+
+  let direction: DirectionAnalysis["direction"];
+  if (incomingRatio >= 0.6) direction = "incoming";
+  else if (incomingRatio <= 0.4) direction = "outgoing";
+  else direction = "mixed";
+
+  let shouldClassify = true;
+  let skipReason: string | null = null;
+
+  if (direction === "outgoing") {
+    shouldClassify = false;
+    skipReason = `Percakapan outgoing dominan (${outgoingCount} sent vs ${incomingCount} received) — kemungkinan kamu yang menghubungi supplier, bukan customer yang menghubungi kamu`;
+  }
+
+  // Edge case: percakapan masih sangat singkat dan kamu yang memulai.
+  if (messages.length <= 3 && messages[0]?.fromMe) {
+    shouldClassify = false;
+    skipReason = `Pesan pertama adalah outgoing dan percakapan masih sangat singkat (${messages.length} pesan) — kemungkinan kamu yang memulai`;
+  }
+
+  return {
+    direction,
+    incomingCount,
+    outgoingCount,
+    incomingRatio: Math.round(incomingRatio * 100) / 100,
+    shouldClassify,
+    skipReason,
+  };
+}
+
+// ─── Level 2: AI direction check ───────────────────────────────────────────────
+// Penghitungan rasio (Level 1) tidak bisa membedakan customer vs supplier pada
+// percakapan jual-beli dua arah — jumlah pesannya hampir selalu seimbang. Yang
+// membedakan adalah SIAPA yang menyatakan niat beli dan bertanya harga. Untuk
+// kasus ambigu (mixed, atau kamu yang membuka percakapan), satu panggilan AI
+// kecil menentukan peran lawan bicara sebelum pipeline classifier dijalankan.
+
+const DIRECTION_CHECK_PROMPT = `
+Kamu adalah sistem analisis percakapan WhatsApp untuk sebuah bisnis.
+
+Setiap pesan diberi label:
+[KAMI]   = pesan yang dikirim oleh bisnis kami
+[KONTAK] = pesan dari lawan bicara
+
+TUGASMU: Tentukan peran KONTAK terhadap bisnis kami.
+
+- "customer" : KONTAK adalah pembeli/calon pembeli. Pesan [KONTAK] yang menanyakan
+  harga, stok, ongkir, total, atau menyatakan niat beli; pesan [KAMI] yang menjawab
+  harga dan menawarkan produk.
+- "supplier" : KAMI yang membeli dari KONTAK. Pesan [KAMI] yang menanyakan harga,
+  stok, ongkir, total, atau menyatakan niat beli ("mau beli...", "saya ambil...");
+  pesan [KONTAK] yang menjawab harga, menawarkan barang, atau menanyakan alamat
+  pengiriman kami.
+- "unclear"  : tidak cukup bukti untuk menentukan.
+
+Perhatikan SIAPA yang:
+1. Memulai percakapan dan menyatakan niat beli
+2. Menanyakan harga, stok, total, atau ongkos kirim
+3. Memberikan alamat pengiriman (pemberi alamat biasanya pembeli)
+4. Menjawab dengan harga dan informasi produk (pihak ini penjual)
+
+FORMAT RESPONS (JSON saja, tanpa teks lain, tanpa backtick):
+{"contactRole":"customer" atau "supplier" atau "unclear","confidence":angka 0-100,"reason":"1 kalimat alasan"}
+`;
+
+interface DirectionCheckResult {
+  contactRole: "customer" | "supplier" | "unclear";
+  confidence: number;
+  reason: string;
+}
+
+async function runDirectionCheck(
+  labeledTranscript: string,
+  client: Awaited<ReturnType<typeof resolveAiClient>>["client"],
+  model: string,
+): Promise<DirectionCheckResult> {
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      max_tokens: 200,
+      messages: [
+        { role: "system", content: DIRECTION_CHECK_PROMPT.trim() },
+        {
+          role: "user",
+          content: `Berikut percakapannya:\n\n---\n${labeledTranscript}\n---\n\nTentukan peran KONTAK dalam format JSON.`,
+        },
+      ],
+      temperature: 0,
+    });
+    const raw = response.choices[0]?.message?.content?.trim() ?? "";
+    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    return {
+      contactRole: ["customer", "supplier", "unclear"].includes(parsed.contactRole)
+        ? parsed.contactRole
+        : "unclear",
+      confidence: Number(parsed.confidence) || 0,
+      reason: String(parsed.reason ?? ""),
+    };
+  } catch (err) {
+    logger.warn({ err }, "chat-classifier: direction check failed — treating as unclear");
+    return { contactRole: "unclear", confidence: 0, reason: "Direction check error" };
+  }
 }
 
 // ─── Classifier engine ─────────────────────────────────────────────────────────
@@ -245,7 +392,7 @@ async function runSingleClassifier(
         { role: "system", content: pipeline.prompt!.trim() },
         {
           role: "user",
-          content: `Berikut percakapan pelanggan yang perlu diklasifikasi:\n\n---\n${transcript}\n---\n\nKembalikan hasil dalam format JSON.`,
+          content: `KONTEKS ARAH PERCAKAPAN: Percakapan ini sudah diverifikasi bahwa yang banyak bertanya adalah pihak luar (customer/pelanggan), bukan pihak internal bisnis.\n\nBerikut percakapan pelanggan yang perlu diklasifikasi:\n\n---\n${transcript}\n---\n\nKembalikan hasil dalam format JSON.`,
         },
       ],
       temperature: 0,
@@ -288,21 +435,97 @@ export async function classifyAndTagChat(
   ownerUserId: number,
 ): Promise<string> {
   try {
-    // Build a short transcript from the last 5 messages for context.
-    const recentRows = await db
-      .select({
-        direction: chatMessagesTable.direction,
-        content: chatMessagesTable.content,
-      })
-      .from(chatMessagesTable)
-      .where(eq(chatMessagesTable.chatId, chatId))
-      .orderBy(desc(chatMessagesTable.id))
-      .limit(5);
+    // Opening messages reveal who initiated the relationship; recent messages
+    // feed the ratio analysis and the classification transcript.
+    const [firstRows, recentRows] = await Promise.all([
+      db
+        .select({
+          id: chatMessagesTable.id,
+          direction: chatMessagesTable.direction,
+          content: chatMessagesTable.content,
+        })
+        .from(chatMessagesTable)
+        .where(eq(chatMessagesTable.chatId, chatId))
+        .orderBy(asc(chatMessagesTable.id))
+        .limit(5),
+      db
+        .select({
+          id: chatMessagesTable.id,
+          direction: chatMessagesTable.direction,
+          content: chatMessagesTable.content,
+        })
+        .from(chatMessagesTable)
+        .where(eq(chatMessagesTable.chatId, chatId))
+        .orderBy(desc(chatMessagesTable.id))
+        .limit(20),
+    ]);
+
+    const ordered = recentRows.reverse();
+
+    // ── Level 1: ratio filter (free, no AI call) ──────────────────────────
+    // Skip clearly outgoing-dominant conversations (kamu yang menghubungi
+    // supplier). The trigger message is always inbound, so an empty history
+    // still counts as incoming.
+    const directionInput =
+      ordered.length > 0
+        ? ordered.map((m) => ({ fromMe: m.direction === "outbound" }))
+        : [{ fromMe: false }];
+    const dir = analyzeDirection(directionInput);
+
+    const skipChat = async (skipReason: string): Promise<string> => {
+      await db
+        .update(chatsTable)
+        .set({ tag: "skipped_outgoing" })
+        .where(eq(chatsTable.id, chatId));
+      logger.info(
+        {
+          chatId,
+          direction: dir.direction,
+          incoming: dir.incomingCount,
+          outgoing: dir.outgoingCount,
+          skipReason,
+        },
+        "chat-classifier: skipped — kontak bukan customer",
+      );
+      return "skipped_outgoing";
+    };
+
+    if (!dir.shouldClassify) return skipChat(dir.skipReason ?? "outgoing dominan");
+
+    const { client, model, provider } = await resolveAiClient(ownerUserId);
+
+    // ── Level 2: AI direction check for ambiguous cases ───────────────────
+    // Two-way buy/sell chats have near-equal message counts, so the ratio
+    // can't tell customer from supplier — who states buying intent can.
+    // Triggered when the ratio is mixed OR we opened the conversation.
+    const openerFromMe = firstRows[0]?.direction === "outbound";
+    if (dir.direction === "mixed" || openerFromMe) {
+      const seen = new Set(firstRows.map((m) => m.id));
+      const labeledTranscript = [
+        ...firstRows,
+        ...ordered.filter((m) => !seen.has(m.id)),
+      ]
+        .map((m) =>
+          m.direction === "outbound"
+            ? `[KAMI] ${m.content}`
+            : `[KONTAK] ${m.content}`,
+        )
+        .join("\n");
+
+      const check = await runDirectionCheck(labeledTranscript, client, model);
+      logger.info(
+        { chatId, ...check, openerFromMe },
+        "chat-classifier: direction check",
+      );
+      if (check.contactRole === "supplier" && check.confidence >= 60) {
+        return skipChat(`AI direction check: kontak adalah supplier (${check.confidence}%) — ${check.reason}`);
+      }
+    }
 
     const transcript =
-      recentRows.length > 0
-        ? recentRows
-            .reverse()
+      ordered.length > 0
+        ? ordered
+            .slice(-6)
             .map((m) =>
               m.direction === "outbound"
                 ? `Agent: ${m.content}`
@@ -310,8 +533,6 @@ export async function classifyAndTagChat(
             )
             .join("\n")
         : `Pelanggan: ${triggerMessage}`;
-
-    const { client, model, provider } = await resolveAiClient(ownerUserId);
 
     const activePipelines = CHAT_PIPELINES.filter(
       (p) => p.id !== "uncategorized" && p.prompt !== null,
