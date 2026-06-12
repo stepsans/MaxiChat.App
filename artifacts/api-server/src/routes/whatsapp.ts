@@ -3169,6 +3169,22 @@ async function startBaileys(userId: number, channelId: number) {
         const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)
           ?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason.loggedOut;
+        const reasonName =
+          Object.entries(DisconnectReason).find(
+            ([, v]) => v === statusCode,
+          )?.[0] ?? "unknown";
+        logger.warn(
+          {
+            channelId,
+            userId,
+            statusCode,
+            reasonName,
+            retryCount: ctx.retryCount + 1,
+            message: (lastDisconnect?.error as InstanceType<typeof Boom>)
+              ?.message,
+          },
+          "WA connection closed",
+        );
         // Disarm the syncing→connected fallback so it doesn't fire after
         // a disconnect and incorrectly flip a dead channel to "connected".
         if (syncFallbackTimer != null) {
