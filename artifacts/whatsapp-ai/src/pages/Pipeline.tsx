@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -29,6 +29,8 @@ import {
   useListAgents,
   useGetSalesForecast,
   useListSalesAuditEvents,
+  useGetSalesAssistantSettings,
+  useUpdateSalesAssistantSettings,
   getListPipelinesQueryKey,
   getListSalesStagesQueryKey,
   getListOpportunitiesQueryKey,
@@ -36,6 +38,7 @@ import {
   getListAgentsQueryKey,
   getGetSalesForecastQueryKey,
   getListSalesAuditEventsQueryKey,
+  getGetSalesAssistantSettingsQueryKey,
   type Pipeline,
   type SalesStage,
   type Opportunity,
@@ -51,6 +54,7 @@ import {
   Lock,
   Pencil,
   Plus,
+  ShieldAlert,
   Trash2,
   TrendingUp,
   LayoutGrid,
@@ -169,6 +173,7 @@ export default function Pipeline() {
   const [stageMgmtPipelineId, setStageMgmtPipelineId] = useState<number | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [riskSettingsOpen, setRiskSettingsOpen] = useState(false);
 
   const enabled = hasEntitlement && perm.canView;
 
@@ -250,6 +255,50 @@ export default function Pipeline() {
   );
 
   const updateOpp = useUpdateOpportunity();
+
+  const { data: riskSettings } = useGetSalesAssistantSettings({
+    query: {
+      queryKey: getGetSalesAssistantSettingsQueryKey(),
+      enabled: enabled && perm.canEdit,
+    },
+  });
+  const updateRiskSettings = useUpdateSalesAssistantSettings({
+    mutation: {
+      onSuccess: (data) => {
+        qc.setQueryData(getGetSalesAssistantSettingsQueryKey(), data);
+        qc.invalidateQueries({ queryKey: getGetPipelineHealthQueryKey() });
+        setRiskSettingsOpen(false);
+        toast({ description: "Setelan risiko disimpan." });
+      },
+      onError: () => {
+        toast({ variant: "destructive", description: "Gagal menyimpan setelan risiko." });
+      },
+    },
+  });
+
+  const [staleDraft, setStaleDraft] = useState("");
+  const [highValueDraft, setHighValueDraft] = useState("");
+
+  useEffect(() => {
+    if (riskSettings && riskSettingsOpen) {
+      setStaleDraft(String(riskSettings.staleDaysThreshold));
+      setHighValueDraft(String(riskSettings.highValueThresholdIdr));
+    }
+  }, [riskSettings, riskSettingsOpen]);
+
+  function submitRiskSettings() {
+    const stale = Number(staleDraft);
+    const highValue = Number(highValueDraft);
+    if (!Number.isInteger(stale) || stale < 1 || stale > 365) {
+      toast({ variant: "destructive", description: "Hari tidak aktif harus bilangan bulat 1–365." });
+      return;
+    }
+    if (!Number.isInteger(highValue) || highValue < 0) {
+      toast({ variant: "destructive", description: "Nilai minimum harus bilangan bulat ≥ 0." });
+      return;
+    }
+    updateRiskSettings.mutate({ data: { staleDaysThreshold: stale, highValueThresholdIdr: highValue } });
+  }
 
   const highRiskIds = useMemo(
     () => new Set(health?.highRiskIds ?? []),
@@ -362,6 +411,7 @@ export default function Pipeline() {
   const visiblePipelines = (pipelines ?? []).filter((p) => !p.isArchived);
 
   return (
+    <>
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b sm:px-6">
@@ -386,6 +436,17 @@ export default function Pipeline() {
               <SelectItem value="all">Semua</SelectItem>
             </SelectContent>
           </Select>
+          {perm.canEdit ? (
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="button-risk-settings"
+              onClick={() => setRiskSettingsOpen(true)}
+            >
+              <ShieldAlert className="w-4 h-4 mr-1.5" />
+              Setelan Risiko
+            </Button>
+          ) : null}
           {perm.canEdit ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1458,5 +1519,78 @@ function AuditTrailPanel({ events, loading }: { events: SalesAuditEvent[] | unde
         )}
       </div>
     </div>
+
+      {/* Risk Settings Dialog */}
+      <Dialog open={riskSettingsOpen} onOpenChange={setRiskSettingsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-destructive" />
+              Setelan Risiko
+            </DialogTitle>
+            <DialogDescription>
+              Peluang terbuka yang memenuhi kedua kriteria di bawah akan
+              ditandai sebagai berisiko tinggi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="risk-stale-days">Tidak aktif selama (hari)</Label>
+              <Input
+                id="risk-stale-days"
+                type="number"
+                min={1}
+                max={365}
+                value={staleDraft}
+                onChange={(e) => setStaleDraft(e.target.value)}
+                placeholder="14"
+                data-testid="input-risk-stale-days"
+              />
+              <p className="text-xs text-muted-foreground">
+                Peluang yang belum ada aktivitas ≥ N hari dianggap stagnan.
+                Rentang: 1–365.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="risk-high-value">Nilai minimum (Rupiah)</Label>
+              <Input
+                id="risk-high-value"
+                type="number"
+                min={0}
+                step={1000}
+                value={highValueDraft}
+                onChange={(e) => setHighValueDraft(e.target.value)}
+                placeholder="0"
+                data-testid="input-risk-high-value"
+              />
+              <p className="text-xs text-muted-foreground">
+                Hanya peluang dengan estimasi nilai ≥ angka ini yang masuk
+                hitungan. Isi <strong>0</strong> agar semua nilai ikut
+                terdeteksi.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRiskSettingsOpen(false)}
+              disabled={updateRiskSettings.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={submitRiskSettings}
+              disabled={updateRiskSettings.isPending}
+              data-testid="button-risk-settings-save"
+            >
+              {updateRiskSettings.isPending ? (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              ) : null}
+              Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
