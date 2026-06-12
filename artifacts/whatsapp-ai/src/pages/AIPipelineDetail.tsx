@@ -1961,6 +1961,7 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
   const [description, setDescription] = useState(pipeline.description ?? "");
   const [channelIds, setChannelIds] = useState<number[]>(pipeline.channelIds);
   const [excludeLabelIds, setExcludeLabelIds] = useState<number[]>(pipeline.excludeLabelIds ?? []);
+  const [isActive, setIsActive] = useState(pipeline.isActive);
   const [cutoffTimes, setCutoffTimes] = useState<string[]>(pipeline.cutoffTimes);
   const [scoreThreshold, setScoreThreshold] = useState(pipeline.scoreThreshold);
   const [autoCreateOpportunity, setAutoCreateOpportunity] = useState(pipeline.autoCreateOpportunity ?? false);
@@ -2003,6 +2004,7 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
       data: {
         name: name.trim(),
         description: description.trim() || undefined,
+        isActive,
         channelIds,
         excludeLabelIds,
         cutoffTimes: [...cutoffTimes].sort(),
@@ -2028,6 +2030,19 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
         </div>
       </div>
 
+      <div className="flex items-center justify-between border rounded-lg p-4">
+        <div>
+          <Label>Status</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pipeline nonaktif tidak menjalankan analisa otomatis
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{isActive ? "Aktif" : "Nonaktif"}</span>
+          <Switch checked={isActive} onCheckedChange={setIsActive} />
+        </div>
+      </div>
+
       <div className="space-y-2">
         <Label>Channel</Label>
         <div className="flex flex-wrap gap-2">
@@ -2047,6 +2062,35 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Kecualikan Kontak dengan Label</Label>
+        <p className="text-xs text-muted-foreground">
+          Kontak yang memiliki label ini tidak akan dianalisa AI. Gunakan untuk
+          mengecualikan tim, teman, keluarga, atau kontak non-bisnis.
+        </p>
+        {(labels ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">Belum ada label.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(labels ?? []).map((l: CustomerLabel) => (
+              <button
+                key={l.id}
+                onClick={() => setExcludeLabelIds((prev) =>
+                  prev.includes(l.id) ? prev.filter((x) => x !== l.id) : [...prev, l.id]
+                )}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors",
+                  excludeLabelIds.includes(l.id) ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
+                )}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} />
+                {l.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">
