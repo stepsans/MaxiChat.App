@@ -2192,6 +2192,54 @@ async function typingPause(
   }
 }
 
+// One-off WhatsApp text to an arbitrary JID on a specific channel, with
+// human-like pacing (random delay + typing presence). For sends not tied to an
+// existing chat row (e.g. ACR coaching/summary). Returns true only when
+// transmitted. The caller owns rate limiting / how many recipients.
+export async function sendOneOffWaText(
+  channelId: number,
+  jid: string,
+  text: string,
+  delayBounds: { min: number | null | undefined; max: number | null | undefined },
+): Promise<boolean> {
+  const sock = getSockForChannel(channelId);
+  if (!sock) return false;
+  try {
+    await typingPause(sock, jid, flowSendDelayMs(delayBounds.min, delayBounds.max));
+    const sent = await sock.sendMessage(jid, { text });
+    return !!sent?.key?.id;
+  } catch (err) {
+    logger.error({ err: (err as Error)?.message, channelId }, "[acr] one-off WA text failed");
+    return false;
+  }
+}
+
+// One-off WhatsApp document send (e.g. an ACR PDF report). Same pacing rules.
+export async function sendOneOffWaDocument(
+  channelId: number,
+  jid: string,
+  document: Buffer,
+  fileName: string,
+  caption: string,
+  delayBounds: { min: number | null | undefined; max: number | null | undefined },
+): Promise<boolean> {
+  const sock = getSockForChannel(channelId);
+  if (!sock) return false;
+  try {
+    await typingPause(sock, jid, flowSendDelayMs(delayBounds.min, delayBounds.max));
+    const sent = await sock.sendMessage(jid, {
+      document,
+      mimetype: "application/pdf",
+      fileName,
+      caption,
+    });
+    return !!sent?.key?.id;
+  } catch (err) {
+    logger.error({ err: (err as Error)?.message, channelId }, "[acr] one-off WA document failed");
+    return false;
+  }
+}
+
 async function sendFlowMessage(
   userId: number,
   channelId: number,

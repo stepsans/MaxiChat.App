@@ -7465,3 +7465,37 @@ export const GetAcrBenchmarkResponse = zod.object({
 })
 
 
+/**
+ * @summary Send AI coaching to each agent via WhatsApp (super admin, manual)
+ */
+export const SendAcrCoachingParams = zod.object({
+  "jobId": zod.coerce.string()
+})
+
+export const SendAcrCoachingResponse = zod.object({
+  "sent": zod.number(),
+  "skipped": zod.number(),
+  "total": zod.number(),
+  "reason": zod.string().nullish()
+})
+
+
+/**
+ * @summary Send AI team summary to a WhatsApp number/group (super admin, manual)
+ */
+export const SendAcrGroupSummaryParams = zod.object({
+  "jobId": zod.coerce.string()
+})
+
+export const SendAcrGroupSummaryBody = zod.object({
+  "target": zod.string().describe('WhatsApp phone number (digits) or group JID (...@g.us).')
+})
+
+export const SendAcrGroupSummaryResponse = zod.object({
+  "sent": zod.number(),
+  "skipped": zod.number(),
+  "total": zod.number(),
+  "reason": zod.string().nullish()
+})
+
+

@@ -19,6 +19,8 @@ import {
   useMarkAcrNotificationRead,
   useListAcrAchievements,
   getListAcrAchievementsQueryKey,
+  useSendAcrCoaching,
+  useSendAcrGroupSummary,
   type AcrAgentScore,
   type AcrRedFlag,
   type AcrConversationScore,
@@ -34,6 +36,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Send,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -670,9 +673,11 @@ export default function AIChatReportDetail() {
   const [, params] = useRoute("/ai-chat-report/:jobId");
   const jobId = params?.jobId ?? "";
   const [, navigate] = useLocation();
-  const { menus, isAgent, isLoading: permsLoading } = usePermissions();
+  const { menus, isAgent, isSuperAdmin, isLoading: permsLoading } = usePermissions();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const sendCoaching = useSendAcrCoaching();
+  const sendGroupSummary = useSendAcrGroupSummary();
 
   const search = new URLSearchParams(window.location.search);
   const [tab, setTab] = useState(search.get("tab") ?? "ringkasan");
@@ -935,6 +940,61 @@ export default function AIChatReportDetail() {
               >
                 <RefreshCw className="mr-2 h-4 w-4" /> Buat Ulang
               </Button>
+            )}
+            {isSuperAdmin && completed && (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={sendCoaching.isPending}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Kirim coaching personal ke setiap agent via WhatsApp? Hanya agent yang punya nomor yang dikirimi."
+                      )
+                    )
+                      return;
+                    sendCoaching.mutate(
+                      { jobId: job.id },
+                      {
+                        onSuccess: (r) =>
+                          toast({
+                            title: "Coaching WhatsApp",
+                            description: `Terkirim ${r.sent}, dilewati ${r.skipped} dari ${r.total} agent.${r.reason ? ` (${r.reason})` : ""}`,
+                          }),
+                        onError: () =>
+                          toast({ title: "Gagal mengirim coaching.", variant: "destructive" }),
+                      }
+                    );
+                  }}
+                >
+                  <Send className="mr-2 h-4 w-4" /> Kirim Coaching WA
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={sendGroupSummary.isPending}
+                  onClick={() => {
+                    const target = window.prompt(
+                      "Kirim ringkasan tim ke WhatsApp. Masukkan nomor (628xxx) atau JID grup (...@g.us):"
+                    );
+                    if (!target || !target.trim()) return;
+                    sendGroupSummary.mutate(
+                      { jobId: job.id, data: { target: target.trim() } },
+                      {
+                        onSuccess: (r) =>
+                          toast({
+                            title: "Ringkasan WhatsApp",
+                            description:
+                              r.sent > 0 ? "Ringkasan terkirim." : `Gagal: ${r.reason ?? "tidak terkirim"}`,
+                          }),
+                        onError: () =>
+                          toast({ title: "Gagal mengirim ringkasan.", variant: "destructive" }),
+                      }
+                    );
+                  }}
+                >
+                  <Send className="mr-2 h-4 w-4" /> Kirim Ringkasan WA
+                </Button>
+              </>
             )}
           </div>
         )}

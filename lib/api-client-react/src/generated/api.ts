@@ -28,6 +28,7 @@ import type {
   AcrConfigInput,
   AcrConversationList,
   AcrDashboard,
+  AcrGroupSummaryInput,
   AcrJob,
   AcrJobCreate,
   AcrJobList,
@@ -40,6 +41,7 @@ import type {
   AcrSchedule,
   AcrScheduleActiveInput,
   AcrScheduleInput,
+  AcrSendResult,
   AcrTarget,
   AcrTargetInput,
   AcrTeamGroup,
@@ -20941,4 +20943,146 @@ export function useGetAcrBenchmark<TData = Awaited<ReturnType<typeof getAcrBench
 
 
 
+
+export const getSendAcrCoachingUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/send-coaching`
+}
+
+/**
+ * @summary Send AI coaching to each agent via WhatsApp (super admin, manual)
+ */
+export const sendAcrCoaching = async (jobId: string, options?: RequestInit): Promise<AcrSendResult> => {
+
+  return customFetch<AcrSendResult>(getSendAcrCoachingUrl(jobId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSendAcrCoachingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrCoaching>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAcrCoaching>>, TError,{jobId: string}, TContext> => {
+
+const mutationKey = ['sendAcrCoaching'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAcrCoaching>>, {jobId: string}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  sendAcrCoaching(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAcrCoachingMutationResult = NonNullable<Awaited<ReturnType<typeof sendAcrCoaching>>>
+
+    export type SendAcrCoachingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send AI coaching to each agent via WhatsApp (super admin, manual)
+ */
+export const useSendAcrCoaching = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrCoaching>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAcrCoaching>>,
+        TError,
+        {jobId: string},
+        TContext
+      > => {
+      return useMutation(getSendAcrCoachingMutationOptions(options));
+    }
+
+export const getSendAcrGroupSummaryUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/send-group-summary`
+}
+
+/**
+ * @summary Send AI team summary to a WhatsApp number/group (super admin, manual)
+ */
+export const sendAcrGroupSummary = async (jobId: string,
+    acrGroupSummaryInput: AcrGroupSummaryInput, options?: RequestInit): Promise<AcrSendResult> => {
+
+  return customFetch<AcrSendResult>(getSendAcrGroupSummaryUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrGroupSummaryInput,)
+  }
+);}
+
+
+
+
+export const getSendAcrGroupSummaryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrGroupSummary>>, TError,{jobId: string;data: BodyType<AcrGroupSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAcrGroupSummary>>, TError,{jobId: string;data: BodyType<AcrGroupSummaryInput>}, TContext> => {
+
+const mutationKey = ['sendAcrGroupSummary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAcrGroupSummary>>, {jobId: string;data: BodyType<AcrGroupSummaryInput>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  sendAcrGroupSummary(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAcrGroupSummaryMutationResult = NonNullable<Awaited<ReturnType<typeof sendAcrGroupSummary>>>
+    export type SendAcrGroupSummaryMutationBody = BodyType<AcrGroupSummaryInput>
+    export type SendAcrGroupSummaryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send AI team summary to a WhatsApp number/group (super admin, manual)
+ */
+export const useSendAcrGroupSummary = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrGroupSummary>>, TError,{jobId: string;data: BodyType<AcrGroupSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAcrGroupSummary>>,
+        TError,
+        {jobId: string;data: BodyType<AcrGroupSummaryInput>},
+        TContext
+      > => {
+      return useMutation(getSendAcrGroupSummaryMutationOptions(options));
+    }
 

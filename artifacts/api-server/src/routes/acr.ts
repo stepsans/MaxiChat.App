@@ -64,6 +64,11 @@ import {
   generateMomReport,
   generateBenchmark,
 } from "../lib/acr-engine";
+import {
+  sendAgentCoachingWa,
+  sendGroupSummaryWa,
+  sendScheduledPdfWa,
+} from "../lib/acr-wa-sender";
 import { snapshotFromConfig } from "../lib/acr-scheduler";
 import { buildAcrCsv, buildAcrPdf } from "../lib/acr-pdf";
 import { logger } from "../lib/logger";
@@ -1790,7 +1795,11 @@ router.post(
       .set({ lastRunAt: new Date(), lastRunJobId: job!.id, totalRuns: sched.totalRuns + 1 })
       .where(eq(acrSchedulesTable.id, sched.id));
     void runAcrJob(job!.id)
-      .then(() => (sched.generatePdf ? generateAndStoreJobPdf(job!.id) : null))
+      .then(async () => {
+        if (sched.generatePdf) await generateAndStoreJobPdf(job!.id);
+        if (sched.sendWhatsappPdf && (sched.notifyUserIds ?? []).length > 0)
+          await sendScheduledPdfWa(sched.ownerUserId, job!.id, sched.notifyUserIds ?? []);
+      })
       .catch((err) =>
         logger.error({ err, jobId: job!.id }, "[acr] schedule run-now failed")
       );
@@ -2263,6 +2272,54 @@ router.get(
       res.status(404).json({ error: "Tidak bisa membuat benchmark." });
       return;
     }
+    res.json(result);
+  }
+);
+
+// ── WhatsApp delivery (9.4 / 9.7) — manual, super admin only ──
+router.post(
+  "/jobs/:jobId/send-coaching",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    if (caller.role !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin." });
+      return;
+    }
+    const job = await loadJobScoped(String(req.params.jobId), caller.ownerUserId);
+    if (!job) {
+      res.status(404).json({ error: "Laporan tidak ditemukan." });
+      return;
+    }
+    const result = await sendAgentCoachingWa(caller.ownerUserId, job.id);
+    res.json(result);
+  }
+);
+
+router.post(
+  "/jobs/:jobId/send-group-summary",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    if (caller.role !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin." });
+      return;
+    }
+    const job = await loadJobScoped(String(req.params.jobId), caller.ownerUserId);
+    if (!job) {
+      res.status(404).json({ error: "Laporan tidak ditemukan." });
+      return;
+    }
+    const target = typeof (req.body as { target?: unknown }).target === "string"
+      ? (req.body as { target: string }).target.trim()
+      : "";
+    if (!target) {
+      res.status(400).json({ error: "Nomor/grup tujuan wajib diisi." });
+      return;
+    }
+    const result = await sendGroupSummaryWa(caller.ownerUserId, job.id, target);
     res.json(result);
   }
 );

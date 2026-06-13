@@ -6994,6 +6994,65 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /acr/jobs/{jobId}/send-coaching:
+    post:
+      operationId: sendAcrCoaching
+      tags: [acr]
+      summary: Send AI coaching to each agent via WhatsApp (super admin, manual)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Delivery result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrSendResult" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /acr/jobs/{jobId}/send-group-summary:
+    post:
+      operationId: sendAcrGroupSummary
+      tags: [acr]
+      summary: Send AI team summary to a WhatsApp number/group (super admin, manual)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcrGroupSummaryInput" }
+      responses:
+        "200":
+          description: Delivery result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrSendResult" }
+        "400":
+          description: Invalid target
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 
 components:
   schemas:
@@ -12460,3 +12519,20 @@ components:
         cross_team_recommendations:
           type: array
           items: { type: string }
+
+    AcrSendResult:
+      type: object
+      required: [sent, skipped, total]
+      properties:
+        sent: { type: integer }
+        skipped: { type: integer }
+        total: { type: integer }
+        reason: { type: string, nullable: true }
+
+    AcrGroupSummaryInput:
+      type: object
+      required: [target]
+      properties:
+        target:
+          type: string
+          description: WhatsApp phone number (digits) or group JID (...@g.us).

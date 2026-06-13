@@ -4857,6 +4857,18 @@ export interface AcrBenchmark {
   cross_team_recommendations?: string[];
 }
 
+export interface AcrSendResult {
+  sent: number;
+  skipped: number;
+  total: number;
+  reason?: string | null;
+}
+
+export interface AcrGroupSummaryInput {
+  /** WhatsApp phone number (digits) or group JID (...@g.us). */
+  target: string;
+}
+
 export type GetMyBillingTrendParams = {
 /**
  * Window length in days (default 30).

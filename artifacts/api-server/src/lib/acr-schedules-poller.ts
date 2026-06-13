@@ -7,6 +7,7 @@ import {
   sendAutoScheduleNotifications,
   generateAndStoreJobPdf,
 } from "./acr-engine";
+import { sendScheduledPdfWa } from "./acr-wa-sender";
 import { logger } from "./logger";
 
 // Recurring AI Chat Report scheduler (Bagian II). Every 60s it finds active
@@ -100,6 +101,14 @@ async function tick(): Promise<void> {
             await generateAndStoreJobPdf(job!.id);
           } catch (err) {
             logger.error({ err, jobId: job!.id }, "[acr-schedules] PDF auto-gen failed");
+          }
+        }
+        // Opt-in WhatsApp PDF delivery — bounded to the notify list only.
+        if (sched.sendWhatsappPdf && (sched.notifyUserIds ?? []).length > 0) {
+          try {
+            await sendScheduledPdfWa(sched.ownerUserId, job!.id, sched.notifyUserIds ?? []);
+          } catch (err) {
+            logger.error({ err, jobId: job!.id }, "[acr-schedules] WA PDF delivery failed");
           }
         }
         await sendAutoScheduleNotifications(
