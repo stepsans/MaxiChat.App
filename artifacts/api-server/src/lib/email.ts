@@ -8,71 +8,80 @@ let emailCache: EmailConfig | null = null;
 let emailCachedAt = 0;
 const CACHE_TTL = 60_000;
 
+type EmailProvider = "resend" | "gmail";
+
 interface EmailConfig {
-  provider: "resend" | "smtp";
-  resendApiKey?: string;
+  provider: EmailProvider | null;
   from: string;
   fromName: string;
-  smtp?: {
-    host: string; port: number; secure: boolean;
-    user: string; pass: string;
+  resendApiKey?: string;
+  gmail?: {
+    user: string;
+    clientId: string;
+    clientSecret: string;
+    refreshToken: string;
   };
 }
 
-const SMTP_DEFAULT = {
-  host: "smtp.gmail.com", port: 587, secure: false,
-  user: "info@maxichat.app", pass: "zjug flkm fcpr vtkk",
-};
-
-export function invalidateSmtpCache(): void {
-  emailCache = null; emailCachedAt = 0;
-}
-
 export function invalidateEmailCache(): void {
-  emailCache = null; emailCachedAt = 0;
+  emailCache = null;
+  emailCachedAt = 0;
 }
 
 async function getEmailConfig(): Promise<EmailConfig> {
   const now = Date.now();
   if (emailCache && now - emailCachedAt < CACHE_TTL) return emailCache;
 
-  try {
-    const rows = await db.select().from(platformSettingsTable);
-    const m: Record<string, string> = {};
-    for (const r of rows) m[r.key] = r.value;
+  const rows = await db.select().from(platformSettingsTable);
+  const m: Record<string, string> = {};
+  for (const r of rows) m[r.key] = r.value;
 
-    const resendApiKey = m["resend_api_key"]?.trim();
-    const resendFrom = m["resend_from"]?.trim() || "noreply@maxichat.app";
-    const resendFromName = m["resend_from_name"]?.trim() || "MaxiChat";
+  const provider = m["email_provider"]?.trim() as EmailProvider | undefined;
 
+  const resendApiKey = m["resend_api_key"]?.trim();
+  const gmailUser = m["gmail_user"]?.trim();
+  const gmailClientId = m["gmail_client_id"]?.trim();
+  const gmailClientSecret = m["gmail_client_secret"]?.trim();
+  const gmailRefreshToken = m["gmail_refresh_token"]?.trim();
+  const gmailConfigured = !!(gmailUser && gmailClientId && gmailClientSecret && gmailRefreshToken);
+
+  if (provider === "gmail" && gmailConfigured) {
+    emailCache = {
+      provider: "gmail",
+      from: gmailUser!,
+      fromName: m["gmail_from_name"]?.trim() || "MaxiChat",
+      gmail: { user: gmailUser!, clientId: gmailClientId!, clientSecret: gmailClientSecret!, refreshToken: gmailRefreshToken! },
+    };
+  } else if (provider === "resend" && resendApiKey) {
+    emailCache = {
+      provider: "resend",
+      resendApiKey,
+      from: m["resend_from"]?.trim() || "noreply@maxichat.app",
+      fromName: m["resend_from_name"]?.trim() || "MaxiChat",
+    };
+  } else {
+    // No explicit provider, or the chosen one is incomplete — use whichever is fully configured
     if (resendApiKey) {
-      emailCache = { provider: "resend", resendApiKey, from: resendFrom, fromName: resendFromName };
-      emailCachedAt = now;
-      return emailCache;
-    }
-
-    // Fallback to SMTP
-    const host = m["smtp_host"]?.trim();
-    const portStr = m["smtp_port"]?.trim();
-    const user = m["smtp_user"]?.trim();
-    const pass = m["smtp_pass"]?.trim();
-    const from = m["smtp_from"]?.trim() || SMTP_DEFAULT.user;
-    const fromName = m["smtp_from_name"]?.trim() || "MaxiChat";
-
-    if (host && portStr && user && pass) {
-      const port = parseInt(portStr, 10);
-      const secureStr = m["smtp_secure"]?.trim().toLowerCase();
-      const secure = secureStr === "true" || port === 465;
-      emailCache = { provider: "smtp", from, fromName, smtp: { host, port, secure, user, pass } };
+      emailCache = {
+        provider: "resend",
+        resendApiKey,
+        from: m["resend_from"]?.trim() || "noreply@maxichat.app",
+        fromName: m["resend_from_name"]?.trim() || "MaxiChat",
+      };
+    } else if (gmailConfigured) {
+      emailCache = {
+        provider: "gmail",
+        from: gmailUser!,
+        fromName: m["gmail_from_name"]?.trim() || "MaxiChat",
+        gmail: { user: gmailUser!, clientId: gmailClientId!, clientSecret: gmailClientSecret!, refreshToken: gmailRefreshToken! },
+      };
     } else {
-      emailCache = { provider: "smtp", from: SMTP_DEFAULT.user, fromName: "MaxiChat", smtp: SMTP_DEFAULT };
+      emailCache = { provider: null, from: "", fromName: "MaxiChat" };
     }
-    emailCachedAt = now;
-    return emailCache;
-  } catch (err) {
-    logger.error({ err }, "Failed to load email config from DB — using SMTP fallback");
-    return { provider: "smtp", from: SMTP_DEFAULT.user, fromName: "MaxiChat", smtp: SMTP_DEFAULT };
   }
+
+  emailCachedAt = now;
+  return emailCache;
 }
 
 export interface SendEmailInput {
@@ -81,33 +90,47 @@ export interface SendEmailInput {
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
   const config = await getEmailConfig();
+  const html = input.html ?? `<div style="font-family:sans-serif;max-width:600px">${input.text.replace(/\n/g, "<br>")}</div>`;
 
-  if (config.provider === "resend" && config.resendApiKey) {
-    const resend = new Resend(config.resendApiKey);
+  if (config.provider === "resend") {
+    const resend = new Resend(config.resendApiKey!);
     const { error } = await resend.emails.send({
       from: `${config.fromName} <${config.from}>`,
       to: input.to,
       subject: input.subject,
       text: input.text,
-      html: input.html ?? `<div style="font-family:sans-serif;max-width:600px">${input.text.replace(/\n/g, "<br>")}</div>`,
+      html,
     });
     if (error) throw new Error(`Resend error: ${error.message}`);
     logger.info({ to: input.to, subject: input.subject, provider: "resend" }, "Email sent");
     return;
   }
 
-  // SMTP fallback
-  const smtp = config.smtp!;
-  const transporter = nodemailer.createTransport({
-    host: smtp.host, port: smtp.port, secure: smtp.secure,
-    auth: { user: smtp.user, pass: smtp.pass },
-  });
-  await transporter.sendMail({
-    from: `"${config.fromName}" <${config.from}>`,
-    to: input.to, subject: input.subject, text: input.text,
-    html: input.html ?? `<div style="font-family:sans-serif;max-width:600px">${input.text.replace(/\n/g, "<br>")}</div>`,
-  });
-  logger.info({ to: input.to, subject: input.subject, provider: "smtp" }, "Email sent");
+  if (config.provider === "gmail") {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        type: "OAuth2",
+        user: config.gmail!.user,
+        clientId: config.gmail!.clientId,
+        clientSecret: config.gmail!.clientSecret,
+        refreshToken: config.gmail!.refreshToken,
+      },
+    });
+    await transporter.sendMail({
+      from: `"${config.fromName}" <${config.from}>`,
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+      html,
+    });
+    logger.info({ to: input.to, subject: input.subject, provider: "gmail" }, "Email sent");
+    return;
+  }
+
+  throw new Error(
+    "Email provider belum dikonfigurasi. Pilih Resend atau Gmail OAuth di Platform Settings."
+  );
 }
 
 export async function sendOtpEmail(to: string, otp: string, purpose: "login" | "signup"): Promise<void> {
@@ -146,8 +169,6 @@ export async function sendAgentInvitationEmail(
     </div>`;
   await sendEmail({ to, subject, text: `${invitedByName} mengundang Anda ke MaxiChat.\n\nKlik: ${link}\n\nBerlaku 24 jam.\n\n— Tim MaxiChat`, html });
 }
-
-export function emailSenderConfigured(): boolean { return true; }
 
 export interface SendVerificationEmailInput {
   to: string; name: string | null; verifyUrl: string;

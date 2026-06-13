@@ -1,6 +1,8 @@
 - [Express 5 handler conventions](express5-handler-conventions.md) — return types, never `return res.X()`, and the unbraced-if trap when bulk-rewriting that pattern.
 - [google-auth-library is transitive](google-auth-library-transitive.md) — never add as dep; use `InstanceType<typeof google.auth.OAuth2>` from `googleapis`.
 - [Fetch interceptor ref ordering](fetch-interceptor-ref-ordering.md) — header-injecting interceptors that read from a ref MUST update the ref before invalidateQueries, not on next render.
+- [WA history-sync flood wedges process](wa-history-sync-flood.md) — syncFullHistory:true floods event loop on every reconnect → site hangs (TLS ok, no HTTP, logs silent); keep it false + clamp corrupt `pinned` epoch.
+- [HMR context desync white-screens app](hmr-context-crash-resilience.md) — "must be used within Provider" from a correctly-nested component = HMR fast-refresh invalidation, not a hierarchy bug; make cosmetic consumers read context non-throwingly.
 - [Baileys messages.upsert pipeline](baileys-message-pipeline.md) — accept all upsert types, epoch-guard is `continue` not `return`, history sync must download media + back-fill on conflict.
 - [Baileys media stream uncaught crash](baileys-media-stream-uncaught.md) — media socket-close emits async stream 'error' AFTER the try/catch → uncaughtException kills whole API; guarded by narrow process handler in index.ts.
 - [Baileys logout re-pair](baileys-logout-repair.md) — a loggedOut channel never emits a QR while stale creds sit on disk; must wipe its auth dir (only on loggedOut, not transient drops) + restart to re-pair.
@@ -73,3 +75,8 @@
 - [Scheduler unhandledRejection crash-loop](scheduler-unhandledrejection-crashloop.md) — a bare `setInterval(()=>void asyncFn())` whose DB call rejects exits the whole process (global handler) → autoscale crash-loops → new deploy never promotes → live domain stuck on old build.
 - [Trial onboarding & health score](trial-onboarding-health.md) — admin trial routes are non-OpenAPI raw-fetch; scope tenant-owners as parentUserId IS NULL AND role!='admin'; "{n}h"=hari not hours; refreshChecklist triggers best-effort, WA one in whatsapp.ts.
 - [Prod vs dev DB separation](prod-vs-dev-database-separation.md) — published app uses a SEPARATE prod DB; agent psql/writes hit dev only, prod is read-only; change owner/seed creds via flag-gated reseed + re-publish.
+- [api-server dev build-then-start (no watch)](api-server-stale-build-no-watch.md) — source edits don't take effect till the workflow restarts; a stale build can run old behavior while git looks correct; restart before judging a fix.
+- [@types/react version skew](types-react-version-skew.md) — "Two different types with this name exist" in web UI files = Expo's 19.1.x vs web 19.2.x @types/react dup, not a real bug; don't patch the component, a global override risks mobile typecheck.
+- [Radix Select empty value](radix-select-empty-value.md) — Radix `Select.Item value=""` crashes the tree; use a sentinel (e.g. `__none__`) and map back to ""/null in state.
+- [WA dev/prod session conflict](wa-session-conflict-dev-prod.md) — `syncing→disconnected` ~12-20s loop = WhatsApp 440 conflict (two Baileys on same creds: editor + live VM), not a bug; run number in ONE env only.
+- [leadStatus vs tag separation](lead-status-vs-tag.md) — chats.tag is auto-router-owned; manual lead labels live in a separate chats.lead_status column, never reuse tag.

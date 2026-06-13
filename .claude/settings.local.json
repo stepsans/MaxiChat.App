@@ -51,7 +51,16 @@
       "Bash(pnpm build *)",
       "Bash(kill 14231)",
       "Bash(PORT=23744 BASE_PATH=/admin/ pnpm --filter admin dev)",
-      "Bash(pnpm exec *)"
+      "Bash(pnpm exec *)",
+      "Bash(sed -i 's|\"./src/lib/chat-classifier\"|\"/home/runner/workspace/artifacts/api-server/src/lib/chat-classifier\"|' /tmp/test-direction.ts)",
+      "Bash(npx tsx *)",
+      "Bash(pnpm *)",
+      "Bash(PORT=5001 node /home/runner/workspace/artifacts/api-server/dist/index.mjs)",
+      "Bash(kill %1)",
+      "Bash(grep -v \"mockup-sandbox\\\\|Scope\\\\|artifacts/admin\\\\|artifacts/mobile\\\\|artifacts/whatsapp-ai\\\\|artifacts/api-server\\\\|typecheck: Done\\\\|typecheck\\\\$\")",
+      "Bash(git stash *)",
+      "Bash(kill 207 323 555 568 569)",
+      "Bash(awk '{print \"dist build:\", $6}')"
     ]
   }
 }

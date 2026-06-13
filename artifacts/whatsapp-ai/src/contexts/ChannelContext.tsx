@@ -175,3 +175,11 @@ export function useActiveChannel(): Ctx {
   }
   return ctx;
 }
+
+// Non-throwing variant for non-critical/cosmetic consumers (e.g. the
+// notification-sound side-effect). Returns null when no provider is mounted —
+// or during an HMR fast-refresh when the provider/consumer briefly resolve to
+// different module instances — so a missing context can never crash the app.
+export function useActiveChannelOptional(): Ctx | null {
+  return useContext(ChannelContext);
+}

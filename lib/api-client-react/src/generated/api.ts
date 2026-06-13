@@ -20,6 +20,33 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AcrAchievement,
+  AcrAgentDetail,
+  AcrAlert,
+  AcrBenchmark,
+  AcrConfig,
+  AcrConfigInput,
+  AcrConversationList,
+  AcrDashboard,
+  AcrGroupSummaryInput,
+  AcrJob,
+  AcrJobCreate,
+  AcrJobList,
+  AcrJobProgress,
+  AcrJobResults,
+  AcrLeaderboard,
+  AcrMomReport,
+  AcrNotification,
+  AcrRedFlagList,
+  AcrSchedule,
+  AcrScheduleActiveInput,
+  AcrScheduleInput,
+  AcrSendResult,
+  AcrTarget,
+  AcrTargetInput,
+  AcrTeamGroup,
+  AcrTeamGroupInput,
+  AcrTeamMember,
   AddParticipantsBody,
   AddParticipantsResult,
   Addon,
@@ -52,6 +79,8 @@ import type {
   AuthUser,
   AutoReplyUpdate,
   BillingCatalog,
+  BulkChatUpdateInput,
+  BulkChatUpdateResult,
   ChangePlanInput,
   ChangeQuotaInput,
   Channel,
@@ -106,9 +135,13 @@ import type {
   ForwardMessage200,
   ForwardTargetsBody,
   GeneralSettingsUpdate,
+  GetAcrBenchmarkParams,
+  GetAcrDashboardParams,
+  GetAcrMomReportParams,
   GetChatHistoryParams,
   GetKnowledgeSyncConfig200,
   GetLinkPreviewParams,
+  GetMyAcrScoresParams,
   GetMyBillingTrendParams,
   GetProductSyncConfig200,
   GetSalesOrderSyncConfig200,
@@ -129,6 +162,12 @@ import type {
   KnowledgeTypeInput,
   KnowledgeUpdate,
   LinkPreview,
+  ListAcrAchievementsParams,
+  ListAcrAlertsParams,
+  ListAcrConversationsParams,
+  ListAcrJobsParams,
+  ListAcrNotificationsParams,
+  ListAcrRedFlagsParams,
   ListAiPipelineAnalysesParams,
   ListAiPipelineCutoffLogsParams,
   ListAiPipelineEntriesParams,
@@ -4891,6 +4930,79 @@ export function useSearchChatContent<TData = Awaited<ReturnType<typeof searchCha
 
 
 
+
+export const getBulkUpdateChatsUrl = () => {
+
+
+
+
+  return `/api/chats/bulk-update`
+}
+
+/**
+ * Applies the same field changes to every selected chat that is within the caller's channel scope (and, for agents, assigned to them). Chats outside the caller's scope are silently skipped — the response reports how many rows were actually updated. Used by the chat-list multi-select so the operator doesn't have to open chats one by one.
+
+ * @summary Bulk-update lead status / tag / status for multiple chats
+ */
+export const bulkUpdateChats = async (bulkChatUpdateInput: BulkChatUpdateInput, options?: RequestInit): Promise<BulkChatUpdateResult> => {
+
+  return customFetch<BulkChatUpdateResult>(getBulkUpdateChatsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      bulkChatUpdateInput,)
+  }
+);}
+
+
+
+
+export const getBulkUpdateChatsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUpdateChats>>, TError,{data: BodyType<BulkChatUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkUpdateChats>>, TError,{data: BodyType<BulkChatUpdateInput>}, TContext> => {
+
+const mutationKey = ['bulkUpdateChats'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkUpdateChats>>, {data: BodyType<BulkChatUpdateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkUpdateChats(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkUpdateChatsMutationResult = NonNullable<Awaited<ReturnType<typeof bulkUpdateChats>>>
+    export type BulkUpdateChatsMutationBody = BodyType<BulkChatUpdateInput>
+    export type BulkUpdateChatsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Bulk-update lead status / tag / status for multiple chats
+ */
+export const useBulkUpdateChats = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUpdateChats>>, TError,{data: BodyType<BulkChatUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkUpdateChats>>,
+        TError,
+        {data: BodyType<BulkChatUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getBulkUpdateChatsMutationOptions(options));
+    }
 
 export const getOpenChatByPhoneUrl = () => {
 
@@ -18069,4 +18181,2908 @@ export function useListAiPipelineCutoffLogs<TData = Awaited<ReturnType<typeof li
 
 
 
+
+export const getGetAcrConfigUrl = () => {
+
+
+
+
+  return `/api/acr/config`
+}
+
+/**
+ * @summary Get the tenant's AI Chat Report KPI configuration
+ */
+export const getAcrConfig = async ( options?: RequestInit): Promise<AcrConfig> => {
+
+  return customFetch<AcrConfig>(getGetAcrConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrConfigQueryKey = () => {
+    return [
+    `/api/acr/config`
+    ] as const;
+    }
+
+
+export const getGetAcrConfigQueryOptions = <TData = Awaited<ReturnType<typeof getAcrConfig>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrConfig>>> = ({ signal }) => getAcrConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrConfig>>>
+export type GetAcrConfigQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the tenant's AI Chat Report KPI configuration
+ */
+
+export function useGetAcrConfig<TData = Awaited<ReturnType<typeof getAcrConfig>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAcrConfigUrl = () => {
+
+
+
+
+  return `/api/acr/config`
+}
+
+/**
+ * @summary Update the KPI configuration (super admin only)
+ */
+export const updateAcrConfig = async (acrConfigInput: AcrConfigInput, options?: RequestInit): Promise<AcrConfig> => {
+
+  return customFetch<AcrConfig>(getUpdateAcrConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrConfigInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAcrConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcrConfig>>, TError,{data: BodyType<AcrConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAcrConfig>>, TError,{data: BodyType<AcrConfigInput>}, TContext> => {
+
+const mutationKey = ['updateAcrConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAcrConfig>>, {data: BodyType<AcrConfigInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAcrConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAcrConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateAcrConfig>>>
+    export type UpdateAcrConfigMutationBody = BodyType<AcrConfigInput>
+    export type UpdateAcrConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update the KPI configuration (super admin only)
+ */
+export const useUpdateAcrConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcrConfig>>, TError,{data: BodyType<AcrConfigInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAcrConfig>>,
+        TError,
+        {data: BodyType<AcrConfigInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAcrConfigMutationOptions(options));
+    }
+
+export const getListAcrJobsUrl = (params?: ListAcrJobsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/jobs?${stringifiedParams}` : `/api/acr/jobs`
+}
+
+/**
+ * @summary List evaluation jobs for the tenant
+ */
+export const listAcrJobs = async (params?: ListAcrJobsParams, options?: RequestInit): Promise<AcrJobList> => {
+
+  return customFetch<AcrJobList>(getListAcrJobsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrJobsQueryKey = (params?: ListAcrJobsParams,) => {
+    return [
+    `/api/acr/jobs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAcrJobsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrJobs>>, TError = ErrorType<ErrorResponse>>(params?: ListAcrJobsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrJobsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrJobs>>> = ({ signal }) => listAcrJobs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrJobs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrJobsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrJobs>>>
+export type ListAcrJobsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List evaluation jobs for the tenant
+ */
+
+export function useListAcrJobs<TData = Awaited<ReturnType<typeof listAcrJobs>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListAcrJobsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrJobsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAcrJobUrl = () => {
+
+
+
+
+  return `/api/acr/jobs`
+}
+
+/**
+ * @summary Create and asynchronously run a new evaluation job
+ */
+export const createAcrJob = async (acrJobCreate: AcrJobCreate, options?: RequestInit): Promise<AcrJob> => {
+
+  return customFetch<AcrJob>(getCreateAcrJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrJobCreate,)
+  }
+);}
+
+
+
+
+export const getCreateAcrJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcrJob>>, TError,{data: BodyType<AcrJobCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAcrJob>>, TError,{data: BodyType<AcrJobCreate>}, TContext> => {
+
+const mutationKey = ['createAcrJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAcrJob>>, {data: BodyType<AcrJobCreate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAcrJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAcrJobMutationResult = NonNullable<Awaited<ReturnType<typeof createAcrJob>>>
+    export type CreateAcrJobMutationBody = BodyType<AcrJobCreate>
+    export type CreateAcrJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create and asynchronously run a new evaluation job
+ */
+export const useCreateAcrJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcrJob>>, TError,{data: BodyType<AcrJobCreate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAcrJob>>,
+        TError,
+        {data: BodyType<AcrJobCreate>},
+        TContext
+      > => {
+      return useMutation(getCreateAcrJobMutationOptions(options));
+    }
+
+export const getGetAcrJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}`
+}
+
+/**
+ * @summary Get one job (status, progress, stats)
+ */
+export const getAcrJob = async (jobId: string, options?: RequestInit): Promise<AcrJob> => {
+
+  return customFetch<AcrJob>(getGetAcrJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrJobQueryKey = (jobId: string,) => {
+    return [
+    `/api/acr/jobs/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetAcrJobQueryOptions = <TData = Awaited<ReturnType<typeof getAcrJob>>, TError = ErrorType<ErrorResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrJobQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrJob>>> = ({ signal }) => getAcrJob(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrJob>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrJobQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrJob>>>
+export type GetAcrJobQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get one job (status, progress, stats)
+ */
+
+export function useGetAcrJob<TData = Awaited<ReturnType<typeof getAcrJob>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrJobQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getArchiveAcrJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/archive`
+}
+
+/**
+ * @summary Soft-delete a job (super admin only)
+ */
+export const archiveAcrJob = async (jobId: string, options?: RequestInit): Promise<AcrJob> => {
+
+  return customFetch<AcrJob>(getArchiveAcrJobUrl(jobId),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+
+export const getArchiveAcrJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveAcrJob>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof archiveAcrJob>>, TError,{jobId: string}, TContext> => {
+
+const mutationKey = ['archiveAcrJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof archiveAcrJob>>, {jobId: string}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  archiveAcrJob(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ArchiveAcrJobMutationResult = NonNullable<Awaited<ReturnType<typeof archiveAcrJob>>>
+
+    export type ArchiveAcrJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Soft-delete a job (super admin only)
+ */
+export const useArchiveAcrJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveAcrJob>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof archiveAcrJob>>,
+        TError,
+        {jobId: string},
+        TContext
+      > => {
+      return useMutation(getArchiveAcrJobMutationOptions(options));
+    }
+
+export const getGetAcrJobProgressUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/progress`
+}
+
+/**
+ * @summary Poll job progress (frontend polls every 3s while running)
+ */
+export const getAcrJobProgress = async (jobId: string, options?: RequestInit): Promise<AcrJobProgress> => {
+
+  return customFetch<AcrJobProgress>(getGetAcrJobProgressUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrJobProgressQueryKey = (jobId: string,) => {
+    return [
+    `/api/acr/jobs/${jobId}/progress`
+    ] as const;
+    }
+
+
+export const getGetAcrJobProgressQueryOptions = <TData = Awaited<ReturnType<typeof getAcrJobProgress>>, TError = ErrorType<ErrorResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrJobProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrJobProgressQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrJobProgress>>> = ({ signal }) => getAcrJobProgress(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrJobProgress>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrJobProgressQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrJobProgress>>>
+export type GetAcrJobProgressQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Poll job progress (frontend polls every 3s while running)
+ */
+
+export function useGetAcrJobProgress<TData = Awaited<ReturnType<typeof getAcrJobProgress>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrJobProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrJobProgressQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAcrJobResultsUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/results`
+}
+
+/**
+ * @summary Job summary — all agent scores, grade distribution, team trend
+ */
+export const getAcrJobResults = async (jobId: string, options?: RequestInit): Promise<AcrJobResults> => {
+
+  return customFetch<AcrJobResults>(getGetAcrJobResultsUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrJobResultsQueryKey = (jobId: string,) => {
+    return [
+    `/api/acr/jobs/${jobId}/results`
+    ] as const;
+    }
+
+
+export const getGetAcrJobResultsQueryOptions = <TData = Awaited<ReturnType<typeof getAcrJobResults>>, TError = ErrorType<ErrorResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrJobResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrJobResultsQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrJobResults>>> = ({ signal }) => getAcrJobResults(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrJobResults>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrJobResultsQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrJobResults>>>
+export type GetAcrJobResultsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Job summary — all agent scores, grade distribution, team trend
+ */
+
+export function useGetAcrJobResults<TData = Awaited<ReturnType<typeof getAcrJobResults>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrJobResults>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrJobResultsQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAcrAgentDetailUrl = (jobId: string,
+    agentId: number,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/agents/${agentId}`
+}
+
+/**
+ * @summary One agent's full breakdown, coaching insights, red flags, trend
+ */
+export const getAcrAgentDetail = async (jobId: string,
+    agentId: number, options?: RequestInit): Promise<AcrAgentDetail> => {
+
+  return customFetch<AcrAgentDetail>(getGetAcrAgentDetailUrl(jobId,agentId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrAgentDetailQueryKey = (jobId: string,
+    agentId: number,) => {
+    return [
+    `/api/acr/jobs/${jobId}/agents/${agentId}`
+    ] as const;
+    }
+
+
+export const getGetAcrAgentDetailQueryOptions = <TData = Awaited<ReturnType<typeof getAcrAgentDetail>>, TError = ErrorType<ErrorResponse>>(jobId: string,
+    agentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrAgentDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrAgentDetailQueryKey(jobId,agentId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrAgentDetail>>> = ({ signal }) => getAcrAgentDetail(jobId,agentId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId && agentId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrAgentDetail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrAgentDetailQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrAgentDetail>>>
+export type GetAcrAgentDetailQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary One agent's full breakdown, coaching insights, red flags, trend
+ */
+
+export function useGetAcrAgentDetail<TData = Awaited<ReturnType<typeof getAcrAgentDetail>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string,
+    agentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrAgentDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrAgentDetailQueryOptions(jobId,agentId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAcrRedFlagsUrl = (jobId: string,
+    params?: ListAcrRedFlagsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/jobs/${jobId}/red-flags?${stringifiedParams}` : `/api/acr/jobs/${jobId}/red-flags`
+}
+
+/**
+ * @summary List red flags detected in a job
+ */
+export const listAcrRedFlags = async (jobId: string,
+    params?: ListAcrRedFlagsParams, options?: RequestInit): Promise<AcrRedFlagList> => {
+
+  return customFetch<AcrRedFlagList>(getListAcrRedFlagsUrl(jobId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrRedFlagsQueryKey = (jobId: string,
+    params?: ListAcrRedFlagsParams,) => {
+    return [
+    `/api/acr/jobs/${jobId}/red-flags`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAcrRedFlagsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrRedFlags>>, TError = ErrorType<ErrorResponse>>(jobId: string,
+    params?: ListAcrRedFlagsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrRedFlags>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrRedFlagsQueryKey(jobId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrRedFlags>>> = ({ signal }) => listAcrRedFlags(jobId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrRedFlags>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrRedFlagsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrRedFlags>>>
+export type ListAcrRedFlagsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List red flags detected in a job
+ */
+
+export function useListAcrRedFlags<TData = Awaited<ReturnType<typeof listAcrRedFlags>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string,
+    params?: ListAcrRedFlagsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrRedFlags>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrRedFlagsQueryOptions(jobId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAcrConversationsUrl = (jobId: string,
+    agentId: number,
+    params?: ListAcrConversationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/jobs/${jobId}/conversations/${agentId}?${stringifiedParams}` : `/api/acr/jobs/${jobId}/conversations/${agentId}`
+}
+
+/**
+ * @summary List one agent's analyzed conversations in a job
+ */
+export const listAcrConversations = async (jobId: string,
+    agentId: number,
+    params?: ListAcrConversationsParams, options?: RequestInit): Promise<AcrConversationList> => {
+
+  return customFetch<AcrConversationList>(getListAcrConversationsUrl(jobId,agentId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrConversationsQueryKey = (jobId: string,
+    agentId: number,
+    params?: ListAcrConversationsParams,) => {
+    return [
+    `/api/acr/jobs/${jobId}/conversations/${agentId}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAcrConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrConversations>>, TError = ErrorType<ErrorResponse>>(jobId: string,
+    agentId: number,
+    params?: ListAcrConversationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrConversationsQueryKey(jobId,agentId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrConversations>>> = ({ signal }) => listAcrConversations(jobId,agentId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId && agentId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrConversations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrConversations>>>
+export type ListAcrConversationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List one agent's analyzed conversations in a job
+ */
+
+export function useListAcrConversations<TData = Awaited<ReturnType<typeof listAcrConversations>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string,
+    agentId: number,
+    params?: ListAcrConversationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrConversationsQueryOptions(jobId,agentId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAcrLeaderboardUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/leaderboard`
+}
+
+/**
+ * @summary Agent ranking for a job, with delta vs the previous job
+ */
+export const getAcrLeaderboard = async (jobId: string, options?: RequestInit): Promise<AcrLeaderboard> => {
+
+  return customFetch<AcrLeaderboard>(getGetAcrLeaderboardUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrLeaderboardQueryKey = (jobId: string,) => {
+    return [
+    `/api/acr/jobs/${jobId}/leaderboard`
+    ] as const;
+    }
+
+
+export const getGetAcrLeaderboardQueryOptions = <TData = Awaited<ReturnType<typeof getAcrLeaderboard>>, TError = ErrorType<ErrorResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrLeaderboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrLeaderboardQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrLeaderboard>>> = ({ signal }) => getAcrLeaderboard(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrLeaderboard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrLeaderboardQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrLeaderboard>>>
+export type GetAcrLeaderboardQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Agent ranking for a job, with delta vs the previous job
+ */
+
+export function useGetAcrLeaderboard<TData = Awaited<ReturnType<typeof getAcrLeaderboard>>, TError = ErrorType<ErrorResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrLeaderboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrLeaderboardQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyAcrScoresUrl = (params?: GetMyAcrScoresParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/my-scores?${stringifiedParams}` : `/api/acr/my-scores`
+}
+
+/**
+ * @summary Current user's own score (agents cannot read other agents)
+ */
+export const getMyAcrScores = async (params?: GetMyAcrScoresParams, options?: RequestInit): Promise<AcrAgentDetail> => {
+
+  return customFetch<AcrAgentDetail>(getGetMyAcrScoresUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyAcrScoresQueryKey = (params?: GetMyAcrScoresParams,) => {
+    return [
+    `/api/acr/my-scores`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMyAcrScoresQueryOptions = <TData = Awaited<ReturnType<typeof getMyAcrScores>>, TError = ErrorType<ErrorResponse>>(params?: GetMyAcrScoresParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAcrScores>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyAcrScoresQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyAcrScores>>> = ({ signal }) => getMyAcrScores(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyAcrScores>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyAcrScoresQueryResult = NonNullable<Awaited<ReturnType<typeof getMyAcrScores>>>
+export type GetMyAcrScoresQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Current user's own score (agents cannot read other agents)
+ */
+
+export function useGetMyAcrScores<TData = Awaited<ReturnType<typeof getMyAcrScores>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetMyAcrScoresParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAcrScores>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyAcrScoresQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAcrTeamMembersUrl = () => {
+
+
+
+
+  return `/api/acr/team-members`
+}
+
+/**
+ * @summary Evaluable team members (supervisors + agents) for the agent picker
+ */
+export const listAcrTeamMembers = async ( options?: RequestInit): Promise<AcrTeamMember[]> => {
+
+  return customFetch<AcrTeamMember[]>(getListAcrTeamMembersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrTeamMembersQueryKey = () => {
+    return [
+    `/api/acr/team-members`
+    ] as const;
+    }
+
+
+export const getListAcrTeamMembersQueryOptions = <TData = Awaited<ReturnType<typeof listAcrTeamMembers>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrTeamMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrTeamMembersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrTeamMembers>>> = ({ signal }) => listAcrTeamMembers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrTeamMembers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrTeamMembersQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrTeamMembers>>>
+export type ListAcrTeamMembersQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Evaluable team members (supervisors + agents) for the agent picker
+ */
+
+export function useListAcrTeamMembers<TData = Awaited<ReturnType<typeof listAcrTeamMembers>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrTeamMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrTeamMembersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAcrNotificationsUrl = (params?: ListAcrNotificationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/notifications?${stringifiedParams}` : `/api/acr/notifications`
+}
+
+/**
+ * @summary Red-flag notifications for the signed-in user
+ */
+export const listAcrNotifications = async (params?: ListAcrNotificationsParams, options?: RequestInit): Promise<AcrNotification[]> => {
+
+  return customFetch<AcrNotification[]>(getListAcrNotificationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrNotificationsQueryKey = (params?: ListAcrNotificationsParams,) => {
+    return [
+    `/api/acr/notifications`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAcrNotificationsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrNotifications>>, TError = ErrorType<ErrorResponse>>(params?: ListAcrNotificationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrNotificationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrNotifications>>> = ({ signal }) => listAcrNotifications(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrNotifications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrNotificationsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrNotifications>>>
+export type ListAcrNotificationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Red-flag notifications for the signed-in user
+ */
+
+export function useListAcrNotifications<TData = Awaited<ReturnType<typeof listAcrNotifications>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListAcrNotificationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrNotifications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrNotificationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getMarkAcrNotificationReadUrl = (notifId: string,) => {
+
+
+
+
+  return `/api/acr/notifications/${notifId}/read`
+}
+
+/**
+ * @summary Mark one notification as read
+ */
+export const markAcrNotificationRead = async (notifId: string, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getMarkAcrNotificationReadUrl(notifId),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+
+export const getMarkAcrNotificationReadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAcrNotificationRead>>, TError,{notifId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markAcrNotificationRead>>, TError,{notifId: string}, TContext> => {
+
+const mutationKey = ['markAcrNotificationRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markAcrNotificationRead>>, {notifId: string}> = (props) => {
+          const {notifId} = props ?? {};
+
+          return  markAcrNotificationRead(notifId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkAcrNotificationReadMutationResult = NonNullable<Awaited<ReturnType<typeof markAcrNotificationRead>>>
+
+    export type MarkAcrNotificationReadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Mark one notification as read
+ */
+export const useMarkAcrNotificationRead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAcrNotificationRead>>, TError,{notifId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markAcrNotificationRead>>,
+        TError,
+        {notifId: string},
+        TContext
+      > => {
+      return useMutation(getMarkAcrNotificationReadMutationOptions(options));
+    }
+
+export const getMarkAllAcrNotificationsReadUrl = () => {
+
+
+
+
+  return `/api/acr/notifications/read-all`
+}
+
+/**
+ * @summary Mark all of the user's notifications as read
+ */
+export const markAllAcrNotificationsRead = async ( options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getMarkAllAcrNotificationsReadUrl(),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+
+export const getMarkAllAcrNotificationsReadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAllAcrNotificationsRead>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markAllAcrNotificationsRead>>, TError,void, TContext> => {
+
+const mutationKey = ['markAllAcrNotificationsRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markAllAcrNotificationsRead>>, void> = () => {
+
+
+          return  markAllAcrNotificationsRead(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkAllAcrNotificationsReadMutationResult = NonNullable<Awaited<ReturnType<typeof markAllAcrNotificationsRead>>>
+
+    export type MarkAllAcrNotificationsReadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Mark all of the user's notifications as read
+ */
+export const useMarkAllAcrNotificationsRead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAllAcrNotificationsRead>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markAllAcrNotificationsRead>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getMarkAllAcrNotificationsReadMutationOptions(options));
+    }
+
+export const getListAcrSchedulesUrl = () => {
+
+
+
+
+  return `/api/acr/schedules`
+}
+
+/**
+ * @summary List recurring report schedules for the tenant
+ */
+export const listAcrSchedules = async ( options?: RequestInit): Promise<AcrSchedule[]> => {
+
+  return customFetch<AcrSchedule[]>(getListAcrSchedulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrSchedulesQueryKey = () => {
+    return [
+    `/api/acr/schedules`
+    ] as const;
+    }
+
+
+export const getListAcrSchedulesQueryOptions = <TData = Awaited<ReturnType<typeof listAcrSchedules>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrSchedulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrSchedules>>> = ({ signal }) => listAcrSchedules({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrSchedules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrSchedulesQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrSchedules>>>
+export type ListAcrSchedulesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List recurring report schedules for the tenant
+ */
+
+export function useListAcrSchedules<TData = Awaited<ReturnType<typeof listAcrSchedules>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrSchedules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrSchedulesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAcrScheduleUrl = () => {
+
+
+
+
+  return `/api/acr/schedules`
+}
+
+/**
+ * @summary Create a recurring report schedule
+ */
+export const createAcrSchedule = async (acrScheduleInput: AcrScheduleInput, options?: RequestInit): Promise<AcrSchedule> => {
+
+  return customFetch<AcrSchedule>(getCreateAcrScheduleUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrScheduleInput,)
+  }
+);}
+
+
+
+
+export const getCreateAcrScheduleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcrSchedule>>, TError,{data: BodyType<AcrScheduleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAcrSchedule>>, TError,{data: BodyType<AcrScheduleInput>}, TContext> => {
+
+const mutationKey = ['createAcrSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAcrSchedule>>, {data: BodyType<AcrScheduleInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAcrSchedule(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAcrScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof createAcrSchedule>>>
+    export type CreateAcrScheduleMutationBody = BodyType<AcrScheduleInput>
+    export type CreateAcrScheduleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a recurring report schedule
+ */
+export const useCreateAcrSchedule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcrSchedule>>, TError,{data: BodyType<AcrScheduleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAcrSchedule>>,
+        TError,
+        {data: BodyType<AcrScheduleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAcrScheduleMutationOptions(options));
+    }
+
+export const getUpdateAcrScheduleUrl = (id: string,) => {
+
+
+
+
+  return `/api/acr/schedules/${id}`
+}
+
+/**
+ * @summary Update a recurring report schedule
+ */
+export const updateAcrSchedule = async (id: string,
+    acrScheduleInput: AcrScheduleInput, options?: RequestInit): Promise<AcrSchedule> => {
+
+  return customFetch<AcrSchedule>(getUpdateAcrScheduleUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrScheduleInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAcrScheduleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcrSchedule>>, TError,{id: string;data: BodyType<AcrScheduleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAcrSchedule>>, TError,{id: string;data: BodyType<AcrScheduleInput>}, TContext> => {
+
+const mutationKey = ['updateAcrSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAcrSchedule>>, {id: string;data: BodyType<AcrScheduleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAcrSchedule(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAcrScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof updateAcrSchedule>>>
+    export type UpdateAcrScheduleMutationBody = BodyType<AcrScheduleInput>
+    export type UpdateAcrScheduleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a recurring report schedule
+ */
+export const useUpdateAcrSchedule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcrSchedule>>, TError,{id: string;data: BodyType<AcrScheduleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAcrSchedule>>,
+        TError,
+        {id: string;data: BodyType<AcrScheduleInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAcrScheduleMutationOptions(options));
+    }
+
+export const getDeleteAcrScheduleUrl = (id: string,) => {
+
+
+
+
+  return `/api/acr/schedules/${id}`
+}
+
+/**
+ * @summary Delete a recurring report schedule
+ */
+export const deleteAcrSchedule = async (id: string, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getDeleteAcrScheduleUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAcrScheduleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAcrSchedule>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAcrSchedule>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAcrSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAcrSchedule>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAcrSchedule(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAcrScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAcrSchedule>>>
+
+    export type DeleteAcrScheduleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a recurring report schedule
+ */
+export const useDeleteAcrSchedule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAcrSchedule>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAcrSchedule>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAcrScheduleMutationOptions(options));
+    }
+
+export const getSetAcrScheduleActiveUrl = (id: string,) => {
+
+
+
+
+  return `/api/acr/schedules/${id}/active`
+}
+
+/**
+ * @summary Pause or resume a schedule
+ */
+export const setAcrScheduleActive = async (id: string,
+    acrScheduleActiveInput: AcrScheduleActiveInput, options?: RequestInit): Promise<AcrSchedule> => {
+
+  return customFetch<AcrSchedule>(getSetAcrScheduleActiveUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrScheduleActiveInput,)
+  }
+);}
+
+
+
+
+export const getSetAcrScheduleActiveMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAcrScheduleActive>>, TError,{id: string;data: BodyType<AcrScheduleActiveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setAcrScheduleActive>>, TError,{id: string;data: BodyType<AcrScheduleActiveInput>}, TContext> => {
+
+const mutationKey = ['setAcrScheduleActive'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setAcrScheduleActive>>, {id: string;data: BodyType<AcrScheduleActiveInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setAcrScheduleActive(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetAcrScheduleActiveMutationResult = NonNullable<Awaited<ReturnType<typeof setAcrScheduleActive>>>
+    export type SetAcrScheduleActiveMutationBody = BodyType<AcrScheduleActiveInput>
+    export type SetAcrScheduleActiveMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Pause or resume a schedule
+ */
+export const useSetAcrScheduleActive = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAcrScheduleActive>>, TError,{id: string;data: BodyType<AcrScheduleActiveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setAcrScheduleActive>>,
+        TError,
+        {id: string;data: BodyType<AcrScheduleActiveInput>},
+        TContext
+      > => {
+      return useMutation(getSetAcrScheduleActiveMutationOptions(options));
+    }
+
+export const getRunAcrScheduleUrl = (id: string,) => {
+
+
+
+
+  return `/api/acr/schedules/${id}/run`
+}
+
+/**
+ * @summary Run a schedule immediately (creates a scheduled job now)
+ */
+export const runAcrSchedule = async (id: string, options?: RequestInit): Promise<AcrJob> => {
+
+  return customFetch<AcrJob>(getRunAcrScheduleUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunAcrScheduleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAcrSchedule>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runAcrSchedule>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['runAcrSchedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAcrSchedule>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  runAcrSchedule(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunAcrScheduleMutationResult = NonNullable<Awaited<ReturnType<typeof runAcrSchedule>>>
+
+    export type RunAcrScheduleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Run a schedule immediately (creates a scheduled job now)
+ */
+export const useRunAcrSchedule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAcrSchedule>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runAcrSchedule>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRunAcrScheduleMutationOptions(options));
+    }
+
+export const getGetAcrDashboardUrl = (params?: GetAcrDashboardParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/dashboard?${stringifiedParams}` : `/api/acr/dashboard`
+}
+
+/**
+ * @summary Cross-period team KPI dashboard (super admin only)
+ */
+export const getAcrDashboard = async (params?: GetAcrDashboardParams, options?: RequestInit): Promise<AcrDashboard> => {
+
+  return customFetch<AcrDashboard>(getGetAcrDashboardUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrDashboardQueryKey = (params?: GetAcrDashboardParams,) => {
+    return [
+    `/api/acr/dashboard`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAcrDashboardQueryOptions = <TData = Awaited<ReturnType<typeof getAcrDashboard>>, TError = ErrorType<ErrorResponse>>(params?: GetAcrDashboardParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrDashboardQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrDashboard>>> = ({ signal }) => getAcrDashboard(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrDashboard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrDashboardQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrDashboard>>>
+export type GetAcrDashboardQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Cross-period team KPI dashboard (super admin only)
+ */
+
+export function useGetAcrDashboard<TData = Awaited<ReturnType<typeof getAcrDashboard>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetAcrDashboardParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrDashboardQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAcrTargetsUrl = () => {
+
+
+
+
+  return `/api/acr/targets`
+}
+
+/**
+ * @summary List per-agent KPI targets
+ */
+export const listAcrTargets = async ( options?: RequestInit): Promise<AcrTarget[]> => {
+
+  return customFetch<AcrTarget[]>(getListAcrTargetsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrTargetsQueryKey = () => {
+    return [
+    `/api/acr/targets`
+    ] as const;
+    }
+
+
+export const getListAcrTargetsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrTargets>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrTargets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrTargetsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrTargets>>> = ({ signal }) => listAcrTargets({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrTargets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrTargetsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrTargets>>>
+export type ListAcrTargetsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List per-agent KPI targets
+ */
+
+export function useListAcrTargets<TData = Awaited<ReturnType<typeof listAcrTargets>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrTargets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrTargetsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSetAcrTargetUrl = (agentId: number,) => {
+
+
+
+
+  return `/api/acr/targets/${agentId}`
+}
+
+/**
+ * @summary Set an agent's KPI target
+ */
+export const setAcrTarget = async (agentId: number,
+    acrTargetInput: AcrTargetInput, options?: RequestInit): Promise<AcrTarget> => {
+
+  return customFetch<AcrTarget>(getSetAcrTargetUrl(agentId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrTargetInput,)
+  }
+);}
+
+
+
+
+export const getSetAcrTargetMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAcrTarget>>, TError,{agentId: number;data: BodyType<AcrTargetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setAcrTarget>>, TError,{agentId: number;data: BodyType<AcrTargetInput>}, TContext> => {
+
+const mutationKey = ['setAcrTarget'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setAcrTarget>>, {agentId: number;data: BodyType<AcrTargetInput>}> = (props) => {
+          const {agentId,data} = props ?? {};
+
+          return  setAcrTarget(agentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetAcrTargetMutationResult = NonNullable<Awaited<ReturnType<typeof setAcrTarget>>>
+    export type SetAcrTargetMutationBody = BodyType<AcrTargetInput>
+    export type SetAcrTargetMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Set an agent's KPI target
+ */
+export const useSetAcrTarget = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setAcrTarget>>, TError,{agentId: number;data: BodyType<AcrTargetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setAcrTarget>>,
+        TError,
+        {agentId: number;data: BodyType<AcrTargetInput>},
+        TContext
+      > => {
+      return useMutation(getSetAcrTargetMutationOptions(options));
+    }
+
+export const getDeleteAcrTargetUrl = (agentId: number,) => {
+
+
+
+
+  return `/api/acr/targets/${agentId}`
+}
+
+/**
+ * @summary Remove an agent's KPI target
+ */
+export const deleteAcrTarget = async (agentId: number, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getDeleteAcrTargetUrl(agentId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAcrTargetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAcrTarget>>, TError,{agentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAcrTarget>>, TError,{agentId: number}, TContext> => {
+
+const mutationKey = ['deleteAcrTarget'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAcrTarget>>, {agentId: number}> = (props) => {
+          const {agentId} = props ?? {};
+
+          return  deleteAcrTarget(agentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAcrTargetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAcrTarget>>>
+
+    export type DeleteAcrTargetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove an agent's KPI target
+ */
+export const useDeleteAcrTarget = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAcrTarget>>, TError,{agentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAcrTarget>>,
+        TError,
+        {agentId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAcrTargetMutationOptions(options));
+    }
+
+export const getListAcrAlertsUrl = (params?: ListAcrAlertsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/alerts?${stringifiedParams}` : `/api/acr/alerts`
+}
+
+/**
+ * @summary List performance-decline alerts
+ */
+export const listAcrAlerts = async (params?: ListAcrAlertsParams, options?: RequestInit): Promise<AcrAlert[]> => {
+
+  return customFetch<AcrAlert[]>(getListAcrAlertsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrAlertsQueryKey = (params?: ListAcrAlertsParams,) => {
+    return [
+    `/api/acr/alerts`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAcrAlertsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrAlerts>>, TError = ErrorType<unknown>>(params?: ListAcrAlertsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrAlerts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrAlertsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrAlerts>>> = ({ signal }) => listAcrAlerts(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrAlerts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrAlertsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrAlerts>>>
+export type ListAcrAlertsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List performance-decline alerts
+ */
+
+export function useListAcrAlerts<TData = Awaited<ReturnType<typeof listAcrAlerts>>, TError = ErrorType<unknown>>(
+ params?: ListAcrAlertsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrAlerts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrAlertsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getResolveAcrAlertUrl = (id: string,) => {
+
+
+
+
+  return `/api/acr/alerts/${id}/resolve`
+}
+
+/**
+ * @summary Mark an alert resolved
+ */
+export const resolveAcrAlert = async (id: string, options?: RequestInit): Promise<AcrAlert> => {
+
+  return customFetch<AcrAlert>(getResolveAcrAlertUrl(id),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+
+export const getResolveAcrAlertMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveAcrAlert>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveAcrAlert>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['resolveAcrAlert'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveAcrAlert>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  resolveAcrAlert(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveAcrAlertMutationResult = NonNullable<Awaited<ReturnType<typeof resolveAcrAlert>>>
+
+    export type ResolveAcrAlertMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Mark an alert resolved
+ */
+export const useResolveAcrAlert = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveAcrAlert>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveAcrAlert>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getResolveAcrAlertMutationOptions(options));
+    }
+
+export const getListAcrAchievementsUrl = (params?: ListAcrAchievementsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/achievements?${stringifiedParams}` : `/api/acr/achievements`
+}
+
+/**
+ * @summary List earned achievements
+ */
+export const listAcrAchievements = async (params?: ListAcrAchievementsParams, options?: RequestInit): Promise<AcrAchievement[]> => {
+
+  return customFetch<AcrAchievement[]>(getListAcrAchievementsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrAchievementsQueryKey = (params?: ListAcrAchievementsParams,) => {
+    return [
+    `/api/acr/achievements`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAcrAchievementsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrAchievements>>, TError = ErrorType<unknown>>(params?: ListAcrAchievementsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrAchievements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrAchievementsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrAchievements>>> = ({ signal }) => listAcrAchievements(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrAchievements>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrAchievementsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrAchievements>>>
+export type ListAcrAchievementsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List earned achievements
+ */
+
+export function useListAcrAchievements<TData = Awaited<ReturnType<typeof listAcrAchievements>>, TError = ErrorType<unknown>>(
+ params?: ListAcrAchievementsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrAchievements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrAchievementsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListAcrTeamGroupsUrl = () => {
+
+
+
+
+  return `/api/acr/team-groups`
+}
+
+/**
+ * @summary List agent groups for benchmarking
+ */
+export const listAcrTeamGroups = async ( options?: RequestInit): Promise<AcrTeamGroup[]> => {
+
+  return customFetch<AcrTeamGroup[]>(getListAcrTeamGroupsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcrTeamGroupsQueryKey = () => {
+    return [
+    `/api/acr/team-groups`
+    ] as const;
+    }
+
+
+export const getListAcrTeamGroupsQueryOptions = <TData = Awaited<ReturnType<typeof listAcrTeamGroups>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrTeamGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcrTeamGroupsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcrTeamGroups>>> = ({ signal }) => listAcrTeamGroups({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcrTeamGroups>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcrTeamGroupsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcrTeamGroups>>>
+export type ListAcrTeamGroupsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List agent groups for benchmarking
+ */
+
+export function useListAcrTeamGroups<TData = Awaited<ReturnType<typeof listAcrTeamGroups>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcrTeamGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcrTeamGroupsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAcrTeamGroupUrl = () => {
+
+
+
+
+  return `/api/acr/team-groups`
+}
+
+/**
+ * @summary Create an agent group
+ */
+export const createAcrTeamGroup = async (acrTeamGroupInput: AcrTeamGroupInput, options?: RequestInit): Promise<AcrTeamGroup> => {
+
+  return customFetch<AcrTeamGroup>(getCreateAcrTeamGroupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrTeamGroupInput,)
+  }
+);}
+
+
+
+
+export const getCreateAcrTeamGroupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcrTeamGroup>>, TError,{data: BodyType<AcrTeamGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAcrTeamGroup>>, TError,{data: BodyType<AcrTeamGroupInput>}, TContext> => {
+
+const mutationKey = ['createAcrTeamGroup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAcrTeamGroup>>, {data: BodyType<AcrTeamGroupInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAcrTeamGroup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAcrTeamGroupMutationResult = NonNullable<Awaited<ReturnType<typeof createAcrTeamGroup>>>
+    export type CreateAcrTeamGroupMutationBody = BodyType<AcrTeamGroupInput>
+    export type CreateAcrTeamGroupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create an agent group
+ */
+export const useCreateAcrTeamGroup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcrTeamGroup>>, TError,{data: BodyType<AcrTeamGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAcrTeamGroup>>,
+        TError,
+        {data: BodyType<AcrTeamGroupInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAcrTeamGroupMutationOptions(options));
+    }
+
+export const getUpdateAcrTeamGroupUrl = (id: string,) => {
+
+
+
+
+  return `/api/acr/team-groups/${id}`
+}
+
+/**
+ * @summary Update an agent group
+ */
+export const updateAcrTeamGroup = async (id: string,
+    acrTeamGroupInput: AcrTeamGroupInput, options?: RequestInit): Promise<AcrTeamGroup> => {
+
+  return customFetch<AcrTeamGroup>(getUpdateAcrTeamGroupUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrTeamGroupInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAcrTeamGroupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcrTeamGroup>>, TError,{id: string;data: BodyType<AcrTeamGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAcrTeamGroup>>, TError,{id: string;data: BodyType<AcrTeamGroupInput>}, TContext> => {
+
+const mutationKey = ['updateAcrTeamGroup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAcrTeamGroup>>, {id: string;data: BodyType<AcrTeamGroupInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAcrTeamGroup(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAcrTeamGroupMutationResult = NonNullable<Awaited<ReturnType<typeof updateAcrTeamGroup>>>
+    export type UpdateAcrTeamGroupMutationBody = BodyType<AcrTeamGroupInput>
+    export type UpdateAcrTeamGroupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update an agent group
+ */
+export const useUpdateAcrTeamGroup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcrTeamGroup>>, TError,{id: string;data: BodyType<AcrTeamGroupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAcrTeamGroup>>,
+        TError,
+        {id: string;data: BodyType<AcrTeamGroupInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAcrTeamGroupMutationOptions(options));
+    }
+
+export const getDeleteAcrTeamGroupUrl = (id: string,) => {
+
+
+
+
+  return `/api/acr/team-groups/${id}`
+}
+
+/**
+ * @summary Delete an agent group
+ */
+export const deleteAcrTeamGroup = async (id: string, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getDeleteAcrTeamGroupUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAcrTeamGroupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAcrTeamGroup>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAcrTeamGroup>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAcrTeamGroup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAcrTeamGroup>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAcrTeamGroup(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAcrTeamGroupMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAcrTeamGroup>>>
+
+    export type DeleteAcrTeamGroupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete an agent group
+ */
+export const useDeleteAcrTeamGroup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAcrTeamGroup>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAcrTeamGroup>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAcrTeamGroupMutationOptions(options));
+    }
+
+export const getGetAcrMomReportUrl = (params: GetAcrMomReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/mom?${stringifiedParams}` : `/api/acr/mom`
+}
+
+/**
+ * @summary AI month-over-month comparison report (super admin only)
+ */
+export const getAcrMomReport = async (params: GetAcrMomReportParams, options?: RequestInit): Promise<AcrMomReport> => {
+
+  return customFetch<AcrMomReport>(getGetAcrMomReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrMomReportQueryKey = (params?: GetAcrMomReportParams,) => {
+    return [
+    `/api/acr/mom`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAcrMomReportQueryOptions = <TData = Awaited<ReturnType<typeof getAcrMomReport>>, TError = ErrorType<ErrorResponse>>(params: GetAcrMomReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrMomReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrMomReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrMomReport>>> = ({ signal }) => getAcrMomReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrMomReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrMomReportQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrMomReport>>>
+export type GetAcrMomReportQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary AI month-over-month comparison report (super admin only)
+ */
+
+export function useGetAcrMomReport<TData = Awaited<ReturnType<typeof getAcrMomReport>>, TError = ErrorType<ErrorResponse>>(
+ params: GetAcrMomReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrMomReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrMomReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAcrBenchmarkUrl = (params: GetAcrBenchmarkParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acr/benchmark?${stringifiedParams}` : `/api/acr/benchmark`
+}
+
+/**
+ * @summary AI cross-team benchmark (super admin only)
+ */
+export const getAcrBenchmark = async (params: GetAcrBenchmarkParams, options?: RequestInit): Promise<AcrBenchmark> => {
+
+  return customFetch<AcrBenchmark>(getGetAcrBenchmarkUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcrBenchmarkQueryKey = (params?: GetAcrBenchmarkParams,) => {
+    return [
+    `/api/acr/benchmark`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAcrBenchmarkQueryOptions = <TData = Awaited<ReturnType<typeof getAcrBenchmark>>, TError = ErrorType<ErrorResponse>>(params: GetAcrBenchmarkParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrBenchmark>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcrBenchmarkQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcrBenchmark>>> = ({ signal }) => getAcrBenchmark(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcrBenchmark>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcrBenchmarkQueryResult = NonNullable<Awaited<ReturnType<typeof getAcrBenchmark>>>
+export type GetAcrBenchmarkQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary AI cross-team benchmark (super admin only)
+ */
+
+export function useGetAcrBenchmark<TData = Awaited<ReturnType<typeof getAcrBenchmark>>, TError = ErrorType<ErrorResponse>>(
+ params: GetAcrBenchmarkParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcrBenchmark>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcrBenchmarkQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSendAcrCoachingUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/send-coaching`
+}
+
+/**
+ * @summary Send AI coaching to each agent via WhatsApp (super admin, manual)
+ */
+export const sendAcrCoaching = async (jobId: string, options?: RequestInit): Promise<AcrSendResult> => {
+
+  return customFetch<AcrSendResult>(getSendAcrCoachingUrl(jobId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSendAcrCoachingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrCoaching>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAcrCoaching>>, TError,{jobId: string}, TContext> => {
+
+const mutationKey = ['sendAcrCoaching'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAcrCoaching>>, {jobId: string}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  sendAcrCoaching(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAcrCoachingMutationResult = NonNullable<Awaited<ReturnType<typeof sendAcrCoaching>>>
+
+    export type SendAcrCoachingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send AI coaching to each agent via WhatsApp (super admin, manual)
+ */
+export const useSendAcrCoaching = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrCoaching>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAcrCoaching>>,
+        TError,
+        {jobId: string},
+        TContext
+      > => {
+      return useMutation(getSendAcrCoachingMutationOptions(options));
+    }
+
+export const getSendAcrGroupSummaryUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/acr/jobs/${jobId}/send-group-summary`
+}
+
+/**
+ * @summary Send AI team summary to a WhatsApp number/group (super admin, manual)
+ */
+export const sendAcrGroupSummary = async (jobId: string,
+    acrGroupSummaryInput: AcrGroupSummaryInput, options?: RequestInit): Promise<AcrSendResult> => {
+
+  return customFetch<AcrSendResult>(getSendAcrGroupSummaryUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acrGroupSummaryInput,)
+  }
+);}
+
+
+
+
+export const getSendAcrGroupSummaryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrGroupSummary>>, TError,{jobId: string;data: BodyType<AcrGroupSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAcrGroupSummary>>, TError,{jobId: string;data: BodyType<AcrGroupSummaryInput>}, TContext> => {
+
+const mutationKey = ['sendAcrGroupSummary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAcrGroupSummary>>, {jobId: string;data: BodyType<AcrGroupSummaryInput>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  sendAcrGroupSummary(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAcrGroupSummaryMutationResult = NonNullable<Awaited<ReturnType<typeof sendAcrGroupSummary>>>
+    export type SendAcrGroupSummaryMutationBody = BodyType<AcrGroupSummaryInput>
+    export type SendAcrGroupSummaryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send AI team summary to a WhatsApp number/group (super admin, manual)
+ */
+export const useSendAcrGroupSummary = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAcrGroupSummary>>, TError,{jobId: string;data: BodyType<AcrGroupSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAcrGroupSummary>>,
+        TError,
+        {jobId: string;data: BodyType<AcrGroupSummaryInput>},
+        TContext
+      > => {
+      return useMutation(getSendAcrGroupSummaryMutationOptions(options));
+    }
 

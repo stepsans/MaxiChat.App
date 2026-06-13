@@ -10,7 +10,7 @@ import {
   platformSettingsTable,
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
-import { invalidateSmtpCache } from "../lib/email";
+import { invalidateEmailCache } from "../lib/email";
 import { computeBillingPeriod } from "../lib/billing-period";
 import {
   AdminUpdatePricingBody,
@@ -697,16 +697,15 @@ router.post("/impersonate/:tenantId", async (req, res): Promise<void> => {
 
 function buildPlatformSettingsResponse(m: Record<string, string>) {
   return {
+    emailProvider: m["email_provider"] === "gmail" ? "gmail" : "resend",
     resendApiKeyConfigured: !!m["resend_api_key"],
     resendFrom: m["resend_from"] || null,
     resendFromName: m["resend_from_name"] || null,
-    smtpHost: m["smtp_host"] || null,
-    smtpPort: m["smtp_port"] ? parseInt(m["smtp_port"]) : null,
-    smtpSecure: m["smtp_secure"] === "true",
-    smtpUser: m["smtp_user"] || null,
-    smtpPassConfigured: !!m["smtp_pass"],
-    smtpFrom: m["smtp_from"] || null,
-    smtpFromName: m["smtp_from_name"] || null,
+    gmailUser: m["gmail_user"] || null,
+    gmailClientId: m["gmail_client_id"] || null,
+    gmailClientSecretConfigured: !!m["gmail_client_secret"],
+    gmailRefreshTokenConfigured: !!m["gmail_refresh_token"],
+    gmailFromName: m["gmail_from_name"] || null,
     ownerEmail: m["owner_email"] || null,
     appUrl: m["app_url"] || null,
   };
@@ -729,16 +728,15 @@ router.get("/platform-settings", async (req, res): Promise<void> => {
 router.put("/platform-settings", async (req, res): Promise<void> => {
   try {
     const updates: Record<string, string> = {};
+    if (req.body.emailProvider === "resend" || req.body.emailProvider === "gmail") updates["email_provider"] = req.body.emailProvider;
     if (typeof req.body.resendApiKey === "string" && req.body.resendApiKey.trim()) updates["resend_api_key"] = req.body.resendApiKey.trim();
     if (typeof req.body.resendFrom === "string") updates["resend_from"] = req.body.resendFrom.trim();
     if (typeof req.body.resendFromName === "string") updates["resend_from_name"] = req.body.resendFromName.trim();
-    if (typeof req.body.smtpHost === "string") updates["smtp_host"] = req.body.smtpHost.trim();
-    if (typeof req.body.smtpPort === "number") updates["smtp_port"] = String(req.body.smtpPort);
-    if (typeof req.body.smtpSecure === "boolean") updates["smtp_secure"] = String(req.body.smtpSecure);
-    if (typeof req.body.smtpUser === "string") updates["smtp_user"] = req.body.smtpUser.trim();
-    if (typeof req.body.smtpPass === "string" && req.body.smtpPass.trim()) updates["smtp_pass"] = req.body.smtpPass.trim();
-    if (typeof req.body.smtpFrom === "string") updates["smtp_from"] = req.body.smtpFrom.trim();
-    if (typeof req.body.smtpFromName === "string") updates["smtp_from_name"] = req.body.smtpFromName.trim();
+    if (typeof req.body.gmailUser === "string") updates["gmail_user"] = req.body.gmailUser.toLowerCase().trim();
+    if (typeof req.body.gmailClientId === "string") updates["gmail_client_id"] = req.body.gmailClientId.trim();
+    if (typeof req.body.gmailClientSecret === "string" && req.body.gmailClientSecret.trim()) updates["gmail_client_secret"] = req.body.gmailClientSecret.trim();
+    if (typeof req.body.gmailRefreshToken === "string" && req.body.gmailRefreshToken.trim()) updates["gmail_refresh_token"] = req.body.gmailRefreshToken.trim();
+    if (typeof req.body.gmailFromName === "string") updates["gmail_from_name"] = req.body.gmailFromName.trim();
     if (typeof req.body.ownerEmail === "string") updates["owner_email"] = req.body.ownerEmail.toLowerCase().trim();
     if (typeof req.body.appUrl === "string") updates["app_url"] = req.body.appUrl.trim();
 
@@ -746,7 +744,7 @@ router.put("/platform-settings", async (req, res): Promise<void> => {
       await db.insert(platformSettingsTable).values({ key, value })
         .onConflictDoUpdate({ target: platformSettingsTable.key, set: { value, updatedAt: new Date() } });
     }
-    invalidateSmtpCache();
+    invalidateEmailCache();
 
     const rows = await db.select().from(platformSettingsTable);
     const m: Record<string, string> = {};

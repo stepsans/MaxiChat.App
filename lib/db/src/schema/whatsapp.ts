@@ -36,6 +36,8 @@ export const chatsTable = pgTable(
     customerCode: text("customer_code"),
     status: text("status").notNull().default("ai_handled"),
     tag: text("tag").notNull().default("none"),
+    // Manual lead classification: "unknown" (belum di-set) | "lead" | "not_lead".
+    leadStatus: text("lead_status").notNull().default("unknown"),
     isHumanTakeover: boolean("is_human_takeover").notNull().default(false),
     lastMessage: text("last_message"),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
@@ -221,6 +223,12 @@ export const chatMessagesTable = pgTable(
     // local content overwrite). Null = never edited. The UI shows a "diedit"
     // badge when set.
     editedAt: timestamp("edited_at", { withTimezone: true }),
+    // Team member (users.id) who authored this OUTBOUND message via the
+    // dashboard (manual reply, media, product, quotation, shortcut sends).
+    // Null for inbound rows, AI/chatbot sends, and historical rows — readers
+    // (AI Chat Report) fall back to chats.assignedUserId for attribution.
+    // Plain integer (no FK) to match assignedUserId's cross-schema pattern.
+    sentByUserId: integer("sent_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

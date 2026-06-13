@@ -32,12 +32,11 @@ router.get("/summary", async (req, res): Promise<void> => {
         aiHandled: 0,
         needsHuman: 0,
         closed: 0,
-        hotLeads: 0,
-        closingLeads: 0,
-        coldLeads: 0,
+        leads: 0,
+        notLeads: 0,
         totalMessages: 0,
         todayChats: 0,
-        closingRate: 0,
+        leadRate: 0,
         chatsByLabel: [],
       });
       return;
@@ -51,9 +50,8 @@ router.get("/summary", async (req, res): Promise<void> => {
     const aiHandled = chats.filter((c) => c.status === "ai_handled").length;
     const needsHuman = chats.filter((c) => c.status === "needs_human").length;
     const closed = chats.filter((c) => c.status === "closed").length;
-    const hotLeads = chats.filter((c) => c.tag === "hot_lead").length;
-    const closingLeads = chats.filter((c) => c.tag === "closing").length;
-    const coldLeads = chats.filter((c) => c.tag === "cold").length;
+    const leads = chats.filter((c) => c.leadStatus === "lead").length;
+    const notLeads = chats.filter((c) => c.leadStatus === "not_lead").length;
 
     const chatIds = chats.map((c) => c.id);
     const [msgCount] = chatIds.length
@@ -69,7 +67,7 @@ router.get("/summary", async (req, res): Promise<void> => {
       (c) => new Date(c.createdAt) >= today
     ).length;
 
-    const closingRate = totalChats > 0 ? Math.round((closingLeads / totalChats) * 100) : 0;
+    const leadRate = totalChats > 0 ? Math.round((leads / totalChats) * 100) : 0;
 
     // Count chats carrying each customer label, scoped to this account's chats.
     // Labels are contact-level (owner + phone), so a chat "carries" a label when
@@ -113,12 +111,11 @@ router.get("/summary", async (req, res): Promise<void> => {
       aiHandled,
       needsHuman,
       closed,
-      hotLeads,
-      closingLeads,
-      coldLeads,
+      leads,
+      notLeads,
       totalMessages: msgCount?.count ?? 0,
       todayChats,
-      closingRate,
+      leadRate,
       chatsByLabel,
     });
   } catch (err) {

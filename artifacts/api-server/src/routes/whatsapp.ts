@@ -1004,7 +1004,15 @@ function extractChatListMeta(c: Record<string, unknown>): {
   if (Object.prototype.hasOwnProperty.call(c, "pinned")) {
     const p = (c as { pinned?: unknown }).pinned;
     if (typeof p === "number" && p > 0) {
-      meta.pinnedAt = new Date(p * 1000);
+      // Baileys/WhatsApp occasionally sends a garbage `pinned` value (e.g. a
+      // microsecond or otherwise out-of-range epoch). Unbounded, `p * 1000`
+      // yields an absurd Date (year 041970) that Postgres rejects with
+      // "time zone displacement out of range", crashing the whole history-sync
+      // transaction. Only accept a plausible epoch-seconds value.
+      const MAX_PINNED_EPOCH_SECONDS = 4102444800; // 2100-01-01
+      if (p <= MAX_PINNED_EPOCH_SECONDS) {
+        meta.pinnedAt = new Date(p * 1000);
+      }
     } else if (p === 0 || p === null) {
       meta.pinnedAt = null;
     }
@@ -2184,6 +2192,54 @@ async function typingPause(
   }
 }
 
+// One-off WhatsApp text to an arbitrary JID on a specific channel, with
+// human-like pacing (random delay + typing presence). For sends not tied to an
+// existing chat row (e.g. ACR coaching/summary). Returns true only when
+// transmitted. The caller owns rate limiting / how many recipients.
+export async function sendOneOffWaText(
+  channelId: number,
+  jid: string,
+  text: string,
+  delayBounds: { min: number | null | undefined; max: number | null | undefined },
+): Promise<boolean> {
+  const sock = getSockForChannel(channelId);
+  if (!sock) return false;
+  try {
+    await typingPause(sock, jid, flowSendDelayMs(delayBounds.min, delayBounds.max));
+    const sent = await sock.sendMessage(jid, { text });
+    return !!sent?.key?.id;
+  } catch (err) {
+    logger.error({ err: (err as Error)?.message, channelId }, "[acr] one-off WA text failed");
+    return false;
+  }
+}
+
+// One-off WhatsApp document send (e.g. an ACR PDF report). Same pacing rules.
+export async function sendOneOffWaDocument(
+  channelId: number,
+  jid: string,
+  document: Buffer,
+  fileName: string,
+  caption: string,
+  delayBounds: { min: number | null | undefined; max: number | null | undefined },
+): Promise<boolean> {
+  const sock = getSockForChannel(channelId);
+  if (!sock) return false;
+  try {
+    await typingPause(sock, jid, flowSendDelayMs(delayBounds.min, delayBounds.max));
+    const sent = await sock.sendMessage(jid, {
+      document,
+      mimetype: "application/pdf",
+      fileName,
+      caption,
+    });
+    return !!sent?.key?.id;
+  } catch (err) {
+    logger.error({ err: (err as Error)?.message, channelId }, "[acr] one-off WA document failed");
+    return false;
+  }
+}
+
 async function sendFlowMessage(
   userId: number,
   channelId: number,
@@ -2978,12 +3034,13 @@ async function startBaileys(userId: number, channelId: number) {
   // (or until the first batch does it lazily if there's a race).
   let connPreSyncCutoff: Map<string, Date | null> | null = null;
 
-  // Resettable "syncing → connected" fallback. We give the sync 2 minutes
-  // initially, and reset the timer on every incoming history batch. This
-  // means a long initial sync (many batches) never cuts the overlay short
-  // while still promoting to "connected" if Baileys goes quiet (isLatest
-  // never fires or history is empty).
-  const SYNC_FALLBACK_MS = 120_000;
+  // Resettable "syncing → connected" fallback. With syncFullHistory disabled
+  // there is no long full-history replay, so the recent sync is small (a few
+  // batches at most). We give it 30 s of quiet, resetting the timer on every
+  // incoming history batch, then promote to "connected" even if `isLatest`
+  // never fires (e.g. a resume with no new history) or history is empty. This
+  // guarantees the frontend overlay can never spin indefinitely.
+  const SYNC_FALLBACK_MS = 30_000;
   let syncFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   const rescheduleSyncFallback = () => {
     if (syncFallbackTimer != null) clearTimeout(syncFallbackTimer);
@@ -3016,7 +3073,14 @@ async function startBaileys(userId: number, channelId: number) {
       printQRInTerminal: false,
       msgRetryCounterCache,
       logger: (await import("pino")).default({ level: "warn" }),
-      syncFullHistory: true,
+      // Full-history sync makes WhatsApp dump the ENTIRE chat history (thousands
+      // of messages, each triggering a media download + link preview) on EVERY
+      // (re)connect. Under conflict/replaced reconnect loops this floods the
+      // event loop and wedges the whole process. Disable full backfill, but keep
+      // processing the (small) RECENT sync so messages received while the socket
+      // was disconnected are still caught up and `isLatest` still promotes the
+      // channel out of the "syncing" state.
+      syncFullHistory: false,
       shouldSyncHistoryMessage: () => true,
     });
     ctx.sock = sock;
@@ -3124,8 +3188,8 @@ async function startBaileys(userId: number, channelId: number) {
         // Set "syncing" so the frontend shows the loading overlay while
         // Baileys replays missed messages via messaging-history.set.
         // The handler below promotes to "connected" when isLatest fires.
-        // rescheduleSyncFallback fires after 2 minutes of silence and is
-        // reset on each incoming history batch so long syncs never cut short.
+        // rescheduleSyncFallback fires after 30 s of silence and is reset on
+        // each incoming history batch so a multi-batch sync never cuts short.
         void syncChannelStatus(channelId, {
           status: "syncing",
           ownerPhone: normalised,
@@ -3153,6 +3217,22 @@ async function startBaileys(userId: number, channelId: number) {
         const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)
           ?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason.loggedOut;
+        const reasonName =
+          Object.entries(DisconnectReason).find(
+            ([, v]) => v === statusCode,
+          )?.[0] ?? "unknown";
+        logger.warn(
+          {
+            channelId,
+            userId,
+            statusCode,
+            reasonName,
+            retryCount: ctx.retryCount + 1,
+            message: (lastDisconnect?.error as InstanceType<typeof Boom>)
+              ?.message,
+          },
+          "WA connection closed",
+        );
         // Disarm the syncing→connected fallback so it doesn't fire after
         // a disconnect and incorrectly flip a dead channel to "connected".
         if (syncFallbackTimer != null) {
@@ -3445,7 +3525,7 @@ async function startBaileys(userId: number, channelId: number) {
       );
 
       // We're still receiving history — reset the fallback so the overlay
-      // stays up until all batches have been processed (or 2 minutes of silence).
+      // stays up until all batches have been processed (or 30 s of silence).
       rescheduleSyncFallback();
 
       // Use the connection-scoped snapshot for missed-message detection so
@@ -3575,7 +3655,7 @@ async function startBaileys(userId: number, channelId: number) {
       logger.info({ ingested }, "messaging-history.set done");
       // When Baileys signals this is the final history batch, promote the
       // channel from "syncing" to "connected" so the frontend reveals the
-      // chat list. If isLatest never fires the 15 s fallback above covers it.
+      // chat list. If isLatest never fires the 30 s fallback above covers it.
       if (isLatest) {
         void syncChannelStatus(channelId, { status: "connected" });
       }

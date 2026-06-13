@@ -159,6 +159,24 @@ app.use(
   })
 );
 
+// Readiness gate: the server binds its port immediately on startup so the
+// deployment healthcheck passes within seconds, but DB seed operations run
+// in the background. Until `setReady()` is called, every route EXCEPT
+// /api/healthz returns 503 so clients know to retry rather than seeing a
+// broken response.
+let _ready = false;
+export function setReady() {
+  _ready = true;
+}
+
+app.use((req, _res, next) => {
+  // Always let the liveness/readiness probe through.
+  if (_ready || req.path === "/api/healthz" || req.path === "/healthz") {
+    return next();
+  }
+  _res.status(503).json({ error: "Server is starting up, please retry shortly" });
+});
+
 app.use("/api", router);
 
 export default app;

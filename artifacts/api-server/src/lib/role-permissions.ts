@@ -27,6 +27,12 @@ export const PERMISSION_MENUS = [
   // AI Sales Assistant (Enterprise-only). Full CRUD; agents are scoped to
   // their own assigned opportunities by the route layer, not this matrix.
   "opportunities",
+  // WorkBoard: multi-board task management with invite & permission system.
+  "workboard",
+  // AI Chat Report: AI-driven CS performance reports. create = run a report
+  // job; edit = change the KPI weight config (super_admin only in practice —
+  // the config route additionally requires super_admin in code).
+  "acr",
   // View-only menus: only canView is meaningful (no create/edit/delete routes).
   "dashboard",
   "aiStudio",
@@ -79,6 +85,11 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // AI Sales Assistant: supervisors get full configurable access by default
     // (manage every opportunity in the tenant). Owner may dial this back.
     opportunities: allow(true, true, true, true),
+    // WorkBoard: supervisors get full access by default.
+    workboard: allow(true, true, true, true),
+    // AI Chat Report: supervisors may view their team's reports and run new
+    // ones, but cannot change the KPI weight config (edit) or archive jobs.
+    acr: allow(true, true, false, false),
     // View-only menus — supervisors see Dashboard & AI Studio by default;
     // Pemakaian Token & AI Review stay super_admin-only until granted.
     dashboard: allow(true, false, false, false),
@@ -104,6 +115,11 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // opportunities (enforced by opportunityScopeWhere in the route layer). No
     // create (deals are auto-detected) and no delete.
     opportunities: allow(true, false, true, false),
+    // WorkBoard: agents can view and create tasks (but not delete boards).
+    workboard: allow(true, true, true, false),
+    // AI Chat Report: agents may only view their OWN scores (self-scope is
+    // enforced by the route layer, not this matrix).
+    acr: allow(true, false, false, false),
     // View-only menus — agents see none of these by default.
     dashboard: allow(false, false, false, false),
     aiStudio: allow(false, false, false, false),

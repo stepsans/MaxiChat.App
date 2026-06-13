@@ -597,6 +597,7 @@ export default function Pipeline() {
           onClose={() => setStageMgmtPipelineId(null)}
         />
       ) : null}
+
     </div>
   );
 }

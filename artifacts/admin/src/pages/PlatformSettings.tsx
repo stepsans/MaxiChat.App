@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
-import { Mail, Key, Globe, User, ChevronDown, ChevronUp, CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
+import { Mail, Key, Globe, User, CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
 
 interface Settings {
+  emailProvider: "resend" | "gmail";
   resendApiKeyConfigured: boolean;
   resendFrom: string | null;
   resendFromName: string | null;
-  smtpHost: string | null;
-  smtpPort: number | null;
-  smtpSecure: boolean;
-  smtpUser: string | null;
-  smtpPassConfigured: boolean;
-  smtpFrom: string | null;
-  smtpFromName: string | null;
+  gmailUser: string | null;
+  gmailClientId: string | null;
+  gmailClientSecretConfigured: boolean;
+  gmailRefreshTokenConfigured: boolean;
+  gmailFromName: string | null;
   ownerEmail: string | null;
   appUrl: string | null;
 }
@@ -22,19 +21,17 @@ export default function PlatformSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
-  const [showSmtp, setShowSmtp] = useState(false);
 
   const [form, setForm] = useState({
+    emailProvider: "resend" as "resend" | "gmail",
     resendApiKey: "",
     resendFrom: "noreply@maxichat.app",
     resendFromName: "MaxiChat",
-    smtpHost: "smtp.gmail.com",
-    smtpPort: "587",
-    smtpSecure: false,
-    smtpUser: "",
-    smtpPass: "",
-    smtpFrom: "",
-    smtpFromName: "MaxiChat",
+    gmailUser: "",
+    gmailClientId: "",
+    gmailClientSecret: "",
+    gmailRefreshToken: "",
+    gmailFromName: "MaxiChat",
     ownerEmail: "",
     appUrl: "",
   });
@@ -46,16 +43,15 @@ export default function PlatformSettings() {
         setSettings(d);
         setForm((f) => ({
           ...f,
+          emailProvider: d.emailProvider || "resend",
           resendApiKey: "",
           resendFrom: d.resendFrom || "noreply@maxichat.app",
           resendFromName: d.resendFromName || "MaxiChat",
-          smtpHost: d.smtpHost || "smtp.gmail.com",
-          smtpPort: String(d.smtpPort || 587),
-          smtpSecure: d.smtpSecure || false,
-          smtpUser: d.smtpUser || "",
-          smtpPass: "",
-          smtpFrom: d.smtpFrom || "",
-          smtpFromName: d.smtpFromName || "MaxiChat",
+          gmailUser: d.gmailUser || "",
+          gmailClientId: d.gmailClientId || "",
+          gmailClientSecret: "",
+          gmailRefreshToken: "",
+          gmailFromName: d.gmailFromName || "MaxiChat",
           ownerEmail: d.ownerEmail || "",
           appUrl: d.appUrl || "",
         }));
@@ -70,19 +66,18 @@ export default function PlatformSettings() {
     setSaved(false);
     try {
       const body: Record<string, unknown> = {
+        emailProvider: form.emailProvider,
         resendFrom: form.resendFrom,
         resendFromName: form.resendFromName,
-        smtpHost: form.smtpHost,
-        smtpPort: parseInt(form.smtpPort),
-        smtpSecure: form.smtpSecure,
-        smtpUser: form.smtpUser,
-        smtpFrom: form.smtpFrom,
-        smtpFromName: form.smtpFromName,
+        gmailUser: form.gmailUser,
+        gmailClientId: form.gmailClientId,
+        gmailFromName: form.gmailFromName,
         ownerEmail: form.ownerEmail,
         appUrl: form.appUrl,
       };
       if (form.resendApiKey.trim()) body.resendApiKey = form.resendApiKey.trim();
-      if (form.smtpPass.trim()) body.smtpPass = form.smtpPass.trim();
+      if (form.gmailClientSecret.trim()) body.gmailClientSecret = form.gmailClientSecret.trim();
+      if (form.gmailRefreshToken.trim()) body.gmailRefreshToken = form.gmailRefreshToken.trim();
 
       const r = await fetch("/api/admin/platform-settings", {
         method: "PUT",
@@ -93,75 +88,111 @@ export default function PlatformSettings() {
       const d = await r.json();
       if (!r.ok) { setError(d.error || "Gagal menyimpan."); return; }
       setSettings(d);
+      setForm((f) => ({ ...f, resendApiKey: "", gmailClientSecret: "", gmailRefreshToken: "" }));
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } finally { setSaving(false); }
   }
 
-  const inp = "w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-white transition";
-  const lbl = "block text-xs font-semibold text-gray-600 mb-1.5";
+  const inp = "w-full bg-input border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition";
+  const lbl = "block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide";
 
   if (loading) return (
-    <div className="p-8 flex items-center gap-2 text-gray-400 text-sm">
-      <div className="w-4 h-4 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin" />
+    <div className="p-8 flex items-center gap-2 text-muted-foreground text-sm">
+      <div className="w-4 h-4 border-2 border-muted border-t-primary rounded-full animate-spin" />
       Memuat settings...
     </div>
   );
 
-  const emailProvider = settings?.resendApiKeyConfigured ? "resend" : (settings?.smtpPassConfigured ? "smtp" : "none");
+  const resendReady = !!settings?.resendApiKeyConfigured;
+  const gmailReady = !!(settings?.gmailUser && settings?.gmailClientId && settings?.gmailClientSecretConfigured && settings?.gmailRefreshTokenConfigured);
+  const activeReady = settings?.emailProvider === "gmail" ? gmailReady : resendReady;
 
   return (
-    <div className="max-w-2xl mx-auto py-6 px-4 space-y-6">
+    <div className="max-w-2xl mx-auto py-6 px-4 space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Platform Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">Konfigurasi email dan pengaturan platform MaxiChat</p>
+        <h1 className="text-xl font-bold text-foreground">Platform Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">Konfigurasi email dan pengaturan platform MaxiChat</p>
       </div>
 
       {/* Email Provider Status */}
-      <div className={`rounded-2xl px-4 py-3 flex items-center gap-3 text-sm ${
-        emailProvider === "resend" ? "bg-green-50 border border-green-200" :
-        emailProvider === "smtp" ? "bg-blue-50 border border-blue-200" :
-        "bg-amber-50 border border-amber-200"
+      <div className={`rounded-lg px-4 py-3 flex items-center gap-3 text-sm border ${
+        activeReady ? "bg-emerald-500/10 border-emerald-500/25" : "bg-amber-500/10 border-amber-500/25"
       }`}>
-        {emailProvider === "resend" ? (
-          <><CheckCircle className="w-4 h-4 text-green-600 shrink-0" /><span className="text-green-800">Email aktif via <strong>Resend</strong></span></>
-        ) : emailProvider === "smtp" ? (
-          <><CheckCircle className="w-4 h-4 text-blue-600 shrink-0" /><span className="text-blue-800">Email aktif via <strong>SMTP</strong></span></>
+        {activeReady ? (
+          <><CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" /><span className="text-emerald-300">Email aktif via <strong>{settings?.emailProvider === "gmail" ? "Gmail OAuth" : "Resend"}</strong></span></>
         ) : (
-          <><AlertCircle className="w-4 h-4 text-amber-600 shrink-0" /><span className="text-amber-800">Email belum dikonfigurasi — OTP tidak akan terkirim</span></>
+          <><AlertCircle className="w-4 h-4 text-amber-400 shrink-0" /><span className="text-amber-300">Provider <strong>{settings?.emailProvider === "gmail" ? "Gmail OAuth" : "Resend"}</strong> belum lengkap dikonfigurasi — OTP tidak akan terkirim</span></>
         )}
       </div>
 
-      <form onSubmit={handleSave} className="space-y-5">
+      <form onSubmit={handleSave} className="space-y-4">
+
+        {/* Provider Selector */}
+        <div className="bg-card border border-border rounded-lg p-5 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-primary/10 rounded-md flex items-center justify-center">
+              <Mail className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-foreground text-sm">Provider Email</h2>
+              <p className="text-xs text-muted-foreground">Pilih layanan untuk mengirim OTP dan email transaksional</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, emailProvider: "resend" })}
+              className={`rounded-lg border p-4 text-left transition-colors ${
+                form.emailProvider === "resend" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-sm text-foreground">Resend</span>
+                {resendReady && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">API transaksional — deliverability tinggi, 3.000 email/bulan gratis. Direkomendasikan.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, emailProvider: "gmail" })}
+              className={`rounded-lg border p-4 text-left transition-colors ${
+                form.emailProvider === "gmail" ? "border-primary bg-primary/10" : "border-border hover:bg-muted/40"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-sm text-foreground">Gmail OAuth</span>
+                {gmailReady && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Kirim via akun Gmail dengan OAuth2 — tanpa password. Kuota ±500/hari (gratis) atau 2.000/hari (Workspace).</p>
+            </button>
+          </div>
+        </div>
 
         {/* Resend Section */}
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center">
-                <Mail className="w-4 h-4 text-orange-500" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900 text-sm">Resend <span className="text-xs font-normal text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full ml-1">Direkomendasikan</span></h2>
-                <p className="text-xs text-gray-400">Transactional email API — lebih stabil & deliverability tinggi</p>
-              </div>
+        {form.emailProvider === "resend" && (
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-foreground text-sm">Konfigurasi Resend</h2>
+              <p className="text-xs text-muted-foreground">Transactional email API</p>
             </div>
             <a
               href="https://resend.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-orange-600 hover:text-orange-700 flex items-center gap-1 font-medium"
+              className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 font-medium transition-colors"
             >
               Daftar <ExternalLink className="w-3 h-3" />
             </a>
           </div>
-          <div className="px-6 py-5 space-y-4">
+          <div className="px-5 py-5 space-y-4">
             <div>
               <label className={lbl}>
                 <Key className="w-3 h-3 inline mr-1" />
                 API Key
                 {settings?.resendApiKeyConfigured && (
-                  <span className="ml-2 text-green-600 font-normal">✓ Sudah dikonfigurasi</span>
+                  <span className="ml-2 text-emerald-400 font-normal normal-case tracking-normal">✓ Sudah dikonfigurasi</span>
                 )}
               </label>
               <input
@@ -171,9 +202,9 @@ export default function PlatformSettings() {
                 placeholder={settings?.resendApiKeyConfigured ? "Kosongkan untuk tidak mengubah" : "re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
                 className={inp}
               />
-              <p className="text-xs text-gray-400 mt-1.5">
+              <p className="text-xs text-muted-foreground mt-1.5">
                 Dapatkan API key di{" "}
-                <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">
+                <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                   resend.com/api-keys
                 </a>
               </p>
@@ -187,7 +218,7 @@ export default function PlatformSettings() {
                   placeholder="noreply@maxichat.app"
                   className={inp}
                 />
-                <p className="text-xs text-gray-400 mt-1">Harus dari domain yang diverifikasi di Resend</p>
+                <p className="text-xs text-muted-foreground mt-1">Harus dari domain yang diverifikasi di Resend</p>
               </div>
               <div>
                 <label className={lbl}>Nama Pengirim</label>
@@ -200,97 +231,118 @@ export default function PlatformSettings() {
               </div>
             </div>
 
-            {/* Resend setup guide */}
-            <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-600">Cara setup Resend:</p>
-              <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-                <li>Daftar di <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">resend.com</a> (gratis 3.000 email/bulan)</li>
-                <li>Tambahkan & verifikasi domain Anda di menu <strong>Domains</strong></li>
-                <li>Buat API key di menu <strong>API Keys</strong></li>
+            <div className="bg-muted/50 rounded-md p-4 space-y-2 border border-border">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cara setup Resend:</p>
+              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                <li>Daftar di <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">resend.com</a> (gratis 3.000 email/bulan)</li>
+                <li>Tambahkan & verifikasi domain Anda di menu <strong className="text-foreground">Domains</strong></li>
+                <li>Buat API key di menu <strong className="text-foreground">API Keys</strong></li>
                 <li>Paste API key di atas dan set alamat pengirim dari domain yang diverifikasi</li>
               </ol>
             </div>
           </div>
         </div>
+        )}
 
-        {/* SMTP Fallback (collapsible) */}
-        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setShowSmtp(!showSmtp)}
-            className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                <Mail className="w-4 h-4 text-gray-400" />
-              </div>
-              <div className="text-left">
-                <h2 className="font-semibold text-gray-700 text-sm">SMTP (Fallback)</h2>
-                <p className="text-xs text-gray-400">Digunakan jika Resend tidak dikonfigurasi</p>
-              </div>
+        {/* Gmail OAuth Section */}
+        {form.emailProvider === "gmail" && (
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-foreground text-sm">Konfigurasi Gmail OAuth2</h2>
+              <p className="text-xs text-muted-foreground">Kirim email via Gmail tanpa menyimpan password</p>
             </div>
-            {showSmtp ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-          </button>
-
-          {showSmtp && (
-            <div className="px-6 pb-5 space-y-4 border-t border-gray-100 pt-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2">
-                  <label className={lbl}>SMTP Host</label>
-                  <input value={form.smtpHost} onChange={(e) => setForm({ ...form, smtpHost: e.target.value })} placeholder="smtp.gmail.com" className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Port</label>
-                  <select
-                    value={form.smtpPort}
-                    onChange={(e) => { const p = e.target.value; setForm({ ...form, smtpPort: p, smtpSecure: p === "465" }); }}
-                    className={inp}
-                  >
-                    <option value="587">587 (TLS)</option>
-                    <option value="465">465 (SSL)</option>
-                  </select>
-                </div>
-              </div>
+            <a
+              href="https://console.cloud.google.com/apis/credentials"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 font-medium transition-colors"
+            >
+              Google Console <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+          <div className="px-5 py-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={lbl}>Username / Email SMTP</label>
-                <input value={form.smtpUser} onChange={(e) => setForm({ ...form, smtpUser: e.target.value })} placeholder="info@domain.com" className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>
-                  Password / App Password
-                  {settings?.smtpPassConfigured && <span className="ml-2 text-green-600 font-normal">✓ Sudah dikonfigurasi</span>}
-                </label>
+                <label className={lbl}>Akun Gmail (Pengirim)</label>
                 <input
-                  type="password"
-                  value={form.smtpPass}
-                  onChange={(e) => setForm({ ...form, smtpPass: e.target.value })}
-                  placeholder={settings?.smtpPassConfigured ? "Kosongkan untuk tidak mengubah" : "App Password"}
+                  type="email"
+                  value={form.gmailUser}
+                  onChange={(e) => setForm({ ...form, gmailUser: e.target.value })}
+                  placeholder="info@maxichat.app"
                   className={inp}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={lbl}>Alamat Pengirim</label>
-                  <input value={form.smtpFrom} onChange={(e) => setForm({ ...form, smtpFrom: e.target.value })} placeholder="info@domain.com" className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Nama Pengirim</label>
-                  <input value={form.smtpFromName} onChange={(e) => setForm({ ...form, smtpFromName: e.target.value })} placeholder="MaxiChat" className={inp} />
-                </div>
+              <div>
+                <label className={lbl}>Nama Pengirim</label>
+                <input
+                  value={form.gmailFromName}
+                  onChange={(e) => setForm({ ...form, gmailFromName: e.target.value })}
+                  placeholder="MaxiChat"
+                  className={inp}
+                />
               </div>
             </div>
-          )}
-        </div>
-
-        {/* Owner & App */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center">
-              <Globe className="w-4 h-4 text-orange-500" />
+            <div>
+              <label className={lbl}>OAuth Client ID</label>
+              <input
+                value={form.gmailClientId}
+                onChange={(e) => setForm({ ...form, gmailClientId: e.target.value })}
+                placeholder="xxxx.apps.googleusercontent.com"
+                className={inp}
+              />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900 text-sm">Owner & Aplikasi</h2>
-              <p className="text-xs text-gray-400">Pengaturan akses owner dan URL platform</p>
+              <label className={lbl}>
+                OAuth Client Secret
+                {settings?.gmailClientSecretConfigured && <span className="ml-2 text-emerald-400 font-normal normal-case tracking-normal">✓ Sudah dikonfigurasi</span>}
+              </label>
+              <input
+                type="password"
+                value={form.gmailClientSecret}
+                onChange={(e) => setForm({ ...form, gmailClientSecret: e.target.value })}
+                placeholder={settings?.gmailClientSecretConfigured ? "Kosongkan untuk tidak mengubah" : "GOCSPX-..."}
+                className={inp}
+              />
+            </div>
+            <div>
+              <label className={lbl}>
+                Refresh Token
+                {settings?.gmailRefreshTokenConfigured && <span className="ml-2 text-emerald-400 font-normal normal-case tracking-normal">✓ Sudah dikonfigurasi</span>}
+              </label>
+              <input
+                type="password"
+                value={form.gmailRefreshToken}
+                onChange={(e) => setForm({ ...form, gmailRefreshToken: e.target.value })}
+                placeholder={settings?.gmailRefreshTokenConfigured ? "Kosongkan untuk tidak mengubah" : "1//..."}
+                className={inp}
+              />
+            </div>
+
+            <div className="bg-muted/50 rounded-md p-4 space-y-2 border border-border">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cara setup Gmail OAuth2:</p>
+              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                <li>Buka <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Google Cloud Console → Credentials</a>, buat <strong className="text-foreground">OAuth Client ID</strong> (tipe Web application)</li>
+                <li>Tambahkan <code className="text-foreground">https://developers.google.com/oauthplayground</code> sebagai Authorized redirect URI</li>
+                <li>Buka <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">OAuth Playground</a>, klik ⚙️ → centang "Use your own OAuth credentials", isi Client ID & Secret</li>
+                <li>Authorize scope <code className="text-foreground">https://mail.google.com/</code> dengan akun Gmail pengirim</li>
+                <li>Klik "Exchange authorization code for tokens" → salin <strong className="text-foreground">Refresh Token</strong> ke atas</li>
+              </ol>
+              <p className="text-xs text-amber-400/90 mt-2">Catatan: kuota Gmail ±500 email/hari (gratis) atau 2.000/hari (Workspace). Untuk volume besar, gunakan Resend.</p>
+            </div>
+          </div>
+        </div>
+        )}
+
+        {/* Owner & App */}
+        <div className="bg-card border border-border rounded-lg p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-primary/10 rounded-md flex items-center justify-center">
+              <Globe className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-foreground text-sm">Owner & Aplikasi</h2>
+              <p className="text-xs text-muted-foreground">Pengaturan akses owner dan URL platform</p>
             </div>
           </div>
           <div>
@@ -302,7 +354,7 @@ export default function PlatformSettings() {
               placeholder="owner@maxichat.app"
               className={inp}
             />
-            <p className="text-xs text-gray-400 mt-1.5">Email ini login dengan OTP tetap (161712). Pastikan diisi sebelum logout.</p>
+            <p className="text-xs text-muted-foreground mt-1.5">Email ini login dengan OTP tetap (161712). Pastikan diisi sebelum logout.</p>
           </div>
           <div>
             <label className={lbl}><Globe className="w-3 h-3 inline mr-1" />URL Aplikasi (Base URL)</label>
@@ -312,17 +364,17 @@ export default function PlatformSettings() {
               placeholder="https://app.maxichat.app"
               className={inp}
             />
-            <p className="text-xs text-gray-400 mt-1.5">Dipakai untuk link undangan agent di email.</p>
+            <p className="text-xs text-muted-foreground mt-1.5">Dipakai untuk link undangan agent di email.</p>
           </div>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm flex items-center gap-2">
+          <div className="bg-destructive/10 border border-destructive/30 rounded-md px-4 py-3 text-destructive text-sm flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />{error}
           </div>
         )}
         {saved && (
-          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-green-700 text-sm flex items-center gap-2">
+          <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-md px-4 py-3 text-emerald-400 text-sm flex items-center gap-2">
             <CheckCircle className="w-4 h-4 shrink-0" />Settings berhasil disimpan.
           </div>
         )}
@@ -330,10 +382,10 @@ export default function PlatformSettings() {
         <button
           type="submit"
           disabled={saving}
-          className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl px-8 py-3 text-sm font-semibold shadow-md shadow-orange-200 hover:from-orange-600 hover:to-orange-700 transition disabled:opacity-50 flex items-center gap-2"
+          className="bg-primary text-primary-foreground rounded-md px-6 py-2 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
         >
           {saving ? (
-            <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Menyimpan...</>
+            <><div className="w-4 h-4 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full animate-spin" />Menyimpan...</>
           ) : "Simpan Settings"}
         </button>
       </form>

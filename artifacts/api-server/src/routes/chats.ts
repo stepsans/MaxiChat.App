@@ -34,6 +34,7 @@ import { saveTenantMedia } from "../lib/tenant-storage";
 import {
   ListChatsQueryParams,
   UpdateChatBody,
+  BulkUpdateChatsBody,
   SendManualReplyBody,
   TakeoverChatBody,
   GetChatParams,
@@ -357,7 +358,11 @@ async function getEffectiveTeamRole(
 // the active one) so that the "All channels" view can open any chat detail
 // regardless of the X-Channel-Id header. The channel filter alone is enough
 // for tenant isolation — the chat's own channel_id pins it to one account.
-async function authorizedChatWhere(req: Request, res: Response, chatId: number) {
+async function authorizedChatWhere(
+  req: Request,
+  res: Response,
+  chatId: number | number[]
+) {
   const scope = await resolveChannelScope(req, res);
   if (!scope) return null; // already sent a 401
   if (scope.channelIds.length === 0) return { scope, where: null };
@@ -374,7 +379,7 @@ async function authorizedChatWhere(req: Request, res: Response, chatId: number) 
   // Cast to any[] so Drizzle generates `channel_id = ANY($1)` (single param
   // expansion) regardless of how many ids are in scope.
   const base = and(
-    eq(chatsTable.id, chatId),
+    inArray(chatsTable.id, Array.isArray(chatId) ? chatId : [chatId]),
     inArray(chatsTable.channelId, allowedIds)
   )!;
   const where =
@@ -1472,6 +1477,7 @@ router.post("/:id/messages/:messageId/forward", async (req, res): Promise<void> 
             direction: "outbound",
             content: baseText,
             isAiGenerated: false,
+            sentByUserId: req.session.userId ?? null,
             mediaType: message.mediaType ?? null,
             mediaUrl: message.mediaUrl ?? null,
             mediaMimeType: message.mediaMimeType ?? null,
@@ -1745,6 +1751,102 @@ router.get("/:id", async (req, res): Promise<void> => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Bulk-apply leadStatus / tag / status / a customer label to many chats at
+// once (chat-list multi-select). Scoping mirrors PATCH /:id — ids outside the
+// caller's channel scope (or, for agents, not assigned to them) are silently
+// skipped and only the in-scope row count is reported, so a stale client
+// can't probe another tenant's chat ids.
+router.post("/bulk-update", async (req, res): Promise<void> => {
+  try {
+    const parsed = BulkUpdateChatsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid body" });
+      return;
+    }
+    const { chatIds, addLabelId, ...fields } = parsed.data;
+    // zod.number() accepts decimals — re-validate ids at the boundary.
+    if (!chatIds.every((id) => Number.isInteger(id) && id > 0)) {
+      res.status(400).json({ error: "Invalid chat id" });
+      return;
+    }
+    if (addLabelId !== undefined && (!Number.isInteger(addLabelId) || addLabelId <= 0)) {
+      res.status(400).json({ error: "Invalid label id" });
+      return;
+    }
+    if (Object.keys(fields).length === 0 && addLabelId === undefined) {
+      res.status(400).json({ error: "No updatable field provided" });
+      return;
+    }
+
+    // Validate the label BEFORE touching any chat row so a bad label id
+    // can't leave a half-applied bulk update behind.
+    let ownerUserId: number | null = null;
+    if (addLabelId !== undefined) {
+      ownerUserId = await requireOwnerUserId(req, res);
+      if (ownerUserId == null) return;
+      const [label] = await db
+        .select({ id: customerLabelsTable.id })
+        .from(customerLabelsTable)
+        .where(
+          and(
+            eq(customerLabelsTable.ownerUserId, ownerUserId),
+            eq(customerLabelsTable.id, addLabelId)
+          )
+        );
+      if (!label) {
+        res.status(404).json({ error: "Label not found" });
+        return;
+      }
+    }
+
+    const az = await authorizedChatWhere(req, res, chatIds);
+    if (!az) return; // 401 already sent
+    if (!az.where) {
+      res.json({ updated: 0 });
+      return;
+    }
+
+    let updatedCount = 0;
+    if (Object.keys(fields).length > 0) {
+      const updated = await db
+        .update(chatsTable)
+        .set(fields)
+        .where(az.where)
+        .returning({ id: chatsTable.id });
+      updatedCount = updated.length;
+    }
+
+    if (addLabelId !== undefined && ownerUserId != null) {
+      // Labels are contact-level: attach to each selected chat's phone number
+      // (added on top of existing labels, never replacing them) so the label
+      // follows the contact across every channel.
+      const rows = await db
+        .select({ phoneNumber: chatsTable.phoneNumber })
+        .from(chatsTable)
+        .where(az.where);
+      const phones = Array.from(new Set(rows.map((r) => r.phoneNumber)));
+      if (phones.length > 0) {
+        await db
+          .insert(contactLabelsTable)
+          .values(
+            phones.map((phoneNumber) => ({
+              ownerUserId: ownerUserId as number,
+              phoneNumber,
+              labelId: addLabelId,
+            }))
+          )
+          .onConflictDoNothing();
+      }
+      updatedCount = Math.max(updatedCount, rows.length);
+    }
+
+    res.json({ updated: updatedCount });
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk-update chats");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2057,6 +2159,7 @@ router.post("/:id/reply", async (req, res): Promise<void> => {
         direction: "outbound",
         content: taggedContent,
         isAiGenerated: false,
+        sentByUserId: req.session.userId ?? null,
         waMessageId,
         mentionedPhoneDigits: mentionDigits.length ? mentionDigits : undefined,
         quotedMessageId: quotedRow?.id ?? null,
@@ -2298,6 +2401,7 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
         direction: "outbound",
         content: caption ?? "",
         isAiGenerated: false,
+        sentByUserId: req.session.userId ?? null,
         mediaType,
         mediaUrl,
         mediaMimeType: mimeType,
@@ -2492,6 +2596,7 @@ router.post("/:id/quotation", async (req, res): Promise<void> => {
         direction: "outbound",
         content: caption,
         isAiGenerated: false,
+        sentByUserId: req.session.userId ?? null,
         mediaType: "document",
         mediaUrl,
         mediaMimeType: mimeType,
@@ -2575,6 +2680,7 @@ router.post("/:id/contact", async (req, res): Promise<void> => {
         direction: "outbound",
         content: `${name} (${phone})`,
         isAiGenerated: false,
+        sentByUserId: req.session.userId ?? null,
         mediaType: "contact",
         mediaUrl: null,
         mediaMimeType: "text/vcard",
@@ -2770,6 +2876,7 @@ router.post("/:id/product", async (req, res): Promise<void> => {
         direction: "outbound",
         content: caption,
         isAiGenerated: false,
+        sentByUserId: req.session.userId ?? null,
         mediaType,
         mediaUrl,
         mediaMimeType,
@@ -2825,6 +2932,7 @@ router.post("/:id/product", async (req, res): Promise<void> => {
                 direction: "outbound",
                 content: "",
                 isAiGenerated: false,
+                sentByUserId: req.session.userId ?? null,
                 mediaType: "image",
                 mediaUrl: flyerImageUrl,
                 mediaMimeType: fetched.mimeType,
@@ -2870,6 +2978,7 @@ router.post("/:id/product", async (req, res): Promise<void> => {
               direction: "outbound",
               content: url,
               isAiGenerated: false,
+              sentByUserId: req.session.userId ?? null,
               mediaType: null,
               mediaUrl: null,
               mediaMimeType: null,
@@ -3107,6 +3216,7 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
         direction: "outbound",
         content: caption,
         isAiGenerated: false,
+        sentByUserId: req.session.userId ?? null,
         mediaType,
         mediaUrl,
         mediaMimeType,

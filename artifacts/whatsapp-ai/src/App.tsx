@@ -19,15 +19,19 @@ import AIStudio from "@/pages/AIStudio";
 import Usage from "@/pages/Usage";
 import Billing from "@/pages/Billing";
 import Analytics from "@/pages/Analytics";
-import Pipeline from "@/pages/Pipeline";
 import AIPipeline from "@/pages/AIPipeline";
 import AIPipelineNew from "@/pages/AIPipelineNew";
 import AIPipelineDetail from "@/pages/AIPipelineDetail";
+import AIChatReport from "@/pages/AIChatReport";
+import AIChatReportDetail from "@/pages/AIChatReportDetail";
+import AIChatReportSettings from "@/pages/AIChatReportSettings";
 import Products from "@/pages/Products";
 import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
 import Credentials from "@/pages/Credentials";
 import AIReview from "@/pages/AIReview";
+import WorkBoard from "@/pages/WorkBoard";
+import BoardDetail from "@/pages/WorkBoard/BoardDetail";
 import Agents from "@/pages/Agents";
 import Profile from "@/pages/Profile";
 import Login from "@/pages/Login";
@@ -127,7 +131,11 @@ function AuthGate() {
         <Route path="/billing" component={Billing} />
         <Route path="/profile" component={Profile} />
         <Route path="/analytics" component={Analytics} />
-        <Route path="/pipeline" component={Pipeline} />
+        <Route path="/workboard" component={WorkBoard} />
+        <Route path="/workboard/:boardId" component={BoardDetail} />
+        <Route path="/ai-chat-report" component={AIChatReport} />
+        <Route path="/ai-chat-report/settings" component={AIChatReportSettings} />
+        <Route path="/ai-chat-report/:jobId" component={AIChatReportDetail} />
         <Route path="/ai-pipeline" component={AIPipeline} />
         <Route path="/ai-pipeline/new" component={AIPipelineNew} />
         <Route path="/ai-pipeline/:id/edit" component={AIPipelineDetail} />

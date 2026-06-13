@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import {
   useListChats,
   useDeleteChat,
+  useBulkUpdateChats,
   useOpenChatByPhone,
   useCreateGroup,
   useListCustomerLabels,
@@ -32,9 +33,6 @@ import {
   Bot,
   UserCheck,
   Search,
-  Flame,
-  TrendingUp,
-  Snowflake,
   MessageSquare,
   Trash2,
   Pin,
@@ -45,6 +43,9 @@ import {
   Filter,
   MessageSquarePlus,
   UsersRound,
+  ListChecks,
+  Check,
+  Tag,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -84,17 +85,25 @@ function readableText(hex: string): string {
   return luminance > 0.6 ? "#111827" : "#ffffff";
 }
 
-const tagColors: Record<string, string> = {
-  hot_lead: "bg-orange-500/15 text-orange-300 border-orange-500/30",
-  cold: "bg-orange-500/15 text-orange-300 border-orange-500/30",
-  closing: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  none: "",
-};
-
-const tagIcons: Record<string, React.ElementType> = {
-  hot_lead: Flame,
-  cold: Snowflake,
-  closing: TrendingUp,
+// Visual marker for the manual lead classification (separate from the
+// auto-routing `tag`). Shown as a coloured dot next to the name plus a small
+// pill in the chat list so the operator can tell at a glance which chats are
+// leads. "unknown" (the default — belum di-set) has no entry, so those chats
+// stay unmarked.
+const leadStatusMeta: Record<
+  string,
+  { label: string; className: string; dotClassName: string }
+> = {
+  lead: {
+    label: "Lead",
+    className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    dotClassName: "bg-emerald-500",
+  },
+  not_lead: {
+    label: "Not Lead",
+    className: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+    dotClassName: "bg-rose-500",
+  },
 };
 
 interface Props {
@@ -103,7 +112,7 @@ interface Props {
 
 export default function ChatListPane({ selectedChatId }: Props) {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [tagFilter, setTagFilter] = useState("all");
+  const [leadFilter, setLeadFilter] = useState("all");
   const [labelFilter, setLabelFilter] = useState("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -158,6 +167,47 @@ export default function ChatListPane({ selectedChatId }: Props) {
     },
   });
 
+  // Multi-select mode: tick many chats in the list and bulk-apply a lead
+  // status / tag in one go, instead of opening each chat's info panel.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const bulkUpdate = useBulkUpdateChats({
+    mutation: {
+      onSuccess: (result) => {
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        toast({ title: `${result.updated} chat diperbarui.` });
+        setSelectedIds(new Set());
+        setSelectMode(false);
+      },
+      onError: () => {
+        toast({ title: "Gagal memperbarui chat.", variant: "destructive" });
+      },
+    },
+  });
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (chatId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) next.delete(chatId);
+      else next.add(chatId);
+      return next;
+    });
+  };
+
+  const applyBulk = (fields: {
+    leadStatus?: "unknown" | "lead" | "not_lead";
+    addLabelId?: number;
+  }) => {
+    if (selectedIds.size === 0 || bulkUpdate.isPending) return;
+    bulkUpdate.mutate({ data: { chatIds: Array.from(selectedIds), ...fields } });
+  };
+
   const handleDelete = (e: React.MouseEvent, chatId: number, contactName: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -178,7 +228,8 @@ export default function ChatListPane({ selectedChatId }: Props) {
   const filtered = allChats.filter((c) => {
     const matchScope = scope === "group" ? isGroupChat(c) : !isGroupChat(c);
     const matchStatus = statusFilter === "all" || c.status === statusFilter;
-    const matchTag = tagFilter === "all" || c.tag === tagFilter;
+    const matchLead =
+      leadFilter === "all" || (c.leadStatus ?? "unknown") === leadFilter;
     const matchLabel =
       labelFilter === "all" ||
       (c.labels ?? []).some((l) => String(l.id) === labelFilter);
@@ -190,13 +241,13 @@ export default function ChatListPane({ selectedChatId }: Props) {
       c.phoneNumber.includes(search) ||
       contentMatchIds.has(c.id);
     return (
-      matchScope && matchStatus && matchTag && matchLabel && matchUnread && matchSearch
+      matchScope && matchStatus && matchLead && matchLabel && matchUnread && matchSearch
     );
   });
 
   const activeFilters =
     (statusFilter !== "all" ? 1 : 0) +
-    (tagFilter !== "all" ? 1 : 0) +
+    (leadFilter !== "all" ? 1 : 0) +
     (labelFilter !== "all" ? 1 : 0) +
     (unreadOnly ? 1 : 0);
 
@@ -207,8 +258,23 @@ export default function ChatListPane({ selectedChatId }: Props) {
         <h1 className="text-lg font-medium text-foreground">Chats</h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-[hsl(var(--wa-meta))]">
-            {allChats.length} total
+            {selectMode ? `${selectedIds.size} dipilih` : `${allChats.length} total`}
           </span>
+          <button
+            type="button"
+            data-testid="button-select-mode"
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+              selectMode
+                ? "text-[hsl(var(--wa-accent))] bg-[hsl(var(--wa-accent))]/10"
+                : "text-[hsl(var(--wa-meta))] hover:text-foreground hover:bg-[hsl(var(--wa-panel))]"
+            )}
+            aria-label={selectMode ? "Batal pilih chat" : "Pilih banyak chat"}
+            title={selectMode ? "Batal pilih chat" : "Pilih banyak chat"}
+          >
+            <ListChecks className="w-4 h-4" />
+          </button>
           <NewGroupButton />
           <NewChatButton />
         </div>
@@ -261,12 +327,12 @@ export default function ChatListPane({ selectedChatId }: Props) {
               <DropdownMenuRadioItem value="closed">Closed</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs">Tag</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={tagFilter} onValueChange={setTagFilter}>
+            <DropdownMenuLabel className="text-xs">Lead</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={leadFilter} onValueChange={setLeadFilter}>
               <DropdownMenuRadioItem value="all">Semua</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="hot_lead">Hot Lead</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="cold">Cold</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="closing">Closing</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="lead">Lead</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="not_lead">Not Lead</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="unknown">Unknown</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             {availableLabels.length > 0 && (
               <>
@@ -294,7 +360,7 @@ export default function ChatListPane({ selectedChatId }: Props) {
                 <DropdownMenuItem
                   onClick={() => {
                     setStatusFilter("all");
-                    setTagFilter("all");
+                    setLeadFilter("all");
                     setLabelFilter("all");
                     setUnreadOnly(false);
                   }}
@@ -347,8 +413,9 @@ export default function ChatListPane({ selectedChatId }: Props) {
         ) : (
           <div>
             {filtered.map((chat) => {
-              const TagIcon = tagIcons[chat.tag];
+              const leadMeta = leadStatusMeta[chat.leadStatus ?? "unknown"];
               const isSelected = selectedChatId === chat.id;
+              const isChecked = selectMode && selectedIds.has(chat.id);
               const chatChannel =
                 showChannelBadge && chat.channelId != null
                   ? channelById.get(chat.channelId)
@@ -370,13 +437,36 @@ export default function ChatListPane({ selectedChatId }: Props) {
                   key={chat.id}
                   href={`/chats/${chat.id}`}
                   data-testid={`chat-list-item-${chat.id}`}
+                  onClick={(e) => {
+                    // In select mode the row toggles its checkbox instead of
+                    // navigating to the conversation.
+                    if (selectMode) {
+                      e.preventDefault();
+                      toggleSelected(chat.id);
+                    }
+                  }}
                   className={cn(
                     "group flex items-center gap-3 px-3 cursor-pointer border-l-[3px] transition-colors min-h-[72px]",
-                    isSelected
-                      ? "bg-[hsl(var(--wa-panel-header))] border-l-[hsl(var(--wa-accent))]"
-                      : "border-l-transparent hover:bg-[hsl(var(--wa-panel-header))]/60"
+                    isChecked
+                      ? "bg-[hsl(var(--wa-accent))]/10 border-l-[hsl(var(--wa-accent))]"
+                      : isSelected
+                        ? "bg-[hsl(var(--wa-panel-header))] border-l-[hsl(var(--wa-accent))]"
+                        : "border-l-transparent hover:bg-[hsl(var(--wa-panel-header))]/60"
                   )}
                 >
+                  {selectMode && (
+                    <span
+                      data-testid={`chat-select-${chat.id}`}
+                      className={cn(
+                        "w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0",
+                        isChecked
+                          ? "bg-[hsl(var(--wa-accent))] border-[hsl(var(--wa-accent))] text-white"
+                          : "border-[hsl(var(--wa-meta))]"
+                      )}
+                    >
+                      {isChecked && <Check className="w-3 h-3" />}
+                    </span>
+                  )}
                   <ChatAvatar
                     name={displayName}
                     profilePicUrl={chat.profilePicUrl}
@@ -396,9 +486,21 @@ export default function ChatListPane({ selectedChatId }: Props) {
                           data-testid={`chat-channel-dot-${chat.id}`}
                         />
                       )}
-                      <span className="text-[15px] font-normal text-foreground truncate flex-1 min-w-0">
+                      <span className="text-[15px] font-normal text-foreground truncate min-w-0">
                         {displayName}
                       </span>
+                      {leadMeta && (
+                        <span
+                          className={cn(
+                            "inline-block w-2 h-2 rounded-full flex-shrink-0",
+                            leadMeta.dotClassName
+                          )}
+                          title={leadMeta.label}
+                          aria-label={`Lead status: ${leadMeta.label}`}
+                          data-testid={`chat-lead-dot-${chat.id}`}
+                        />
+                      )}
+                      <span className="flex-1 min-w-0" />
                       {/* Fixed-width meta area: timestamp */}
                       <div className="flex items-center gap-1.5 flex-shrink-0 min-w-[70px] justify-end">
                         {chat.lastMessageAt && (
@@ -449,15 +551,16 @@ export default function ChatListPane({ selectedChatId }: Props) {
                             <Bot className="w-2.5 h-2.5" />
                           </Badge>
                         )}
-                        {chat.tag !== "none" && TagIcon && (
+                        {leadMeta && (
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[9px] h-4 w-4 p-0 flex items-center justify-center flex-shrink-0",
-                              tagColors[chat.tag]
+                              "text-[9px] h-4 px-1 flex items-center justify-center flex-shrink-0",
+                              leadMeta.className
                             )}
+                            data-testid={`chat-lead-badge-${chat.id}`}
                           >
-                            <TagIcon className="w-2.5 h-2.5" />
+                            {leadMeta.label}
                           </Badge>
                         )}
                         {(chat.unreadCount ?? 0) > 0 && (
@@ -505,6 +608,107 @@ export default function ChatListPane({ selectedChatId }: Props) {
           </div>
         )}
       </div>
+
+      {/* Bulk action bar — shown while select mode is active */}
+      {selectMode && (
+        <div
+          data-testid="bulk-action-bar"
+          className="flex-shrink-0 border-t border-[hsl(var(--wa-divider))] bg-[hsl(var(--wa-panel-header))] px-3 py-2 space-y-2"
+        >
+          <div className="flex items-center justify-between text-xs text-[hsl(var(--wa-meta))]">
+            <button
+              type="button"
+              data-testid="button-select-all"
+              className="hover:text-foreground transition-colors"
+              onClick={() => {
+                const allVisibleSelected =
+                  filtered.length > 0 &&
+                  filtered.every((c) => selectedIds.has(c.id));
+                setSelectedIds(
+                  allVisibleSelected
+                    ? new Set()
+                    : new Set(filtered.map((c) => c.id))
+                );
+              }}
+            >
+              {filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))
+                ? "Batal pilih semua"
+                : `Pilih semua (${filtered.length})`}
+            </button>
+            <span className="flex items-center gap-1.5">
+              {bulkUpdate.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+              {selectedIds.size} dipilih
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="bulk-set-lead"
+              disabled={selectedIds.size === 0 || bulkUpdate.isPending}
+              onClick={() => applyBulk({ leadStatus: "lead" })}
+              className="h-7 px-2 text-xs flex-1 gap-1.5 bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
+            >
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+              Lead
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="bulk-set-not-lead"
+              disabled={selectedIds.size === 0 || bulkUpdate.isPending}
+              onClick={() => applyBulk({ leadStatus: "not_lead" })}
+              className="h-7 px-2 text-xs flex-1 gap-1.5 bg-rose-500/15 text-rose-300 border-rose-500/30 hover:bg-rose-500/25"
+            >
+              <span className="inline-block w-2 h-2 rounded-full bg-rose-500" />
+              Not Lead
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="bulk-set-unknown"
+              disabled={selectedIds.size === 0 || bulkUpdate.isPending}
+              onClick={() => applyBulk({ leadStatus: "unknown" })}
+              className="h-7 px-2 text-xs flex-1"
+            >
+              Unknown
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="bulk-set-label"
+                  disabled={selectedIds.size === 0 || bulkUpdate.isPending}
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <Tag className="w-3 h-3" />
+                  Label
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel className="text-xs">Tambah label</DropdownMenuLabel>
+                {availableLabels.length === 0 ? (
+                  <DropdownMenuItem disabled>Belum ada label</DropdownMenuItem>
+                ) : (
+                  availableLabels.map((l) => (
+                    <DropdownMenuItem
+                      key={l.id}
+                      onClick={() => applyBulk({ addLabelId: l.id })}
+                    >
+                      <span
+                        className="inline-block w-2 h-2 rounded-full mr-2 shrink-0"
+                        style={{ backgroundColor: l.color }}
+                      />
+                      <span className="truncate">{l.name}</span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

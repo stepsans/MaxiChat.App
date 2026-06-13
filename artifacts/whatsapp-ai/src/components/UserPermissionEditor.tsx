@@ -48,6 +48,7 @@ const MENUS: { key: PermissionMenu; label: string }[] = [
   { key: "aiStudio", label: "AI Studio" },
   { key: "usage", label: "Pemakaian Token" },
   { key: "aiReview", label: "AI Review" },
+  { key: "acr", label: "AI Chat Report" },
 ];
 
 const ACTIONS: { key: keyof PermissionCell; label: string }[] = [

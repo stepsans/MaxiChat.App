@@ -18,8 +18,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CircleDashed,
-  Target,
   BrainCircuit,
+  Kanban,
+  ClipboardCheck,
   LogOut,
   Camera,
   Cpu,
@@ -90,7 +91,27 @@ const navGroups: NavGroup[] = [
     items: [
       { href: "/ai-studio", label: "AI Studio", icon: Sparkles, menu: "aiStudio" },
       { href: "/ai-review", label: "AI Review", icon: ReceiptText, menu: "aiReview" },
+      {
+        href: "/ai-pipeline",
+        label: "AI Pipeline",
+        icon: BrainCircuit,
+        menu: "opportunities",
+        requiresAiSalesAssistant: true,
+      },
       { href: "/usage", label: "Pemakaian Token", icon: Cpu, menu: "usage" },
+      {
+        href: "/ai-chat-report",
+        label: "AI Chat Report",
+        icon: ClipboardCheck,
+        menu: "acr",
+      },
+    ],
+  },
+  {
+    id: "workboard",
+    label: "Produktivitas",
+    items: [
+      { href: "/workboard", label: "WorkBoard", icon: Kanban, menu: "workboard" },
     ],
   },
   {
@@ -100,26 +121,6 @@ const navGroups: NavGroup[] = [
       { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },
       { href: "/products", label: "Products", icon: Package, menu: "products" },
       { href: "/flows", label: "Chatbot Flow", icon: GitBranch, menu: "flows" },
-    ],
-  },
-  {
-    id: "sales",
-    label: "AI Sales Assistant",
-    items: [
-      {
-        href: "/pipeline",
-        label: "Pipeline",
-        icon: Target,
-        menu: "opportunities",
-        requiresAiSalesAssistant: true,
-      },
-      {
-        href: "/ai-pipeline",
-        label: "AI Pipeline",
-        icon: BrainCircuit,
-        menu: "opportunities",
-        requiresAiSalesAssistant: true,
-      },
     ],
   },
   {
