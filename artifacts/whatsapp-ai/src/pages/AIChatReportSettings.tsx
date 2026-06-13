@@ -30,6 +30,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
+import AcrAdvancedSettings from "./AcrAdvancedSettings";
 
 type FormState = {
   weightResponseTime: number;
@@ -187,10 +188,6 @@ export default function AIChatReportSettings() {
     if (config) setForm(fromConfig(config));
   }, [config]);
 
-  const { data: members } = useListAcrTeamMembers({
-    query: { queryKey: getListAcrTeamMembersQueryKey() },
-  });
-
   const update = useUpdateAcrConfig();
 
   const totalWeight =
@@ -252,15 +249,6 @@ export default function AIChatReportSettings() {
       }
     );
   };
-
-  const nextRunPreview = useMemo(() => {
-    if (!form.autoScheduleEnabled) return null;
-    if (form.autoScheduleFrequency === "monthly")
-      return `Laporan dibuat otomatis setiap tanggal ${form.autoScheduleDayOfMonth}`;
-    if (form.autoScheduleFrequency === "weekly")
-      return `Laporan dibuat otomatis setiap hari ${DAY_NAMES[form.autoScheduleDayOfWeek - 1] ?? "Senin"}`;
-    return `Laporan dibuat otomatis setiap ${form.autoScheduleEveryDays} hari`;
-  }, [form]);
 
   if (isLoading) {
     return (
@@ -473,127 +461,24 @@ export default function AIChatReportSettings() {
         </CardContent>
       </Card>
 
-      {/* Section 6: Auto-schedule */}
+      {/* Section 6: Auto-schedule — now managed as multiple named schedules. */}
       <Card>
         <CardHeader>
           <CardTitle>Laporan Otomatis</CardTitle>
+          <CardDescription>
+            Jadwal laporan otomatis (harian/mingguan/bulanan) kini dikelola sebagai jadwal
+            bernama yang bisa lebih dari satu.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <Label>Buat laporan secara otomatis</Label>
-            <Switch
-              checked={form.autoScheduleEnabled}
-              onCheckedChange={(v) => set("autoScheduleEnabled", v)}
-            />
-          </div>
-          {form.autoScheduleEnabled && (
-            <>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.autoScheduleFrequency === "weekly"}
-                    onChange={() => set("autoScheduleFrequency", "weekly")}
-                  />
-                  Mingguan — setiap
-                  <select
-                    className="rounded-md border bg-background px-2 py-1"
-                    value={form.autoScheduleDayOfWeek}
-                    onChange={(e) => set("autoScheduleDayOfWeek", Number(e.target.value))}
-                    disabled={form.autoScheduleFrequency !== "weekly"}
-                  >
-                    {DAY_NAMES.map((d, i) => (
-                      <option key={d} value={i + 1}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.autoScheduleFrequency === "monthly"}
-                    onChange={() => set("autoScheduleFrequency", "monthly")}
-                  />
-                  Bulanan — setiap tanggal
-                  <Input
-                    type="number"
-                    min={1}
-                    max={28}
-                    className="w-16"
-                    value={form.autoScheduleDayOfMonth}
-                    onChange={(e) =>
-                      set(
-                        "autoScheduleDayOfMonth",
-                        Math.max(1, Math.min(28, numInput(e.target.value)))
-                      )
-                    }
-                    disabled={form.autoScheduleFrequency !== "monthly"}
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    checked={form.autoScheduleFrequency === "custom"}
-                    onChange={() => set("autoScheduleFrequency", "custom")}
-                  />
-                  Kustom — setiap
-                  <Input
-                    type="number"
-                    min={1}
-                    max={90}
-                    className="w-16"
-                    value={form.autoScheduleEveryDays}
-                    onChange={(e) =>
-                      set(
-                        "autoScheduleEveryDays",
-                        Math.max(1, Math.min(90, numInput(e.target.value)))
-                      )
-                    }
-                    disabled={form.autoScheduleFrequency !== "custom"}
-                  />
-                  hari
-                </label>
-              </div>
-              <div>
-                <Label className="mb-1 block">Notifikasi ke</Label>
-                <div className="max-h-36 space-y-1 overflow-y-auto rounded-md border p-2">
-                  {(members ?? []).map((m) => (
-                    <label key={m.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={form.autoScheduleNotifyUserIds.includes(m.id)}
-                        onCheckedChange={(v) =>
-                          set(
-                            "autoScheduleNotifyUserIds",
-                            v
-                              ? [...form.autoScheduleNotifyUserIds, m.id]
-                              : form.autoScheduleNotifyUserIds.filter((id) => id !== m.id)
-                          )
-                        }
-                      />
-                      {m.name ?? m.email}
-                    </label>
-                  ))}
-                  {(members ?? []).length === 0 && (
-                    <p className="text-xs text-muted-foreground">Belum ada anggota tim.</p>
-                  )}
-                </div>
-              </div>
-              {nextRunPreview && (
-                <p className="text-xs text-muted-foreground">
-                  {nextRunPreview}
-                  {config?.autoScheduleNextRunAt
-                    ? ` — berikutnya: ${new Date(config.autoScheduleNextRunAt).toLocaleDateString(
-                        "id-ID",
-                        { timeZone: "Asia/Jakarta", day: "numeric", month: "long", year: "numeric" }
-                      )}`
-                    : ""}
-                </p>
-              )}
-            </>
-          )}
+        <CardContent>
+          <Button variant="outline" onClick={() => navigate("/ai-chat-report")}>
+            Kelola di tab “Jadwal Otomatis” →
+          </Button>
         </CardContent>
       </Card>
+
+      {/* Bagian IV: Target KPI per agent + Tim/Shift */}
+      <AcrAdvancedSettings />
 
       <div className="flex items-center justify-between">
         <Button variant="outline" onClick={() => setResetOpen(true)}>

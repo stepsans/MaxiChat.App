@@ -98,12 +98,20 @@ export function validateConfigInput(cfg: AcrConfigSnapshot): string | null {
 export interface AcrMessage {
   id: number;
   direction: "inbound" | "outbound";
-  // True for AI/chatbot outbound sends. AI replies do address the customer
-  // (so the customer was not "ignored"), but they don't credit the human
-  // agent's response time — inbound turns answered by AI are skipped.
+  // True for AI outbound sends.
   isAiGenerated: boolean;
+  // The human (agent/supervisor) who sent an outbound message. NULL for
+  // inbound, AI sends, bot-flow sends, and historical pre-column rows.
+  // A message counts as HUMAN only when isAiGenerated=false AND sentByUserId
+  // is not null (Section 4.1a). Everything else is automated context only.
+  sentByUserId: number | null;
   content: string;
   createdAt: Date;
+}
+
+// A message authored by a human agent — the only kind that counts toward KPIs.
+export function isHumanMessage(m: AcrMessage): boolean {
+  return m.direction === "outbound" && !m.isAiGenerated && m.sentByUserId != null;
 }
 
 export interface CustomerIgnoredEvent {
@@ -151,6 +159,10 @@ export function computeResponseMetrics(
 
   let turn: AcrMessage[] = [];
 
+  // Only a HUMAN outbound closes a customer turn (Section 4.1a/4.2/4.3). AI and
+  // bot-flow sends are context only: they neither answer the turn nor credit a
+  // response time, so a customer who pings again after just a bot reply still
+  // counts as ignored, and the wait is measured to the next human reply.
   const closeTurn = (reply: AcrMessage | null) => {
     if (turn.length === 0) return;
     const first = turn[0]!;
@@ -162,8 +174,9 @@ export function computeResponseMetrics(
       });
     }
     if (!reply) {
+      // No human ever replied (a bot may have) → missed.
       missedTurns++;
-    } else if (!reply.isAiGenerated) {
+    } else {
       const minutes =
         (reply.createdAt.getTime() - first.createdAt.getTime()) / 60_000;
       responseTimes.push(minutes);
@@ -171,7 +184,6 @@ export function computeResponseMetrics(
         noReplyCriticalEvents.push({ minutes, firstInboundAt: first.createdAt });
       }
     }
-    // Turn answered by AI: neither missed nor a human response time.
     turn = [];
   };
 
@@ -179,10 +191,11 @@ export function computeResponseMetrics(
     if (msg.direction === "inbound") {
       totalCustomerMessages++;
       turn.push(msg);
-    } else {
-      if (!msg.isAiGenerated) totalAgentMessages++;
+    } else if (isHumanMessage(msg)) {
+      totalAgentMessages++;
       closeTurn(msg);
     }
+    // AI/bot outbound: skip entirely (does not answer the turn).
   }
   closeTurn(null);
 
@@ -258,6 +271,43 @@ export interface AgentAggregateResult {
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+// Weighted total (0–100) from five raw 0–100 dimension scores. Honors the
+// complaint-handling toggle exactly like aggregateAgentScores: when disabled,
+// the complaint weight is redistributed proportionally across the other four
+// dimensions (effective weight = weight_x / (100 - weight_complaint) × 100).
+// Used for the per-conversation total so it stays consistent with the
+// per-agent total when complaint handling is off.
+export function weightedTotalScore(
+  raws: {
+    responseTime: number;
+    language: number;
+    answer: number;
+    complaint: number;
+    missed: number;
+  },
+  cfg: AcrConfigSnapshot
+): number {
+  if (!cfg.complaintHandlingEnabled) {
+    const activeWeight = 100 - cfg.weightComplaintHandling;
+    const scale = activeWeight > 0 ? 100 / activeWeight : 0;
+    return round2(
+      (raws.responseTime * cfg.weightResponseTime * scale +
+        raws.language * cfg.weightLanguageQuality * scale +
+        raws.answer * cfg.weightAnswerQuality * scale +
+        raws.missed * cfg.weightMissedChat * scale) /
+        100
+    );
+  }
+  return round2(
+    (raws.responseTime * cfg.weightResponseTime +
+      raws.language * cfg.weightLanguageQuality +
+      raws.answer * cfg.weightAnswerQuality +
+      raws.complaint * cfg.weightComplaintHandling +
+      raws.missed * cfg.weightMissedChat) /
+      100
+  );
+}
 
 // Convert raw 0–100 dimension scores to weighted contributions and sum.
 // When complaint handling is disabled, its weight is redistributed to the
@@ -643,4 +693,104 @@ export function autoSchedulePeriod(
   const days = frequency === "weekly" ? 7 : frequency === "custom" ? Math.max(1, everyDays) : 30;
   const startDate = new Date(new Date(`${end}T00:00:00Z`).getTime() - days * 86_400_000);
   return { periodStart: startDate.toISOString().slice(0, 10), periodEnd: end };
+}
+
+// ─── Multi-schedule (Bagian II: acr_schedules) ──────────────────────────────
+
+export type ScheduleFrequency = "daily" | "weekly" | "monthly";
+
+export interface ScheduleSpec {
+  frequency: ScheduleFrequency;
+  dayOfWeek?: number | null; // 0=Sunday … 6=Saturday (weekly)
+  dayOfMonth?: number | null; // 1–28 (monthly)
+  cutoffHour: number; // 0–23 (WIB)
+  cutoffMinute: number; // 0–59
+}
+
+// Next run instant strictly after `after`, at cutoffHour:cutoffMinute WIB.
+// Mirrors computeNextRunAt but supports daily + an arbitrary cutoff time and
+// the JS day-of-week convention (0=Sunday) used by acr_schedules.
+export function computeScheduleNextRun(s: ScheduleSpec, after: Date): Date {
+  const wibNow = new Date(after.getTime() + 7 * 3600_000);
+  const h = Math.min(23, Math.max(0, s.cutoffHour));
+  const min = Math.min(59, Math.max(0, s.cutoffMinute));
+  // cutoff h:min WIB == (h-7):min UTC; Date.UTC normalizes negative hours.
+  const mk = (y: number, m: number, d: number): Date =>
+    new Date(Date.UTC(y, m, d, h - 7, min, 0));
+
+  if (s.frequency === "daily") {
+    const today = mk(wibNow.getUTCFullYear(), wibNow.getUTCMonth(), wibNow.getUTCDate());
+    if (today.getTime() > after.getTime()) return today;
+    return mk(wibNow.getUTCFullYear(), wibNow.getUTCMonth(), wibNow.getUTCDate() + 1);
+  }
+
+  if (s.frequency === "weekly") {
+    const targetJsDay = (((s.dayOfWeek ?? 0) % 7) + 7) % 7;
+    for (let i = 0; i <= 14; i++) {
+      const cand = new Date(
+        Date.UTC(wibNow.getUTCFullYear(), wibNow.getUTCMonth(), wibNow.getUTCDate() + i)
+      );
+      if (cand.getUTCDay() !== targetJsDay) continue;
+      const runAt = mk(cand.getUTCFullYear(), cand.getUTCMonth(), cand.getUTCDate());
+      if (runAt.getTime() > after.getTime()) return runAt;
+    }
+  }
+
+  // monthly (day clamped to 1–28, so every month has it).
+  const day = Math.min(28, Math.max(1, s.dayOfMonth ?? 1));
+  const thisMonth = mk(wibNow.getUTCFullYear(), wibNow.getUTCMonth(), day);
+  if (thisMonth.getTime() > after.getTime()) return thisMonth;
+  return mk(wibNow.getUTCFullYear(), wibNow.getUTCMonth() + 1, day);
+}
+
+// Period covered by a scheduled job ending today (WIB): daily=1d, weekly=7d,
+// monthly=30d before today.
+export function schedulePeriod(
+  frequency: ScheduleFrequency,
+  now: Date = new Date()
+): { periodStart: string; periodEnd: string } {
+  const end = todayWib(now);
+  const days = frequency === "daily" ? 1 : frequency === "weekly" ? 7 : 30;
+  const startDate = new Date(new Date(`${end}T00:00:00Z`).getTime() - days * 86_400_000);
+  return { periodStart: startDate.toISOString().slice(0, 10), periodEnd: end };
+}
+
+const ID_MONTHS = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+const ID_MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+  "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+];
+
+// ISO-8601 week number of a UTC date (Monday-based).
+function isoWeek(d: Date): number {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
+  date.setUTCDate(date.getUTCDate() - dayNum + 3); // Thursday of this week
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  return 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 86_400_000));
+}
+
+// Human label for a report period (Bahasa Indonesia).
+export function buildPeriodLabel(
+  frequency: ScheduleFrequency | "manual",
+  periodStart: string,
+  periodEnd: string
+): string {
+  const ps = new Date(`${periodStart}T00:00:00Z`);
+  const pe = new Date(`${periodEnd}T00:00:00Z`);
+  const fmt = (d: Date) =>
+    `${d.getUTCDate()} ${ID_MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  if (frequency === "daily") return fmt(pe);
+  if (frequency === "weekly") return `Minggu ke-${isoWeek(ps)}, ${ps.getUTCFullYear()}`;
+  if (frequency === "monthly") return `${ID_MONTHS[ps.getUTCMonth()]} ${ps.getUTCFullYear()}`;
+  const sameYear = ps.getUTCFullYear() === pe.getUTCFullYear();
+  const left = `${ps.getUTCDate()} ${ID_MONTHS_SHORT[ps.getUTCMonth()]}${
+    sameYear ? "" : ` ${ps.getUTCFullYear()}`
+  }`;
+  return `${left} – ${fmt(pe)}`;
 }

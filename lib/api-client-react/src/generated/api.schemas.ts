@@ -1240,7 +1240,7 @@ export type ChatLeadStatus = typeof ChatLeadStatus[keyof typeof ChatLeadStatus];
 
 
 export const ChatLeadStatus = {
-  none: 'none',
+  unknown: 'unknown',
   lead: 'lead',
   not_lead: 'not_lead',
 } as const;
@@ -1425,7 +1425,7 @@ export type ChatWithMessagesLeadStatus = typeof ChatWithMessagesLeadStatus[keyof
 
 
 export const ChatWithMessagesLeadStatus = {
-  none: 'none',
+  unknown: 'unknown',
   lead: 'lead',
   not_lead: 'not_lead',
 } as const;
@@ -1528,7 +1528,7 @@ export type ChatUpdateLeadStatus = typeof ChatUpdateLeadStatus[keyof typeof Chat
 
 
 export const ChatUpdateLeadStatus = {
-  none: 'none',
+  unknown: 'unknown',
   lead: 'lead',
   not_lead: 'not_lead',
 } as const;
@@ -1553,6 +1553,61 @@ export interface ChatUpdate {
      * @nullable
      */
   customerCode?: string | null;
+}
+
+/**
+ * Manual lead classification to apply to all selected chats.
+ */
+export type BulkChatUpdateInputLeadStatus = typeof BulkChatUpdateInputLeadStatus[keyof typeof BulkChatUpdateInputLeadStatus];
+
+
+export const BulkChatUpdateInputLeadStatus = {
+  unknown: 'unknown',
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
+/**
+ * Auto-routing tag to apply to all selected chats.
+ */
+export type BulkChatUpdateInputTag = typeof BulkChatUpdateInputTag[keyof typeof BulkChatUpdateInputTag];
+
+
+export const BulkChatUpdateInputTag = {
+  none: 'none',
+  hot_lead: 'hot_lead',
+  cold: 'cold',
+  closing: 'closing',
+} as const;
+
+export type BulkChatUpdateInputStatus = typeof BulkChatUpdateInputStatus[keyof typeof BulkChatUpdateInputStatus];
+
+
+export const BulkChatUpdateInputStatus = {
+  ai_handled: 'ai_handled',
+  needs_human: 'needs_human',
+  closed: 'closed',
+} as const;
+
+export interface BulkChatUpdateInput {
+  /**
+     * Ids of the chats to update. Out-of-scope ids are skipped.
+     * @minItems 1
+     * @maxItems 500
+     */
+  chatIds: number[];
+  /** Manual lead classification to apply to all selected chats. */
+  leadStatus?: BulkChatUpdateInputLeadStatus;
+  /** Auto-routing tag to apply to all selected chats. */
+  tag?: BulkChatUpdateInputTag;
+  status?: BulkChatUpdateInputStatus;
+  /** Id of a customer label to attach to every selected chat's contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected. */
+  addLabelId?: number;
+}
+
+export interface BulkChatUpdateResult {
+  /** Number of chats actually updated (in-scope rows only). */
+  updated: number;
 }
 
 export interface CreateCustomerLabelInput {
@@ -4188,12 +4243,40 @@ export type AcrConfig = AcrConfigInput & ({
   updatedAt?: string;
 });
 
+export type AcrJobCreateLeadStatusesItem = typeof AcrJobCreateLeadStatusesItem[keyof typeof AcrJobCreateLeadStatusesItem];
+
+
+export const AcrJobCreateLeadStatusesItem = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+  unknown: 'unknown',
+} as const;
+
+export type AcrJobCreateChatStatusesItem = typeof AcrJobCreateChatStatusesItem[keyof typeof AcrJobCreateChatStatusesItem];
+
+
+export const AcrJobCreateChatStatusesItem = {
+  ai_handled: 'ai_handled',
+  needs_human: 'needs_human',
+  closed: 'closed',
+} as const;
+
 export interface AcrJobCreate {
   /** YYYY-MM-DD in the tenant timezone. Default today - 30 days. */
   periodStart: string;
   periodEnd: string;
   /** Empty/omitted = evaluate all agents. */
   agentIds?: number[];
+  /** Manual lead classifications whose chats are analyzed. Empty/omitted defaults to [lead] — only chats marked as leads are evaluated. */
+  leadStatuses?: AcrJobCreateLeadStatusesItem[];
+  /** Restrict analysis to these channels. Empty/omitted = all channels. */
+  channelIds?: number[];
+  /** Restrict to chats whose contact carries one of these customer labels. Empty/omitted = no label filter. */
+  customerLabelIds?: number[];
+  /** Restrict to chats with one of these handling statuses. Empty/omitted = all statuses. */
+  chatStatuses?: AcrJobCreateChatStatusesItem[];
+  /** Override the tenant config's include-owner-in-evaluation for this report. Omitted = inherit config. */
+  includeOwner?: boolean;
 }
 
 export type AcrJobStatus = typeof AcrJobStatus[keyof typeof AcrJobStatus];
@@ -4226,6 +4309,10 @@ export interface AcrJob {
   archivedAt?: string | null;
   /** True when this is the newest job covering its exact period. */
   isLatestForPeriod?: boolean;
+  jobType?: string;
+  /** Stored PDF URL once auto-generated for a scheduled job. */
+  pdfPath?: string | null;
+  pdfGeneratedAt?: string | null;
 }
 
 export interface AcrJobList {
@@ -4498,6 +4585,276 @@ export interface AcrTeamMember {
   name?: string | null;
   email: string;
   teamRole: string;
+}
+
+export type AcrScheduleInputFrequency = typeof AcrScheduleInputFrequency[keyof typeof AcrScheduleInputFrequency];
+
+
+export const AcrScheduleInputFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface AcrScheduleInput {
+  name: string;
+  frequency: AcrScheduleInputFrequency;
+  /**
+     * Weekly only. 0=Sunday … 6=Saturday.
+     * @minimum 0
+     * @maximum 6
+     */
+  dayOfWeek?: number | null;
+  /**
+     * Monthly only. 1–28.
+     * @minimum 1
+     * @maximum 28
+     */
+  dayOfMonth?: number | null;
+  /**
+     * @minimum 0
+     * @maximum 23
+     */
+  cutoffHour: number;
+  /**
+     * @minimum 0
+     * @maximum 59
+     */
+  cutoffMinute: number;
+  /** Empty/omitted = all agents. */
+  agentIds?: number[];
+  notifyUserIds?: number[];
+  generatePdf?: boolean;
+  sendWhatsappPdf?: boolean;
+  isActive?: boolean;
+}
+
+export interface AcrScheduleActiveInput {
+  isActive: boolean;
+}
+
+export type AcrScheduleFrequency = typeof AcrScheduleFrequency[keyof typeof AcrScheduleFrequency];
+
+
+export const AcrScheduleFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface AcrSchedule {
+  id: string;
+  name: string;
+  isActive: boolean;
+  frequency: AcrScheduleFrequency;
+  dayOfWeek?: number | null;
+  dayOfMonth?: number | null;
+  cutoffHour: number;
+  cutoffMinute: number;
+  timezone?: string;
+  agentIds?: number[] | null;
+  notifyUserIds?: number[];
+  generatePdf?: boolean;
+  sendWhatsappPdf?: boolean;
+  nextRunAt: string;
+  lastRunAt?: string | null;
+  lastRunJobId?: string | null;
+  totalRuns?: number;
+  createdAt?: string;
+}
+
+export type AcrKpiSnapshotFrequency = typeof AcrKpiSnapshotFrequency[keyof typeof AcrKpiSnapshotFrequency] | null;
+
+
+export const AcrKpiSnapshotFrequency = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface AcrKpiSnapshot {
+  id: string;
+  jobId: string;
+  scheduleId?: string | null;
+  periodStart: string;
+  periodEnd: string;
+  periodLabel: string;
+  jobType: string;
+  frequency?: AcrKpiSnapshotFrequency;
+  teamAvgScore?: number | null;
+  teamAvgResponseTime?: number | null;
+  teamAvgLanguage?: number | null;
+  teamAvgAnswer?: number | null;
+  teamAvgComplaint?: number | null;
+  teamAvgMissed?: number | null;
+  countGradeA?: number;
+  countGradeB?: number;
+  countGradeC?: number;
+  countGradeD?: number;
+  countGradeE?: number;
+  totalAgents: number;
+  totalRedFlags?: number;
+  totalCustomerAngry?: number;
+  totalRudeLanguage?: number;
+  totalNoReplyCritical?: number;
+  totalCustomerIgnored?: number;
+  totalAnswerDropout?: number;
+  totalConversations?: number;
+  totalMessages?: number;
+  totalMissedChats?: number;
+  totalComplaints?: number;
+  complaintsResolved?: number;
+  topPerformerName?: string | null;
+  topPerformerScore?: number | null;
+  topPerformerGrade?: string | null;
+  botPerformerName?: string | null;
+  botPerformerScore?: number | null;
+  botPerformerGrade?: string | null;
+  totalAllowanceAmount?: number;
+  createdAt?: string;
+}
+
+export type AcrDashboardAgentTrendPointsItem = {
+  jobId: string;
+  periodStart: string;
+  periodLabel: string;
+  totalScore: number;
+  grade: string;
+};
+
+export interface AcrDashboardAgentTrend {
+  agentUserId: number;
+  agentName?: string | null;
+  points: AcrDashboardAgentTrendPointsItem[];
+}
+
+export interface AcrDashboard {
+  frequency: string;
+  periods: AcrKpiSnapshot[];
+  current?: AcrKpiSnapshot | null;
+  previous?: AcrKpiSnapshot | null;
+  leaderboard: AcrAgentScore[];
+  agentTrends: AcrDashboardAgentTrend[];
+}
+
+export interface AcrTarget {
+  id: string;
+  agentUserId: number;
+  targetScore: number;
+  targetDeadline?: string | null;
+  setByUserId?: number | null;
+  updatedAt?: string;
+}
+
+export interface AcrTargetInput {
+  targetScore: number;
+  targetDeadline?: string | null;
+}
+
+export interface AcrAlert {
+  id: string;
+  agentUserId: number;
+  jobId?: string | null;
+  alertType: string;
+  severity: string;
+  title: string;
+  description?: string | null;
+  recommendation?: string | null;
+  affectedDimensions?: string[] | null;
+  isRead: boolean;
+  isResolved: boolean;
+  resolvedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface AcrAchievement {
+  id: string;
+  agentUserId: number;
+  jobId?: string | null;
+  achievementId: string;
+  achievementName: string;
+  achievementIcon: string;
+  description?: string | null;
+  earnedAtPeriod: string;
+  earnedAt?: string;
+}
+
+export interface AcrTeamGroup {
+  id: string;
+  name: string;
+  scheduleLabel?: string | null;
+  agentUserIds: number[];
+  updatedAt?: string;
+}
+
+export interface AcrTeamGroupInput {
+  name: string;
+  scheduleLabel?: string | null;
+  agentUserIds: number[];
+}
+
+export type AcrMomReportKeyImprovementsItem = {
+  metric?: string;
+  change?: string;
+  possible_reason?: string;
+};
+
+export type AcrMomReportKeyDeclinesItem = {
+  metric?: string;
+  change?: string;
+  possible_reason?: string;
+  recommendation?: string;
+};
+
+export type AcrMomReportAgentHighlightsMostImproved = {
+  name?: string;
+  delta?: string;
+  note?: string;
+};
+
+export type AcrMomReportAgentHighlightsMostDeclined = {
+  name?: string;
+  delta?: string;
+  note?: string;
+};
+
+export type AcrMomReportAgentHighlightsMostConsistent = {
+  name?: string;
+  note?: string;
+};
+
+export type AcrMomReportAgentHighlights = {
+  most_improved?: AcrMomReportAgentHighlightsMostImproved;
+  most_declined?: AcrMomReportAgentHighlightsMostDeclined;
+  most_consistent?: AcrMomReportAgentHighlightsMostConsistent;
+};
+
+export interface AcrMomReport {
+  overall_trend?: string;
+  executive_summary?: string;
+  key_improvements?: AcrMomReportKeyImprovementsItem[];
+  key_declines?: AcrMomReportKeyDeclinesItem[];
+  agent_highlights?: AcrMomReportAgentHighlights;
+  strategic_recommendations?: string[];
+  forecast?: string;
+}
+
+export type AcrBenchmarkTeamsRankedItem = {
+  rank?: number;
+  team_name?: string;
+  avg_score?: number;
+  avg_response_time?: number;
+  total_red_flags?: number;
+  strengths?: string[];
+  weaknesses?: string[];
+};
+
+export interface AcrBenchmark {
+  period?: string;
+  teams_ranked?: AcrBenchmarkTeamsRankedItem[];
+  comparison_summary?: string;
+  gap_analysis?: string;
+  cross_team_recommendations?: string[];
 }
 
 export type GetMyBillingTrendParams = {
@@ -4820,9 +5177,22 @@ export type ListAcrRedFlagsParams = {
 agentId?: number;
 violationType?: string;
 severity?: string;
+/**
+ * Order of results. Default 'latest' (most recent first).
+ */
+sort?: ListAcrRedFlagsSort;
 page?: number;
 limit?: number;
 };
+
+export type ListAcrRedFlagsSort = typeof ListAcrRedFlagsSort[keyof typeof ListAcrRedFlagsSort];
+
+
+export const ListAcrRedFlagsSort = {
+  latest: 'latest',
+  severity: 'severity',
+  agent: 'agent',
+} as const;
 
 export type ListAcrConversationsParams = {
 page?: number;
@@ -4847,5 +5217,38 @@ jobId?: string;
 
 export type ListAcrNotificationsParams = {
 unreadOnly?: boolean;
+};
+
+export type GetAcrDashboardParams = {
+frequency?: GetAcrDashboardFrequency;
+limit?: number;
+};
+
+export type GetAcrDashboardFrequency = typeof GetAcrDashboardFrequency[keyof typeof GetAcrDashboardFrequency];
+
+
+export const GetAcrDashboardFrequency = {
+  all: 'all',
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+  manual: 'manual',
+} as const;
+
+export type ListAcrAlertsParams = {
+unresolvedOnly?: boolean;
+};
+
+export type ListAcrAchievementsParams = {
+agentId?: number;
+};
+
+export type GetAcrMomReportParams = {
+currentJobId: string;
+previousJobId: string;
+};
+
+export type GetAcrBenchmarkParams = {
+jobId: string;
 };
 

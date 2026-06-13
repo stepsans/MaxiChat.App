@@ -13,18 +13,36 @@ import {
   useListAcrNotifications,
   getListAcrNotificationsQueryKey,
   useMarkAllAcrNotificationsRead,
+  useListChannels,
+  getListChannelsQueryKey,
+  useListCustomerLabels,
+  getListCustomerLabelsQueryKey,
+  useListAcrSchedules,
+  getListAcrSchedulesQueryKey,
+  useCreateAcrSchedule,
+  useUpdateAcrSchedule,
+  useDeleteAcrSchedule,
+  useSetAcrScheduleActive,
+  useRunAcrSchedule,
   type AcrJob,
+  type AcrSchedule,
 } from "@workspace/api-client-react";
 import {
   Archive,
   Bell,
+  CalendarClock,
   ClipboardCheck,
+  LayoutDashboard,
   Download,
   Eye,
   FileText,
   Loader2,
+  Pause,
+  Pencil,
+  Play,
   Plus,
   Settings as SettingsIcon,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,9 +72,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
+import AcrDashboardTab from "./AcrDashboardTab";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -240,6 +268,30 @@ function CreateReportDialog({
   const [end, setEnd] = useState(def.end);
   const [mode, setMode] = useState<"all" | "select">("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Lead status: default to evaluating only lead-marked chats.
+  const [leadStatuses, setLeadStatuses] = useState<Set<string>>(new Set(["lead"]));
+  const [channelIds, setChannelIds] = useState<Set<number>>(new Set());
+  const [labelIds, setLabelIds] = useState<Set<number>>(new Set());
+  const [chatStatuses, setChatStatuses] = useState<Set<string>>(new Set());
+  const [includeOwner, setIncludeOwner] = useState(false);
+  // Manual vs Otomatis (schedule) tab.
+  const [modalTab, setModalTab] = useState("manual");
+  const [sched, setSched] = useState<SchedValue>(emptySched());
+  const createSchedule = useCreateAcrSchedule();
+
+  const { data: config } = useGetAcrConfig({
+    query: { queryKey: getGetAcrConfigQueryKey(), enabled: open },
+  });
+  const { data: members } = useListAcrTeamMembers({
+    query: { queryKey: getListAcrTeamMembersQueryKey(), enabled: open },
+  });
+  const { data: channels } = useListChannels({
+    query: { queryKey: getListChannelsQueryKey(), enabled: open },
+  });
+  const { data: labels } = useListCustomerLabels({
+    query: { queryKey: getListCustomerLabelsQueryKey(), enabled: open },
+  });
+  const createJob = useCreateAcrJob();
 
   useEffect(() => {
     if (open) {
@@ -248,22 +300,50 @@ function CreateReportDialog({
       setEnd(d.end);
       setMode("all");
       setSelected(new Set());
+      setLeadStatuses(new Set(["lead"]));
+      setChannelIds(new Set());
+      setLabelIds(new Set());
+      setChatStatuses(new Set());
+      setIncludeOwner(config?.includeOwnerInEvaluation ?? false);
+      setModalTab("manual");
+      setSched(emptySched());
     }
-  }, [open]);
+  }, [open, config?.includeOwnerInEvaluation]);
 
-  const { data: config } = useGetAcrConfig({
-    query: { queryKey: getGetAcrConfigQueryKey(), enabled: open },
-  });
-  const { data: members } = useListAcrTeamMembers({
-    query: { queryKey: getListAcrTeamMembersQueryKey(), enabled: open },
-  });
-  const createJob = useCreateAcrJob();
+  const schedInvalid =
+    !sched.name.trim() || (sched.agentMode === "select" && sched.agentIds.length === 0);
+
+  const submitSchedule = () => {
+    createSchedule.mutate(
+      { data: schedToPayload(sched) },
+      {
+        onSuccess: () => {
+          toast({ title: "Jadwal otomatis dibuat." });
+          qc.invalidateQueries({ queryKey: getListAcrSchedulesQueryKey() });
+          onOpenChange(false);
+        },
+        onError: (err: unknown) => {
+          const e = err as { data?: { error?: string }; message?: string };
+          toast({
+            title: "Gagal membuat jadwal",
+            description: e?.data?.error ?? e?.message ?? "Terjadi kesalahan.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
 
   const spanDays =
     (new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime()) /
     86_400_000;
   const invalid =
-    !start || !end || end < start || spanDays > 90 || (mode === "select" && selected.size === 0);
+    !start ||
+    !end ||
+    end < start ||
+    spanDays > 90 ||
+    (mode === "select" && selected.size === 0) ||
+    leadStatuses.size === 0;
 
   const preset = (days: number | "month") => {
     const now = new Date();
@@ -285,6 +365,14 @@ function CreateReportDialog({
           periodStart: start,
           periodEnd: end,
           agentIds: mode === "select" ? [...selected] : undefined,
+          leadStatuses: [...leadStatuses] as ("lead" | "not_lead" | "unknown")[],
+          channelIds: channelIds.size > 0 ? [...channelIds] : undefined,
+          customerLabelIds: labelIds.size > 0 ? [...labelIds] : undefined,
+          chatStatuses:
+            chatStatuses.size > 0
+              ? ([...chatStatuses] as ("ai_handled" | "needs_human" | "closed")[])
+              : undefined,
+          includeOwner,
         },
       },
       {
@@ -309,13 +397,19 @@ function CreateReportDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Buat Laporan Baru</DialogTitle>
+          <DialogTitle>Buat Laporan</DialogTitle>
           <DialogDescription>
-            Default 30 hari terakhir (month-to-date mundur). Maksimal 90 hari.
+            Manual: sekali jalan. Otomatis: jadwal berulang harian/mingguan/bulanan.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <Tabs value={modalTab} onValueChange={setModalTab}>
+          <TabsList className="mb-3">
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="otomatis">Otomatis</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="manual" className="space-y-4">
           <div>
             <Label className="mb-1 block">Periode Penilaian</Label>
             <div className="flex items-center gap-2">
@@ -400,6 +494,134 @@ function CreateReportDialog({
             </div>
           </div>
 
+          <div>
+            <Label className="mb-1 block">Status Lead</Label>
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ["lead", "Lead"],
+                  ["not_lead", "Bukan Lead"],
+                  ["unknown", "Belum Ditandai"],
+                ] as const
+              ).map(([value, text]) => (
+                <label key={value} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={leadStatuses.has(value)}
+                    onCheckedChange={(v) => {
+                      const next = new Set(leadStatuses);
+                      if (v) next.add(value);
+                      else next.delete(value);
+                      setLeadStatuses(next);
+                    }}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+            {leadStatuses.size === 0 && (
+              <p className="mt-1 text-xs text-red-500">Pilih minimal satu status lead.</p>
+            )}
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Channel</Label>
+            <p className="mb-1 text-xs text-muted-foreground">
+              Kosongkan untuk menilai semua channel.
+            </p>
+            <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+              {(channels ?? []).map((ch) => (
+                <label key={ch.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={channelIds.has(ch.id)}
+                    onCheckedChange={(v) => {
+                      const next = new Set(channelIds);
+                      if (v) next.add(ch.id);
+                      else next.delete(ch.id);
+                      setChannelIds(next);
+                    }}
+                  />
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: ch.color }}
+                  />
+                  {ch.label}
+                </label>
+              ))}
+              {(channels ?? []).length === 0 && (
+                <p className="text-xs text-muted-foreground">Belum ada channel.</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Label Customer</Label>
+            <p className="mb-1 text-xs text-muted-foreground">
+              Kosongkan untuk menilai semua chat tanpa filter label.
+            </p>
+            <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+              {(labels ?? []).map((lb) => (
+                <label key={lb.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={labelIds.has(lb.id)}
+                    onCheckedChange={(v) => {
+                      const next = new Set(labelIds);
+                      if (v) next.add(lb.id);
+                      else next.delete(lb.id);
+                      setLabelIds(next);
+                    }}
+                  />
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: lb.color }}
+                  />
+                  {lb.name}
+                </label>
+              ))}
+              {(labels ?? []).length === 0 && (
+                <p className="text-xs text-muted-foreground">Belum ada label customer.</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Status Penanganan Chat</Label>
+            <p className="mb-1 text-xs text-muted-foreground">
+              Kosongkan untuk menilai semua status.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ["ai_handled", "Ditangani AI"],
+                  ["needs_human", "Perlu Manusia"],
+                  ["closed", "Selesai"],
+                ] as const
+              ).map(([value, text]) => (
+                <label key={value} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={chatStatuses.has(value)}
+                    onCheckedChange={(v) => {
+                      const next = new Set(chatStatuses);
+                      if (v) next.add(value);
+                      else next.delete(value);
+                      setChatStatuses(next);
+                    }}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={includeOwner}
+                onCheckedChange={(v) => setIncludeOwner(v === true)}
+              />
+              Sertakan super admin (owner) sebagai agent yang dinilai
+            </label>
+          </div>
+
           {config && (
             <div className="rounded-md border bg-muted/40 p-3 text-xs">
               <p className="mb-1 font-medium">Preview Konfigurasi Bobot</p>
@@ -418,19 +640,492 @@ function CreateReportDialog({
               </a>
             </div>
           )}
-        </div>
 
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={submit}
+              disabled={invalid || createJob.isPending}
+              data-testid="acr-run"
+            >
+              {createJob.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Jalankan Penilaian
+            </Button>
+          </DialogFooter>
+          </TabsContent>
+
+          <TabsContent value="otomatis" className="space-y-4">
+            <ScheduleFields
+              value={sched}
+              onChange={(p) => setSched((v) => ({ ...v, ...p }))}
+              members={members ?? []}
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Batal
+              </Button>
+              <Button onClick={submitSchedule} disabled={schedInvalid || createSchedule.isPending}>
+                {createSchedule.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Simpan Jadwal
+              </Button>
+            </DialogFooter>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Schedules (Bagian II) ────────────────────────────────────────────────
+
+const WEEKDAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+interface SchedValue {
+  name: string;
+  frequency: "daily" | "weekly" | "monthly";
+  dayOfWeek: number;
+  dayOfMonth: number;
+  cutoffHour: number;
+  cutoffMinute: number;
+  agentMode: "all" | "select";
+  agentIds: number[];
+  notifyIds: number[];
+  isActive: boolean;
+}
+
+const emptySched = (): SchedValue => ({
+  name: "",
+  frequency: "weekly",
+  dayOfWeek: 1,
+  dayOfMonth: 1,
+  cutoffHour: 9,
+  cutoffMinute: 0,
+  agentMode: "all",
+  agentIds: [],
+  notifyIds: [],
+  isActive: true,
+});
+
+const schedFromApi = (s: AcrSchedule): SchedValue => ({
+  name: s.name,
+  frequency: s.frequency,
+  dayOfWeek: s.dayOfWeek ?? 1,
+  dayOfMonth: s.dayOfMonth ?? 1,
+  cutoffHour: s.cutoffHour,
+  cutoffMinute: s.cutoffMinute,
+  agentMode: s.agentIds && s.agentIds.length > 0 ? "select" : "all",
+  agentIds: s.agentIds ?? [],
+  notifyIds: s.notifyUserIds ?? [],
+  isActive: s.isActive,
+});
+
+const schedToPayload = (v: SchedValue) => ({
+  name: v.name.trim(),
+  frequency: v.frequency,
+  ...(v.frequency === "weekly" ? { dayOfWeek: v.dayOfWeek } : {}),
+  ...(v.frequency === "monthly" ? { dayOfMonth: v.dayOfMonth } : {}),
+  cutoffHour: v.cutoffHour,
+  cutoffMinute: v.cutoffMinute,
+  agentIds: v.agentMode === "select" ? v.agentIds : undefined,
+  notifyUserIds: v.notifyIds,
+  isActive: v.isActive,
+});
+
+const schedSummary = (s: AcrSchedule): string => {
+  const time = `${String(s.cutoffHour).padStart(2, "0")}.${String(s.cutoffMinute).padStart(2, "0")} WIB`;
+  if (s.frequency === "daily") return `Harian · ${time}`;
+  if (s.frequency === "weekly") return `Mingguan · ${WEEKDAYS[s.dayOfWeek ?? 1]} ${time}`;
+  return `Bulanan · tgl ${s.dayOfMonth ?? 1} ${time}`;
+};
+
+function ScheduleFields({
+  value,
+  onChange,
+  members,
+}: {
+  value: SchedValue;
+  onChange: (patch: Partial<SchedValue>) => void;
+  members: { id: number; name?: string | null; email: string; teamRole: string }[];
+}) {
+  const invalidName = !value.name.trim();
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label className="mb-1 block">Nama Jadwal</Label>
+        <Input
+          placeholder="Contoh: Laporan Mingguan Tim CS"
+          value={value.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
+        {invalidName && <p className="mt-1 text-xs text-red-500">Nama wajib diisi.</p>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="mb-1 block">Frekuensi</Label>
+          <Select
+            value={value.frequency}
+            onValueChange={(v) => onChange({ frequency: v as SchedValue["frequency"] })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="daily">Harian</SelectItem>
+              <SelectItem value="weekly">Mingguan</SelectItem>
+              <SelectItem value="monthly">Bulanan</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {value.frequency === "weekly" && (
+          <div>
+            <Label className="mb-1 block">Hari</Label>
+            <Select
+              value={String(value.dayOfWeek)}
+              onValueChange={(v) => onChange({ dayOfWeek: Number(v) })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WEEKDAYS.map((d, i) => (
+                  <SelectItem key={i} value={String(i)}>
+                    {d}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {value.frequency === "monthly" && (
+          <div>
+            <Label className="mb-1 block">Tanggal (1–28)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={28}
+              value={value.dayOfMonth}
+              onChange={(e) =>
+                onChange({ dayOfMonth: Math.min(28, Math.max(1, Number(e.target.value) || 1)) })
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <Label className="mb-1 block">Jam Eksekusi (WIB)</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={0}
+            max={23}
+            className="w-20"
+            value={value.cutoffHour}
+            onChange={(e) =>
+              onChange({ cutoffHour: Math.min(23, Math.max(0, Number(e.target.value) || 0)) })
+            }
+          />
+          <span>:</span>
+          <Input
+            type="number"
+            min={0}
+            max={59}
+            className="w-20"
+            value={value.cutoffMinute}
+            onChange={(e) =>
+              onChange({ cutoffMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) })
+            }
+          />
+        </div>
+      </div>
+
+      <div>
+        <Label className="mb-1 block">Nilai Agent</Label>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              checked={value.agentMode === "all"}
+              onChange={() => onChange({ agentMode: "all" })}
+            />
+            Semua Agent
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              checked={value.agentMode === "select"}
+              onChange={() => onChange({ agentMode: "select" })}
+            />
+            Pilih agent tertentu
+          </label>
+          {value.agentMode === "select" && (
+            <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+              {members.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={value.agentIds.includes(m.id)}
+                    onCheckedChange={(c) =>
+                      onChange({
+                        agentIds: c
+                          ? [...value.agentIds, m.id]
+                          : value.agentIds.filter((x) => x !== m.id),
+                      })
+                    }
+                  />
+                  {m.name ?? m.email}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <Label className="mb-1 block">Kirim Notifikasi Ke</Label>
+        <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+          {members.map((m) => (
+            <label key={m.id} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={value.notifyIds.includes(m.id)}
+                onCheckedChange={(c) =>
+                  onChange({
+                    notifyIds: c
+                      ? [...value.notifyIds, m.id]
+                      : value.notifyIds.filter((x) => x !== m.id),
+                  })
+                }
+              />
+              {m.name ?? m.email}
+              <span className="text-xs text-muted-foreground">({m.teamRole})</span>
+            </label>
+          ))}
+          {members.length === 0 && (
+            <p className="text-xs text-muted-foreground">Belum ada anggota tim.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleDialog({
+  open,
+  onOpenChange,
+  editing,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  editing: AcrSchedule | null;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [value, setValue] = useState<SchedValue>(emptySched());
+  const { data: members } = useListAcrTeamMembers({
+    query: { queryKey: getListAcrTeamMembersQueryKey(), enabled: open },
+  });
+  const create = useCreateAcrSchedule();
+  const update = useUpdateAcrSchedule();
+  const pending = create.isPending || update.isPending;
+
+  useEffect(() => {
+    if (open) setValue(editing ? schedFromApi(editing) : emptySched());
+  }, [open, editing]);
+
+  const invalid = !value.name.trim() || (value.agentMode === "select" && value.agentIds.length === 0);
+
+  const submit = () => {
+    const data = schedToPayload(value);
+    const onSuccess = () => {
+      toast({ title: editing ? "Jadwal diperbarui." : "Jadwal dibuat." });
+      qc.invalidateQueries({ queryKey: getListAcrSchedulesQueryKey() });
+      onOpenChange(false);
+    };
+    const onError = (err: unknown) => {
+      const e = err as { data?: { error?: string }; message?: string };
+      toast({
+        title: "Gagal menyimpan jadwal",
+        description: e?.data?.error ?? e?.message ?? "Terjadi kesalahan.",
+        variant: "destructive",
+      });
+    };
+    if (editing) {
+      update.mutate({ id: editing.id, data }, { onSuccess, onError });
+    } else {
+      create.mutate({ data }, { onSuccess, onError });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{editing ? "Edit Jadwal" : "Tambah Jadwal Otomatis"}</DialogTitle>
+          <DialogDescription>
+            Laporan dibuat otomatis sesuai frekuensi. Data yang dianalisa: 1/7/30 hari sebelum
+            eksekusi (harian/mingguan/bulanan).
+          </DialogDescription>
+        </DialogHeader>
+        <ScheduleFields
+          value={value}
+          onChange={(patch) => setValue((v) => ({ ...v, ...patch }))}
+          members={members ?? []}
+        />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Batal
           </Button>
-          <Button onClick={submit} disabled={invalid || createJob.isPending} data-testid="acr-run">
-            {createJob.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Jalankan Penilaian
+          <Button onClick={submit} disabled={invalid || pending}>
+            {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {editing ? "Simpan" : "Buat Jadwal"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SchedulesTab({ canManage }: { canManage: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<AcrSchedule | null>(null);
+  const { data: schedules, isLoading } = useListAcrSchedules({
+    query: { queryKey: getListAcrSchedulesQueryKey() },
+  });
+  const setActive = useSetAcrScheduleActive();
+  const del = useDeleteAcrSchedule();
+  const run = useRunAcrSchedule();
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: getListAcrSchedulesQueryKey() });
+
+  return (
+    <div className="space-y-4">
+      {canManage && (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Tambah Jadwal
+          </Button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : (schedules ?? []).length === 0 ? (
+        <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+          Belum ada jadwal otomatis.
+        </div>
+      ) : (
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nama</TableHead>
+                <TableHead>Jadwal</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Berikutnya</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(schedules ?? []).map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableCell>{schedSummary(s)}</TableCell>
+                  <TableCell>
+                    {s.isActive ? (
+                      <Badge className="bg-green-600 text-white hover:bg-green-600">Aktif</Badge>
+                    ) : (
+                      <Badge variant="outline">Jeda</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>{fmtDateTime(s.nextRunAt)}</TableCell>
+                  <TableCell className="text-right">
+                    {canManage && (
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Jalankan Sekarang"
+                          onClick={() =>
+                            run.mutate(
+                              { id: s.id },
+                              {
+                                onSuccess: () => toast({ title: "Laporan sedang diproses…" }),
+                                onError: () =>
+                                  toast({ title: "Gagal menjalankan", variant: "destructive" }),
+                              }
+                            )
+                          }
+                        >
+                          <Play className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={s.isActive ? "Jeda" : "Aktifkan"}
+                          onClick={() =>
+                            setActive.mutate(
+                              { id: s.id, data: { isActive: !s.isActive } },
+                              { onSuccess: invalidate }
+                            )
+                          }
+                        >
+                          {s.isActive ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Edit"
+                          onClick={() => {
+                            setEditing(s);
+                            setDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Hapus"
+                          onClick={() => {
+                            if (!window.confirm(`Hapus jadwal "${s.name}"?`)) return;
+                            del.mutate(
+                              { id: s.id },
+                              {
+                                onSuccess: () => {
+                                  toast({ title: "Jadwal dihapus." });
+                                  invalidate();
+                                },
+                              }
+                            );
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <ScheduleDialog open={dialogOpen} onOpenChange={setDialogOpen} editing={editing} />
+    </div>
   );
 }
 
@@ -443,6 +1138,7 @@ export default function AIChatReport() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [tab, setTab] = useState("riwayat");
 
   // Self-guard: routes are unguarded, every page checks its own canView.
   useEffect(() => {
@@ -511,6 +1207,20 @@ export default function AIChatReport() {
         </div>
       </div>
 
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="riwayat">Riwayat Laporan</TabsTrigger>
+          {isSuperAdmin && (
+            <TabsTrigger value="dashboard">
+              <LayoutDashboard className="mr-1.5 h-4 w-4" /> Dashboard KPI
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="jadwal">
+            <CalendarClock className="mr-1.5 h-4 w-4" /> Jadwal Otomatis
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="riwayat" className="space-y-6">
       {isLoading ? (
         <div className="space-y-2">
           {[...Array(4)].map((_, i) => (
@@ -530,6 +1240,7 @@ export default function AIChatReport() {
             <TableHeader>
               <TableRow>
                 <TableHead>Periode</TableHead>
+                <TableHead>Tipe</TableHead>
                 <TableHead>Dibuat Oleh</TableHead>
                 <TableHead className="text-right">Agent Dinilai</TableHead>
                 <TableHead className="text-right">Percakapan</TableHead>
@@ -551,6 +1262,17 @@ export default function AIChatReport() {
                     {job.isLatestForPeriod && job.status === "completed" && (
                       <Badge variant="outline" className="ml-2 text-[10px]">
                         Terbaru
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {job.isAutoScheduled ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        🔄 Otomatis
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px]">
+                        Manual
                       </Badge>
                     )}
                   </TableCell>
@@ -660,6 +1382,18 @@ export default function AIChatReport() {
           </Button>
         </div>
       )}
+        </TabsContent>
+
+        {isSuperAdmin && (
+          <TabsContent value="dashboard">
+            <AcrDashboardTab />
+          </TabsContent>
+        )}
+
+        <TabsContent value="jadwal">
+          <SchedulesTab canManage={menus.acr.canCreate} />
+        </TabsContent>
+      </Tabs>
 
       <CreateReportDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>

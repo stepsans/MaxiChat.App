@@ -1562,6 +1562,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChatContentSearchResult"
 
+  /chats/bulk-update:
+    post:
+      operationId: bulkUpdateChats
+      tags: [chats]
+      summary: Bulk-update lead status / tag / status for multiple chats
+      description: >
+        Applies the same field changes to every selected chat that is within
+        the caller's channel scope (and, for agents, assigned to them). Chats
+        outside the caller's scope are silently skipped — the response reports
+        how many rows were actually updated. Used by the chat-list
+        multi-select so the operator doesn't have to open chats one by one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkChatUpdateInput"
+      responses:
+        "200":
+          description: Bulk update applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkChatUpdateResult"
+        "400":
+          description: Invalid body or no updatable field provided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/open-by-phone:
     post:
       operationId: openChatByPhone
@@ -6297,6 +6328,12 @@ paths:
         - name: severity
           in: query
           schema: { type: string }
+        - name: sort
+          in: query
+          description: Order of results. Default 'latest' (most recent first).
+          schema:
+            type: string
+            enum: [latest, severity, agent]
         - name: page
           in: query
           schema: { type: integer, default: 1 }
@@ -6533,6 +6570,429 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/schedules:
+    get:
+      operationId: listAcrSchedules
+      tags: [acr]
+      summary: List recurring report schedules for the tenant
+      responses:
+        "200":
+          description: Schedule list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AcrSchedule"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createAcrSchedule
+      tags: [acr]
+      summary: Create a recurring report schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcrScheduleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrSchedule"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/schedules/{id}:
+    put:
+      operationId: updateAcrSchedule
+      tags: [acr]
+      summary: Update a recurring report schedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcrScheduleInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrSchedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAcrSchedule
+      tags: [acr]
+      summary: Delete a recurring report schedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/schedules/{id}/active:
+    patch:
+      operationId: setAcrScheduleActive
+      tags: [acr]
+      summary: Pause or resume a schedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcrScheduleActiveInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrSchedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/schedules/{id}/run:
+    post:
+      operationId: runAcrSchedule
+      tags: [acr]
+      summary: Run a schedule immediately (creates a scheduled job now)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: Job created and running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrJob"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/dashboard:
+    get:
+      operationId: getAcrDashboard
+      tags: [acr]
+      summary: Cross-period team KPI dashboard (super admin only)
+      parameters:
+        - name: frequency
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, daily, weekly, monthly, manual]
+            default: all
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 12 }
+      responses:
+        "200":
+          description: Dashboard payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcrDashboard"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /acr/targets:
+    get:
+      operationId: listAcrTargets
+      tags: [acr]
+      summary: List per-agent KPI targets
+      responses:
+        "200":
+          description: Targets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AcrTarget" }
+  /acr/targets/{agentId}:
+    put:
+      operationId: setAcrTarget
+      tags: [acr]
+      summary: Set an agent's KPI target
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcrTargetInput" }
+      responses:
+        "200":
+          description: Target
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrTarget" }
+        "400":
+          description: Invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      operationId: deleteAcrTarget
+      tags: [acr]
+      summary: Remove an agent's KPI target
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+
+  /acr/alerts:
+    get:
+      operationId: listAcrAlerts
+      tags: [acr]
+      summary: List performance-decline alerts
+      parameters:
+        - name: unresolvedOnly
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AcrAlert" }
+  /acr/alerts/{id}/resolve:
+    patch:
+      operationId: resolveAcrAlert
+      tags: [acr]
+      summary: Mark an alert resolved
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Alert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrAlert" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /acr/achievements:
+    get:
+      operationId: listAcrAchievements
+      tags: [acr]
+      summary: List earned achievements
+      parameters:
+        - name: agentId
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Achievements
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AcrAchievement" }
+
+  /acr/team-groups:
+    get:
+      operationId: listAcrTeamGroups
+      tags: [acr]
+      summary: List agent groups for benchmarking
+      responses:
+        "200":
+          description: Groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AcrTeamGroup" }
+    post:
+      operationId: createAcrTeamGroup
+      tags: [acr]
+      summary: Create an agent group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcrTeamGroupInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrTeamGroup" }
+        "400":
+          description: Invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /acr/team-groups/{id}:
+    put:
+      operationId: updateAcrTeamGroup
+      tags: [acr]
+      summary: Update an agent group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcrTeamGroupInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrTeamGroup" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      operationId: deleteAcrTeamGroup
+      tags: [acr]
+      summary: Delete an agent group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /acr/mom:
+    get:
+      operationId: getAcrMomReport
+      tags: [acr]
+      summary: AI month-over-month comparison report (super admin only)
+      parameters:
+        - name: currentJobId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: previousJobId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: MoM report
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrMomReport" }
+        "404":
+          description: Insufficient data
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /acr/benchmark:
+    get:
+      operationId: getAcrBenchmark
+      tags: [acr]
+      summary: AI cross-team benchmark (super admin only)
+      parameters:
+        - name: jobId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Benchmark
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AcrBenchmark" }
+        "400":
+          description: Need at least 2 teams
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
 
 components:
@@ -8020,7 +8480,7 @@ components:
           enum: [none, hot_lead, cold, closing]
         leadStatus:
           type: string
-          enum: [none, lead, not_lead]
+          enum: [unknown, lead, not_lead]
           description: Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
         isHumanTakeover:
           type: boolean
@@ -8168,7 +8628,7 @@ components:
           enum: [none, hot_lead, cold, closing]
         leadStatus:
           type: string
-          enum: [none, lead, not_lead]
+          enum: [unknown, lead, not_lead]
           description: Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
         isHumanTakeover:
           type: boolean
@@ -8259,7 +8719,7 @@ components:
           enum: [none, hot_lead, cold, closing]
         leadStatus:
           type: string
-          enum: [none, lead, not_lead]
+          enum: [unknown, lead, not_lead]
           description: Manual lead classification, independent of the auto-routing tag.
         nickname:
           type: ["string", "null"]
@@ -8270,6 +8730,40 @@ components:
         customerCode:
           type: ["string", "null"]
           description: Customer code (kode customer), entered manually in the chat Info tab.
+
+    BulkChatUpdateInput:
+      type: object
+      required: [chatIds]
+      properties:
+        chatIds:
+          type: array
+          items:
+            type: integer
+          minItems: 1
+          maxItems: 500
+          description: Ids of the chats to update. Out-of-scope ids are skipped.
+        leadStatus:
+          type: string
+          enum: [unknown, lead, not_lead]
+          description: Manual lead classification to apply to all selected chats.
+        tag:
+          type: string
+          enum: [none, hot_lead, cold, closing]
+          description: Auto-routing tag to apply to all selected chats.
+        status:
+          type: string
+          enum: [ai_handled, needs_human, closed]
+        addLabelId:
+          type: integer
+          description: Id of a customer label to attach to every selected chat's contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.
+
+    BulkChatUpdateResult:
+      type: object
+      required: [updated]
+      properties:
+        updated:
+          type: integer
+          description: Number of chats actually updated (in-scope rows only).
 
     CustomerLabel:
       type: object
@@ -11271,6 +11765,29 @@ components:
           type: array
           items: { type: integer }
           description: Empty/omitted = evaluate all agents.
+        leadStatuses:
+          type: array
+          items:
+            type: string
+            enum: [lead, not_lead, unknown]
+          description: Manual lead classifications whose chats are analyzed. Empty/omitted defaults to [lead] — only chats marked as leads are evaluated.
+        channelIds:
+          type: array
+          items: { type: integer }
+          description: Restrict analysis to these channels. Empty/omitted = all channels.
+        customerLabelIds:
+          type: array
+          items: { type: integer }
+          description: Restrict to chats whose contact carries one of these customer labels. Empty/omitted = no label filter.
+        chatStatuses:
+          type: array
+          items:
+            type: string
+            enum: [ai_handled, needs_human, closed]
+          description: Restrict to chats with one of these handling statuses. Empty/omitted = all statuses.
+        includeOwner:
+          type: boolean
+          description: Override the tenant config's include-owner-in-evaluation for this report. Omitted = inherit config.
 
     AcrJob:
       type: object
@@ -11298,6 +11815,12 @@ components:
         isLatestForPeriod:
           type: boolean
           description: True when this is the newest job covering its exact period.
+        jobType: { type: string }
+        pdfPath:
+          type: string
+          nullable: true
+          description: Stored PDF URL once auto-generated for a scheduled job.
+        pdfGeneratedAt: { type: string, format: date-time, nullable: true }
 
     AcrJobList:
       type: object
@@ -11629,3 +12152,311 @@ components:
         name: { type: string, nullable: true }
         email: { type: string }
         teamRole: { type: string }
+
+    AcrScheduleInput:
+      type: object
+      required: [name, frequency, cutoffHour, cutoffMinute]
+      properties:
+        name: { type: string }
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        dayOfWeek:
+          type: integer
+          minimum: 0
+          maximum: 6
+          nullable: true
+          description: Weekly only. 0=Sunday … 6=Saturday.
+        dayOfMonth:
+          type: integer
+          minimum: 1
+          maximum: 28
+          nullable: true
+          description: Monthly only. 1–28.
+        cutoffHour: { type: integer, minimum: 0, maximum: 23 }
+        cutoffMinute: { type: integer, minimum: 0, maximum: 59 }
+        agentIds:
+          type: array
+          items: { type: integer }
+          description: Empty/omitted = all agents.
+        notifyUserIds:
+          type: array
+          items: { type: integer }
+        generatePdf: { type: boolean }
+        sendWhatsappPdf: { type: boolean }
+        isActive: { type: boolean }
+
+    AcrScheduleActiveInput:
+      type: object
+      required: [isActive]
+      properties:
+        isActive: { type: boolean }
+
+    AcrSchedule:
+      type: object
+      required: [id, name, frequency, isActive, cutoffHour, cutoffMinute, nextRunAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        isActive: { type: boolean }
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly]
+        dayOfWeek: { type: integer, nullable: true }
+        dayOfMonth: { type: integer, nullable: true }
+        cutoffHour: { type: integer }
+        cutoffMinute: { type: integer }
+        timezone: { type: string }
+        agentIds:
+          type: array
+          nullable: true
+          items: { type: integer }
+        notifyUserIds:
+          type: array
+          items: { type: integer }
+        generatePdf: { type: boolean }
+        sendWhatsappPdf: { type: boolean }
+        nextRunAt: { type: string, format: date-time }
+        lastRunAt: { type: string, format: date-time, nullable: true }
+        lastRunJobId: { type: string, nullable: true }
+        totalRuns: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    AcrKpiSnapshot:
+      type: object
+      required: [id, jobId, periodStart, periodEnd, periodLabel, jobType, totalAgents]
+      properties:
+        id: { type: string }
+        jobId: { type: string }
+        scheduleId: { type: string, nullable: true }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        periodLabel: { type: string }
+        jobType: { type: string }
+        frequency:
+          type: string
+          nullable: true
+          enum: [daily, weekly, monthly]
+        teamAvgScore: { type: number, nullable: true }
+        teamAvgResponseTime: { type: number, nullable: true }
+        teamAvgLanguage: { type: number, nullable: true }
+        teamAvgAnswer: { type: number, nullable: true }
+        teamAvgComplaint: { type: number, nullable: true }
+        teamAvgMissed: { type: number, nullable: true }
+        countGradeA: { type: integer }
+        countGradeB: { type: integer }
+        countGradeC: { type: integer }
+        countGradeD: { type: integer }
+        countGradeE: { type: integer }
+        totalAgents: { type: integer }
+        totalRedFlags: { type: integer }
+        totalCustomerAngry: { type: integer }
+        totalRudeLanguage: { type: integer }
+        totalNoReplyCritical: { type: integer }
+        totalCustomerIgnored: { type: integer }
+        totalAnswerDropout: { type: integer }
+        totalConversations: { type: integer }
+        totalMessages: { type: integer }
+        totalMissedChats: { type: integer }
+        totalComplaints: { type: integer }
+        complaintsResolved: { type: integer }
+        topPerformerName: { type: string, nullable: true }
+        topPerformerScore: { type: number, nullable: true }
+        topPerformerGrade: { type: string, nullable: true }
+        botPerformerName: { type: string, nullable: true }
+        botPerformerScore: { type: number, nullable: true }
+        botPerformerGrade: { type: string, nullable: true }
+        totalAllowanceAmount: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    AcrDashboardAgentTrend:
+      type: object
+      required: [agentUserId, points]
+      properties:
+        agentUserId: { type: integer }
+        agentName: { type: string, nullable: true }
+        points:
+          type: array
+          items:
+            type: object
+            required: [jobId, periodStart, periodLabel, totalScore, grade]
+            properties:
+              jobId: { type: string }
+              periodStart: { type: string, format: date }
+              periodLabel: { type: string }
+              totalScore: { type: number }
+              grade: { type: string }
+
+    AcrDashboard:
+      type: object
+      required: [frequency, periods, leaderboard, agentTrends]
+      properties:
+        frequency: { type: string }
+        periods:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrKpiSnapshot"
+        current:
+          allOf:
+            - $ref: "#/components/schemas/AcrKpiSnapshot"
+          nullable: true
+        previous:
+          allOf:
+            - $ref: "#/components/schemas/AcrKpiSnapshot"
+          nullable: true
+        leaderboard:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrAgentScore"
+        agentTrends:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcrDashboardAgentTrend"
+
+    AcrTarget:
+      type: object
+      required: [id, agentUserId, targetScore]
+      properties:
+        id: { type: string }
+        agentUserId: { type: integer }
+        targetScore: { type: number }
+        targetDeadline: { type: string, format: date, nullable: true }
+        setByUserId: { type: integer, nullable: true }
+        updatedAt: { type: string, format: date-time }
+
+    AcrTargetInput:
+      type: object
+      required: [targetScore]
+      properties:
+        targetScore: { type: number }
+        targetDeadline: { type: string, format: date, nullable: true }
+
+    AcrAlert:
+      type: object
+      required: [id, agentUserId, alertType, severity, title, isRead, isResolved]
+      properties:
+        id: { type: string }
+        agentUserId: { type: integer }
+        jobId: { type: string, nullable: true }
+        alertType: { type: string }
+        severity: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        recommendation: { type: string, nullable: true }
+        affectedDimensions:
+          type: array
+          nullable: true
+          items: { type: string }
+        isRead: { type: boolean }
+        isResolved: { type: boolean }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AcrAchievement:
+      type: object
+      required: [id, agentUserId, achievementId, achievementName, achievementIcon, earnedAtPeriod]
+      properties:
+        id: { type: string }
+        agentUserId: { type: integer }
+        jobId: { type: string, nullable: true }
+        achievementId: { type: string }
+        achievementName: { type: string }
+        achievementIcon: { type: string }
+        description: { type: string, nullable: true }
+        earnedAtPeriod: { type: string }
+        earnedAt: { type: string, format: date-time }
+
+    AcrTeamGroup:
+      type: object
+      required: [id, name, agentUserIds]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        scheduleLabel: { type: string, nullable: true }
+        agentUserIds:
+          type: array
+          items: { type: integer }
+        updatedAt: { type: string, format: date-time }
+
+    AcrTeamGroupInput:
+      type: object
+      required: [name, agentUserIds]
+      properties:
+        name: { type: string }
+        scheduleLabel: { type: string, nullable: true }
+        agentUserIds:
+          type: array
+          items: { type: integer }
+
+    AcrMomReport:
+      type: object
+      properties:
+        overall_trend: { type: string }
+        executive_summary: { type: string }
+        key_improvements:
+          type: array
+          items:
+            type: object
+            properties:
+              metric: { type: string }
+              change: { type: string }
+              possible_reason: { type: string }
+        key_declines:
+          type: array
+          items:
+            type: object
+            properties:
+              metric: { type: string }
+              change: { type: string }
+              possible_reason: { type: string }
+              recommendation: { type: string }
+        agent_highlights:
+          type: object
+          properties:
+            most_improved:
+              type: object
+              properties:
+                name: { type: string }
+                delta: { type: string }
+                note: { type: string }
+            most_declined:
+              type: object
+              properties:
+                name: { type: string }
+                delta: { type: string }
+                note: { type: string }
+            most_consistent:
+              type: object
+              properties:
+                name: { type: string }
+                note: { type: string }
+        strategic_recommendations:
+          type: array
+          items: { type: string }
+        forecast: { type: string }
+
+    AcrBenchmark:
+      type: object
+      properties:
+        period: { type: string }
+        teams_ranked:
+          type: array
+          items:
+            type: object
+            properties:
+              rank: { type: integer }
+              team_name: { type: string }
+              avg_score: { type: number }
+              avg_response_time: { type: number }
+              total_red_flags: { type: integer }
+              strengths:
+                type: array
+                items: { type: string }
+              weaknesses:
+                type: array
+                items: { type: string }
+        comparison_summary: { type: string }
+        gap_analysis: { type: string }
+        cross_team_recommendations:
+          type: array
+          items: { type: string }

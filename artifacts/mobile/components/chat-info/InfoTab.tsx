@@ -33,7 +33,7 @@ const STATUS_OPTIONS: { value: ChatUpdateStatus; label: string }[] = [
 ];
 
 const LEAD_OPTIONS: { value: ChatUpdateLeadStatus; label: string }[] = [
-  { value: "none", label: "Tanpa Tag" },
+  { value: "unknown", label: "Unknown" },
   { value: "lead", label: "Lead" },
   { value: "not_lead", label: "Not Lead" },
 ];
@@ -242,7 +242,7 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
       </Text>
       <View style={styles.pillWrap}>
         {LEAD_OPTIONS.map((o) => {
-          const active = (chat.leadStatus ?? "none") === o.value;
+          const active = (chat.leadStatus ?? "unknown") === o.value;
           return (
             <TouchableOpacity
               key={o.value}

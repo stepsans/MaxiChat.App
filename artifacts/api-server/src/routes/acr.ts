@@ -9,7 +9,7 @@
 
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   db,
   acrConfigsTable,
@@ -18,20 +18,52 @@ import {
   acrConversationScoresTable,
   acrRedFlagsTable,
   acrNotificationsTable,
+  acrSchedulesTable,
+  acrKpiSnapshotsTable,
+  acrAgentTargetsTable,
+  acrAchievementsTable,
+  acrTeamGroupsTable,
+  acrPerformanceAlertsTable,
   usersTable,
+  channelsTable,
+  customerLabelsTable,
   type AcrAgentScoreRow,
   type AcrConfigRow,
   type AcrJobRow,
   type AcrRedFlagRow,
+  type AcrScheduleRow,
+  type AcrKpiSnapshotRow,
+  type AcrAgentTargetRow,
+  type AcrAchievementRow,
+  type AcrTeamGroupRow,
+  type AcrPerformanceAlertRow,
 } from "@workspace/db";
-import { UpdateAcrConfigBody, CreateAcrJobBody } from "@workspace/api-zod";
+import {
+  UpdateAcrConfigBody,
+  CreateAcrJobBody,
+  CreateAcrScheduleBody,
+  UpdateAcrScheduleBody,
+  SetAcrScheduleActiveBody,
+} from "@workspace/api-zod";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import { getCurrentTeamRole, type TeamRole } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import { getAllowedChannelIds } from "../lib/user-channel-access";
-import { validateConfigInput, computeNextRunAt, todayWib } from "../lib/acr-build";
-import { runAcrJob } from "../lib/acr-engine";
+import {
+  validateConfigInput,
+  computeNextRunAt,
+  todayWib,
+  computeScheduleNextRun,
+  schedulePeriod,
+  type ScheduleFrequency,
+} from "../lib/acr-build";
+import {
+  runAcrJob,
+  generateAndStoreJobPdf,
+  generateMomReport,
+  generateBenchmark,
+} from "../lib/acr-engine";
 import { snapshotFromConfig } from "../lib/acr-scheduler";
 import { buildAcrCsv, buildAcrPdf } from "../lib/acr-pdf";
 import { logger } from "../lib/logger";
@@ -136,6 +168,9 @@ function serializeJob(
     createdAt: j.createdAt.toISOString(),
     archivedAt: j.archivedAt?.toISOString() ?? null,
     isLatestForPeriod: extras?.isLatestForPeriod ?? true,
+    jobType: j.jobType,
+    pdfPath: j.pdfPath,
+    pdfGeneratedAt: j.pdfGeneratedAt?.toISOString() ?? null,
   };
 }
 
@@ -228,6 +263,50 @@ function serializeConversation(c: typeof acrConversationScoresTable.$inferSelect
     redFlagTypes: c.redFlagTypes,
     aiNotes: c.aiNotes,
     answerCausedCustomerSilent: c.answerCausedCustomerSilent,
+  };
+}
+
+function serializeKpiSnapshot(s: AcrKpiSnapshotRow) {
+  return {
+    id: s.id,
+    jobId: s.jobId,
+    scheduleId: s.scheduleId,
+    periodStart: s.periodStart,
+    periodEnd: s.periodEnd,
+    periodLabel: s.periodLabel,
+    jobType: s.jobType,
+    frequency: s.frequency,
+    teamAvgScore: numOrNull(s.teamAvgScore),
+    teamAvgResponseTime: numOrNull(s.teamAvgResponseTime),
+    teamAvgLanguage: numOrNull(s.teamAvgLanguage),
+    teamAvgAnswer: numOrNull(s.teamAvgAnswer),
+    teamAvgComplaint: numOrNull(s.teamAvgComplaint),
+    teamAvgMissed: numOrNull(s.teamAvgMissed),
+    countGradeA: s.countGradeA,
+    countGradeB: s.countGradeB,
+    countGradeC: s.countGradeC,
+    countGradeD: s.countGradeD,
+    countGradeE: s.countGradeE,
+    totalAgents: s.totalAgents,
+    totalRedFlags: s.totalRedFlags,
+    totalCustomerAngry: s.totalCustomerAngry,
+    totalRudeLanguage: s.totalRudeLanguage,
+    totalNoReplyCritical: s.totalNoReplyCritical,
+    totalCustomerIgnored: s.totalCustomerIgnored,
+    totalAnswerDropout: s.totalAnswerDropout,
+    totalConversations: s.totalConversations,
+    totalMessages: s.totalMessages,
+    totalMissedChats: s.totalMissedChats,
+    totalComplaints: s.totalComplaints,
+    complaintsResolved: s.complaintsResolved,
+    topPerformerName: s.topPerformerName,
+    topPerformerScore: numOrNull(s.topPerformerScore),
+    topPerformerGrade: s.topPerformerGrade,
+    botPerformerName: s.botPerformerName,
+    botPerformerScore: numOrNull(s.botPerformerScore),
+    botPerformerGrade: s.botPerformerGrade,
+    totalAllowanceAmount: s.totalAllowanceAmount,
+    createdAt: s.createdAt.toISOString(),
   };
 }
 
@@ -460,8 +539,15 @@ router.post(
 
     const cfg = await getOrCreateConfig(caller.ownerUserId);
 
+    // Per-job override of the config's include-owner toggle. Persisted on the
+    // job so re-runs stay consistent with what was requested.
+    const includeOwner =
+      typeof parsed.data.includeOwner === "boolean"
+        ? parsed.data.includeOwner
+        : cfg.includeOwnerInEvaluation;
+
     // agent_ids must belong to this tenant (supervisor/agent members; the
-    // owner only when the include-owner toggle is on).
+    // owner only when the effective include-owner toggle is on).
     let agentIds: number[] | null = null;
     if (Array.isArray(parsed.data.agentIds) && parsed.data.agentIds.length > 0) {
       const candidates = parsed.data.agentIds.filter((n) => Number.isInteger(n));
@@ -475,7 +561,7 @@ router.post(
         .where(
           and(
             inArray(usersTable.id, candidates.length ? candidates : [-1]),
-            cfg.includeOwnerInEvaluation
+            includeOwner
               ? or(eq(usersTable.id, caller.ownerUserId), memberWhere)
               : memberWhere
           )
@@ -486,6 +572,78 @@ router.post(
         return;
       }
     }
+
+    // channel_ids must belong to this tenant. Empty/omitted = all channels.
+    let channelIds: number[] | null = null;
+    if (Array.isArray(parsed.data.channelIds) && parsed.data.channelIds.length > 0) {
+      const candidates = parsed.data.channelIds.filter((n) => Number.isInteger(n));
+      const valid = await db
+        .select({ id: channelsTable.id })
+        .from(channelsTable)
+        .where(
+          and(
+            eq(channelsTable.userId, caller.ownerUserId),
+            inArray(channelsTable.id, candidates.length ? candidates : [-1])
+          )
+        );
+      channelIds = valid.map((v) => v.id);
+      if (channelIds.length === 0) {
+        res.status(400).json({ error: "Channel yang dipilih tidak valid." });
+        return;
+      }
+    }
+
+    // customer_label_ids must belong to this tenant. Empty/omitted = no filter.
+    let customerLabelIds: number[] | null = null;
+    if (
+      Array.isArray(parsed.data.customerLabelIds) &&
+      parsed.data.customerLabelIds.length > 0
+    ) {
+      const candidates = parsed.data.customerLabelIds.filter((n) => Number.isInteger(n));
+      const valid = await db
+        .select({ id: customerLabelsTable.id })
+        .from(customerLabelsTable)
+        .where(
+          and(
+            eq(customerLabelsTable.ownerUserId, caller.ownerUserId),
+            inArray(customerLabelsTable.id, candidates.length ? candidates : [-1])
+          )
+        );
+      customerLabelIds = valid.map((v) => v.id);
+      if (customerLabelIds.length === 0) {
+        res.status(400).json({ error: "Label customer yang dipilih tidak valid." });
+        return;
+      }
+    }
+
+    // chat_statuses — subset of the known handling statuses. Empty/omitted = all.
+    const CHAT_STATUSES = ["ai_handled", "needs_human", "closed"] as const;
+    let chatStatuses: string[] | null = null;
+    if (Array.isArray(parsed.data.chatStatuses) && parsed.data.chatStatuses.length > 0) {
+      chatStatuses = [
+        ...new Set(parsed.data.chatStatuses.filter((s) => CHAT_STATUSES.includes(s))),
+      ];
+      if (chatStatuses.length === 0) {
+        res.status(400).json({ error: "Status chat yang dipilih tidak valid." });
+        return;
+      }
+    }
+
+    // lead_statuses — subset of the known lead classifications. Empty/omitted
+    // defaults to ['lead'] so a new report evaluates only lead-marked chats.
+    const LEAD_STATUSES = ["lead", "not_lead", "unknown"] as const;
+    let leadStatuses: string[] = ["lead"];
+    if (Array.isArray(parsed.data.leadStatuses) && parsed.data.leadStatuses.length > 0) {
+      const valid = [
+        ...new Set(parsed.data.leadStatuses.filter((s) => LEAD_STATUSES.includes(s))),
+      ];
+      if (valid.length === 0) {
+        res.status(400).json({ error: "Lead status yang dipilih tidak valid." });
+        return;
+      }
+      leadStatuses = valid;
+    }
+
     const [job] = await db
       .insert(acrJobsTable)
       .values({
@@ -495,6 +653,12 @@ router.post(
         requestedByUserId: caller.userId,
         isAutoScheduled: false,
         agentUserIds: agentIds,
+        leadStatuses,
+        channelIds,
+        customerLabelIds,
+        chatStatuses,
+        includeOwner,
+        jobType: "manual",
         status: "pending",
         configSnapshot: snapshotFromConfig(cfg),
       })
@@ -890,12 +1054,24 @@ router.get(
       conds.push(eq(acrRedFlagsTable.violationSeverity, req.query.severity));
     }
     const where = and(...conds);
+    // Order: 'severity' (critical→high→medium, then newest), 'agent' (by name,
+    // then newest), default 'latest' (newest first).
+    const sort = typeof req.query.sort === "string" ? req.query.sort : "latest";
+    const orderClause =
+      sort === "severity"
+        ? [
+            sql`case ${acrRedFlagsTable.violationSeverity} when 'critical' then 0 when 'high' then 1 when 'medium' then 2 else 3 end`,
+            desc(acrRedFlagsTable.occurredAt),
+          ]
+        : sort === "agent"
+          ? [asc(acrRedFlagsTable.agentName), desc(acrRedFlagsTable.occurredAt)]
+          : [desc(acrRedFlagsTable.occurredAt)];
     const [rows, [{ count }]] = await Promise.all([
       db
         .select()
         .from(acrRedFlagsTable)
         .where(where)
-        .orderBy(desc(acrRedFlagsTable.occurredAt))
+        .orderBy(...orderClause)
         .limit(limit)
         .offset((page - 1) * limit),
       db.select({ count: sql<number>`count(*)::int` }).from(acrRedFlagsTable).where(where),
@@ -1299,6 +1475,795 @@ router.get(
       `attachment; filename="acr-${ctx.job.periodStart}_${ctx.job.periodEnd}.pdf"`
     );
     res.send(Buffer.from(pdf));
+  }
+);
+
+// ─── Schedules (Bagian II) ────────────────────────────────────────────────────
+
+function serializeSchedule(s: AcrScheduleRow) {
+  return {
+    id: s.id,
+    name: s.name,
+    isActive: s.isActive,
+    frequency: s.frequency,
+    dayOfWeek: s.dayOfWeek,
+    dayOfMonth: s.dayOfMonth,
+    cutoffHour: s.cutoffHour,
+    cutoffMinute: s.cutoffMinute,
+    timezone: s.timezone,
+    agentIds: s.agentUserIds,
+    notifyUserIds: s.notifyUserIds,
+    generatePdf: s.generatePdf,
+    sendWhatsappPdf: s.sendWhatsappPdf,
+    nextRunAt: s.nextRunAt.toISOString(),
+    lastRunAt: s.lastRunAt?.toISOString() ?? null,
+    lastRunJobId: s.lastRunJobId,
+    totalRuns: s.totalRuns,
+    createdAt: s.createdAt.toISOString(),
+  };
+}
+
+// Evaluable member ids for a tenant: supervisors + agents under the owner,
+// plus the owner. Used to validate agentIds / notifyUserIds.
+async function tenantMemberIds(ownerUserId: number): Promise<Set<number>> {
+  const rows = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(
+      or(
+        eq(usersTable.id, ownerUserId),
+        and(
+          eq(usersTable.parentUserId, ownerUserId),
+          inArray(usersTable.teamRole, ["supervisor", "agent"])
+        )
+      )
+    );
+  return new Set(rows.map((r) => r.id));
+}
+
+interface ScheduleValues {
+  name: string;
+  frequency: ScheduleFrequency;
+  dayOfWeek: number | null;
+  dayOfMonth: number | null;
+  cutoffHour: number;
+  cutoffMinute: number;
+  agentUserIds: number[] | null;
+  notifyUserIds: number[];
+  generatePdf: boolean;
+  sendWhatsappPdf: boolean;
+  isActive: boolean;
+  nextRunAt: Date;
+}
+
+// Validate + normalize a schedule body; agentIds/notifyUserIds are filtered to
+// the tenant's members. Returns values or a user-facing error string.
+async function buildScheduleValues(
+  body: Record<string, unknown>,
+  ownerUserId: number
+): Promise<{ values: ScheduleValues } | { error: string }> {
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) return { error: "Nama jadwal wajib diisi." };
+
+  const frequency = body.frequency;
+  if (frequency !== "daily" && frequency !== "weekly" && frequency !== "monthly") {
+    return { error: "Frekuensi tidak valid." };
+  }
+  const cutoffHour = Number(body.cutoffHour);
+  const cutoffMinute = Number(body.cutoffMinute);
+  if (!Number.isInteger(cutoffHour) || cutoffHour < 0 || cutoffHour > 23) {
+    return { error: "Jam eksekusi harus 0–23." };
+  }
+  if (!Number.isInteger(cutoffMinute) || cutoffMinute < 0 || cutoffMinute > 59) {
+    return { error: "Menit eksekusi harus 0–59." };
+  }
+
+  let dayOfWeek: number | null = null;
+  let dayOfMonth: number | null = null;
+  if (frequency === "weekly") {
+    const d = Number(body.dayOfWeek);
+    if (!Number.isInteger(d) || d < 0 || d > 6) return { error: "Hari mingguan harus 0–6." };
+    dayOfWeek = d;
+  } else if (frequency === "monthly") {
+    const d = Number(body.dayOfMonth);
+    if (!Number.isInteger(d) || d < 1 || d > 28) return { error: "Tanggal bulanan harus 1–28." };
+    dayOfMonth = d;
+  }
+
+  const members = await tenantMemberIds(ownerUserId);
+
+  let agentUserIds: number[] | null = null;
+  if (Array.isArray(body.agentIds) && body.agentIds.length > 0) {
+    const valid = [...new Set(body.agentIds.map(Number))].filter(
+      (n) => Number.isInteger(n) && members.has(n)
+    );
+    if (valid.length === 0) return { error: "Agent yang dipilih tidak valid." };
+    agentUserIds = valid;
+  }
+
+  let notifyUserIds: number[] = [];
+  if (Array.isArray(body.notifyUserIds)) {
+    notifyUserIds = [...new Set(body.notifyUserIds.map(Number))].filter(
+      (n) => Number.isInteger(n) && members.has(n)
+    );
+  }
+
+  const nextRunAt = computeScheduleNextRun(
+    { frequency, dayOfWeek, dayOfMonth, cutoffHour, cutoffMinute },
+    new Date()
+  );
+
+  return {
+    values: {
+      name,
+      frequency,
+      dayOfWeek,
+      dayOfMonth,
+      cutoffHour,
+      cutoffMinute,
+      agentUserIds,
+      notifyUserIds,
+      generatePdf: body.generatePdf !== false,
+      sendWhatsappPdf: body.sendWhatsappPdf === true,
+      isActive: body.isActive !== false,
+      nextRunAt,
+    },
+  };
+}
+
+async function loadScheduleScoped(
+  id: string,
+  ownerUserId: number
+): Promise<AcrScheduleRow | null> {
+  const row = await db.query.acrSchedulesTable.findFirst({
+    where: and(eq(acrSchedulesTable.id, id), eq(acrSchedulesTable.ownerUserId, ownerUserId)),
+  });
+  return row ?? null;
+}
+
+router.get(
+  "/schedules",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const rows = await db
+      .select()
+      .from(acrSchedulesTable)
+      .where(eq(acrSchedulesTable.ownerUserId, caller.ownerUserId))
+      .orderBy(desc(acrSchedulesTable.createdAt));
+    res.json(rows.map(serializeSchedule));
+  }
+);
+
+router.post(
+  "/schedules",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const parsed = CreateAcrScheduleBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Payload tidak valid", details: parsed.error.issues });
+      return;
+    }
+    const built = await buildScheduleValues(req.body as Record<string, unknown>, caller.ownerUserId);
+    if ("error" in built) {
+      res.status(400).json({ error: built.error });
+      return;
+    }
+    const [row] = await db
+      .insert(acrSchedulesTable)
+      .values({ ownerUserId: caller.ownerUserId, createdByUserId: caller.userId, ...built.values })
+      .returning();
+    res.status(201).json(serializeSchedule(row!));
+  }
+);
+
+router.put(
+  "/schedules/:id",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const parsed = UpdateAcrScheduleBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Payload tidak valid", details: parsed.error.issues });
+      return;
+    }
+    const existing = await loadScheduleScoped(String(req.params.id), caller.ownerUserId);
+    if (!existing) {
+      res.status(404).json({ error: "Jadwal tidak ditemukan." });
+      return;
+    }
+    const built = await buildScheduleValues(req.body as Record<string, unknown>, caller.ownerUserId);
+    if ("error" in built) {
+      res.status(400).json({ error: built.error });
+      return;
+    }
+    const [row] = await db
+      .update(acrSchedulesTable)
+      .set(built.values)
+      .where(eq(acrSchedulesTable.id, existing.id))
+      .returning();
+    res.json(serializeSchedule(row!));
+  }
+);
+
+router.patch(
+  "/schedules/:id/active",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const parsed = SetAcrScheduleActiveBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Payload tidak valid", details: parsed.error.issues });
+      return;
+    }
+    const existing = await loadScheduleScoped(String(req.params.id), caller.ownerUserId);
+    if (!existing) {
+      res.status(404).json({ error: "Jadwal tidak ditemukan." });
+      return;
+    }
+    const isActive = (req.body as { isActive?: unknown }).isActive === true;
+    const patch: { isActive: boolean; nextRunAt?: Date } = { isActive };
+    // Resuming a paused schedule: recompute next run so it doesn't fire for a
+    // missed past slot immediately.
+    if (isActive && !existing.isActive) {
+      patch.nextRunAt = computeScheduleNextRun(
+        {
+          frequency: existing.frequency as ScheduleFrequency,
+          dayOfWeek: existing.dayOfWeek,
+          dayOfMonth: existing.dayOfMonth,
+          cutoffHour: existing.cutoffHour,
+          cutoffMinute: existing.cutoffMinute,
+        },
+        new Date()
+      );
+    }
+    const [row] = await db
+      .update(acrSchedulesTable)
+      .set(patch)
+      .where(eq(acrSchedulesTable.id, existing.id))
+      .returning();
+    res.json(serializeSchedule(row!));
+  }
+);
+
+router.delete(
+  "/schedules/:id",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const deleted = await db
+      .delete(acrSchedulesTable)
+      .where(
+        and(
+          eq(acrSchedulesTable.id, String(req.params.id)),
+          eq(acrSchedulesTable.ownerUserId, caller.ownerUserId)
+        )
+      )
+      .returning({ id: acrSchedulesTable.id });
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Jadwal tidak ditemukan." });
+      return;
+    }
+    res.json({ ok: true });
+  }
+);
+
+router.post(
+  "/schedules/:id/run",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const sched = await loadScheduleScoped(String(req.params.id), caller.ownerUserId);
+    if (!sched) {
+      res.status(404).json({ error: "Jadwal tidak ditemukan." });
+      return;
+    }
+    const cfg = await getOrCreateConfig(caller.ownerUserId);
+    const { periodStart, periodEnd } = schedulePeriod(
+      sched.frequency as ScheduleFrequency,
+      new Date()
+    );
+    const [job] = await db
+      .insert(acrJobsTable)
+      .values({
+        ownerUserId: caller.ownerUserId,
+        periodStart,
+        periodEnd,
+        requestedByUserId: caller.userId,
+        isAutoScheduled: true,
+        jobType: "scheduled",
+        scheduleId: sched.id,
+        agentUserIds: sched.agentUserIds,
+        status: "pending",
+        configSnapshot: snapshotFromConfig(cfg),
+      })
+      .returning();
+    await db
+      .update(acrSchedulesTable)
+      .set({ lastRunAt: new Date(), lastRunJobId: job!.id, totalRuns: sched.totalRuns + 1 })
+      .where(eq(acrSchedulesTable.id, sched.id));
+    void runAcrJob(job!.id)
+      .then(() => (sched.generatePdf ? generateAndStoreJobPdf(job!.id) : null))
+      .catch((err) =>
+        logger.error({ err, jobId: job!.id }, "[acr] schedule run-now failed")
+      );
+    res.status(201).json(serializeJob(job!));
+  }
+);
+
+// ─── Dashboard KPI (Bagian III) ─────────────────────────────────────────────
+// Cross-period team aggregates read from acr_kpi_snapshots. Exposes team-wide
+// data including other agents' leaderboard rows, so it is super_admin only —
+// supervisors/agents use the per-report detail pages (already role-scoped).
+router.get(
+  "/dashboard",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    if (caller.role !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin yang dapat melihat Dashboard KPI." });
+      return;
+    }
+
+    const freq = String(req.query.frequency ?? "all");
+    const limit = intQ(req.query.limit, 12, 24);
+
+    const conds = [eq(acrKpiSnapshotsTable.ownerUserId, caller.ownerUserId)];
+    if (freq === "manual") {
+      conds.push(isNull(acrKpiSnapshotsTable.frequency));
+    } else if (freq === "daily" || freq === "weekly" || freq === "monthly") {
+      conds.push(eq(acrKpiSnapshotsTable.frequency, freq));
+    } // 'all' (or anything else) → no frequency filter
+
+    // Newest first so current/previous are rows[0]/rows[1]; reversed for charts.
+    const rows = await db
+      .select()
+      .from(acrKpiSnapshotsTable)
+      .where(and(...conds))
+      .orderBy(desc(acrKpiSnapshotsTable.periodStart), desc(acrKpiSnapshotsTable.createdAt))
+      .limit(limit);
+
+    const current = rows[0] ?? null;
+    const previous = rows[1] ?? null;
+    const periods = [...rows].reverse(); // oldest → newest for trend charts
+
+    let leaderboard: ReturnType<typeof serializeAgentScore>[] = [];
+    let agentTrends: {
+      agentUserId: number;
+      agentName: string | null;
+      points: { jobId: string; periodStart: string; periodLabel: string; totalScore: number; grade: string }[];
+    }[] = [];
+
+    if (current) {
+      // Per-agent leaderboard for the latest period (powers per-dimension cards
+      // + the full KPI table — sorting per dimension happens client-side).
+      const scores = await db
+        .select()
+        .from(acrAgentScoresTable)
+        .where(eq(acrAgentScoresTable.jobId, current.jobId))
+        .orderBy(desc(acrAgentScoresTable.totalScore));
+      leaderboard = scores.map(serializeAgentScore);
+
+      // Cross-period per-agent score matrix (Section 4.6 + trend line).
+      const meta = new Map(
+        rows.map((r) => [r.jobId, { periodStart: r.periodStart, periodLabel: r.periodLabel }])
+      );
+      const trendRows = await db
+        .select({
+          jobId: acrAgentScoresTable.jobId,
+          agentUserId: acrAgentScoresTable.agentUserId,
+          agentName: acrAgentScoresTable.agentName,
+          totalScore: acrAgentScoresTable.totalScore,
+          grade: acrAgentScoresTable.grade,
+        })
+        .from(acrAgentScoresTable)
+        .where(inArray(acrAgentScoresTable.jobId, rows.map((r) => r.jobId)));
+
+      const byAgent = new Map<number, (typeof agentTrends)[number]>();
+      for (const tr of trendRows) {
+        const m = meta.get(tr.jobId);
+        if (!m) continue;
+        let entry = byAgent.get(tr.agentUserId);
+        if (!entry) {
+          entry = { agentUserId: tr.agentUserId, agentName: tr.agentName, points: [] };
+          byAgent.set(tr.agentUserId, entry);
+        }
+        entry.points.push({
+          jobId: tr.jobId,
+          periodStart: m.periodStart,
+          periodLabel: m.periodLabel,
+          totalScore: num(tr.totalScore),
+          grade: tr.grade,
+        });
+      }
+      agentTrends = [...byAgent.values()].map((a) => ({
+        ...a,
+        points: a.points.sort((x, y) => x.periodStart.localeCompare(y.periodStart)),
+      }));
+    }
+
+    res.json({
+      frequency: freq,
+      periods: periods.map(serializeKpiSnapshot),
+      current: current ? serializeKpiSnapshot(current) : null,
+      previous: previous ? serializeKpiSnapshot(previous) : null,
+      leaderboard,
+      agentTrends,
+    });
+  }
+);
+
+// ─── Bagian IV — advanced features ──────────────────────────────────────────
+
+function serializeTarget(t: AcrAgentTargetRow) {
+  return {
+    id: t.id,
+    agentUserId: t.agentUserId,
+    targetScore: Number(t.targetScore),
+    targetDeadline: t.targetDeadline,
+    setByUserId: t.setByUserId,
+    updatedAt: t.updatedAt.toISOString(),
+  };
+}
+
+function serializeAchievement(a: AcrAchievementRow) {
+  return {
+    id: a.id,
+    agentUserId: a.agentUserId,
+    jobId: a.jobId,
+    achievementId: a.achievementId,
+    achievementName: a.achievementName,
+    achievementIcon: a.achievementIcon,
+    description: a.description,
+    earnedAtPeriod: a.earnedAtPeriod,
+    earnedAt: a.earnedAt.toISOString(),
+  };
+}
+
+function serializeTeamGroup(g: AcrTeamGroupRow) {
+  return {
+    id: g.id,
+    name: g.name,
+    scheduleLabel: g.scheduleLabel,
+    agentUserIds: g.agentUserIds,
+    updatedAt: g.updatedAt.toISOString(),
+  };
+}
+
+function serializeAlert(a: AcrPerformanceAlertRow) {
+  return {
+    id: a.id,
+    agentUserId: a.agentUserId,
+    jobId: a.jobId,
+    alertType: a.alertType,
+    severity: a.severity,
+    title: a.title,
+    description: a.description,
+    recommendation: a.recommendation,
+    affectedDimensions: a.affectedDimensions,
+    isRead: a.isRead,
+    isResolved: a.isResolved,
+    resolvedAt: a.resolvedAt?.toISOString() ?? null,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
+// ── Targets (9.1) — super admin only ──
+router.get(
+  "/targets",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const rows = await db
+      .select()
+      .from(acrAgentTargetsTable)
+      .where(eq(acrAgentTargetsTable.ownerUserId, caller.ownerUserId));
+    res.json(rows.map(serializeTarget));
+  }
+);
+
+router.put(
+  "/targets/:agentId",
+  requirePermission("acr", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const agentUserId = Number(req.params.agentId);
+    if (!Number.isInteger(agentUserId)) {
+      res.status(400).json({ error: "agentId tidak valid." });
+      return;
+    }
+    const body = req.body as { targetScore?: unknown; targetDeadline?: unknown };
+    const targetScore = Number(body.targetScore);
+    if (!Number.isFinite(targetScore) || targetScore < 0 || targetScore > 100) {
+      res.status(400).json({ error: "targetScore harus 0–100." });
+      return;
+    }
+    const deadline =
+      typeof body.targetDeadline === "string" && DATE_RE.test(body.targetDeadline)
+        ? body.targetDeadline
+        : null;
+    const values = {
+      ownerUserId: caller.ownerUserId,
+      agentUserId,
+      targetScore: targetScore.toFixed(2),
+      targetDeadline: deadline,
+      setByUserId: caller.userId,
+    };
+    const [row] = await db
+      .insert(acrAgentTargetsTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [acrAgentTargetsTable.ownerUserId, acrAgentTargetsTable.agentUserId],
+        set: { targetScore: values.targetScore, targetDeadline: deadline, setByUserId: caller.userId },
+      })
+      .returning();
+    res.json(serializeTarget(row!));
+  }
+);
+
+router.delete(
+  "/targets/:agentId",
+  requirePermission("acr", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const agentUserId = Number(req.params.agentId);
+    await db
+      .delete(acrAgentTargetsTable)
+      .where(
+        and(
+          eq(acrAgentTargetsTable.ownerUserId, caller.ownerUserId),
+          eq(acrAgentTargetsTable.agentUserId, agentUserId)
+        )
+      );
+    res.json({ ok: true });
+  }
+);
+
+// ── Performance alerts (9.2) ──
+router.get(
+  "/alerts",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const conds = [eq(acrPerformanceAlertsTable.ownerUserId, caller.ownerUserId)];
+    if (caller.role === "agent") conds.push(eq(acrPerformanceAlertsTable.agentUserId, caller.userId));
+    if (req.query.unresolvedOnly === "true")
+      conds.push(eq(acrPerformanceAlertsTable.isResolved, false));
+    const rows = await db
+      .select()
+      .from(acrPerformanceAlertsTable)
+      .where(and(...conds))
+      .orderBy(desc(acrPerformanceAlertsTable.createdAt))
+      .limit(100);
+    res.json(rows.map(serializeAlert));
+  }
+);
+
+router.patch(
+  "/alerts/:id/resolve",
+  requirePermission("acr", "create"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const [row] = await db
+      .update(acrPerformanceAlertsTable)
+      .set({ isResolved: true, isRead: true, resolvedAt: new Date() })
+      .where(
+        and(
+          eq(acrPerformanceAlertsTable.id, String(req.params.id)),
+          eq(acrPerformanceAlertsTable.ownerUserId, caller.ownerUserId)
+        )
+      )
+      .returning();
+    if (!row) {
+      res.status(404).json({ error: "Alert tidak ditemukan." });
+      return;
+    }
+    res.json(serializeAlert(row));
+  }
+);
+
+// ── Achievements (9.6) ──
+router.get(
+  "/achievements",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const conds = [eq(acrAchievementsTable.ownerUserId, caller.ownerUserId)];
+    if (caller.role === "agent") conds.push(eq(acrAchievementsTable.agentUserId, caller.userId));
+    else if (req.query.agentId) {
+      const a = Number(req.query.agentId);
+      if (Number.isInteger(a)) conds.push(eq(acrAchievementsTable.agentUserId, a));
+    }
+    const rows = await db
+      .select()
+      .from(acrAchievementsTable)
+      .where(and(...conds))
+      .orderBy(desc(acrAchievementsTable.earnedAt))
+      .limit(100);
+    res.json(rows.map(serializeAchievement));
+  }
+);
+
+// ── Team groups (9.3) — super admin only ──
+router.get(
+  "/team-groups",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const rows = await db
+      .select()
+      .from(acrTeamGroupsTable)
+      .where(eq(acrTeamGroupsTable.ownerUserId, caller.ownerUserId))
+      .orderBy(asc(acrTeamGroupsTable.name));
+    res.json(rows.map(serializeTeamGroup));
+  }
+);
+
+function parseTeamGroupBody(
+  body: Record<string, unknown>
+): { name: string; scheduleLabel: string | null; agentUserIds: number[] } | { error: string } {
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) return { error: "Nama tim wajib diisi." };
+  const ids = Array.isArray(body.agentUserIds)
+    ? (body.agentUserIds as unknown[]).map(Number).filter((n) => Number.isInteger(n))
+    : [];
+  const scheduleLabel =
+    typeof body.scheduleLabel === "string" && body.scheduleLabel.trim()
+      ? body.scheduleLabel.trim()
+      : null;
+  return { name, scheduleLabel, agentUserIds: ids };
+}
+
+router.post(
+  "/team-groups",
+  requirePermission("acr", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const parsed = parseTeamGroupBody(req.body as Record<string, unknown>);
+    if ("error" in parsed) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+    const [row] = await db
+      .insert(acrTeamGroupsTable)
+      .values({ ownerUserId: caller.ownerUserId, ...parsed })
+      .returning();
+    res.status(201).json(serializeTeamGroup(row!));
+  }
+);
+
+router.put(
+  "/team-groups/:id",
+  requirePermission("acr", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const parsed = parseTeamGroupBody(req.body as Record<string, unknown>);
+    if ("error" in parsed) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+    const [row] = await db
+      .update(acrTeamGroupsTable)
+      .set(parsed)
+      .where(
+        and(
+          eq(acrTeamGroupsTable.id, String(req.params.id)),
+          eq(acrTeamGroupsTable.ownerUserId, caller.ownerUserId)
+        )
+      )
+      .returning();
+    if (!row) {
+      res.status(404).json({ error: "Tim tidak ditemukan." });
+      return;
+    }
+    res.json(serializeTeamGroup(row));
+  }
+);
+
+router.delete(
+  "/team-groups/:id",
+  requirePermission("acr", "edit"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    const deleted = await db
+      .delete(acrTeamGroupsTable)
+      .where(
+        and(
+          eq(acrTeamGroupsTable.id, String(req.params.id)),
+          eq(acrTeamGroupsTable.ownerUserId, caller.ownerUserId)
+        )
+      )
+      .returning({ id: acrTeamGroupsTable.id });
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Tim tidak ditemukan." });
+      return;
+    }
+    res.json({ ok: true });
+  }
+);
+
+// ── MoM report (9.5) — super admin only, on-demand AI ──
+router.get(
+  "/mom",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    if (caller.role !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin." });
+      return;
+    }
+    const currentJobId = String(req.query.currentJobId ?? "");
+    const previousJobId = String(req.query.previousJobId ?? "");
+    if (!currentJobId || !previousJobId) {
+      res.status(400).json({ error: "currentJobId dan previousJobId wajib." });
+      return;
+    }
+    const report = await generateMomReport(caller.ownerUserId, currentJobId, previousJobId);
+    if (!report) {
+      res.status(404).json({ error: "Data periode tidak lengkap untuk perbandingan." });
+      return;
+    }
+    res.json(report);
+  }
+);
+
+// ── Benchmark (9.3) — super admin only, on-demand AI ──
+router.get(
+  "/benchmark",
+  requirePermission("acr", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const caller = await resolveCaller(req, res);
+    if (!caller) return;
+    if (caller.role !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin." });
+      return;
+    }
+    const jobId = String(req.query.jobId ?? "");
+    if (!jobId) {
+      res.status(400).json({ error: "jobId wajib." });
+      return;
+    }
+    const groups = await db
+      .select()
+      .from(acrTeamGroupsTable)
+      .where(eq(acrTeamGroupsTable.ownerUserId, caller.ownerUserId));
+    if (groups.length < 2) {
+      res.status(400).json({ error: "Butuh minimal 2 tim untuk benchmark." });
+      return;
+    }
+    const result = await generateBenchmark(
+      caller.ownerUserId,
+      jobId,
+      groups.map((g) => ({
+        name: g.name,
+        scheduleLabel: g.scheduleLabel,
+        agentUserIds: g.agentUserIds,
+      }))
+    );
+    if (!result) {
+      res.status(404).json({ error: "Tidak bisa membuat benchmark." });
+      return;
+    }
+    res.json(result);
   }
 );
 

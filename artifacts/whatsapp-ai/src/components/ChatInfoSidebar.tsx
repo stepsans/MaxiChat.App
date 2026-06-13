@@ -2203,7 +2203,7 @@ export function ChatInfoSidebar({
                 Lead
               </Label>
               <Select
-                value={chat.leadStatus ?? "none"}
+                value={chat.leadStatus ?? "unknown"}
                 onValueChange={(val) => onUpdate({ leadStatus: val })}
               >
                 <SelectTrigger
@@ -2213,7 +2213,7 @@ export function ChatInfoSidebar({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Not Tag</SelectItem>
+                  <SelectItem value="unknown">Unknown</SelectItem>
                   <SelectItem value="lead">Lead</SelectItem>
                   <SelectItem value="not_lead">Not Lead</SelectItem>
                 </SelectContent>

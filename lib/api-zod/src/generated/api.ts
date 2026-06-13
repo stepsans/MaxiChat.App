@@ -1315,7 +1315,7 @@ export const ListChatsResponseItem = zod.object({
 })).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
-  "leadStatus": zod.enum(['none', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -1341,6 +1341,28 @@ export const SearchChatContentQueryParams = zod.object({
 
 export const SearchChatContentResponse = zod.object({
   "chatIds": zod.array(zod.number()).describe('Ids of chats that have at least one message matching the query.')
+})
+
+
+/**
+ * Applies the same field changes to every selected chat that is within the caller's channel scope (and, for agents, assigned to them). Chats outside the caller's scope are silently skipped — the response reports how many rows were actually updated. Used by the chat-list multi-select so the operator doesn't have to open chats one by one.
+
+ * @summary Bulk-update lead status / tag / status for multiple chats
+ */
+export const bulkUpdateChatsBodyChatIdsMax = 500;
+
+
+
+export const BulkUpdateChatsBody = zod.object({
+  "chatIds": zod.array(zod.number()).min(1).max(bulkUpdateChatsBodyChatIdsMax).describe('Ids of the chats to update. Out-of-scope ids are skipped.'),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification to apply to all selected chats.'),
+  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']).optional().describe('Auto-routing tag to apply to all selected chats.'),
+  "status": zod.enum(['ai_handled', 'needs_human', 'closed']).optional(),
+  "addLabelId": zod.number().optional().describe('Id of a customer label to attach to every selected chat\'s contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.')
+})
+
+export const BulkUpdateChatsResponse = zod.object({
+  "updated": zod.number().describe('Number of chats actually updated (in-scope rows only).')
 })
 
 
@@ -1446,7 +1468,7 @@ export const GetChatResponse = zod.object({
 })).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
-  "leadStatus": zod.enum(['none', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -1497,7 +1519,7 @@ export const UpdateChatParams = zod.object({
 export const UpdateChatBody = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']).optional(),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']).optional(),
-  "leadStatus": zod.enum(['none', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag.'),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag.'),
   "nickname": zod.string().nullish().describe('Editable display name for the contact (overrides contactName in the header).'),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
   "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.')
@@ -1519,7 +1541,7 @@ export const UpdateChatResponse = zod.object({
 })).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
-  "leadStatus": zod.enum(['none', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -1750,7 +1772,7 @@ export const AssignChatResponse = zod.object({
 })).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
-  "leadStatus": zod.enum(['none', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -1791,7 +1813,7 @@ export const TakeoverChatResponse = zod.object({
 })).describe('Customer labels currently attached to this chat.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
-  "leadStatus": zod.enum(['none', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -6300,7 +6322,10 @@ export const ListAcrJobsResponse = zod.object({
   "completedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date().optional(),
   "archivedAt": zod.coerce.date().nullish(),
-  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.')
+  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.'),
+  "jobType": zod.string().optional(),
+  "pdfPath": zod.string().nullish().describe('Stored PDF URL once auto-generated for a scheduled job.'),
+  "pdfGeneratedAt": zod.coerce.date().nullish()
 })),
   "total": zod.number(),
   "page": zod.number(),
@@ -6314,7 +6339,12 @@ export const ListAcrJobsResponse = zod.object({
 export const CreateAcrJobBody = zod.object({
   "periodStart": zod.coerce.date().describe('YYYY-MM-DD in the tenant timezone. Default today - 30 days.'),
   "periodEnd": zod.coerce.date(),
-  "agentIds": zod.array(zod.number()).optional().describe('Empty\/omitted = evaluate all agents.')
+  "agentIds": zod.array(zod.number()).optional().describe('Empty\/omitted = evaluate all agents.'),
+  "leadStatuses": zod.array(zod.enum(['lead', 'not_lead', 'unknown'])).optional().describe('Manual lead classifications whose chats are analyzed. Empty\/omitted defaults to [lead] — only chats marked as leads are evaluated.'),
+  "channelIds": zod.array(zod.number()).optional().describe('Restrict analysis to these channels. Empty\/omitted = all channels.'),
+  "customerLabelIds": zod.array(zod.number()).optional().describe('Restrict to chats whose contact carries one of these customer labels. Empty\/omitted = no label filter.'),
+  "chatStatuses": zod.array(zod.enum(['ai_handled', 'needs_human', 'closed'])).optional().describe('Restrict to chats with one of these handling statuses. Empty\/omitted = all statuses.'),
+  "includeOwner": zod.boolean().optional().describe('Override the tenant config\'s include-owner-in-evaluation for this report. Omitted = inherit config.')
 })
 
 
@@ -6343,7 +6373,10 @@ export const GetAcrJobResponse = zod.object({
   "completedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date().optional(),
   "archivedAt": zod.coerce.date().nullish(),
-  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.')
+  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.'),
+  "jobType": zod.string().optional(),
+  "pdfPath": zod.string().nullish().describe('Stored PDF URL once auto-generated for a scheduled job.'),
+  "pdfGeneratedAt": zod.coerce.date().nullish()
 })
 
 
@@ -6372,7 +6405,10 @@ export const ArchiveAcrJobResponse = zod.object({
   "completedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date().optional(),
   "archivedAt": zod.coerce.date().nullish(),
-  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.')
+  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.'),
+  "jobType": zod.string().optional(),
+  "pdfPath": zod.string().nullish().describe('Stored PDF URL once auto-generated for a scheduled job.'),
+  "pdfGeneratedAt": zod.coerce.date().nullish()
 })
 
 
@@ -6417,7 +6453,10 @@ export const GetAcrJobResultsResponse = zod.object({
   "completedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date().optional(),
   "archivedAt": zod.coerce.date().nullish(),
-  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.')
+  "isLatestForPeriod": zod.boolean().optional().describe('True when this is the newest job covering its exact period.'),
+  "jobType": zod.string().optional(),
+  "pdfPath": zod.string().nullish().describe('Stored PDF URL once auto-generated for a scheduled job.'),
+  "pdfGeneratedAt": zod.coerce.date().nullish()
 }),
   "weights": zod.object({
   "weightResponseTime": zod.number(),
@@ -6585,6 +6624,7 @@ export const ListAcrRedFlagsQueryParams = zod.object({
   "agentId": zod.coerce.number().optional(),
   "violationType": zod.coerce.string().optional(),
   "severity": zod.coerce.string().optional(),
+  "sort": zod.enum(['latest', 'severity', 'agent']).optional().describe('Order of results. Default \'latest\' (most recent first).'),
   "page": zod.coerce.number().default(listAcrRedFlagsQueryPageDefault),
   "limit": zod.coerce.number().default(listAcrRedFlagsQueryLimitDefault)
 })
@@ -6836,6 +6876,592 @@ export const MarkAcrNotificationReadResponse = zod.object({
  */
 export const MarkAllAcrNotificationsReadResponse = zod.object({
   "ok": zod.boolean()
+})
+
+
+/**
+ * @summary List recurring report schedules for the tenant
+ */
+export const ListAcrSchedulesResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "isActive": zod.boolean(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "dayOfWeek": zod.number().nullish(),
+  "dayOfMonth": zod.number().nullish(),
+  "cutoffHour": zod.number(),
+  "cutoffMinute": zod.number(),
+  "timezone": zod.string().optional(),
+  "agentIds": zod.array(zod.number()).nullish(),
+  "notifyUserIds": zod.array(zod.number()).optional(),
+  "generatePdf": zod.boolean().optional(),
+  "sendWhatsappPdf": zod.boolean().optional(),
+  "nextRunAt": zod.coerce.date(),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "lastRunJobId": zod.string().nullish(),
+  "totalRuns": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional()
+})
+export const ListAcrSchedulesResponse = zod.array(ListAcrSchedulesResponseItem)
+
+
+/**
+ * @summary Create a recurring report schedule
+ */
+export const createAcrScheduleBodyDayOfWeekMin = 0;
+export const createAcrScheduleBodyDayOfWeekMax = 6;
+
+export const createAcrScheduleBodyDayOfMonthMax = 28;
+
+export const createAcrScheduleBodyCutoffHourMin = 0;
+export const createAcrScheduleBodyCutoffHourMax = 23;
+
+export const createAcrScheduleBodyCutoffMinuteMin = 0;
+export const createAcrScheduleBodyCutoffMinuteMax = 59;
+
+
+
+export const CreateAcrScheduleBody = zod.object({
+  "name": zod.string(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "dayOfWeek": zod.number().min(createAcrScheduleBodyDayOfWeekMin).max(createAcrScheduleBodyDayOfWeekMax).nullish().describe('Weekly only. 0=Sunday … 6=Saturday.'),
+  "dayOfMonth": zod.number().min(1).max(createAcrScheduleBodyDayOfMonthMax).nullish().describe('Monthly only. 1–28.'),
+  "cutoffHour": zod.number().min(createAcrScheduleBodyCutoffHourMin).max(createAcrScheduleBodyCutoffHourMax),
+  "cutoffMinute": zod.number().min(createAcrScheduleBodyCutoffMinuteMin).max(createAcrScheduleBodyCutoffMinuteMax),
+  "agentIds": zod.array(zod.number()).optional().describe('Empty\/omitted = all agents.'),
+  "notifyUserIds": zod.array(zod.number()).optional(),
+  "generatePdf": zod.boolean().optional(),
+  "sendWhatsappPdf": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Update a recurring report schedule
+ */
+export const UpdateAcrScheduleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateAcrScheduleBodyDayOfWeekMin = 0;
+export const updateAcrScheduleBodyDayOfWeekMax = 6;
+
+export const updateAcrScheduleBodyDayOfMonthMax = 28;
+
+export const updateAcrScheduleBodyCutoffHourMin = 0;
+export const updateAcrScheduleBodyCutoffHourMax = 23;
+
+export const updateAcrScheduleBodyCutoffMinuteMin = 0;
+export const updateAcrScheduleBodyCutoffMinuteMax = 59;
+
+
+
+export const UpdateAcrScheduleBody = zod.object({
+  "name": zod.string(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "dayOfWeek": zod.number().min(updateAcrScheduleBodyDayOfWeekMin).max(updateAcrScheduleBodyDayOfWeekMax).nullish().describe('Weekly only. 0=Sunday … 6=Saturday.'),
+  "dayOfMonth": zod.number().min(1).max(updateAcrScheduleBodyDayOfMonthMax).nullish().describe('Monthly only. 1–28.'),
+  "cutoffHour": zod.number().min(updateAcrScheduleBodyCutoffHourMin).max(updateAcrScheduleBodyCutoffHourMax),
+  "cutoffMinute": zod.number().min(updateAcrScheduleBodyCutoffMinuteMin).max(updateAcrScheduleBodyCutoffMinuteMax),
+  "agentIds": zod.array(zod.number()).optional().describe('Empty\/omitted = all agents.'),
+  "notifyUserIds": zod.array(zod.number()).optional(),
+  "generatePdf": zod.boolean().optional(),
+  "sendWhatsappPdf": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateAcrScheduleResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "isActive": zod.boolean(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "dayOfWeek": zod.number().nullish(),
+  "dayOfMonth": zod.number().nullish(),
+  "cutoffHour": zod.number(),
+  "cutoffMinute": zod.number(),
+  "timezone": zod.string().optional(),
+  "agentIds": zod.array(zod.number()).nullish(),
+  "notifyUserIds": zod.array(zod.number()).optional(),
+  "generatePdf": zod.boolean().optional(),
+  "sendWhatsappPdf": zod.boolean().optional(),
+  "nextRunAt": zod.coerce.date(),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "lastRunJobId": zod.string().nullish(),
+  "totalRuns": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Delete a recurring report schedule
+ */
+export const DeleteAcrScheduleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteAcrScheduleResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Pause or resume a schedule
+ */
+export const SetAcrScheduleActiveParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const SetAcrScheduleActiveBody = zod.object({
+  "isActive": zod.boolean()
+})
+
+export const SetAcrScheduleActiveResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "isActive": zod.boolean(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']),
+  "dayOfWeek": zod.number().nullish(),
+  "dayOfMonth": zod.number().nullish(),
+  "cutoffHour": zod.number(),
+  "cutoffMinute": zod.number(),
+  "timezone": zod.string().optional(),
+  "agentIds": zod.array(zod.number()).nullish(),
+  "notifyUserIds": zod.array(zod.number()).optional(),
+  "generatePdf": zod.boolean().optional(),
+  "sendWhatsappPdf": zod.boolean().optional(),
+  "nextRunAt": zod.coerce.date(),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "lastRunJobId": zod.string().nullish(),
+  "totalRuns": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Run a schedule immediately (creates a scheduled job now)
+ */
+export const RunAcrScheduleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Cross-period team KPI dashboard (super admin only)
+ */
+export const getAcrDashboardQueryFrequencyDefault = `all`;
+export const getAcrDashboardQueryLimitDefault = 12;
+
+export const GetAcrDashboardQueryParams = zod.object({
+  "frequency": zod.enum(['all', 'daily', 'weekly', 'monthly', 'manual']).default(getAcrDashboardQueryFrequencyDefault),
+  "limit": zod.coerce.number().default(getAcrDashboardQueryLimitDefault)
+})
+
+export const GetAcrDashboardResponse = zod.object({
+  "frequency": zod.string(),
+  "periods": zod.array(zod.object({
+  "id": zod.string(),
+  "jobId": zod.string(),
+  "scheduleId": zod.string().nullish(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "periodLabel": zod.string(),
+  "jobType": zod.string(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']).nullish(),
+  "teamAvgScore": zod.number().nullish(),
+  "teamAvgResponseTime": zod.number().nullish(),
+  "teamAvgLanguage": zod.number().nullish(),
+  "teamAvgAnswer": zod.number().nullish(),
+  "teamAvgComplaint": zod.number().nullish(),
+  "teamAvgMissed": zod.number().nullish(),
+  "countGradeA": zod.number().optional(),
+  "countGradeB": zod.number().optional(),
+  "countGradeC": zod.number().optional(),
+  "countGradeD": zod.number().optional(),
+  "countGradeE": zod.number().optional(),
+  "totalAgents": zod.number(),
+  "totalRedFlags": zod.number().optional(),
+  "totalCustomerAngry": zod.number().optional(),
+  "totalRudeLanguage": zod.number().optional(),
+  "totalNoReplyCritical": zod.number().optional(),
+  "totalCustomerIgnored": zod.number().optional(),
+  "totalAnswerDropout": zod.number().optional(),
+  "totalConversations": zod.number().optional(),
+  "totalMessages": zod.number().optional(),
+  "totalMissedChats": zod.number().optional(),
+  "totalComplaints": zod.number().optional(),
+  "complaintsResolved": zod.number().optional(),
+  "topPerformerName": zod.string().nullish(),
+  "topPerformerScore": zod.number().nullish(),
+  "topPerformerGrade": zod.string().nullish(),
+  "botPerformerName": zod.string().nullish(),
+  "botPerformerScore": zod.number().nullish(),
+  "botPerformerGrade": zod.string().nullish(),
+  "totalAllowanceAmount": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional()
+})),
+  "current": zod.object({
+  "id": zod.string(),
+  "jobId": zod.string(),
+  "scheduleId": zod.string().nullish(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "periodLabel": zod.string(),
+  "jobType": zod.string(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']).nullish(),
+  "teamAvgScore": zod.number().nullish(),
+  "teamAvgResponseTime": zod.number().nullish(),
+  "teamAvgLanguage": zod.number().nullish(),
+  "teamAvgAnswer": zod.number().nullish(),
+  "teamAvgComplaint": zod.number().nullish(),
+  "teamAvgMissed": zod.number().nullish(),
+  "countGradeA": zod.number().optional(),
+  "countGradeB": zod.number().optional(),
+  "countGradeC": zod.number().optional(),
+  "countGradeD": zod.number().optional(),
+  "countGradeE": zod.number().optional(),
+  "totalAgents": zod.number(),
+  "totalRedFlags": zod.number().optional(),
+  "totalCustomerAngry": zod.number().optional(),
+  "totalRudeLanguage": zod.number().optional(),
+  "totalNoReplyCritical": zod.number().optional(),
+  "totalCustomerIgnored": zod.number().optional(),
+  "totalAnswerDropout": zod.number().optional(),
+  "totalConversations": zod.number().optional(),
+  "totalMessages": zod.number().optional(),
+  "totalMissedChats": zod.number().optional(),
+  "totalComplaints": zod.number().optional(),
+  "complaintsResolved": zod.number().optional(),
+  "topPerformerName": zod.string().nullish(),
+  "topPerformerScore": zod.number().nullish(),
+  "topPerformerGrade": zod.string().nullish(),
+  "botPerformerName": zod.string().nullish(),
+  "botPerformerScore": zod.number().nullish(),
+  "botPerformerGrade": zod.string().nullish(),
+  "totalAllowanceAmount": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional()
+}).nullish(),
+  "previous": zod.object({
+  "id": zod.string(),
+  "jobId": zod.string(),
+  "scheduleId": zod.string().nullish(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "periodLabel": zod.string(),
+  "jobType": zod.string(),
+  "frequency": zod.enum(['daily', 'weekly', 'monthly']).nullish(),
+  "teamAvgScore": zod.number().nullish(),
+  "teamAvgResponseTime": zod.number().nullish(),
+  "teamAvgLanguage": zod.number().nullish(),
+  "teamAvgAnswer": zod.number().nullish(),
+  "teamAvgComplaint": zod.number().nullish(),
+  "teamAvgMissed": zod.number().nullish(),
+  "countGradeA": zod.number().optional(),
+  "countGradeB": zod.number().optional(),
+  "countGradeC": zod.number().optional(),
+  "countGradeD": zod.number().optional(),
+  "countGradeE": zod.number().optional(),
+  "totalAgents": zod.number(),
+  "totalRedFlags": zod.number().optional(),
+  "totalCustomerAngry": zod.number().optional(),
+  "totalRudeLanguage": zod.number().optional(),
+  "totalNoReplyCritical": zod.number().optional(),
+  "totalCustomerIgnored": zod.number().optional(),
+  "totalAnswerDropout": zod.number().optional(),
+  "totalConversations": zod.number().optional(),
+  "totalMessages": zod.number().optional(),
+  "totalMissedChats": zod.number().optional(),
+  "totalComplaints": zod.number().optional(),
+  "complaintsResolved": zod.number().optional(),
+  "topPerformerName": zod.string().nullish(),
+  "topPerformerScore": zod.number().nullish(),
+  "topPerformerGrade": zod.string().nullish(),
+  "botPerformerName": zod.string().nullish(),
+  "botPerformerScore": zod.number().nullish(),
+  "botPerformerGrade": zod.string().nullish(),
+  "totalAllowanceAmount": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional()
+}).nullish(),
+  "leaderboard": zod.array(zod.object({
+  "id": zod.string(),
+  "jobId": zod.string(),
+  "agentUserId": zod.number(),
+  "agentName": zod.string().nullish(),
+  "agentEmail": zod.string().nullish(),
+  "agentRole": zod.string(),
+  "totalScore": zod.number(),
+  "scoreResponseTime": zod.number().optional(),
+  "scoreLanguageQuality": zod.number().optional(),
+  "scoreAnswerQuality": zod.number().optional(),
+  "scoreComplaintHandling": zod.number().optional(),
+  "scoreMissedChat": zod.number().optional(),
+  "avgResponseTimeMinutes": zod.number().nullish(),
+  "totalConversations": zod.number().optional(),
+  "totalMessagesSent": zod.number().optional(),
+  "totalMissedChats": zod.number().optional(),
+  "totalComplaints": zod.number().optional(),
+  "complaintsResolved": zod.number().optional(),
+  "insufficientData": zod.boolean().optional(),
+  "grade": zod.enum(['A', 'B', 'C', 'D', 'E']),
+  "allowanceAmount": zod.number().optional().describe('Whole-integer Rupiah from the job\'s config snapshot.'),
+  "aiSummary": zod.string().nullish(),
+  "aiStrengths": zod.string().nullish(),
+  "aiImprovements": zod.string().nullish(),
+  "redFlagCount": zod.number().optional(),
+  "hasCriticalViolation": zod.boolean().optional()
+})),
+  "agentTrends": zod.array(zod.object({
+  "agentUserId": zod.number(),
+  "agentName": zod.string().nullish(),
+  "points": zod.array(zod.object({
+  "jobId": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodLabel": zod.string(),
+  "totalScore": zod.number(),
+  "grade": zod.string()
+}))
+}))
+})
+
+
+/**
+ * @summary List per-agent KPI targets
+ */
+export const ListAcrTargetsResponseItem = zod.object({
+  "id": zod.string(),
+  "agentUserId": zod.number(),
+  "targetScore": zod.number(),
+  "targetDeadline": zod.coerce.date().nullish(),
+  "setByUserId": zod.number().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListAcrTargetsResponse = zod.array(ListAcrTargetsResponseItem)
+
+
+/**
+ * @summary Set an agent's KPI target
+ */
+export const SetAcrTargetParams = zod.object({
+  "agentId": zod.coerce.number()
+})
+
+export const SetAcrTargetBody = zod.object({
+  "targetScore": zod.number(),
+  "targetDeadline": zod.coerce.date().nullish()
+})
+
+export const SetAcrTargetResponse = zod.object({
+  "id": zod.string(),
+  "agentUserId": zod.number(),
+  "targetScore": zod.number(),
+  "targetDeadline": zod.coerce.date().nullish(),
+  "setByUserId": zod.number().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Remove an agent's KPI target
+ */
+export const DeleteAcrTargetParams = zod.object({
+  "agentId": zod.coerce.number()
+})
+
+export const DeleteAcrTargetResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary List performance-decline alerts
+ */
+export const ListAcrAlertsQueryParams = zod.object({
+  "unresolvedOnly": zod.coerce.boolean().optional()
+})
+
+export const ListAcrAlertsResponseItem = zod.object({
+  "id": zod.string(),
+  "agentUserId": zod.number(),
+  "jobId": zod.string().nullish(),
+  "alertType": zod.string(),
+  "severity": zod.string(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "affectedDimensions": zod.array(zod.string()).nullish(),
+  "isRead": zod.boolean(),
+  "isResolved": zod.boolean(),
+  "resolvedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional()
+})
+export const ListAcrAlertsResponse = zod.array(ListAcrAlertsResponseItem)
+
+
+/**
+ * @summary Mark an alert resolved
+ */
+export const ResolveAcrAlertParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ResolveAcrAlertResponse = zod.object({
+  "id": zod.string(),
+  "agentUserId": zod.number(),
+  "jobId": zod.string().nullish(),
+  "alertType": zod.string(),
+  "severity": zod.string(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "recommendation": zod.string().nullish(),
+  "affectedDimensions": zod.array(zod.string()).nullish(),
+  "isRead": zod.boolean(),
+  "isResolved": zod.boolean(),
+  "resolvedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List earned achievements
+ */
+export const ListAcrAchievementsQueryParams = zod.object({
+  "agentId": zod.coerce.number().optional()
+})
+
+export const ListAcrAchievementsResponseItem = zod.object({
+  "id": zod.string(),
+  "agentUserId": zod.number(),
+  "jobId": zod.string().nullish(),
+  "achievementId": zod.string(),
+  "achievementName": zod.string(),
+  "achievementIcon": zod.string(),
+  "description": zod.string().nullish(),
+  "earnedAtPeriod": zod.string(),
+  "earnedAt": zod.coerce.date().optional()
+})
+export const ListAcrAchievementsResponse = zod.array(ListAcrAchievementsResponseItem)
+
+
+/**
+ * @summary List agent groups for benchmarking
+ */
+export const ListAcrTeamGroupsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "scheduleLabel": zod.string().nullish(),
+  "agentUserIds": zod.array(zod.number()),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListAcrTeamGroupsResponse = zod.array(ListAcrTeamGroupsResponseItem)
+
+
+/**
+ * @summary Create an agent group
+ */
+export const CreateAcrTeamGroupBody = zod.object({
+  "name": zod.string(),
+  "scheduleLabel": zod.string().nullish(),
+  "agentUserIds": zod.array(zod.number())
+})
+
+
+/**
+ * @summary Update an agent group
+ */
+export const UpdateAcrTeamGroupParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateAcrTeamGroupBody = zod.object({
+  "name": zod.string(),
+  "scheduleLabel": zod.string().nullish(),
+  "agentUserIds": zod.array(zod.number())
+})
+
+export const UpdateAcrTeamGroupResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "scheduleLabel": zod.string().nullish(),
+  "agentUserIds": zod.array(zod.number()),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Delete an agent group
+ */
+export const DeleteAcrTeamGroupParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteAcrTeamGroupResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary AI month-over-month comparison report (super admin only)
+ */
+export const GetAcrMomReportQueryParams = zod.object({
+  "currentJobId": zod.coerce.string(),
+  "previousJobId": zod.coerce.string()
+})
+
+export const GetAcrMomReportResponse = zod.object({
+  "overall_trend": zod.string().optional(),
+  "executive_summary": zod.string().optional(),
+  "key_improvements": zod.array(zod.object({
+  "metric": zod.string().optional(),
+  "change": zod.string().optional(),
+  "possible_reason": zod.string().optional()
+})).optional(),
+  "key_declines": zod.array(zod.object({
+  "metric": zod.string().optional(),
+  "change": zod.string().optional(),
+  "possible_reason": zod.string().optional(),
+  "recommendation": zod.string().optional()
+})).optional(),
+  "agent_highlights": zod.object({
+  "most_improved": zod.object({
+  "name": zod.string().optional(),
+  "delta": zod.string().optional(),
+  "note": zod.string().optional()
+}).optional(),
+  "most_declined": zod.object({
+  "name": zod.string().optional(),
+  "delta": zod.string().optional(),
+  "note": zod.string().optional()
+}).optional(),
+  "most_consistent": zod.object({
+  "name": zod.string().optional(),
+  "note": zod.string().optional()
+}).optional()
+}).optional(),
+  "strategic_recommendations": zod.array(zod.string()).optional(),
+  "forecast": zod.string().optional()
+})
+
+
+/**
+ * @summary AI cross-team benchmark (super admin only)
+ */
+export const GetAcrBenchmarkQueryParams = zod.object({
+  "jobId": zod.coerce.string()
+})
+
+export const GetAcrBenchmarkResponse = zod.object({
+  "period": zod.string().optional(),
+  "teams_ranked": zod.array(zod.object({
+  "rank": zod.number().optional(),
+  "team_name": zod.string().optional(),
+  "avg_score": zod.number().optional(),
+  "avg_response_time": zod.number().optional(),
+  "total_red_flags": zod.number().optional(),
+  "strengths": zod.array(zod.string()).optional(),
+  "weaknesses": zod.array(zod.string()).optional()
+})).optional(),
+  "comparison_summary": zod.string().optional(),
+  "gap_analysis": zod.string().optional(),
+  "cross_team_recommendations": zod.array(zod.string()).optional()
 })
 
 

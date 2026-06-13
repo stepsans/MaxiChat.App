@@ -17,6 +17,8 @@ import {
   useCreateAcrJob,
   getListAcrJobsQueryKey,
   useMarkAcrNotificationRead,
+  useListAcrAchievements,
+  getListAcrAchievementsQueryKey,
   type AcrAgentScore,
   type AcrRedFlag,
   type AcrConversationScore,
@@ -223,6 +225,15 @@ function AgentDetailDrawer({
   });
   const s = data?.score;
   const ci = data?.coachingInsights;
+  const { data: achievements } = useListAcrAchievements(
+    { agentId: agentId ?? 0 },
+    {
+      query: {
+        queryKey: getListAcrAchievementsQueryKey({ agentId: agentId ?? 0 }),
+        enabled: agentId != null,
+      },
+    }
+  );
 
   return (
     <Sheet open={agentId != null} onOpenChange={(v) => !v && onClose()}>
@@ -456,6 +467,23 @@ function AgentDetailDrawer({
                 </div>
               )}
 
+              {(achievements?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-sm font-semibold">Pencapaian</p>
+                  <div className="mt-1 space-y-1">
+                    {achievements!.map((a) => (
+                      <div key={a.id} className="flex items-center gap-2 text-sm">
+                        <span className="text-lg">{a.achievementIcon}</span>
+                        <span>{a.achievementName}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {a.earnedAtPeriod}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => onShowConversations(s.agentUserId)}>
                   Lihat Percakapan
@@ -544,9 +572,11 @@ function RedFlagDrawer({ flag, onClose }: { flag: AcrRedFlag | null; onClose: ()
 function ConversationDrawer({
   conv,
   onClose,
+  onShowRedFlags,
 }: {
   conv: AcrConversationScore | null;
   onClose: () => void;
+  onShowRedFlags: (agentId: number) => void;
 }) {
   return (
     <Sheet open={conv != null} onOpenChange={(v) => !v && onClose()}>
@@ -608,6 +638,16 @@ function ConversationDrawer({
                       <ViolationBadge key={t} type={t} />
                     ))}
                   </div>
+                  {conv.agentUserId != null && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => onShowRedFlags(conv.agentUserId!)}
+                    >
+                      Lihat detail red flag
+                    </Button>
+                  )}
                 </div>
               )}
               {conv.aiNotes && (
@@ -712,6 +752,7 @@ export default function AIChatReportDetail() {
   const [rfType, setRfType] = useState("all");
   const [rfSeverity, setRfSeverity] = useState("all");
   const [rfAgent, setRfAgent] = useState("all");
+  const [rfSort, setRfSort] = useState<"latest" | "severity" | "agent">("latest");
   const [rfPage, setRfPage] = useState(1);
   const rfParams: ListAcrRedFlagsParams = {
     page: rfPage,
@@ -719,6 +760,7 @@ export default function AIChatReportDetail() {
     ...(rfType !== "all" ? { violationType: rfType } : {}),
     ...(rfSeverity !== "all" ? { severity: rfSeverity } : {}),
     ...(rfAgent !== "all" ? { agentId: Number(rfAgent) } : {}),
+    ...(rfSort !== "latest" ? { sort: rfSort } : {}),
   };
   const { data: redFlags } = useListAcrRedFlags(jobId, rfParams, {
     query: {
@@ -765,6 +807,14 @@ export default function AIChatReportDetail() {
       enabled: tab === "leaderboard" && !!jobId,
     },
   });
+  const [lbRole, setLbRole] = useState("all");
+  const lbEntries = useMemo(
+    () =>
+      (leaderboard?.entries ?? []).filter(
+        (e) => lbRole === "all" || e.agentRole === lbRole
+      ),
+    [leaderboard, lbRole]
+  );
 
   const onDownload = async (kind: "csv" | "pdf") => {
     if (!job) return;
@@ -817,7 +867,7 @@ export default function AIChatReportDetail() {
     { name: "Terjawab", value: dim.missedChat, max: w.weightMissedChat },
   ].map((d) => ({ ...d, pct: d.max > 0 ? Math.round((d.value / d.max) * 100) : 0 }));
 
-  const top3 = (leaderboard?.entries ?? []).slice(0, 3);
+  const top3 = lbEntries.slice(0, 3);
 
   return (
     <div className="space-y-4 p-6">
@@ -1178,7 +1228,17 @@ export default function AIChatReportDetail() {
             </div>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-2">
+            <Select value={lbRole} onValueChange={setLbRole}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Role</SelectItem>
+                <SelectItem value="supervisor">Supervisor</SelectItem>
+                <SelectItem value="agent">Agent</SelectItem>
+              </SelectContent>
+            </Select>
             {!isAgent && (
               <Button variant="outline" onClick={copyRanking}>
                 <Copy className="mr-2 h-4 w-4" /> Salin Ranking
@@ -1199,7 +1259,7 @@ export default function AIChatReportDetail() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(leaderboard?.entries ?? []).map((e) => (
+                {lbEntries.map((e) => (
                   <TableRow
                     key={`${e.rank}`}
                     className={cn(e.isSelf && "bg-primary/5 font-medium")}
@@ -1272,6 +1332,22 @@ export default function AIChatReportDetail() {
                     {a.agentName ?? a.agentEmail}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={rfSort}
+              onValueChange={(v) => {
+                setRfSort(v as typeof rfSort);
+                setRfPage(1);
+              }}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Urutkan" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest">Terbaru</SelectItem>
+                <SelectItem value="severity">Severity</SelectItem>
+                <SelectItem value="agent">Agent</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1489,7 +1565,16 @@ export default function AIChatReportDetail() {
         }}
       />
       <RedFlagDrawer flag={drawerFlag} onClose={() => setDrawerFlag(null)} />
-      <ConversationDrawer conv={drawerConv} onClose={() => setDrawerConv(null)} />
+      <ConversationDrawer
+        conv={drawerConv}
+        onClose={() => setDrawerConv(null)}
+        onShowRedFlags={(id) => {
+          setRfAgent(String(id));
+          setRfPage(1);
+          setDrawerConv(null);
+          setTab("redflags");
+        }}
+      />
     </div>
   );
 }

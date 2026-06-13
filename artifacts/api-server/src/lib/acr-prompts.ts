@@ -1,13 +1,32 @@
 // AI Chat Report — prompt templates (Bagian II of the ACR spec, v2.0).
 // db-free so prompt-building stays unit-testable.
 
-import { capTranscriptMessages, formatWibTimestamp, type AcrMessage } from "./acr-build";
+import {
+  capTranscriptMessages,
+  formatWibTimestamp,
+  isHumanMessage,
+  type AcrMessage,
+} from "./acr-build";
 
 // ─── PROMPT 1 — Analisa Per Percakapan ──────────────────────────────────────
 
 export const ACR_SYSTEM_PROMPT_CONVERSATION = `Kamu adalah AI Quality Analyst khusus untuk mengevaluasi kualitas pelayanan tim Customer Service (CS) sebuah bisnis.
 
 Tugasmu adalah menganalisa percakapan chat antara agent CS dengan customer, lalu memberikan penilaian objektif berdasarkan panduan yang sudah ditetapkan.
+
+---
+
+## SIAPA YANG DINILAI
+
+Transcript memakai tiga label:
+- [CUSTOMER] — pesan masuk dari pelanggan.
+- [AGENT]    — pesan yang ditulis MANUSIA (agent/supervisor). HANYA ini yang dinilai.
+- [SISTEM]   — pesan otomatis dari AI atau bot flow. JANGAN dinilai.
+
+Nilai kualitas bahasa, ketepatan jawaban, dan handling komplain HANYA dari pesan [AGENT].
+Baca pesan [SISTEM] hanya untuk memahami konteks percakapan; jangan jadikan dasar penilaian
+maupun red flag terhadap agent. Jika sebuah pertanyaan customer hanya dijawab oleh [SISTEM]
+(tidak ada [AGENT] yang menjawab), anggap pertanyaan itu BELUM dijawab oleh agent.
 
 ---
 
@@ -194,14 +213,11 @@ export function buildConversationUserPrompt(input: ConversationPromptInput): str
   const transcript = capped
     .map((m) => {
       const time = formatWibTimestamp(m.createdAt);
-      const sender =
-        m.direction === "inbound"
-          ? "Customer"
-          : m.isAiGenerated
-            ? "Agent (AI otomatis)"
-            : `Agent (${input.agentName})`;
+      // CUSTOMER = inbound; AGENT = human agent (dinilai); SISTEM = AI/bot (konteks saja).
+      const label =
+        m.direction === "inbound" ? "CUSTOMER" : isHumanMessage(m) ? "AGENT" : "SISTEM";
       const body = (m.content ?? "").trim() || "[pesan media]";
-      return `${time} | ${sender}: ${body}`;
+      return `${time} | ${label}: ${body}`;
     })
     .join("\n");
 
@@ -217,20 +233,27 @@ Channel   : ${input.channelType ?? "whatsapp"}
 Periode   : ${first ? formatWibTimestamp(first.createdAt) : "-"} – ${
     last ? formatWibTimestamp(last.createdAt) : "-"
   }
-Rata-rata waktu balas agent dalam percakapan ini: ${
+Rata-rata waktu balas MANUSIA dalam percakapan ini: ${
     input.avgResponseMinutes != null ? Math.round(input.avgResponseMinutes) : "-"
   } menit
-Pesan customer yang tidak terjawab: ${input.hasMissedMessage ? "ADA" : "TIDAK ADA"}
+Pesan customer yang tidak terjawab oleh manusia: ${input.hasMissedMessage ? "ADA" : "TIDAK ADA"}
 
 === KONTEKS BISNIS ===
 Bisnis    : ${input.businessName ?? "Tidak diketahui"}
 Produk/Layanan yang dijual: ${input.productCatalog ?? "Tidak diketahui"}
 
+=== PANDUAN MEMBACA TRANSCRIPT ===
+Setiap baris diberi label: CUSTOMER (pesan masuk), AGENT (ditulis manusia), atau
+SISTEM (otomatis dari AI/bot). Nilai HANYA pesan berlabel [AGENT]. Pesan [SISTEM]
+dibaca untuk memahami konteks saja — JANGAN dinilai untuk kualitas bahasa,
+ketepatan jawaban, maupun handling komplain.
+
 === TRANSCRIPT PERCAKAPAN ===
 ${transcript}
 === AKHIR TRANSCRIPT ===
 
-Berikan analisa dalam format JSON sesuai instruksi sistem.`;
+Berikan analisa dalam format JSON sesuai instruksi sistem.
+INGAT: Nilai hanya pesan berlabel [AGENT]. Pesan [SISTEM] hanya untuk konteks, tidak dinilai.`;
 }
 
 // ─── PROMPT 2 — Coaching Insight Per Agent ──────────────────────────────────
@@ -432,4 +455,418 @@ ${bestBlock}
 ${worstBlock}
 
 Buatkan coaching insight dalam format JSON sesuai instruksi sistem.`;
+}
+
+// ===========================================================================
+// Bagian IV — advanced-feature prompts (3–8). Each is independent and called
+// after a job completes (3, 4, 6) or on demand (5, 7, 8).
+// ===========================================================================
+
+// ── Prompt 3 — Performance-decline alert (9.2). Output: JSON. ──────────────
+export const ACR_SYSTEM_PROMPT_ALERT = `Kamu adalah AI Performance Monitor untuk sistem manajemen Customer Service.
+
+Tugasmu: Menganalisa tren skor seorang agent CS selama beberapa periode terakhir dan menentukan apakah ada penurunan performa yang perlu mendapat perhatian supervisor.
+
+ATURAN OUTPUT:
+1. Respons HANYA dalam format JSON valid. Tidak ada teks di luar JSON.
+2. Bahasa Indonesia untuk semua teks.
+3. Jika tidak ada alert: kembalikan JSON dengan has_alert = false dan arrays kosong.
+
+FORMAT JSON OUTPUT:
+{
+  "has_alert": true/false,
+  "alerts": [
+    {
+      "alert_type": "<lihat tipe valid di bawah>",
+      "severity": "critical | high | medium",
+      "title": "<judul singkat alert, maks 60 karakter>",
+      "description": "<penjelasan situasi yang spesifik dengan angka, maks 200 karakter>",
+      "affected_dimensions": ["<nama dimensi yang paling terpengaruh>"],
+      "recommendation": "<saran tindakan konkret untuk supervisor, maks 200 karakter>"
+    }
+  ],
+  "trend_analysis": "<ringkasan tren keseluruhan agent dalam 1-2 kalimat>"
+}
+
+TIPE ALERT VALID:
+- "score_drop_significant"  -> Skor turun > 10 poin dalam 1 periode
+- "score_drop_consecutive"  -> Skor turun 3 periode berturut-turut
+- "grade_downgrade"         -> Agent masuk grade lebih rendah (A->B, B->C, dst)
+- "red_flag_spike"          -> Red flag naik > 50% dari periode sebelumnya
+- "missed_chat_spike"       -> Chat tidak terjawab naik > 100% dari periode sebelumnya
+- "below_target"            -> Skor di bawah target yang ditetapkan (jika ada target)
+
+PANDUAN SEVERITY:
+- critical: penurunan drastis (>15 poin), atau masuk Grade D/E, atau 3 periode turun berturut
+- high: penurunan signifikan (10-15 poin), atau naik grade warning
+- medium: penurunan 5-10 poin, atau tren memburuk tapi belum parah
+
+CATATAN:
+- Jika agent sedang membaik (tren naik): has_alert = false
+- Jika fluktuasi minor (+/-5 poin) tanpa tren jelas: has_alert = false
+- Sebutkan angka spesifik dalam description (bukan "turun signifikan" tapi "turun 13 poin")`;
+
+export interface AlertPromptInput {
+  agentName: string;
+  role: string;
+  targetScore: number | null;
+  historyBlock: string; // one line per period: label | total | grade | dims
+  redFlagBlock: string; // one line per period: label | total | by type
+  latestLabel: string;
+  latestScore: number;
+  prevScore: number | null;
+}
+
+export function buildAlertUserPrompt(i: AlertPromptInput): string {
+  return `Analisa tren performa agent CS berikut dan tentukan apakah ada alert yang perlu dikirim ke supervisor.
+
+=== IDENTITAS AGENT ===
+Nama: ${i.agentName}
+Role: ${i.role}
+Target Skor: ${i.targetScore ?? "Tidak ada target"}
+
+=== HISTORI SKOR (urut dari terlama ke terbaru) ===
+LABEL_PERIODE | TOTAL_SKOR | GRADE | KEC_BALAS | KUALITAS | KETEPATAN | KOMPLAIN | MISSED
+${i.historyBlock}
+
+=== RED FLAG COUNT PER PERIODE ===
+LABEL_PERIODE | TOTAL | CUSTOMER_ANGRY | RUDE | NO_REPLY | IGNORED | DROPOUT
+${i.redFlagBlock}
+
+=== PERIODE TERBARU ===
+Label: ${i.latestLabel}
+Total Skor: ${i.latestScore}
+Skor Sebelumnya: ${i.prevScore ?? "Tidak ada"}
+Delta: ${i.prevScore == null ? "-" : (i.latestScore - i.prevScore).toFixed(1)}
+
+Berikan analisa dalam format JSON sesuai instruksi sistem.`;
+}
+
+// ── Prompt 4 — Agent WhatsApp coaching (9.4). Output: plain text. ──────────
+export const ACR_SYSTEM_PROMPT_WA_COACHING = `Kamu adalah AI Coach yang bertugas menulis pesan coaching personal untuk dikirim via WhatsApp kepada agent Customer Service setelah laporan kinerja mereka selesai.
+
+Pesan ini harus:
+1. Terasa personal dan hangat - bukan seperti laporan formal
+2. Dimulai dengan hal positif sebelum masuk ke area perbaikan
+3. Spesifik dengan angka dan contoh nyata
+4. Actionable - bisa langsung dilakukan hari ini
+5. Singkat - maksimal 250 kata, cocok dibaca di WhatsApp
+6. Menggunakan emoji secukupnya (jangan berlebihan)
+7. Tidak terasa seperti teguran atau hukuman
+
+ATURAN OUTPUT:
+- Respons HANYA teks pesan WhatsApp yang sudah jadi
+- TIDAK ada JSON, TIDAK ada markdown, TIDAK ada preamble
+- Langsung isi pesannya dari baris pertama
+
+NADA BERDASARKAN GRADE:
+- Grade A: Semangat tinggi, rayakan, challenge untuk pertahankan
+- Grade B: Positif, acknowledge kerja keras, dorong ke A
+- Grade C: Hangat tapi jujur, tekankan potensi, berikan langkah konkret
+- Grade D: Empati penuh, tidak menghakimi, fokus 1 hal yang paling bisa diperbaiki cepat
+- Grade E: Sangat supportif, acknowledge kesulitan, tawarkan bantuan supervisor`;
+
+export interface WaCoachingPromptInput {
+  agentName: string;
+  periodLabel: string;
+  grade: string;
+  totalScore: number;
+  prevScore: number | null;
+  scoreLines: string; // preformatted dimension lines
+  strongest: string;
+  weakest: string;
+  redFlagSummary: string;
+  rank: number;
+  totalAgents: number;
+  teamAvg: number;
+  improvements: string[];
+}
+
+export function buildWaCoachingUserPrompt(i: WaCoachingPromptInput): string {
+  return `Tulis pesan coaching WhatsApp untuk agent CS berikut.
+
+=== DATA AGENT ===
+Nama: ${i.agentName}
+Periode: ${i.periodLabel}
+Grade: ${i.grade}
+Total Skor: ${i.totalScore} / 100
+Skor Periode Sebelumnya: ${i.prevScore ?? "-"} (delta: ${
+    i.prevScore == null ? "-" : (i.totalScore - i.prevScore).toFixed(1)
+  })
+
+=== DETAIL SKOR ===
+${i.scoreLines}
+
+=== DIMENSI TERKUAT ===
+${i.strongest}
+
+=== DIMENSI PALING PERLU PERBAIKAN ===
+${i.weakest}
+
+=== RED FLAG PERIODE INI ===
+${i.redFlagSummary}
+
+=== RANKING DI TIM ===
+Ranking: #${i.rank} dari ${i.totalAgents} agent
+Rata-rata tim: ${i.teamAvg}
+
+=== COACHING INSIGHT (dari AI sebelumnya) ===
+${i.improvements.map((s, idx) => `${idx + 1}. ${s}`).join("\n") || "Tidak ada."}
+
+Tulis pesan WhatsApp coaching langsung (tanpa JSON, tanpa preamble).`;
+}
+
+// ── Prompt 5 — Team-group WhatsApp summary (9.7). Output: plain text. ──────
+export const ACR_SYSTEM_PROMPT_WA_GROUP = `Kamu adalah AI yang bertugas menulis ringkasan laporan kinerja tim CS untuk dikirim ke grup WhatsApp tim. Pesan ini dibaca oleh semua anggota tim sekaligus.
+
+Pesan harus:
+1. Singkat dan mudah dibaca di WA - maksimal 180 kata
+2. Transparan tapi tidak mempermalukan - sebut nama untuk apresiasi, hati-hati saat menyebut nama untuk hal negatif
+3. Memotivasi seluruh tim, bukan hanya individu
+4. Menggunakan format WA yang rapi (bold dengan *asterisk*, newline)
+5. Ada call-to-action di akhir
+
+ATURAN OUTPUT:
+- Respons HANYA teks pesan WhatsApp yang sudah jadi
+- TIDAK ada JSON, TIDAK ada markdown, langsung isi pesannya dari baris pertama`;
+
+export interface WaGroupPromptInput {
+  teamName: string;
+  periodLabel: string;
+  totalAgents: number;
+  teamAvg: number;
+  prevTeamAvg: number | null;
+  avgRt: number | null;
+  totalMissed: number;
+  bestName: string | null;
+  bestScore: number | null;
+  bestGrade: string | null;
+  mostImprovedName: string | null;
+  mostImprovedDelta: number | null;
+  gradeDist: string;
+  totalRedFlags: number;
+  prevRedFlags: number | null;
+  topRedFlagType: string;
+  topRedFlagCount: number;
+  weakestDim: string;
+  belowSeventyCount: number;
+}
+
+export function buildWaGroupUserPrompt(i: WaGroupPromptInput): string {
+  return `Tulis ringkasan laporan kinerja tim untuk grup WhatsApp.
+
+=== INFO LAPORAN ===
+Nama Tim: ${i.teamName}
+Periode: ${i.periodLabel}
+Total Agent Dinilai: ${i.totalAgents}
+
+=== SKOR TIM ===
+Rata-rata Skor Tim: ${i.teamAvg}
+Skor Tim Periode Sebelumnya: ${i.prevTeamAvg ?? "-"}
+Rata-rata Waktu Balas: ${i.avgRt ?? "-"} menit
+Total Chat Tidak Terjawab: ${i.totalMissed}
+
+=== AGENT TERBAIK ===
+Nama: ${i.bestName ?? "-"} | Skor: ${i.bestScore ?? "-"} | Grade: ${i.bestGrade ?? "-"}
+
+=== AGENT PALING MENINGKAT ===
+Nama: ${i.mostImprovedName ?? "-"} | Delta: ${i.mostImprovedDelta ?? "-"}
+
+=== DISTRIBUSI GRADE ===
+${i.gradeDist}
+
+=== RED FLAG SUMMARY ===
+Total Red Flag: ${i.totalRedFlags} (sebelumnya: ${i.prevRedFlags ?? "-"})
+Jenis Terbanyak: ${i.topRedFlagType} - ${i.topRedFlagCount} kasus
+
+=== AREA YANG PERLU PERHATIAN TIM ===
+Dimensi dengan skor rata-rata terendah: ${i.weakestDim}
+Jumlah agent dengan skor di bawah 70: ${i.belowSeventyCount}
+
+Tulis pesan WhatsApp grup langsung (tanpa JSON, tanpa preamble).`;
+}
+
+// ── Prompt 6 — Achievement detection (9.6). Output: JSON. ──────────────────
+export const ACR_SYSTEM_PROMPT_ACHIEVEMENT = `Kamu adalah AI yang bertugas mengecek apakah seorang agent CS berhak mendapat achievement (pencapaian) baru berdasarkan histori kinerjanya.
+
+ATURAN OUTPUT:
+1. Respons HANYA dalam format JSON valid.
+2. Bahasa Indonesia untuk semua teks.
+3. Jika tidak ada achievement baru: kembalikan JSON dengan new_achievements = []
+
+FORMAT JSON:
+{
+  "new_achievements": [
+    {
+      "achievement_id": "<kode unik dari daftar di bawah>",
+      "achievement_name": "<nama achievement>",
+      "achievement_icon": "<emoji>",
+      "description": "<deskripsi singkat, maks 80 karakter>",
+      "earned_at_period": "<label periode>"
+    }
+  ]
+}
+
+DAFTAR ACHIEVEMENT:
+grade_a_first          | Bintang Pertama        | Grade A untuk pertama kali
+grade_a_3_consecutive  | Trio Emas              | Grade A 3 periode berturut-turut
+grade_a_5_consecutive  | Legenda Tim            | Grade A 5 periode berturut-turut
+zero_red_flag          | Pelayanan Sempurna     | 0 red flag dalam 1 periode
+zero_missed_chat       | Tak Satu Pun Terlewat  | 0 chat tidak terjawab dalam 1 periode
+fastest_responder      | Kilat                  | Avg waktu balas < 2 menit dalam 1 periode
+complaint_ace          | Penjinak Komplain      | 100% komplain selesai, min 3 komplain
+top_performer_period   | CS Terbaik Periode Ini | Skor tertinggi di tim dalam 1 periode
+most_improved          | Paling Giat Berkembang | Kenaikan skor terbesar dalam 1 periode
+comeback               | Bangkit Lagi           | Naik dari Grade D/E ke B/A
+perfect_week           | Minggu Sempurna        | Skor >95 dalam 1 periode weekly
+language_master        | Pakar Bahasa           | Kualitas bahasa >23/25 dalam 3 periode
+
+PENTING:
+- Setiap achievement hanya 1 kali, KECUALI yang periodik (top_performer_period, most_improved, zero_red_flag, zero_missed_chat, fastest_responder)
+- Cek daftar achievement yang sudah diraih dan jangan duplikasi
+- grade_a_3_consecutive hanya trigger jika TIGA TERAKHIR berturut-turut Grade A`;
+
+export interface AchievementPromptInput {
+  agentName: string;
+  periodLabel: string;
+  totalScore: number;
+  grade: string;
+  avgRt: number | null;
+  languageScore: number;
+  languageMax: number;
+  totalRedFlags: number;
+  missedCount: number;
+  totalComplaints: number;
+  complaintsResolved: number;
+  rank: number;
+  totalAgents: number;
+  mostImproved: boolean;
+  improvedDelta: number | null;
+  frequency: string;
+  gradeHistoryBlock: string;
+  existingAchievementIds: string[];
+}
+
+export function buildAchievementUserPrompt(i: AchievementPromptInput): string {
+  return `Cek achievement baru untuk agent CS berikut.
+
+=== IDENTITAS ===
+Nama: ${i.agentName}
+Periode Terbaru: ${i.periodLabel}
+Frekuensi periode: ${i.frequency}
+
+=== SKOR & GRADE TERBARU ===
+Total Skor: ${i.totalScore}
+Grade: ${i.grade}
+Avg Waktu Balas: ${i.avgRt ?? "-"} menit
+Kualitas Bahasa: ${i.languageScore} / ${i.languageMax}
+Total Red Flag: ${i.totalRedFlags}
+Total Chat Tidak Terjawab: ${i.missedCount}
+Total Komplain: ${i.totalComplaints}, Selesai: ${i.complaintsResolved}
+Ranking di Tim: #${i.rank} dari ${i.totalAgents}
+Paling Meningkat: ${i.mostImproved ? "true" : "false"} (kenaikan: +${i.improvedDelta ?? 0})
+
+=== HISTORI GRADE (urut terlama ke terbaru, maks 6 periode) ===
+LABEL_PERIODE | GRADE | TOTAL_SKOR
+${i.gradeHistoryBlock}
+
+=== ACHIEVEMENT YANG SUDAH DIRAIH (jangan duplikasi) ===
+${i.existingAchievementIds.join(", ") || "Belum ada achievement"}
+
+Berikan daftar achievement BARU yang diraih dalam format JSON.`;
+}
+
+// ── Prompt 7 — Month-over-Month report (9.5). Output: JSON. ────────────────
+export const ACR_SYSTEM_PROMPT_MOM = `Kamu adalah AI Analyst yang bertugas membuat analisa perbandingan kinerja tim CS antara dua periode (month-over-month atau week-over-week).
+
+Analisa harus objektif dan berbasis data, mengidentifikasi pola dan sebab di balik perubahan, dan memberikan rekomendasi strategis yang actionable untuk manajemen.
+
+ATURAN OUTPUT:
+1. Respons HANYA dalam format JSON valid.
+2. Bahasa Indonesia untuk semua teks.
+
+FORMAT JSON:
+{
+  "overall_trend": "improving | declining | stable",
+  "executive_summary": "<ringkasan 3-4 kalimat untuk management, spesifik dengan angka>",
+  "key_improvements": [
+    { "metric": "<nama metrik>", "change": "<perubahan dengan angka>", "possible_reason": "<analisa>" }
+  ],
+  "key_declines": [
+    { "metric": "<nama metrik>", "change": "<perubahan dengan angka>", "possible_reason": "<analisa>", "recommendation": "<saran konkret>" }
+  ],
+  "agent_highlights": {
+    "most_improved": { "name": "<nama>", "delta": "<+angka>", "note": "<konteks>" },
+    "most_declined": { "name": "<nama>", "delta": "<-angka>", "note": "<konteks>" },
+    "most_consistent": { "name": "<nama>", "note": "<mengapa konsisten>" }
+  },
+  "strategic_recommendations": ["<rekomendasi 1>", "<rekomendasi 2>", "<rekomendasi 3>"],
+  "forecast": "<prediksi singkat jika tren berlanjut, 1-2 kalimat>"
+}`;
+
+export interface MomPromptInput {
+  prevLabel: string;
+  currLabel: string;
+  prevBlock: string;
+  currBlock: string;
+  contextBlock: string;
+}
+
+export function buildMomUserPrompt(i: MomPromptInput): string {
+  return `Buat analisa perbandingan kinerja tim CS antara dua periode berikut.
+
+=== PERIODE SEBELUMNYA: ${i.prevLabel} ===
+${i.prevBlock}
+
+=== PERIODE TERBARU: ${i.currLabel} ===
+${i.currBlock}
+
+=== KONTEKS TAMBAHAN ===
+${i.contextBlock || "Tidak ada konteks tambahan."}
+
+Berikan analisa dalam format JSON sesuai instruksi sistem.`;
+}
+
+// ── Prompt 8 — Cross-team benchmark (9.3). Output: JSON. ───────────────────
+export const ACR_SYSTEM_PROMPT_BENCHMARK = `Kamu adalah AI Analyst yang bertugas membuat analisa perbandingan kinerja antara dua atau lebih tim/shift CS dalam periode yang sama.
+
+ATURAN OUTPUT:
+1. Respons HANYA dalam format JSON valid.
+2. Bahasa Indonesia untuk semua teks.
+3. Analisa harus objektif dan tidak bias terhadap tim manapun.
+
+FORMAT JSON:
+{
+  "period": "<label periode>",
+  "teams_ranked": [
+    {
+      "rank": 1,
+      "team_name": "<nama tim>",
+      "avg_score": <angka>,
+      "avg_response_time": <menit>,
+      "total_red_flags": <angka>,
+      "strengths": ["<kelebihan 1>", "<kelebihan 2>"],
+      "weaknesses": ["<kelemahan 1>"]
+    }
+  ],
+  "comparison_summary": "<ringkasan perbandingan 2-3 kalimat, objektif>",
+  "gap_analysis": "<analisa mengapa ada selisih antar tim>",
+  "cross_team_recommendations": ["<rekomendasi 1>", "<rekomendasi 2>"]
+}`;
+
+export interface BenchmarkPromptInput {
+  periodLabel: string;
+  teamsBlock: string;
+  contextBlock: string;
+}
+
+export function buildBenchmarkUserPrompt(i: BenchmarkPromptInput): string {
+  return `Buat analisa benchmark perbandingan antar tim CS berikut untuk periode ${i.periodLabel}.
+
+${i.teamsBlock}
+
+=== KONTEKS ===
+${i.contextBlock || "Tidak ada konteks tambahan."}
+
+Berikan analisa dalam format JSON sesuai instruksi sistem.`;
 }

@@ -6,7 +6,7 @@
 // red-flag notifications. All calculations use the job's immutable
 // config_snapshot, never the live config.
 
-import { and, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, isNotNull, lte, or, sql } from "drizzle-orm";
 import {
   db,
   acrJobsTable,
@@ -14,9 +14,15 @@ import {
   acrConversationScoresTable,
   acrRedFlagsTable,
   acrNotificationsTable,
+  acrKpiSnapshotsTable,
+  acrSchedulesTable,
+  acrAgentTargetsTable,
+  acrAchievementsTable,
+  acrPerformanceAlertsTable,
   chatsTable,
   chatMessagesTable,
   channelsTable,
+  contactLabelsTable,
   usersTable,
   userChannelAccessTable,
   productsTable,
@@ -24,6 +30,8 @@ import {
 } from "@workspace/db";
 import { resolveAiClient, type ResolvedAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
+import { buildAcrPdf } from "./acr-pdf";
+import { saveTenantMedia } from "./tenant-storage";
 import { logger } from "./logger";
 import {
   aggregateAgentScores,
@@ -33,12 +41,16 @@ import {
   defaultConversationAiResult,
   formatWibTimestamp,
   gradeFor,
+  isHumanMessage,
   missedChatToRawScore,
   normalizeCoachingAiResult,
   normalizeConversationAiResult,
   parseAiJson,
   periodToUtcRange,
   responseTimeToRawScore,
+  weightedTotalScore,
+  buildPeriodLabel,
+  type ScheduleFrequency,
   type AcrConfigSnapshot,
   type AcrMessage,
   type ConversationAiResult,
@@ -47,8 +59,16 @@ import {
 import {
   ACR_SYSTEM_PROMPT_COACHING,
   ACR_SYSTEM_PROMPT_CONVERSATION,
+  ACR_SYSTEM_PROMPT_ALERT,
+  ACR_SYSTEM_PROMPT_ACHIEVEMENT,
+  ACR_SYSTEM_PROMPT_MOM,
+  ACR_SYSTEM_PROMPT_BENCHMARK,
   buildCoachingUserPrompt,
   buildConversationUserPrompt,
+  buildAlertUserPrompt,
+  buildAchievementUserPrompt,
+  buildMomUserPrompt,
+  buildBenchmarkUserPrompt,
 } from "./acr-prompts";
 
 // ─── AI call with retry (max 2 retries, exponential backoff) ────────────────
@@ -182,12 +202,20 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     .from(channelsTable)
     .where(eq(channelsTable.userId, ownerUserId));
   const channelKind = new Map(channels.map((c) => [c.id, c.kind]));
-  const channelIds = channels.map((c) => c.id);
+  const allChannelIds = channels.map((c) => c.id);
+  // Apply the per-job channel filter (intersect with the tenant's channels).
+  // Empty/null = all channels.
+  const channelIds =
+    job.channelIds && job.channelIds.length > 0
+      ? allChannelIds.filter((id) => job.channelIds!.includes(id))
+      : allChannelIds;
 
   // Evaluable team members: supervisors + agents under this owner. The owner
-  // themselves is included only when the config toggle says so (solo-CS
-  // tenants / testing) — snapshot-controlled, so re-runs stay consistent.
-  const includeOwner = cfg.includeOwnerInEvaluation === true;
+  // themselves is included only when the toggle says so (solo-CS tenants /
+  // testing). The per-job override wins; null falls back to the config
+  // snapshot — snapshot-controlled, so re-runs stay consistent.
+  const includeOwner =
+    job.includeOwner ?? cfg.includeOwnerInEvaluation === true;
   const memberWhere = and(
     eq(usersTable.parentUserId, ownerUserId),
     inArray(usersTable.teamRole, ["supervisor", "agent"])
@@ -240,6 +268,32 @@ async function executeJob(job: AcrJobRow): Promise<void> {
   // Group by the raw columns and resolve the author fallback chain in JS —
   // a parameterised COALESCE in both SELECT and GROUP BY binds as two
   // different placeholders, which Postgres rejects as a non-grouped column.
+  // Per-job chat filters (AND together; null/empty = no restriction).
+  // Lead status defaults to ['lead'] when the job carries none (new reports
+  // evaluate only lead-marked chats; pre-feature rows may be null).
+  const leadStatuses =
+    job.leadStatuses && job.leadStatuses.length > 0 ? job.leadStatuses : ["lead"];
+  const chatFilters = [inArray(chatsTable.leadStatus, leadStatuses)];
+  if (job.chatStatuses && job.chatStatuses.length > 0) {
+    chatFilters.push(inArray(chatsTable.status, job.chatStatuses));
+  }
+  if (job.customerLabelIds && job.customerLabelIds.length > 0) {
+    chatFilters.push(
+      inArray(
+        chatsTable.phoneNumber,
+        db
+          .select({ phoneNumber: contactLabelsTable.phoneNumber })
+          .from(contactLabelsTable)
+          .where(
+            and(
+              eq(contactLabelsTable.ownerUserId, ownerUserId),
+              inArray(contactLabelsTable.labelId, job.customerLabelIds)
+            )
+          )
+      )
+    );
+  }
+
   const outboundRows = await db
     .select({
       chatId: chatMessagesTable.chatId,
@@ -256,10 +310,14 @@ async function executeJob(job: AcrJobRow): Promise<void> {
         inArray(chatsTable.channelId, channelIds),
         eq(chatMessagesTable.direction, "outbound"),
         eq(chatMessagesTable.isAiGenerated, false),
+        // Human-authored only (Section 4.1/4.1a). AI sends are isAiGenerated;
+        // bot-flow + historical rows have a null sentByUserId — both excluded.
+        isNotNull(chatMessagesTable.sentByUserId),
         gte(chatMessagesTable.createdAt, start),
         lte(chatMessagesTable.createdAt, end),
         sql`${chatsTable.phoneNumber} NOT LIKE '%@g.us'`,
-        sql`${chatsTable.phoneNumber} <> 'status@broadcast'`
+        sql`${chatsTable.phoneNumber} <> 'status@broadcast'`,
+        ...chatFilters
       )
     )
     .groupBy(
@@ -279,6 +337,7 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     { chatId: number; agentId: number; count: number; contactName: string; channelId: number }
   >();
   for (const row of outboundRows) {
+    // sentByUserId is guaranteed non-null by the query filter above (human-authored).
     const author = row.sentByUserId ?? row.assignedUserId ?? ownerUserId;
     if (!members.has(author)) continue;
     const key = `${row.chatId}|${author}`;
@@ -385,6 +444,7 @@ async function executeJob(job: AcrJobRow): Promise<void> {
           id: chatMessagesTable.id,
           direction: chatMessagesTable.direction,
           isAiGenerated: chatMessagesTable.isAiGenerated,
+          sentByUserId: chatMessagesTable.sentByUserId,
           content: chatMessagesTable.content,
           createdAt: chatMessagesTable.createdAt,
         })
@@ -399,10 +459,13 @@ async function executeJob(job: AcrJobRow): Promise<void> {
         .orderBy(chatMessagesTable.createdAt)
         .limit(500);
 
+      // Fetch ALL messages (inbound + AI/bot + human) so the AI sees full
+      // context, but only human messages count toward KPIs (sentByUserId).
       const messages: AcrMessage[] = rows.map((r) => ({
         id: r.id,
         direction: r.direction === "outbound" ? "outbound" : "inbound",
         isAiGenerated: r.isAiGenerated,
+        sentByUserId: r.sentByUserId,
         content: r.content,
         createdAt: r.createdAt,
       }));
@@ -444,9 +507,12 @@ async function executeJob(job: AcrJobRow): Promise<void> {
           .filter((m): m is AcrMessage => !!m)
           .map(
             (m) =>
-              `${m.direction === "inbound" ? "Customer" : "Agent"} [${formatWibTimestamp(
-                m.createdAt
-              ).slice(11)}]: ${(m.content || "[media]").slice(0, 120)}`
+              `${
+                m.direction === "inbound" ? "CUSTOMER" : isHumanMessage(m) ? "AGENT" : "SISTEM"
+              } [${formatWibTimestamp(m.createdAt).slice(11)}]: ${(m.content || "[media]").slice(
+                0,
+                120
+              )}`
           )
           .join(" ")
           .slice(0, 500);
@@ -460,13 +526,17 @@ async function executeJob(job: AcrJobRow): Promise<void> {
         metrics.totalCustomerMessages
       );
       const convComplaint = ai.has_complaint ? ai.complaint_handling_score : 85;
-      const convTotal = round2(
-        (convResponse * cfg.weightResponseTime +
-          ai.language_quality_score * cfg.weightLanguageQuality +
-          ai.answer_quality_score * cfg.weightAnswerQuality +
-          convComplaint * cfg.weightComplaintHandling +
-          convMissed * cfg.weightMissedChat) /
-          100
+      // Honors complaintHandlingEnabled (redistributes the complaint weight
+      // when off) so the per-conversation total matches the per-agent total.
+      const convTotal = weightedTotalScore(
+        {
+          responseTime: convResponse,
+          language: ai.language_quality_score,
+          answer: ai.answer_quality_score,
+          complaint: convComplaint,
+          missed: convMissed,
+        },
+        cfg
       );
 
       outcomes.push({
@@ -775,12 +845,123 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     })
     .where(eq(acrJobsTable.id, job.id));
 
+  // ── KPI snapshot for the Dashboard (Bagian II) — manual & scheduled jobs ──
+  try {
+    await fillKpiSnapshot(job.id);
+  } catch (err) {
+    logger.error({ err, jobId: job.id }, "[acr] KPI snapshot fill failed");
+  }
+
   // ── Red-flag notifications (Section 12) ──
   try {
     await sendRedFlagNotifications(job.id, ownerUserId, job.isAutoScheduled);
   } catch (err) {
     logger.error({ err, jobId: job.id }, "[acr] notification fan-out failed");
   }
+
+  // ── Advanced analytics (Bagian IV): performance alerts + achievements ──
+  try {
+    await runPostJobAnalytics(job.id);
+  } catch (err) {
+    logger.error({ err, jobId: job.id }, "[acr] post-job analytics failed");
+  }
+}
+
+// Pre-aggregate team KPIs for a completed job into acr_kpi_snapshots so the
+// Dashboard (Bagian III) reads fast. Idempotent: upsert on job_id. Reads the
+// persisted agent-score + red-flag rows (source of truth) rather than in-memory
+// state, so a re-run recomputes cleanly.
+async function fillKpiSnapshot(jobId: string): Promise<void> {
+  const job = await db.query.acrJobsTable.findFirst({ where: eq(acrJobsTable.id, jobId) });
+  if (!job) return;
+
+  const scores = await db
+    .select()
+    .from(acrAgentScoresTable)
+    .where(eq(acrAgentScoresTable.jobId, jobId));
+
+  const num = (s: string | null): number => (s == null ? 0 : Number(s));
+  const avg = (vals: number[]): number =>
+    vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  const r2 = (x: number): string => (Math.round(x * 100) / 100).toFixed(2);
+  const n = scores.length;
+
+  const rtVals = scores
+    .map((s) => s.avgResponseTimeMinutes)
+    .filter((v): v is string => v != null)
+    .map(Number);
+
+  const ranked = [...scores].sort((a, b) => num(b.totalScore) - num(a.totalScore));
+  const top = ranked[0];
+  const bot = ranked[ranked.length - 1];
+
+  // Red-flag counts by type.
+  const rf = await db
+    .select({
+      type: acrRedFlagsTable.violationType,
+      c: sql<number>`count(*)::int`,
+    })
+    .from(acrRedFlagsTable)
+    .where(eq(acrRedFlagsTable.jobId, jobId))
+    .groupBy(acrRedFlagsTable.violationType);
+  const rfCount = (t: string): number => rf.find((r) => r.type === t)?.c ?? 0;
+  const totalRedFlags = rf.reduce((a, r) => a + r.c, 0);
+
+  // Frequency / period label.
+  let frequency: ScheduleFrequency | "manual" = "manual";
+  if (job.scheduleId) {
+    const sched = await db.query.acrSchedulesTable.findFirst({
+      where: eq(acrSchedulesTable.id, job.scheduleId),
+    });
+    if (sched) frequency = sched.frequency as ScheduleFrequency;
+  }
+  const periodLabel = buildPeriodLabel(frequency, job.periodStart, job.periodEnd);
+
+  const values = {
+    jobId,
+    ownerUserId: job.ownerUserId,
+    scheduleId: job.scheduleId,
+    periodStart: job.periodStart,
+    periodEnd: job.periodEnd,
+    periodLabel,
+    jobType: job.jobType,
+    frequency: frequency === "manual" ? null : frequency,
+    teamAvgScore: n > 0 ? r2(avg(scores.map((s) => num(s.totalScore)))) : null,
+    teamAvgResponseTime: rtVals.length > 0 ? r2(avg(rtVals)) : null,
+    teamAvgLanguage: n > 0 ? r2(avg(scores.map((s) => num(s.scoreLanguageQuality)))) : null,
+    teamAvgAnswer: n > 0 ? r2(avg(scores.map((s) => num(s.scoreAnswerQuality)))) : null,
+    teamAvgComplaint: n > 0 ? r2(avg(scores.map((s) => num(s.scoreComplaintHandling)))) : null,
+    teamAvgMissed: n > 0 ? r2(avg(scores.map((s) => num(s.scoreMissedChat)))) : null,
+    countGradeA: scores.filter((s) => s.grade === "A").length,
+    countGradeB: scores.filter((s) => s.grade === "B").length,
+    countGradeC: scores.filter((s) => s.grade === "C").length,
+    countGradeD: scores.filter((s) => s.grade === "D").length,
+    countGradeE: scores.filter((s) => s.grade === "E").length,
+    totalAgents: n,
+    totalRedFlags,
+    totalCustomerAngry: rfCount("customer_angry"),
+    totalRudeLanguage: rfCount("rude_language"),
+    totalNoReplyCritical: rfCount("no_reply_critical"),
+    totalCustomerIgnored: rfCount("customer_ignored"),
+    totalAnswerDropout: rfCount("answer_caused_dropout"),
+    totalConversations: scores.reduce((a, s) => a + s.totalConversations, 0),
+    totalMessages: scores.reduce((a, s) => a + s.totalMessagesSent, 0),
+    totalMissedChats: scores.reduce((a, s) => a + s.totalMissedChats, 0),
+    totalComplaints: scores.reduce((a, s) => a + s.totalComplaints, 0),
+    complaintsResolved: scores.reduce((a, s) => a + s.complaintsResolved, 0),
+    topPerformerName: top?.agentName ?? null,
+    topPerformerScore: top ? r2(num(top.totalScore)) : null,
+    topPerformerGrade: top?.grade ?? null,
+    botPerformerName: bot?.agentName ?? null,
+    botPerformerScore: bot ? r2(num(bot.totalScore)) : null,
+    botPerformerGrade: bot?.grade ?? null,
+    totalAllowanceAmount: scores.reduce((a, s) => a + (s.allowanceAmount ?? 0), 0),
+  };
+
+  await db
+    .insert(acrKpiSnapshotsTable)
+    .values(values)
+    .onConflictDoUpdate({ target: acrKpiSnapshotsTable.jobId, set: values });
 }
 
 // ─── Coaching insight (Section 5.2 / 5.4) ───────────────────────────────────
@@ -1022,6 +1203,424 @@ async function sendRedFlagNotifications(
 }
 
 // ─── Auto-schedule completion notifications (Section 13) ────────────────────
+
+// Build a report PDF and persist it to tenant object storage, recording the
+// URL on the job (Bagian II "full" — auto-gen after scheduled jobs). Idempotent
+// enough: re-running simply stores a fresh object and overwrites pdf_path.
+export async function generateAndStoreJobPdf(jobId: string): Promise<string | null> {
+  const job = await db.query.acrJobsTable.findFirst({ where: eq(acrJobsTable.id, jobId) });
+  if (!job || job.status !== "completed") return null;
+
+  const agents = await db
+    .select()
+    .from(acrAgentScoresTable)
+    .where(eq(acrAgentScoresTable.jobId, jobId))
+    .orderBy(sql`${acrAgentScoresTable.totalScore} desc`);
+  const agentIds = agents.map((a) => a.agentUserId);
+  const redFlags =
+    agentIds.length > 0
+      ? await db
+          .select()
+          .from(acrRedFlagsTable)
+          .where(eq(acrRedFlagsTable.jobId, jobId))
+      : [];
+
+  const [owner] = await db
+    .select({ name: usersTable.name, companyName: usersTable.companyName })
+    .from(usersTable)
+    .where(eq(usersTable.id, job.ownerUserId))
+    .limit(1);
+
+  const pdf = await buildAcrPdf({
+    job,
+    agents,
+    redFlags,
+    businessName: owner?.companyName || owner?.name || "MaxiChat",
+    generatedByName: "Otomatis (terjadwal)",
+    includeRedFlags: true,
+    includeCoaching: false,
+  });
+
+  const saved = await saveTenantMedia({
+    ownerUserId: job.ownerUserId,
+    buffer: Buffer.from(pdf),
+    contentType: "application/pdf",
+    kind: "acr-report",
+    preferredFilename: `acr-${job.periodStart}_${job.periodEnd}.pdf`,
+  });
+
+  await db
+    .update(acrJobsTable)
+    .set({ pdfPath: saved.url, pdfGeneratedAt: new Date() })
+    .where(eq(acrJobsTable.id, jobId));
+  return saved.url;
+}
+
+// ─── Post-job analytics (Bagian IV 9.1/9.2/9.6) ─────────────────────────────
+// After a job completes, detect performance-decline alerts (prompt 3) and new
+// achievements (prompt 6) per agent. Additive + best-effort: AI failure for one
+// agent never blocks the rest. Alerts need >=2 periods of history; achievements
+// can trigger on the first period.
+export async function runPostJobAnalytics(jobId: string): Promise<void> {
+  const job = await db.query.acrJobsTable.findFirst({ where: eq(acrJobsTable.id, jobId) });
+  if (!job || job.status !== "completed") return;
+  const ownerUserId = job.ownerUserId;
+
+  const current = await db
+    .select()
+    .from(acrAgentScoresTable)
+    .where(eq(acrAgentScoresTable.jobId, jobId));
+  if (current.length === 0) return;
+
+  const resolvedAi = await resolveAiClient(ownerUserId);
+  const N = (v: string | null): number => (v == null ? 0 : Number(v));
+
+  // Frequency of the current job (for the achievement prompt).
+  let frequency: ScheduleFrequency | "manual" = "manual";
+  if (job.scheduleId) {
+    const sched = await db.query.acrSchedulesTable.findFirst({
+      where: eq(acrSchedulesTable.id, job.scheduleId),
+    });
+    if (sched) frequency = sched.frequency as ScheduleFrequency;
+  }
+  const currentLabel = buildPeriodLabel(frequency, job.periodStart, job.periodEnd);
+  const langMax = Number((job.configSnapshot as Record<string, unknown>).weightLanguageQuality ?? 25);
+
+  // Recent completed jobs (incl. current), newest first → chronological.
+  const recentJobs = await db
+    .select({
+      id: acrJobsTable.id,
+      periodStart: acrJobsTable.periodStart,
+      periodEnd: acrJobsTable.periodEnd,
+      scheduleId: acrJobsTable.scheduleId,
+    })
+    .from(acrJobsTable)
+    .where(
+      and(
+        eq(acrJobsTable.ownerUserId, ownerUserId),
+        eq(acrJobsTable.status, "completed"),
+        isNull(acrJobsTable.archivedAt)
+      )
+    )
+    .orderBy(sql`${acrJobsTable.periodStart} desc`, sql`${acrJobsTable.createdAt} desc`)
+    .limit(6);
+  const chrono = [...recentJobs].reverse(); // oldest → newest
+  const jobIds = chrono.map((j) => j.id);
+
+  // Period labels from snapshots (fall back to date range).
+  const snaps = await db
+    .select({ jobId: acrKpiSnapshotsTable.jobId, label: acrKpiSnapshotsTable.periodLabel })
+    .from(acrKpiSnapshotsTable)
+    .where(inArray(acrKpiSnapshotsTable.jobId, jobIds));
+  const labelByJob = new Map(snaps.map((s) => [s.jobId, s.label]));
+  const labelFor = (jid: string): string => {
+    const m = chrono.find((j) => j.id === jid)!;
+    return labelByJob.get(jid) ?? `${m.periodStart}..${m.periodEnd}`;
+  };
+
+  // Agent scores + red-flag counts across those jobs.
+  const histScores = await db
+    .select()
+    .from(acrAgentScoresTable)
+    .where(inArray(acrAgentScoresTable.jobId, jobIds));
+  const scoreByJobAgent = new Map<string, (typeof histScores)[number]>();
+  for (const s of histScores) scoreByJobAgent.set(`${s.jobId}:${s.agentUserId}`, s);
+
+  const rfRows = await db
+    .select({
+      jobId: acrRedFlagsTable.jobId,
+      agentUserId: acrRedFlagsTable.agentUserId,
+      type: acrRedFlagsTable.violationType,
+      c: sql<number>`count(*)::int`,
+    })
+    .from(acrRedFlagsTable)
+    .where(inArray(acrRedFlagsTable.jobId, jobIds))
+    .groupBy(acrRedFlagsTable.jobId, acrRedFlagsTable.agentUserId, acrRedFlagsTable.violationType);
+  const rfByJobAgent = new Map<string, Record<string, number>>();
+  for (const r of rfRows) {
+    const k = `${r.jobId}:${r.agentUserId}`;
+    const m = rfByJobAgent.get(k) ?? {};
+    m[r.type] = r.c;
+    rfByJobAgent.set(k, m);
+  }
+
+  // Rank + per-agent delta vs the agent's previous appearance.
+  const ranked = [...current].sort((a, b) => N(b.totalScore) - N(a.totalScore));
+  const rankOf = new Map(ranked.map((s, i) => [s.agentUserId, i + 1]));
+  const prevJobId = chrono.length >= 2 ? chrono[chrono.length - 2]!.id : null;
+  const deltaOf = (agentId: number, total: number): number | null => {
+    if (!prevJobId) return null;
+    const prev = scoreByJobAgent.get(`${prevJobId}:${agentId}`);
+    return prev ? total - N(prev.totalScore) : null;
+  };
+  let mostImprovedAgent: number | null = null;
+  let mostImprovedDelta = -Infinity;
+  for (const s of current) {
+    const d = deltaOf(s.agentUserId, N(s.totalScore));
+    if (d != null && d > mostImprovedDelta) {
+      mostImprovedDelta = d;
+      mostImprovedAgent = s.agentUserId;
+    }
+  }
+
+  const targets = await db
+    .select()
+    .from(acrAgentTargetsTable)
+    .where(eq(acrAgentTargetsTable.ownerUserId, ownerUserId));
+  const targetByAgent = new Map(targets.map((t) => [t.agentUserId, Number(t.targetScore)]));
+
+  for (const s of current) {
+    const agentId = s.agentUserId;
+    const total = N(s.totalScore);
+    // The agent's own chronological history.
+    const hist = chrono
+      .map((j) => ({ jid: j.id, row: scoreByJobAgent.get(`${j.id}:${agentId}`) }))
+      .filter((h) => h.row);
+    const histLines = hist
+      .map((h) => {
+        const r = h.row!;
+        return `${labelFor(h.jid)} | ${N(r.totalScore)} | ${r.grade} | ${N(r.scoreResponseTime)} | ${N(r.scoreLanguageQuality)} | ${N(r.scoreAnswerQuality)} | ${N(r.scoreComplaintHandling)} | ${N(r.scoreMissedChat)}`;
+      })
+      .join("\n");
+    const rfLines = hist
+      .map((h) => {
+        const m = rfByJobAgent.get(`${h.jid}:${agentId}`) ?? {};
+        const t = Object.values(m).reduce((a, b) => a + b, 0);
+        return `${labelFor(h.jid)} | ${t} | ${m.customer_angry ?? 0} | ${m.rude_language ?? 0} | ${m.no_reply_critical ?? 0} | ${m.customer_ignored ?? 0} | ${m.answer_caused_dropout ?? 0}`;
+      })
+      .join("\n");
+    const prevTotal =
+      hist.length >= 2 ? N(hist[hist.length - 2]!.row!.totalScore) : null;
+
+    // ── Alerts (need >=2 periods to compare). ──
+    if (hist.length >= 2) {
+      try {
+        const parsed = await callAiJson(
+          resolvedAi,
+          ACR_SYSTEM_PROMPT_ALERT,
+          buildAlertUserPrompt({
+            agentName: s.agentName ?? `#${agentId}`,
+            role: s.agentRole,
+            targetScore: targetByAgent.get(agentId) ?? null,
+            historyBlock: histLines,
+            redFlagBlock: rfLines,
+            latestLabel: currentLabel,
+            latestScore: total,
+            prevScore: prevTotal,
+          }),
+          800,
+          null
+        );
+        const alerts = Array.isArray(parsed?.alerts) ? (parsed!.alerts as Record<string, unknown>[]) : [];
+        if (parsed?.has_alert === true && alerts.length > 0) {
+          await db.insert(acrPerformanceAlertsTable).values(
+            alerts.map((a) => ({
+              ownerUserId,
+              agentUserId: agentId,
+              jobId,
+              alertType: String(a.alert_type ?? "score_drop_significant"),
+              severity: String(a.severity ?? "medium"),
+              title: String(a.title ?? "Penurunan performa").slice(0, 120),
+              description: a.description ? String(a.description).slice(0, 400) : null,
+              recommendation: a.recommendation ? String(a.recommendation).slice(0, 400) : null,
+              affectedDimensions: Array.isArray(a.affected_dimensions)
+                ? (a.affected_dimensions as unknown[]).map(String)
+                : null,
+            }))
+          );
+        }
+      } catch (err) {
+        logger.error({ err, agentId }, "[acr] alert detection failed");
+      }
+    }
+
+    // ── Achievements (can trigger on first period). ──
+    try {
+      const existing = await db
+        .selectDistinct({ achievementId: acrAchievementsTable.achievementId })
+        .from(acrAchievementsTable)
+        .where(
+          and(
+            eq(acrAchievementsTable.ownerUserId, ownerUserId),
+            eq(acrAchievementsTable.agentUserId, agentId)
+          )
+        );
+      const gradeHistory = hist
+        .map((h) => `${labelFor(h.jid)} | ${h.row!.grade} | ${N(h.row!.totalScore)}`)
+        .join("\n");
+      const parsed = await callAiJson(
+        resolvedAi,
+        ACR_SYSTEM_PROMPT_ACHIEVEMENT,
+        buildAchievementUserPrompt({
+          agentName: s.agentName ?? `#${agentId}`,
+          periodLabel: currentLabel,
+          totalScore: total,
+          grade: s.grade,
+          avgRt: s.avgResponseTimeMinutes == null ? null : Number(s.avgResponseTimeMinutes),
+          languageScore: N(s.scoreLanguageQuality),
+          languageMax: langMax,
+          totalRedFlags: s.redFlagCount,
+          missedCount: s.totalMissedChats,
+          totalComplaints: s.totalComplaints,
+          complaintsResolved: s.complaintsResolved,
+          rank: rankOf.get(agentId) ?? 1,
+          totalAgents: current.length,
+          mostImproved: mostImprovedAgent === agentId,
+          improvedDelta: mostImprovedAgent === agentId ? Math.round(mostImprovedDelta) : null,
+          frequency,
+          gradeHistoryBlock: gradeHistory,
+          existingAchievementIds: existing.map((e) => e.achievementId),
+        }),
+        600,
+        null
+      );
+      const newAch = Array.isArray(parsed?.new_achievements)
+        ? (parsed!.new_achievements as Record<string, unknown>[])
+        : [];
+      if (newAch.length > 0) {
+        await db
+          .insert(acrAchievementsTable)
+          .values(
+            newAch.map((a) => ({
+              ownerUserId,
+              agentUserId: agentId,
+              jobId,
+              achievementId: String(a.achievement_id ?? "unknown"),
+              achievementName: String(a.achievement_name ?? "Pencapaian"),
+              achievementIcon: String(a.achievement_icon ?? "🏅"),
+              description: a.description ? String(a.description).slice(0, 120) : null,
+              earnedAtPeriod: String(a.earned_at_period ?? currentLabel),
+            }))
+          )
+          .onConflictDoNothing();
+      }
+    } catch (err) {
+      logger.error({ err, agentId }, "[acr] achievement detection failed");
+    }
+  }
+}
+
+// ─── On-demand AI analysis (Bagian IV 9.5 MoM / 9.3 benchmark) ──────────────
+
+const NSTR = (v: string | null): number => (v == null ? 0 : Number(v));
+
+async function buildMomPeriodBlock(
+  ownerUserId: number,
+  jobId: string
+): Promise<{ label: string; block: string } | null> {
+  const snap = await db.query.acrKpiSnapshotsTable.findFirst({
+    where: and(eq(acrKpiSnapshotsTable.jobId, jobId), eq(acrKpiSnapshotsTable.ownerUserId, ownerUserId)),
+  });
+  if (!snap) return null;
+  const scores = await db
+    .select()
+    .from(acrAgentScoresTable)
+    .where(eq(acrAgentScoresTable.jobId, jobId))
+    .orderBy(sql`${acrAgentScoresTable.totalScore} desc`);
+  const agentLines = scores
+    .map(
+      (s) =>
+        `${s.agentName ?? `#${s.agentUserId}`} | ${s.grade} | ${NSTR(s.totalScore)} | ${NSTR(s.scoreResponseTime)} | ${NSTR(s.scoreLanguageQuality)} | ${NSTR(s.scoreAnswerQuality)} | ${NSTR(s.scoreComplaintHandling)} | ${s.totalMissedChats}`
+    )
+    .join("\n");
+  const block = `Rata-rata skor tim      : ${NSTR(snap.teamAvgScore)}
+Avg waktu balas         : ${NSTR(snap.teamAvgResponseTime)} menit
+Chat tidak terjawab     : ${snap.totalMissedChats}
+Total red flag          : ${snap.totalRedFlags}
+  - Customer marah      : ${snap.totalCustomerAngry}
+  - Bahasa tidak sopan  : ${snap.totalRudeLanguage}
+  - Chat dicuekin       : ${snap.totalCustomerIgnored}
+  - Tidak dibalas       : ${snap.totalNoReplyCritical}
+  - Jawaban dropout     : ${snap.totalAnswerDropout}
+Total percakapan        : ${snap.totalConversations}
+Distribusi grade        : A:${snap.countGradeA} B:${snap.countGradeB} C:${snap.countGradeC} D:${snap.countGradeD} E:${snap.countGradeE}
+
+Skor per agent:
+NAMA | GRADE | TOTAL | KEC_BALAS | KUALITAS | KETEPATAN | KOMPLAIN | MISSED
+${agentLines}`;
+  return { label: snap.periodLabel, block };
+}
+
+export async function generateMomReport(
+  ownerUserId: number,
+  currentJobId: string,
+  previousJobId: string,
+  contextBlock = ""
+): Promise<Record<string, unknown> | null> {
+  const [curr, prev] = await Promise.all([
+    buildMomPeriodBlock(ownerUserId, currentJobId),
+    buildMomPeriodBlock(ownerUserId, previousJobId),
+  ]);
+  if (!curr || !prev) return null;
+  const resolvedAi = await resolveAiClient(ownerUserId);
+  return callAiJson(
+    resolvedAi,
+    ACR_SYSTEM_PROMPT_MOM,
+    buildMomUserPrompt({
+      prevLabel: prev.label,
+      currLabel: curr.label,
+      prevBlock: prev.block,
+      currBlock: curr.block,
+      contextBlock,
+    }),
+    1200,
+    null
+  );
+}
+
+export async function generateBenchmark(
+  ownerUserId: number,
+  jobId: string,
+  groups: { name: string; scheduleLabel: string | null; agentUserIds: number[] }[],
+  contextBlock = ""
+): Promise<Record<string, unknown> | null> {
+  if (groups.length < 2) return null;
+  const snap = await db.query.acrKpiSnapshotsTable.findFirst({
+    where: and(eq(acrKpiSnapshotsTable.jobId, jobId), eq(acrKpiSnapshotsTable.ownerUserId, ownerUserId)),
+  });
+  const scores = await db
+    .select()
+    .from(acrAgentScoresTable)
+    .where(eq(acrAgentScoresTable.jobId, jobId));
+  const byId = new Map(scores.map((s) => [s.agentUserId, s]));
+  const avg = (vals: number[]): number =>
+    vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0;
+
+  const teamsBlock = groups
+    .map((g, idx) => {
+      const members = g.agentUserIds.map((id) => byId.get(id)).filter(Boolean) as typeof scores;
+      const rt = members.map((m) => (m.avgResponseTimeMinutes == null ? null : Number(m.avgResponseTimeMinutes))).filter((v): v is number => v != null);
+      const grades = { A: 0, B: 0, C: 0, D: 0, E: 0 } as Record<string, number>;
+      for (const m of members) grades[m.grade] = (grades[m.grade] ?? 0) + 1;
+      return `=== TIM ${idx + 1}: ${g.name} ===
+Agent: ${members.map((m) => m.agentName ?? `#${m.agentUserId}`).join(", ") || "-"}
+Jadwal: ${g.scheduleLabel ?? "-"}
+Rata-rata skor   : ${avg(members.map((m) => NSTR(m.totalScore)))}
+Avg waktu balas  : ${avg(rt)} menit
+Chat tidak dijawab: ${members.reduce((a, m) => a + m.totalMissedChats, 0)}
+Total red flag   : ${members.reduce((a, m) => a + m.redFlagCount, 0)}
+Distribusi grade : A:${grades.A} B:${grades.B} C:${grades.C} D:${grades.D} E:${grades.E}
+Skor dimensi rata-rata:
+Kecepatan Balas : ${avg(members.map((m) => NSTR(m.scoreResponseTime)))}
+Kualitas Bahasa : ${avg(members.map((m) => NSTR(m.scoreLanguageQuality)))}
+Ketepatan Jawaban: ${avg(members.map((m) => NSTR(m.scoreAnswerQuality)))}
+Handling Komplain: ${avg(members.map((m) => NSTR(m.scoreComplaintHandling)))}`;
+    })
+    .join("\n\n");
+
+  const resolvedAi = await resolveAiClient(ownerUserId);
+  return callAiJson(
+    resolvedAi,
+    ACR_SYSTEM_PROMPT_BENCHMARK,
+    buildBenchmarkUserPrompt({
+      periodLabel: snap?.periodLabel ?? jobId,
+      teamsBlock,
+      contextBlock,
+    }),
+    800,
+    null
+  );
+}
 
 export async function sendAutoScheduleNotifications(
   jobId: string,

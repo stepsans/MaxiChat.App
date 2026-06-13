@@ -15,6 +15,10 @@ import {
   periodToUtcRange,
   responseTimeToRawScore,
   validateConfigInput,
+  weightedTotalScore,
+  computeScheduleNextRun,
+  schedulePeriod,
+  buildPeriodLabel,
   type AcrConfigSnapshot,
   type AcrMessage,
 } from "./acr-build";
@@ -49,12 +53,21 @@ let nextId = 1;
 function msg(
   direction: "inbound" | "outbound",
   minutes: number,
-  opts: { ai?: boolean; content?: string } = {}
+  opts: { ai?: boolean; content?: string; bot?: boolean; sentByUserId?: number | null } = {}
 ): AcrMessage {
+  const ai = opts.ai ?? false;
+  // Human outbound (not AI, not bot) gets a sentByUserId; inbound/AI/bot get null.
+  const sentByUserId =
+    opts.sentByUserId !== undefined
+      ? opts.sentByUserId
+      : direction === "outbound" && !ai && !opts.bot
+        ? 1
+        : null;
   return {
     id: nextId++,
     direction,
-    isAiGenerated: opts.ai ?? false,
+    isAiGenerated: ai,
+    sentByUserId,
     content: opts.content ?? "halo",
     createdAt: at(minutes),
   };
@@ -105,13 +118,50 @@ describe("computeResponseMetrics", () => {
     assert.equal(m.responseTimesMinutes[0], 2);
   });
 
-  it("AI replies close a turn without crediting human response time", () => {
+  it("a turn answered only by AI/bot (no human) counts as missed (v2.3)", () => {
     const m = computeResponseMetrics(
       [msg("inbound", 0), msg("outbound", 1, { ai: true })],
       60
     );
-    assert.equal(m.missedTurns, 0);
+    assert.equal(m.missedTurns, 1);
     assert.equal(m.responseTimesMinutes.length, 0);
+    assert.equal(m.totalAgentMessages, 0);
+  });
+
+  it("measures response time to the next HUMAN reply, skipping a bot reply (v2.3)", () => {
+    // Customer 10:00, bot 10:01 (ignored), human 10:45 → RT = 45 (not 1).
+    const m = computeResponseMetrics(
+      [msg("inbound", 0), msg("outbound", 1, { ai: true }), msg("outbound", 45)],
+      120
+    );
+    assert.equal(m.responseTimesMinutes.length, 1);
+    assert.equal(m.responseTimesMinutes[0], 45);
+    assert.equal(m.missedTurns, 0);
+    assert.equal(m.totalAgentMessages, 1);
+  });
+
+  it("customer_ignored still triggers when only a bot replied before the repeat (v2.3)", () => {
+    // Customer 10:00, bot 10:01, customer 10:35 (repeat before human), human 11:00.
+    const m = computeResponseMetrics(
+      [
+        msg("inbound", 0),
+        msg("outbound", 1, { ai: true }),
+        msg("inbound", 35),
+        msg("outbound", 60),
+      ],
+      120
+    );
+    assert.equal(m.customerIgnoredEvents.length, 1);
+    assert.equal(m.customerIgnoredEvents[0]!.repeatCount, 2);
+    assert.equal(m.responseTimesMinutes[0], 60); // from first inbound to human
+  });
+
+  it("treats a bot-flow send (non-AI, no sentByUserId) as automated, not human (v2.3)", () => {
+    const m = computeResponseMetrics(
+      [msg("inbound", 0), msg("outbound", 1, { bot: true })],
+      60
+    );
+    assert.equal(m.missedTurns, 1);
     assert.equal(m.totalAgentMessages, 0);
   });
 
@@ -177,6 +227,50 @@ describe("aggregateAgentScores", () => {
     assert.equal(r.scoreComplaintHandling, 0);
     // All other dimensions perfect → total must still reach 100.
     assert.equal(r.totalScore, 100);
+  });
+});
+
+describe("weightedTotalScore (per-conversation total)", () => {
+  it("matches the plain weighted sum when complaint handling is enabled", () => {
+    const total = weightedTotalScore(
+      { responseTime: 100, language: 100, answer: 100, complaint: 85, missed: 100 },
+      cfg
+    );
+    // 25 + 25 + 25 + 85×15% + 10 = 97.75
+    assert.equal(total, 97.75);
+  });
+
+  it("ignores the complaint score and redistributes its weight when disabled", () => {
+    const disabled = { ...cfg, complaintHandlingEnabled: false };
+    const withZero = weightedTotalScore(
+      { responseTime: 100, language: 100, answer: 100, complaint: 0, missed: 100 },
+      disabled
+    );
+    const withFull = weightedTotalScore(
+      { responseTime: 100, language: 100, answer: 100, complaint: 100, missed: 100 },
+      disabled
+    );
+    // Complaint value must not affect the total when handling is disabled.
+    assert.equal(withZero, withFull);
+    // All other dimensions perfect → total still reaches 100.
+    assert.equal(withZero, 100);
+  });
+
+  it("stays consistent with the per-agent total for the same raw scores", () => {
+    const disabled = { ...cfg, complaintHandlingEnabled: false };
+    const raws = { responseTime: 90, language: 70, answer: 80, complaint: 50, missed: 100 };
+    const convTotal = weightedTotalScore(raws, disabled);
+    const agent = aggregateAgentScores(
+      {
+        rawResponseTimeScore: raws.responseTime,
+        rawMissedChatScore: raws.missed,
+        rawLanguageScore: raws.language,
+        rawAnswerScore: raws.answer,
+        rawComplaintScore: raws.complaint,
+      },
+      disabled
+    );
+    assert.equal(convTotal, agent.totalScore);
   });
 });
 
@@ -320,5 +414,80 @@ describe("computeNextRunAt", () => {
     );
     assert.ok(next.getTime() > now.getTime());
     assert.equal(next.toISOString(), "2026-07-11T23:00:00.000Z");
+  });
+});
+
+describe("computeScheduleNextRun (acr_schedules)", () => {
+  const now = new Date("2026-06-12T04:00:00Z"); // 11:00 WIB, Friday Jun 12
+
+  it("daily: tomorrow when today's cutoff already passed", () => {
+    const next = computeScheduleNextRun(
+      { frequency: "daily", cutoffHour: 9, cutoffMinute: 0 },
+      now
+    );
+    assert.equal(next.toISOString(), "2026-06-13T02:00:00.000Z"); // 09:00 WIB next day
+  });
+
+  it("daily: today when cutoff is still ahead", () => {
+    const next = computeScheduleNextRun(
+      { frequency: "daily", cutoffHour: 15, cutoffMinute: 30 },
+      now
+    );
+    assert.equal(next.toISOString(), "2026-06-12T08:30:00.000Z"); // 15:30 WIB today
+  });
+
+  it("weekly: next Monday (dayOfWeek=1) at cutoff", () => {
+    const next = computeScheduleNextRun(
+      { frequency: "weekly", dayOfWeek: 1, cutoffHour: 9, cutoffMinute: 0 },
+      now
+    );
+    assert.equal(next.toISOString(), "2026-06-15T02:00:00.000Z");
+  });
+
+  it("monthly: next month when this month's day already passed", () => {
+    const next = computeScheduleNextRun(
+      { frequency: "monthly", dayOfMonth: 1, cutoffHour: 9, cutoffMinute: 0 },
+      now
+    );
+    assert.equal(next.toISOString(), "2026-07-01T02:00:00.000Z");
+  });
+
+  it("is always strictly in the future", () => {
+    for (const freq of ["daily", "weekly", "monthly"] as const) {
+      const next = computeScheduleNextRun(
+        { frequency: freq, dayOfWeek: 5, dayOfMonth: 12, cutoffHour: 9, cutoffMinute: 0 },
+        now
+      );
+      assert.ok(next.getTime() > now.getTime(), `${freq} must be in the future`);
+    }
+  });
+});
+
+describe("schedulePeriod & buildPeriodLabel", () => {
+  const now = new Date("2026-06-12T04:00:00Z"); // 2026-06-12 WIB
+
+  it("schedulePeriod spans 1/7/30 days back from today", () => {
+    assert.deepEqual(schedulePeriod("daily", now), {
+      periodStart: "2026-06-11",
+      periodEnd: "2026-06-12",
+    });
+    assert.deepEqual(schedulePeriod("weekly", now), {
+      periodStart: "2026-06-05",
+      periodEnd: "2026-06-12",
+    });
+    assert.deepEqual(schedulePeriod("monthly", now), {
+      periodStart: "2026-05-13",
+      periodEnd: "2026-06-12",
+    });
+  });
+
+  it("buildPeriodLabel formats per frequency (Bahasa Indonesia)", () => {
+    assert.equal(buildPeriodLabel("daily", "2026-06-11", "2026-06-12"), "12 Jun 2026");
+    assert.equal(buildPeriodLabel("monthly", "2026-05-13", "2026-06-12"), "Mei 2026");
+    assert.equal(
+      buildPeriodLabel("manual", "2026-05-13", "2026-06-12"),
+      "13 Mei – 12 Jun 2026"
+    );
+    assert.match(buildPeriodLabel("weekly", "2026-06-08", "2026-06-14"), /^Minggu ke-\d+, 2026$/);
   });
 });
