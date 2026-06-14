@@ -38,6 +38,10 @@ type FormState = {
   weightAnswerQuality: number;
   weightComplaintHandling: number;
   weightMissedChat: number;
+  responseTimeSubweight: number;
+  consistencySubweight: number;
+  missedChatSubweight: number;
+  leadCoverageSubweight: number;
   slaExcellentMinutes: number;
   slaGoodMinutes: number;
   slaAcceptableMinutes: number;
@@ -68,6 +72,10 @@ const DEFAULTS: FormState = {
   weightAnswerQuality: 25,
   weightComplaintHandling: 15,
   weightMissedChat: 10,
+  responseTimeSubweight: 80,
+  consistencySubweight: 20,
+  missedChatSubweight: 60,
+  leadCoverageSubweight: 40,
   slaExcellentMinutes: 3,
   slaGoodMinutes: 5,
   slaAcceptableMinutes: 15,
@@ -99,6 +107,10 @@ function fromConfig(c: AcrConfig): FormState {
     weightAnswerQuality: c.weightAnswerQuality,
     weightComplaintHandling: c.weightComplaintHandling,
     weightMissedChat: c.weightMissedChat,
+    responseTimeSubweight: c.responseTimeSubweight ?? 80,
+    consistencySubweight: c.consistencySubweight ?? 20,
+    missedChatSubweight: c.missedChatSubweight ?? 60,
+    leadCoverageSubweight: c.leadCoverageSubweight ?? 40,
     slaExcellentMinutes: c.slaExcellentMinutes,
     slaGoodMinutes: c.slaGoodMinutes,
     slaAcceptableMinutes: c.slaAcceptableMinutes,
@@ -166,6 +178,32 @@ const WEIGHT_ROWS: Array<{
   },
 ];
 
+// Sub-weight pairs (Section 4.5 / 4.6). Each pair must total 100; editing one
+// side auto-adjusts the other. Keyed by the parent dimension's weight key.
+type SubKey =
+  | "responseTimeSubweight"
+  | "consistencySubweight"
+  | "missedChatSubweight"
+  | "leadCoverageSubweight";
+
+const SUBWEIGHTS: Partial<
+  Record<
+    "weightResponseTime" | "weightMissedChat",
+    { primary: [SubKey, string]; secondary: [SubKey, string]; hint: string }
+  >
+> = {
+  weightResponseTime: {
+    primary: ["responseTimeSubweight", "Response Time Murni"],
+    secondary: ["consistencySubweight", "Konsistensi Aktif Harian"],
+    hint: "Agent cepat balas tapi hanya aktif sebagian hari kerja → skor kecepatan balas dikurangi dari porsi konsistensi.",
+  },
+  weightMissedChat: {
+    primary: ["missedChatSubweight", "Chat Tak Terjawab"],
+    secondary: ["leadCoverageSubweight", "Lead Status Coverage %"],
+    hint: "0 chat terlewat tapi banyak kontak tanpa lead status → skor dimensi ini tidak sempurna.",
+  },
+};
+
 const DAY_NAMES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
 
 export default function AIChatReportSettings() {
@@ -216,10 +254,25 @@ export default function AIChatReportSettings() {
     form.allowanceGradeD,
     form.allowanceGradeE,
   ].some((v) => !Number.isInteger(v) || v < 0);
-  const invalid = totalWeight !== 100 || slaError || gradeError || allowanceError;
+  const rtSubError = form.responseTimeSubweight + form.consistencySubweight !== 100;
+  const missedSubError = form.missedChatSubweight + form.leadCoverageSubweight !== 100;
+  const invalid =
+    totalWeight !== 100 ||
+    slaError ||
+    gradeError ||
+    allowanceError ||
+    rtSubError ||
+    missedSubError;
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // Edit one sub-weight; the partner is forced to the complement so the pair
+  // always totals 100 (Section 2.1 invariant).
+  const setSubPair = (changed: SubKey, partner: SubKey, value: number) => {
+    const v = Math.max(0, Math.min(100, value));
+    setForm((f) => ({ ...f, [changed]: v, [partner]: 100 - v }));
+  };
 
   const numInput = (v: string): number => {
     const n = Number(v);
@@ -300,6 +353,47 @@ export default function AIChatReportSettings() {
                 step={1}
                 onValueChange={([v]) => set(row.key, v ?? 0)}
               />
+              {SUBWEIGHTS[row.key as "weightResponseTime" | "weightMissedChat"] &&
+                (() => {
+                  const sw = SUBWEIGHTS[row.key as "weightResponseTime" | "weightMissedChat"]!;
+                  const sum = form[sw.primary[0]] + form[sw.secondary[0]];
+                  return (
+                    <div className="mt-3 ml-1 space-y-2 border-l-2 border-border/60 pl-3">
+                      <p className="text-xs font-medium text-foreground/70">
+                        Sub-bobot (total harus 100)
+                      </p>
+                      {[sw.primary, sw.secondary].map(([k, l]) => (
+                        <div key={k} className="flex items-center justify-between gap-2">
+                          <Label className="text-xs font-normal">{l}</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            className="h-8 w-20 text-right"
+                            value={form[k]}
+                            onChange={(e) =>
+                              setSubPair(
+                                k,
+                                k === sw.primary[0] ? sw.secondary[0] : sw.primary[0],
+                                numInput(e.target.value)
+                              )
+                            }
+                            data-testid={`acr-${k}`}
+                          />
+                        </div>
+                      ))}
+                      <p
+                        className={cn(
+                          "text-xs",
+                          sum === 100 ? "text-emerald-600" : "text-red-500"
+                        )}
+                      >
+                        Total sub: {sum} / 100 {sum === 100 ? "✓" : "— harus 100"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">ℹ️ {sw.hint}</p>
+                    </div>
+                  );
+                })()}
             </div>
           ))}
           <p

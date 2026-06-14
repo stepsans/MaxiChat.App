@@ -6100,6 +6100,18 @@ export const getAcrConfigResponseOneWeightComplaintHandlingMax = 100;
 export const getAcrConfigResponseOneWeightMissedChatMin = 0;
 export const getAcrConfigResponseOneWeightMissedChatMax = 100;
 
+export const getAcrConfigResponseOneResponseTimeSubweightMin = 0;
+export const getAcrConfigResponseOneResponseTimeSubweightMax = 100;
+
+export const getAcrConfigResponseOneConsistencySubweightMin = 0;
+export const getAcrConfigResponseOneConsistencySubweightMax = 100;
+
+export const getAcrConfigResponseOneMissedChatSubweightMin = 0;
+export const getAcrConfigResponseOneMissedChatSubweightMax = 100;
+
+export const getAcrConfigResponseOneLeadCoverageSubweightMin = 0;
+export const getAcrConfigResponseOneLeadCoverageSubweightMax = 100;
+
 
 
 
@@ -6127,6 +6139,10 @@ export const GetAcrConfigResponse = zod.object({
   "weightAnswerQuality": zod.number().min(getAcrConfigResponseOneWeightAnswerQualityMin).max(getAcrConfigResponseOneWeightAnswerQualityMax),
   "weightComplaintHandling": zod.number().min(getAcrConfigResponseOneWeightComplaintHandlingMin).max(getAcrConfigResponseOneWeightComplaintHandlingMax),
   "weightMissedChat": zod.number().min(getAcrConfigResponseOneWeightMissedChatMin).max(getAcrConfigResponseOneWeightMissedChatMax),
+  "responseTimeSubweight": zod.number().min(getAcrConfigResponseOneResponseTimeSubweightMin).max(getAcrConfigResponseOneResponseTimeSubweightMax).describe('Sub-weight of pure response time within Kecepatan Balas. With consistencySubweight must total 100.'),
+  "consistencySubweight": zod.number().min(getAcrConfigResponseOneConsistencySubweightMin).max(getAcrConfigResponseOneConsistencySubweightMax).describe('Sub-weight of daily-active consistency within Kecepatan Balas.'),
+  "missedChatSubweight": zod.number().min(getAcrConfigResponseOneMissedChatSubweightMin).max(getAcrConfigResponseOneMissedChatSubweightMax).describe('Sub-weight of missed chats within Chat Tak Terjawab. With leadCoverageSubweight must total 100.'),
+  "leadCoverageSubweight": zod.number().min(getAcrConfigResponseOneLeadCoverageSubweightMin).max(getAcrConfigResponseOneLeadCoverageSubweightMax).describe('Sub-weight of lead-status coverage within Chat Tak Terjawab.'),
   "slaExcellentMinutes": zod.number().min(1),
   "slaGoodMinutes": zod.number().min(1),
   "slaAcceptableMinutes": zod.number().min(1),
@@ -6175,6 +6191,18 @@ export const updateAcrConfigBodyWeightComplaintHandlingMax = 100;
 export const updateAcrConfigBodyWeightMissedChatMin = 0;
 export const updateAcrConfigBodyWeightMissedChatMax = 100;
 
+export const updateAcrConfigBodyResponseTimeSubweightMin = 0;
+export const updateAcrConfigBodyResponseTimeSubweightMax = 100;
+
+export const updateAcrConfigBodyConsistencySubweightMin = 0;
+export const updateAcrConfigBodyConsistencySubweightMax = 100;
+
+export const updateAcrConfigBodyMissedChatSubweightMin = 0;
+export const updateAcrConfigBodyMissedChatSubweightMax = 100;
+
+export const updateAcrConfigBodyLeadCoverageSubweightMin = 0;
+export const updateAcrConfigBodyLeadCoverageSubweightMax = 100;
+
 
 
 
@@ -6202,6 +6230,10 @@ export const UpdateAcrConfigBody = zod.object({
   "weightAnswerQuality": zod.number().min(updateAcrConfigBodyWeightAnswerQualityMin).max(updateAcrConfigBodyWeightAnswerQualityMax),
   "weightComplaintHandling": zod.number().min(updateAcrConfigBodyWeightComplaintHandlingMin).max(updateAcrConfigBodyWeightComplaintHandlingMax),
   "weightMissedChat": zod.number().min(updateAcrConfigBodyWeightMissedChatMin).max(updateAcrConfigBodyWeightMissedChatMax),
+  "responseTimeSubweight": zod.number().min(updateAcrConfigBodyResponseTimeSubweightMin).max(updateAcrConfigBodyResponseTimeSubweightMax).describe('Sub-weight of pure response time within Kecepatan Balas. With consistencySubweight must total 100.'),
+  "consistencySubweight": zod.number().min(updateAcrConfigBodyConsistencySubweightMin).max(updateAcrConfigBodyConsistencySubweightMax).describe('Sub-weight of daily-active consistency within Kecepatan Balas.'),
+  "missedChatSubweight": zod.number().min(updateAcrConfigBodyMissedChatSubweightMin).max(updateAcrConfigBodyMissedChatSubweightMax).describe('Sub-weight of missed chats within Chat Tak Terjawab. With leadCoverageSubweight must total 100.'),
+  "leadCoverageSubweight": zod.number().min(updateAcrConfigBodyLeadCoverageSubweightMin).max(updateAcrConfigBodyLeadCoverageSubweightMax).describe('Sub-weight of lead-status coverage within Chat Tak Terjawab.'),
   "slaExcellentMinutes": zod.number().min(1),
   "slaGoodMinutes": zod.number().min(1),
   "slaAcceptableMinutes": zod.number().min(1),
@@ -6241,6 +6273,18 @@ export const updateAcrConfigResponseOneWeightComplaintHandlingMax = 100;
 export const updateAcrConfigResponseOneWeightMissedChatMin = 0;
 export const updateAcrConfigResponseOneWeightMissedChatMax = 100;
 
+export const updateAcrConfigResponseOneResponseTimeSubweightMin = 0;
+export const updateAcrConfigResponseOneResponseTimeSubweightMax = 100;
+
+export const updateAcrConfigResponseOneConsistencySubweightMin = 0;
+export const updateAcrConfigResponseOneConsistencySubweightMax = 100;
+
+export const updateAcrConfigResponseOneMissedChatSubweightMin = 0;
+export const updateAcrConfigResponseOneMissedChatSubweightMax = 100;
+
+export const updateAcrConfigResponseOneLeadCoverageSubweightMin = 0;
+export const updateAcrConfigResponseOneLeadCoverageSubweightMax = 100;
+
 
 
 
@@ -6268,6 +6312,10 @@ export const UpdateAcrConfigResponse = zod.object({
   "weightAnswerQuality": zod.number().min(updateAcrConfigResponseOneWeightAnswerQualityMin).max(updateAcrConfigResponseOneWeightAnswerQualityMax),
   "weightComplaintHandling": zod.number().min(updateAcrConfigResponseOneWeightComplaintHandlingMin).max(updateAcrConfigResponseOneWeightComplaintHandlingMax),
   "weightMissedChat": zod.number().min(updateAcrConfigResponseOneWeightMissedChatMin).max(updateAcrConfigResponseOneWeightMissedChatMax),
+  "responseTimeSubweight": zod.number().min(updateAcrConfigResponseOneResponseTimeSubweightMin).max(updateAcrConfigResponseOneResponseTimeSubweightMax).describe('Sub-weight of pure response time within Kecepatan Balas. With consistencySubweight must total 100.'),
+  "consistencySubweight": zod.number().min(updateAcrConfigResponseOneConsistencySubweightMin).max(updateAcrConfigResponseOneConsistencySubweightMax).describe('Sub-weight of daily-active consistency within Kecepatan Balas.'),
+  "missedChatSubweight": zod.number().min(updateAcrConfigResponseOneMissedChatSubweightMin).max(updateAcrConfigResponseOneMissedChatSubweightMax).describe('Sub-weight of missed chats within Chat Tak Terjawab. With leadCoverageSubweight must total 100.'),
+  "leadCoverageSubweight": zod.number().min(updateAcrConfigResponseOneLeadCoverageSubweightMin).max(updateAcrConfigResponseOneLeadCoverageSubweightMax).describe('Sub-weight of lead-status coverage within Chat Tak Terjawab.'),
   "slaExcellentMinutes": zod.number().min(1),
   "slaGoodMinutes": zod.number().min(1),
   "slaAcceptableMinutes": zod.number().min(1),
@@ -6493,6 +6541,12 @@ export const GetAcrJobResultsResponse = zod.object({
   "totalComplaints": zod.number().optional(),
   "complaintsResolved": zod.number().optional(),
   "insufficientData": zod.boolean().optional(),
+  "activeDays": zod.number().optional().describe('Distinct days the agent sent a substantive human message.'),
+  "workingDays": zod.number().optional().describe('Mon–Sat days in the period (Sunday excluded).'),
+  "consistencyPct": zod.number().optional().describe('active_days \/ working_days × 100.'),
+  "totalContactsHandled": zod.number().optional(),
+  "contactsWithLeadStatus": zod.number().optional(),
+  "leadCoveragePct": zod.number().optional().describe('contacts_with_lead_status \/ total_contacts_handled × 100.'),
   "grade": zod.enum(['A', 'B', 'C', 'D', 'E']),
   "allowanceAmount": zod.number().optional().describe('Whole-integer Rupiah from the job\'s config snapshot.'),
   "aiSummary": zod.string().nullish(),
@@ -6560,6 +6614,12 @@ export const GetAcrAgentDetailResponse = zod.object({
   "totalComplaints": zod.number().optional(),
   "complaintsResolved": zod.number().optional(),
   "insufficientData": zod.boolean().optional(),
+  "activeDays": zod.number().optional().describe('Distinct days the agent sent a substantive human message.'),
+  "workingDays": zod.number().optional().describe('Mon–Sat days in the period (Sunday excluded).'),
+  "consistencyPct": zod.number().optional().describe('active_days \/ working_days × 100.'),
+  "totalContactsHandled": zod.number().optional(),
+  "contactsWithLeadStatus": zod.number().optional(),
+  "leadCoveragePct": zod.number().optional().describe('contacts_with_lead_status \/ total_contacts_handled × 100.'),
   "grade": zod.enum(['A', 'B', 'C', 'D', 'E']),
   "allowanceAmount": zod.number().optional().describe('Whole-integer Rupiah from the job\'s config snapshot.'),
   "aiSummary": zod.string().nullish(),
@@ -6774,6 +6834,12 @@ export const GetMyAcrScoresResponse = zod.object({
   "totalComplaints": zod.number().optional(),
   "complaintsResolved": zod.number().optional(),
   "insufficientData": zod.boolean().optional(),
+  "activeDays": zod.number().optional().describe('Distinct days the agent sent a substantive human message.'),
+  "workingDays": zod.number().optional().describe('Mon–Sat days in the period (Sunday excluded).'),
+  "consistencyPct": zod.number().optional().describe('active_days \/ working_days × 100.'),
+  "totalContactsHandled": zod.number().optional(),
+  "contactsWithLeadStatus": zod.number().optional(),
+  "leadCoveragePct": zod.number().optional().describe('contacts_with_lead_status \/ total_contacts_handled × 100.'),
   "grade": zod.enum(['A', 'B', 'C', 'D', 'E']),
   "allowanceAmount": zod.number().optional().describe('Whole-integer Rupiah from the job\'s config snapshot.'),
   "aiSummary": zod.string().nullish(),
@@ -7209,6 +7275,12 @@ export const GetAcrDashboardResponse = zod.object({
   "totalComplaints": zod.number().optional(),
   "complaintsResolved": zod.number().optional(),
   "insufficientData": zod.boolean().optional(),
+  "activeDays": zod.number().optional().describe('Distinct days the agent sent a substantive human message.'),
+  "workingDays": zod.number().optional().describe('Mon–Sat days in the period (Sunday excluded).'),
+  "consistencyPct": zod.number().optional().describe('active_days \/ working_days × 100.'),
+  "totalContactsHandled": zod.number().optional(),
+  "contactsWithLeadStatus": zod.number().optional(),
+  "leadCoveragePct": zod.number().optional().describe('contacts_with_lead_status \/ total_contacts_handled × 100.'),
   "grade": zod.enum(['A', 'B', 'C', 'D', 'E']),
   "allowanceAmount": zod.number().optional().describe('Whole-integer Rupiah from the job\'s config snapshot.'),
   "aiSummary": zod.string().nullish(),

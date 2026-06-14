@@ -4181,6 +4181,30 @@ export interface AcrConfigInput {
      * @maximum 100
      */
   weightMissedChat: number;
+  /**
+     * Sub-weight of pure response time within Kecepatan Balas. With consistencySubweight must total 100.
+     * @minimum 0
+     * @maximum 100
+     */
+  responseTimeSubweight: number;
+  /**
+     * Sub-weight of daily-active consistency within Kecepatan Balas.
+     * @minimum 0
+     * @maximum 100
+     */
+  consistencySubweight: number;
+  /**
+     * Sub-weight of missed chats within Chat Tak Terjawab. With leadCoverageSubweight must total 100.
+     * @minimum 0
+     * @maximum 100
+     */
+  missedChatSubweight: number;
+  /**
+     * Sub-weight of lead-status coverage within Chat Tak Terjawab.
+     * @minimum 0
+     * @maximum 100
+     */
+  leadCoverageSubweight: number;
   /** @minimum 1 */
   slaExcellentMinutes: number;
   /** @minimum 1 */
@@ -4364,6 +4388,16 @@ export interface AcrAgentScore {
   totalComplaints?: number;
   complaintsResolved?: number;
   insufficientData?: boolean;
+  /** Distinct days the agent sent a substantive human message. */
+  activeDays?: number;
+  /** Mon–Sat days in the period (Sunday excluded). */
+  workingDays?: number;
+  /** active_days / working_days × 100. */
+  consistencyPct?: number;
+  totalContactsHandled?: number;
+  contactsWithLeadStatus?: number;
+  /** contacts_with_lead_status / total_contacts_handled × 100. */
+  leadCoveragePct?: number;
   grade: AcrAgentScoreGrade;
   /** Whole-integer Rupiah from the job's config snapshot. */
   allowanceAmount?: number;

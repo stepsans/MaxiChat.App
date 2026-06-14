@@ -693,6 +693,8 @@ interface SchedValue {
   agentMode: "all" | "select";
   agentIds: number[];
   notifyIds: number[];
+  generatePdf: boolean;
+  sendWhatsappPdf: boolean;
   isActive: boolean;
 }
 
@@ -706,6 +708,8 @@ const emptySched = (): SchedValue => ({
   agentMode: "all",
   agentIds: [],
   notifyIds: [],
+  generatePdf: true,
+  sendWhatsappPdf: false,
   isActive: true,
 });
 
@@ -719,6 +723,8 @@ const schedFromApi = (s: AcrSchedule): SchedValue => ({
   agentMode: s.agentIds && s.agentIds.length > 0 ? "select" : "all",
   agentIds: s.agentIds ?? [],
   notifyIds: s.notifyUserIds ?? [],
+  generatePdf: s.generatePdf ?? true,
+  sendWhatsappPdf: s.sendWhatsappPdf ?? false,
   isActive: s.isActive,
 });
 
@@ -731,6 +737,8 @@ const schedToPayload = (v: SchedValue) => ({
   cutoffMinute: v.cutoffMinute,
   agentIds: v.agentMode === "select" ? v.agentIds : undefined,
   notifyUserIds: v.notifyIds,
+  generatePdf: v.generatePdf,
+  sendWhatsappPdf: v.sendWhatsappPdf,
   isActive: v.isActive,
 });
 
@@ -906,6 +914,30 @@ function ScheduleFields({
           {members.length === 0 && (
             <p className="text-xs text-muted-foreground">Belum ada anggota tim.</p>
           )}
+        </div>
+      </div>
+
+      <div>
+        <Label className="mb-1 block">Aksi Setelah Laporan Selesai</Label>
+        <div className="space-y-2 rounded-md border p-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox checked disabled />
+            Simpan ke Dashboard KPI (selalu aktif)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={value.generatePdf}
+              onCheckedChange={(c) => onChange({ generatePdf: c === true })}
+            />
+            Generate PDF otomatis
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={value.sendWhatsappPdf}
+              onCheckedChange={(c) => onChange({ sendWhatsappPdf: c === true })}
+            />
+            Kirim PDF via WhatsApp ke penerima
+          </label>
         </div>
       </div>
     </div>

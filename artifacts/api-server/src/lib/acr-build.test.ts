@@ -10,6 +10,11 @@ import {
   defaultConversationAiResult,
   gradeFor,
   missedChatToRawScore,
+  consistencyToRawScore,
+  leadCoverageToRawScore,
+  combineResponseTimeRaw,
+  combineMissedChatRaw,
+  countWorkingDays,
   normalizeConversationAiResult,
   parseAiJson,
   periodToUtcRange,
@@ -519,5 +524,66 @@ describe("schedulePeriod & buildPeriodLabel", () => {
       "13 Mei – 12 Jun 2026"
     );
     assert.match(buildPeriodLabel("weekly", "2026-06-08", "2026-06-14"), /^Minggu ke-\d+, 2026$/);
+  });
+});
+
+describe("sub-weight scoring (v2.4 §4.5/§4.6)", () => {
+  it("consistencyToRawScore maps the active-day bands", () => {
+    assert.equal(consistencyToRawScore(100), 100);
+    assert.equal(consistencyToRawScore(95), 100);
+    assert.equal(consistencyToRawScore(80), 80);
+    assert.equal(consistencyToRawScore(60), 55);
+    assert.equal(consistencyToRawScore(40), 30);
+    assert.equal(consistencyToRawScore(39.9), 0);
+  });
+
+  it("leadCoverageToRawScore is neutral 85 when no contacts handled", () => {
+    assert.equal(leadCoverageToRawScore(0, 0), 85);
+    assert.equal(leadCoverageToRawScore(90, 10), 100);
+    assert.equal(leadCoverageToRawScore(75, 10), 80);
+    assert.equal(leadCoverageToRawScore(39, 10), 0);
+  });
+
+  it("combine* default to pure scores when sub-weights are absent (pre-v2.4)", () => {
+    // No sub-weights on cfg → 100/0, so consistency/lead are ignored.
+    assert.equal(combineResponseTimeRaw(40, 100, cfg), 40);
+    assert.equal(combineMissedChatRaw(50, 100, cfg), 50);
+  });
+
+  it("combine* blend the two sub-components with spec defaults (80/20, 60/40)", () => {
+    const c: AcrConfigSnapshot = {
+      ...cfg,
+      responseTimeSubweight: 80,
+      consistencySubweight: 20,
+      missedChatSubweight: 60,
+      leadCoverageSubweight: 40,
+    };
+    // 100*0.8 + 0*0.2 = 80 ; 50*0.6 + 100*0.4 = 70.
+    assert.equal(combineResponseTimeRaw(100, 0, c), 80);
+    assert.equal(combineMissedChatRaw(50, 100, c), 70);
+  });
+
+  it("countWorkingDays excludes Sundays", () => {
+    // 2026-06-08 (Mon) … 2026-06-14 (Sun): 6 working days.
+    assert.equal(countWorkingDays("2026-06-08", "2026-06-14"), 6);
+    // Single Sunday → 0.
+    assert.equal(countWorkingDays("2026-06-14", "2026-06-14"), 0);
+  });
+
+  it("validateConfigInput rejects sub-weights that don't total 100", () => {
+    assert.equal(
+      validateConfigInput({ ...cfg, responseTimeSubweight: 70, consistencySubweight: 20 }),
+      "Total sub-bobot Kecepatan Balas harus 100."
+    );
+    assert.equal(
+      validateConfigInput({
+        ...cfg,
+        responseTimeSubweight: 80,
+        consistencySubweight: 20,
+        missedChatSubweight: 60,
+        leadCoverageSubweight: 40,
+      }),
+      null
+    );
   });
 });

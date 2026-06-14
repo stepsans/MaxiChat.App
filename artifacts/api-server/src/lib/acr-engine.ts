@@ -43,6 +43,11 @@ import {
   gradeFor,
   isHumanMessage,
   missedChatToRawScore,
+  consistencyToRawScore,
+  leadCoverageToRawScore,
+  combineResponseTimeRaw,
+  combineMissedChatRaw,
+  countWorkingDays,
   normalizeCoachingAiResult,
   normalizeConversationAiResult,
   parseAiJson,
@@ -459,6 +464,9 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     const agent = members.get(agentId)!;
     const agentName = agent.name?.trim() || agent.email.split("@")[0] || "Agent";
     const outcomes: ConversationOutcome[] = [];
+    // Distinct WIB dates on which this agent sent a substantive human message
+    // (Section 4.5: human msg, content length >= 10). Drives consistency_pct.
+    const activeDaySet = new Set<string>();
 
     for (const conv of work) {
       const rows = await db
@@ -494,6 +502,14 @@ async function executeJob(job: AcrJobRow): Promise<void> {
       if (messages.length === 0) {
         progressCompleted++;
         continue;
+      }
+
+      // Daily-active consistency: a day counts when the agent sent a human
+      // message of >= 10 chars on it (Section 4.5).
+      for (const m of messages) {
+        if (isHumanMessage(m) && (m.content?.trim().length ?? 0) >= 10) {
+          activeDaySet.add(formatWibTimestamp(m.createdAt).slice(0, 10));
+        }
       }
 
       const metrics = computeResponseMetrics(messages, cfg.slaCriticalMinutes);
@@ -614,10 +630,43 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     const avgOf = (vals: number[]): number | null =>
       vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 
+    // ── Kecepatan Balas sub-component: daily-active consistency (Section 4.5) ──
+    const activeDays = activeDaySet.size;
+    const workingDays = countWorkingDays(job.periodStart, job.periodEnd);
+    const consistencyPct = workingDays > 0 ? (activeDays / workingDays) * 100 : 0;
+
+    // ── Chat Tak Terjawab sub-component: lead-status coverage (Section 4.6) ──
+    // A contact maps to a chat; "filled" = leadStatus is set and not 'unknown'.
+    const chatIds = outcomes.map((o) => o.chatId);
+    const contactsHandled = chatIds.length;
+    let contactsWithLeadStatus = 0;
+    if (chatIds.length > 0) {
+      const leadRows = await db
+        .select({ id: chatsTable.id, leadStatus: chatsTable.leadStatus })
+        .from(chatsTable)
+        .where(inArray(chatsTable.id, chatIds));
+      for (const r of leadRows) {
+        if (r.leadStatus && r.leadStatus !== "unknown") contactsWithLeadStatus++;
+      }
+    }
+    const leadCoveragePct =
+      contactsHandled > 0 ? (contactsWithLeadStatus / contactsHandled) * 100 : 0;
+
+    const combinedResponseTimeRaw = combineResponseTimeRaw(
+      responseTimeToRawScore(avgRt, cfg),
+      consistencyToRawScore(consistencyPct),
+      cfg
+    );
+    const combinedMissedChatRaw = combineMissedChatRaw(
+      missedChatToRawScore(totalMissed, totalCustomerMsgs),
+      leadCoverageToRawScore(leadCoveragePct, contactsHandled),
+      cfg
+    );
+
     const weighted = aggregateAgentScores(
       {
-        rawResponseTimeScore: responseTimeToRawScore(avgRt, cfg),
-        rawMissedChatScore: missedChatToRawScore(totalMissed, totalCustomerMsgs),
+        rawResponseTimeScore: combinedResponseTimeRaw,
+        rawMissedChatScore: combinedMissedChatRaw,
         rawLanguageScore: avgOf(outcomes.map((o) => o.convScores.language)),
         rawAnswerScore: avgOf(outcomes.map((o) => o.convScores.answer)),
         rawComplaintScore: avgOf(
@@ -651,6 +700,12 @@ async function executeJob(job: AcrJobRow): Promise<void> {
         totalComplaints: complaintConvs.length,
         complaintsResolved: complaintConvs.filter((o) => o.ai.complaint_resolved).length,
         insufficientData: outcomes.length < 5,
+        activeDays,
+        workingDays,
+        consistencyPct: consistencyPct.toFixed(2),
+        totalContactsHandled: contactsHandled,
+        contactsWithLeadStatus,
+        leadCoveragePct: leadCoveragePct.toFixed(2),
         grade,
         allowanceAmount: allowance,
       })

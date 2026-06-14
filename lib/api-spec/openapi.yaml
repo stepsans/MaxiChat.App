@@ -11748,6 +11748,10 @@ components:
           weightAnswerQuality,
           weightComplaintHandling,
           weightMissedChat,
+          responseTimeSubweight,
+          consistencySubweight,
+          missedChatSubweight,
+          leadCoverageSubweight,
           slaExcellentMinutes,
           slaGoodMinutes,
           slaAcceptableMinutes,
@@ -11772,6 +11776,26 @@ components:
         weightAnswerQuality: { type: integer, minimum: 0, maximum: 100 }
         weightComplaintHandling: { type: integer, minimum: 0, maximum: 100 }
         weightMissedChat: { type: integer, minimum: 0, maximum: 100 }
+        responseTimeSubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of pure response time within Kecepatan Balas. With consistencySubweight must total 100."
+        consistencySubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of daily-active consistency within Kecepatan Balas."
+        missedChatSubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of missed chats within Chat Tak Terjawab. With leadCoverageSubweight must total 100."
+        leadCoverageSubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of lead-status coverage within Chat Tak Terjawab."
         slaExcellentMinutes: { type: integer, minimum: 1 }
         slaGoodMinutes: { type: integer, minimum: 1 }
         slaAcceptableMinutes: { type: integer, minimum: 1 }
@@ -11933,6 +11957,20 @@ components:
         totalComplaints: { type: integer }
         complaintsResolved: { type: integer }
         insufficientData: { type: boolean }
+        activeDays:
+          type: integer
+          description: Distinct days the agent sent a substantive human message.
+        workingDays:
+          type: integer
+          description: Mon–Sat days in the period (Sunday excluded).
+        consistencyPct:
+          type: number
+          description: active_days / working_days × 100.
+        totalContactsHandled: { type: integer }
+        contactsWithLeadStatus: { type: integer }
+        leadCoveragePct:
+          type: number
+          description: contacts_with_lead_status / total_contacts_handled × 100.
         grade:
           type: string
           enum: [A, B, C, D, E]

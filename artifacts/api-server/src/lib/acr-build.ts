@@ -34,6 +34,17 @@ export interface AcrConfigSnapshot {
   // Optional for backward-compat with snapshots taken before the toggle
   // existed; absent = false (owner not evaluated).
   includeOwnerInEvaluation?: boolean;
+
+  // Sub-weights inside the Kecepatan Balas dimension (must sum to 100):
+  // pure response time vs daily-active consistency (Section 4.5). Optional —
+  // pre-v2.4 snapshots lack them and are treated as 100/0 (pure response time),
+  // so old reports score exactly as before.
+  responseTimeSubweight?: number;
+  consistencySubweight?: number;
+  // Sub-weights inside the Chat Tak Terjawab dimension (must sum to 100):
+  // missed chats vs lead-status coverage (Section 4.6). Absent → 100/0.
+  missedChatSubweight?: number;
+  leadCoverageSubweight?: number;
 }
 
 export function validateConfigInput(cfg: AcrConfigSnapshot): string | null {
@@ -90,6 +101,23 @@ export function validateConfigInput(cfg: AcrConfigSnapshot): string | null {
   // accepts decimals, so re-validate at the boundary.
   if (allowances.some((a) => !Number.isInteger(a) || a < 0)) {
     return "Tunjangan harus bilangan bulat Rupiah (tanpa desimal).";
+  }
+  // Sub-weights (Section 2.1): each pair must be whole 0–100 and sum to 100.
+  // Validated only when present so pre-v2.4 callers stay valid.
+  const subPairs: Array<[number | undefined, number | undefined, string]> = [
+    [cfg.responseTimeSubweight, cfg.consistencySubweight, "Kecepatan Balas"],
+    [cfg.missedChatSubweight, cfg.leadCoverageSubweight, "Chat Tak Terjawab"],
+  ];
+  for (const [a, b, label] of subPairs) {
+    if (a === undefined && b === undefined) continue;
+    const x = a ?? 0;
+    const y = b ?? 0;
+    if (![x, y].every((n) => Number.isInteger(n) && n >= 0 && n <= 100)) {
+      return `Sub-bobot ${label} harus bilangan bulat 0–100.`;
+    }
+    if (x + y !== 100) {
+      return `Total sub-bobot ${label} harus 100.`;
+    }
   }
   return null;
 }
@@ -262,6 +290,67 @@ export function missedChatToRawScore(
   if (pct <= 10) return 50;
   if (pct <= 20) return 25;
   return 0;
+}
+
+// Raw 0–100 score from daily-active consistency (Section 4.5 sub-component 2).
+// consistency_pct = active_days / working_days × 100.
+export function consistencyToRawScore(consistencyPct: number): number {
+  if (consistencyPct >= 95) return 100;
+  if (consistencyPct >= 80) return 80;
+  if (consistencyPct >= 60) return 55;
+  if (consistencyPct >= 40) return 30;
+  return 0;
+}
+
+// Raw 0–100 score from lead-status coverage (Section 4.6 sub-component 2).
+// An agent with no handled contacts gets a neutral 85 (no chats = no penalty).
+export function leadCoverageToRawScore(
+  leadCoveragePct: number,
+  contactsHandled: number
+): number {
+  if (contactsHandled <= 0) return 85;
+  if (leadCoveragePct >= 90) return 100;
+  if (leadCoveragePct >= 75) return 80;
+  if (leadCoveragePct >= 60) return 55;
+  if (leadCoveragePct >= 40) return 30;
+  return 0;
+}
+
+// Combine the two Kecepatan Balas sub-components into one 0–100 raw score using
+// the config sub-weights. Pre-v2.4 snapshots (no sub-weights) collapse to
+// 100/0 = pure response time, preserving old scores exactly.
+export function combineResponseTimeRaw(
+  rawResponseTime: number,
+  rawConsistency: number,
+  cfg: AcrConfigSnapshot
+): number {
+  const rtSub = cfg.responseTimeSubweight ?? 100;
+  const conSub = cfg.consistencySubweight ?? 100 - rtSub;
+  return round2((rawResponseTime * rtSub + rawConsistency * conSub) / 100);
+}
+
+// Combine the two Chat Tak Terjawab sub-components into one 0–100 raw score.
+// Absent sub-weights → 100/0 = pure missed-chat.
+export function combineMissedChatRaw(
+  rawMissed: number,
+  rawLeadCoverage: number,
+  cfg: AcrConfigSnapshot
+): number {
+  const missedSub = cfg.missedChatSubweight ?? 100;
+  const leadSub = cfg.leadCoverageSubweight ?? 100 - missedSub;
+  return round2((rawMissed * missedSub + rawLeadCoverage * leadSub) / 100);
+}
+
+// Count Mon–Sat days (Sunday excluded) in the inclusive period (Section 4.5).
+// period dates are tenant-local DATEs; day-of-week is read off the literal date.
+export function countWorkingDays(periodStart: string, periodEnd: string): number {
+  const start = new Date(`${periodStart}T00:00:00Z`).getTime();
+  const end = new Date(`${periodEnd}T00:00:00Z`).getTime();
+  let count = 0;
+  for (let t = start; t <= end; t += 86_400_000) {
+    if (new Date(t).getUTCDay() !== 0) count++; // 0 = Sunday
+  }
+  return count;
 }
 
 // ─── Aggregation (Section 4.7–4.8) ──────────────────────────────────────────

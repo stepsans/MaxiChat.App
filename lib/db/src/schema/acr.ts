@@ -43,6 +43,15 @@ export const acrConfigsTable = pgTable(
     weightComplaintHandling: integer("weight_complaint_handling").notNull().default(15),
     weightMissedChat: integer("weight_missed_chat").notNull().default(10),
 
+    // Sub-weights inside Kecepatan Balas (must sum to 100): pure response time
+    // vs daily-active consistency (Section 4.5).
+    responseTimeSubweight: integer("response_time_subweight").notNull().default(80),
+    consistencySubweight: integer("consistency_subweight").notNull().default(20),
+    // Sub-weights inside Chat Tak Terjawab (must sum to 100): missed chats vs
+    // lead-status coverage (Section 4.6).
+    missedChatSubweight: integer("missed_chat_subweight").notNull().default(60),
+    leadCoverageSubweight: integer("lead_coverage_subweight").notNull().default(40),
+
     // Response-time SLA thresholds in minutes; must be strictly ascending.
     slaExcellentMinutes: integer("sla_excellent_minutes").notNull().default(3),
     slaGoodMinutes: integer("sla_good_minutes").notNull().default(5),
@@ -230,6 +239,19 @@ export const acrAgentScoresTable = pgTable(
     complaintsResolved: integer("complaints_resolved").notNull().default(0),
     // true when the agent had < 5 conversations in the period.
     insufficientData: boolean("insufficient_data").notNull().default(false),
+
+    // Kecepatan Balas sub-component: daily-active consistency (Section 4.5).
+    activeDays: integer("active_days").notNull().default(0),
+    workingDays: integer("working_days").notNull().default(0),
+    consistencyPct: numeric("consistency_pct", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    // Chat Tak Terjawab sub-component: lead-status coverage (Section 4.6).
+    totalContactsHandled: integer("total_contacts_handled").notNull().default(0),
+    contactsWithLeadStatus: integer("contacts_with_lead_status").notNull().default(0),
+    leadCoveragePct: numeric("lead_coverage_pct", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
 
     grade: text("grade").notNull().default("E"),
     allowanceAmount: bigint("allowance_amount", { mode: "number" }).notNull().default(0),
