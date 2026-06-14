@@ -63,12 +63,15 @@ function msg(
       : direction === "outbound" && !ai && !opts.bot
         ? 1
         : null;
+  // A bot-flow send carries the "_Chatbot_" signature (and no sentByUserId) —
+  // that's exactly how isHumanMessage tells it apart from a human phone reply.
+  const content = opts.content ?? (opts.bot ? "halo\n_Chatbot_" : "halo");
   return {
     id: nextId++,
     direction,
     isAiGenerated: ai,
     sentByUserId,
-    content: opts.content ?? "halo",
+    content,
     createdAt: at(minutes),
   };
 }
@@ -156,9 +159,36 @@ describe("computeResponseMetrics", () => {
     assert.equal(m.responseTimesMinutes[0], 60); // from first inbound to human
   });
 
-  it("treats a bot-flow send (non-AI, no sentByUserId) as automated, not human (v2.3)", () => {
+  it("treats a bot-flow send (non-AI, no sentByUserId, _Chatbot_ signature) as automated, not human (v2.3)", () => {
     const m = computeResponseMetrics(
       [msg("inbound", 0), msg("outbound", 1, { bot: true })],
+      60
+    );
+    assert.equal(m.missedTurns, 1);
+    assert.equal(m.totalAgentMessages, 0);
+  });
+
+  it("treats a phone-typed reply (no sentByUserId, no signature) as human", () => {
+    // Customer 10:00, agent replies from the phone 10:30 (sentByUserId null,
+    // plain content). Counts as a human reply with a 30-minute response time.
+    const m = computeResponseMetrics(
+      [msg("inbound", 0), msg("outbound", 30, { sentByUserId: null })],
+      60
+    );
+    assert.equal(m.missedTurns, 0);
+    assert.equal(m.totalAgentMessages, 1);
+    assert.equal(m.responseTimesMinutes[0], 30);
+  });
+
+  it("treats a null-sender follow-up send (_follow-up otomatis_) as automated, not human", () => {
+    const m = computeResponseMetrics(
+      [
+        msg("inbound", 0),
+        msg("outbound", 1, {
+          sentByUserId: null,
+          content: "Halo, masih di sana?\n_follow-up otomatis_",
+        }),
+      ],
       60
     );
     assert.equal(m.missedTurns, 1);

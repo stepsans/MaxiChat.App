@@ -261,19 +261,22 @@ async function executeJob(job: AcrJobRow): Promise<void> {
   }
 
   // Conversations replied by a human in the period, attributed per message to
-  // sent_by_user_id, falling back to chats.assigned_user_id, and finally to
-  // the OWNER — historical rows predate the sent_by_user_id column, and in a
-  // single-operator tenant every human outbound is effectively the owner's.
+  // sent_by_user_id, falling back to chats.assigned_user_id, then the
+  // channel's penanggung jawab (channels.pic_user_id), and finally to the
+  // OWNER — replies typed on the phone (and historical pre-column rows) carry
+  // no sent_by_user_id, so the channel PIC / owner absorbs their KPI.
   // Group chats and status broadcasts are out of scope for CS evaluation.
   // Group by the raw columns and resolve the author fallback chain in JS —
   // a parameterised COALESCE in both SELECT and GROUP BY binds as two
   // different placeholders, which Postgres rejects as a non-grouped column.
-  // Per-job chat filters (AND together; null/empty = no restriction).
-  // Lead status defaults to ['lead'] when the job carries none (new reports
-  // evaluate only lead-marked chats; pre-feature rows may be null).
-  const leadStatuses =
-    job.leadStatuses && job.leadStatuses.length > 0 ? job.leadStatuses : ["lead"];
-  const chatFilters = [inArray(chatsTable.leadStatus, leadStatuses)];
+  // Per-job chat filters (AND together; null/empty = no restriction). Lead
+  // status restricts only when the job carries an explicit selection — empty/
+  // null evaluates every chat regardless of lead classification, since CS-KPI
+  // is orthogonal to the sales funnel and most tenants never classify leads.
+  const chatFilters = [];
+  if (job.leadStatuses && job.leadStatuses.length > 0) {
+    chatFilters.push(inArray(chatsTable.leadStatus, job.leadStatuses));
+  }
   if (job.chatStatuses && job.chatStatuses.length > 0) {
     chatFilters.push(inArray(chatsTable.status, job.chatStatuses));
   }
@@ -299,20 +302,29 @@ async function executeJob(job: AcrJobRow): Promise<void> {
       chatId: chatMessagesTable.chatId,
       sentByUserId: chatMessagesTable.sentByUserId,
       assignedUserId: chatsTable.assignedUserId,
+      channelPicUserId: channelsTable.picUserId,
       contactName: chatsTable.contactName,
       channelId: chatsTable.channelId,
       msgCount: sql<number>`count(*)::int`,
     })
     .from(chatMessagesTable)
     .innerJoin(chatsTable, eq(chatMessagesTable.chatId, chatsTable.id))
+    .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
     .where(
       and(
         inArray(chatsTable.channelId, channelIds),
         eq(chatMessagesTable.direction, "outbound"),
         eq(chatMessagesTable.isAiGenerated, false),
-        // Human-authored only (Section 4.1/4.1a). AI sends are isAiGenerated;
-        // bot-flow + historical rows have a null sentByUserId — both excluded.
-        isNotNull(chatMessagesTable.sentByUserId),
+        // Human-authored only (Section 4.1/4.1a). Mirror isHumanMessage: a
+        // dashboard send sets sentByUserId; a reply typed on the phone has a
+        // null sentByUserId AND no automated signature. Automated bot-flow /
+        // follow-up sends carry a tag (_Chatbot_ / _follow-up otomatis_, plus
+        // _powered by AI_ for the rare non-isAiGenerated case) and are
+        // excluded. COALESCE so a null-content media reply counts as human.
+        or(
+          isNotNull(chatMessagesTable.sentByUserId),
+          sql`COALESCE(${chatMessagesTable.content}, '') !~ '_(Chatbot|powered by AI|follow-up otomatis)_[[:space:]]*$'`
+        ),
         gte(chatMessagesTable.createdAt, start),
         lte(chatMessagesTable.createdAt, end),
         sql`${chatsTable.phoneNumber} NOT LIKE '%@g.us'`,
@@ -324,6 +336,7 @@ async function executeJob(job: AcrJobRow): Promise<void> {
       chatMessagesTable.chatId,
       chatMessagesTable.sentByUserId,
       chatsTable.assignedUserId,
+      channelsTable.picUserId,
       chatsTable.contactName,
       chatsTable.channelId
     );
@@ -337,8 +350,17 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     { chatId: number; agentId: number; count: number; contactName: string; channelId: number }
   >();
   for (const row of outboundRows) {
-    // sentByUserId is guaranteed non-null by the query filter above (human-authored).
-    const author = row.sentByUserId ?? row.assignedUserId ?? ownerUserId;
+    // Attribution chain, most-specific → least-specific (Section 4.1):
+    //   1. sentByUserId   — the individual who actually replied (dashboard).
+    //   2. assignedUserId — the agent this chat is assigned to.
+    //   3. channelPicUserId — the channel's penanggung jawab (KPI for replies
+    //      typed on the phone, which carry no per-message author).
+    //   4. ownerUserId    — tenant owner, last resort.
+    const author =
+      row.sentByUserId ??
+      row.assignedUserId ??
+      row.channelPicUserId ??
+      ownerUserId;
     if (!members.has(author)) continue;
     const key = `${row.chatId}|${author}`;
     const prev = countByChatAuthor.get(key);

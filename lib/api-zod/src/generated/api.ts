@@ -2033,6 +2033,7 @@ export const ListChannelsResponseItem = zod.object({
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
   "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
   "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
+  "picUserId": zod.number().nullish().describe('Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set.'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2075,6 +2076,7 @@ export const GetChannelResponse = zod.object({
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
   "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
   "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
+  "picUserId": zod.number().nullish().describe('Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set.'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2100,7 +2102,8 @@ export const UpdateChannelBody = zod.object({
   "label": zod.string().min(1).max(updateChannelBodyLabelMax).optional(),
   "color": zod.string().regex(updateChannelBodyColorRegExp).optional(),
   "icon": zod.string().min(1).max(updateChannelBodyIconMax).optional(),
-  "isDefault": zod.boolean().optional().describe('Set true to make this the tenant\'s default channel')
+  "isDefault": zod.boolean().optional().describe('Set true to make this the tenant\'s default channel'),
+  "picUserId": zod.number().nullish().describe('Set the channel\'s penanggung jawab (team member id), or null to clear it. Must be a supervisor\/agent under the owner, or the owner.')
 })
 
 export const UpdateChannelResponse = zod.object({
@@ -2112,6 +2115,7 @@ export const UpdateChannelResponse = zod.object({
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
   "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
   "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
+  "picUserId": zod.number().nullish().describe('Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set.'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2143,6 +2147,7 @@ export const PairChannelResponse = zod.object({
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
   "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
   "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
+  "picUserId": zod.number().nullish().describe('Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set.'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2189,6 +2194,7 @@ export const ConnectTelegramChannelResponse = zod.object({
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
   "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
   "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
+  "picUserId": zod.number().nullish().describe('Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set.'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2212,6 +2218,7 @@ export const DisconnectTelegramChannelResponse = zod.object({
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
   "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
   "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
+  "picUserId": zod.number().nullish().describe('Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set.'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),
@@ -2235,6 +2242,7 @@ export const UnpairChannelResponse = zod.object({
   "icon": zod.string().describe('Icon key the frontend maps to a lucide \/ brand icon'),
   "status": zod.enum(['disconnected', 'connecting', 'qr_ready', 'connected', 'syncing', 'error']),
   "isDefault": zod.boolean().describe('Whether this is the tenant\'s default channel (single per owner)'),
+  "picUserId": zod.number().nullish().describe('Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set.'),
   "ownerPhone": zod.string().nullish().describe('WhatsApp-only: paired phone number (digits)'),
   "metadata": zod.unknown().nullish().describe('Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind.'),
   "createdAt": zod.coerce.date(),

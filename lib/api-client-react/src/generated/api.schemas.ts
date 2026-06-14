@@ -3876,6 +3876,8 @@ export interface Channel {
   status: ChannelStatus;
   /** Whether this is the tenant's default channel (single per owner) */
   isDefault: boolean;
+  /** Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set. */
+  picUserId?: number | null;
   /** WhatsApp-only: paired phone number (digits) */
   ownerPhone?: string | null;
   /** Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind. */
@@ -3915,6 +3917,8 @@ export interface ChannelUpdate {
   icon?: string;
   /** Set true to make this the tenant's default channel */
   isDefault?: boolean;
+  /** Set the channel's penanggung jawab (team member id), or null to clear it. Must be a supervisor/agent under the owner, or the owner. */
+  picUserId?: number | null;
 }
 
 export interface TelegramConnect {

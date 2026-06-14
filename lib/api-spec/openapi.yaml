@@ -11256,6 +11256,10 @@ components:
         isDefault:
           type: boolean
           description: "Whether this is the tenant's default channel (single per owner)"
+        picUserId:
+          type: integer
+          nullable: true
+          description: "Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set."
         ownerPhone:
           type: string
           nullable: true
@@ -11300,6 +11304,10 @@ components:
         isDefault:
           type: boolean
           description: "Set true to make this the tenant's default channel"
+        picUserId:
+          type: integer
+          nullable: true
+          description: "Set the channel's penanggung jawab (team member id), or null to clear it. Must be a supervisor/agent under the owner, or the owner."
 
     TelegramConnect:
       type: object

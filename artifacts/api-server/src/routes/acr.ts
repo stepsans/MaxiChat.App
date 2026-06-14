@@ -635,9 +635,10 @@ router.post(
     }
 
     // lead_statuses — subset of the known lead classifications. Empty/omitted
-    // defaults to ['lead'] so a new report evaluates only lead-marked chats.
+    // = no restriction (evaluate every chat); the report only narrows to
+    // specific lead classes when the caller explicitly selects them.
     const LEAD_STATUSES = ["lead", "not_lead", "unknown"] as const;
-    let leadStatuses: string[] = ["lead"];
+    let leadStatuses: string[] = [];
     if (Array.isArray(parsed.data.leadStatuses) && parsed.data.leadStatuses.length > 0) {
       const valid = [
         ...new Set(parsed.data.leadStatuses.filter((s) => LEAD_STATUSES.includes(s))),

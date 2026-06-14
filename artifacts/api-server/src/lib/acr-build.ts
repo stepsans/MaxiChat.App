@@ -2,6 +2,8 @@
 // Deliberately db-free so it can be unit-tested (node:test) without touching
 // @workspace/db, which connects to Postgres eagerly at import.
 
+import { hasAutomatedSignature } from "./sender-tag-pure.js";
+
 // ─── Config snapshot ────────────────────────────────────────────────────────
 
 export interface AcrConfigSnapshot {
@@ -100,18 +102,32 @@ export interface AcrMessage {
   direction: "inbound" | "outbound";
   // True for AI outbound sends.
   isAiGenerated: boolean;
-  // The human (agent/supervisor) who sent an outbound message. NULL for
-  // inbound, AI sends, bot-flow sends, and historical pre-column rows.
-  // A message counts as HUMAN only when isAiGenerated=false AND sentByUserId
-  // is not null (Section 4.1a). Everything else is automated context only.
+  // The human (agent/supervisor) who sent an outbound message via the
+  // dashboard. NULL for inbound, AI sends, bot-flow sends, replies typed
+  // directly on the phone, and historical pre-column rows. A non-null value
+  // is a definitive "human" signal; a null value is ambiguous and resolved
+  // via the content signature (see isHumanMessage).
   sentByUserId: number | null;
   content: string;
   createdAt: Date;
 }
 
 // A message authored by a human agent — the only kind that counts toward KPIs.
+//
+// Three ways an outbound non-AI message can arise:
+//   1. Sent via the dashboard → sentByUserId is set → HUMAN.
+//   2. Typed directly on the phone (or a history-synced pre-column row) →
+//      sentByUserId is null AND no automated signature → HUMAN. Most tenants
+//      reply from the phone, so this is the common case; without it their
+//      agents' work would be invisible to the report.
+//   3. An automated chatbot-flow / follow-up send → sentByUserId is null but
+//      the content carries a tag signature (_Chatbot_ / _follow-up otomatis_,
+//      and _powered by AI_ for the rare non-isAiGenerated case) → NOT human.
+// AI sends (isAiGenerated) are never human regardless of signature.
 export function isHumanMessage(m: AcrMessage): boolean {
-  return m.direction === "outbound" && !m.isAiGenerated && m.sentByUserId != null;
+  if (m.direction !== "outbound" || m.isAiGenerated) return false;
+  if (m.sentByUserId != null) return true;
+  return !hasAutomatedSignature(m.content);
 }
 
 export interface CustomerIgnoredEvent {

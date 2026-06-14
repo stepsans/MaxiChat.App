@@ -268,8 +268,9 @@ function CreateReportDialog({
   const [end, setEnd] = useState(def.end);
   const [mode, setMode] = useState<"all" | "select">("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  // Lead status: default to evaluating only lead-marked chats.
-  const [leadStatuses, setLeadStatuses] = useState<Set<string>>(new Set(["lead"]));
+  // Lead status: empty = no restriction (evaluate every chat). The user can
+  // narrow to specific lead classes; CS-KPI is orthogonal to the sales funnel.
+  const [leadStatuses, setLeadStatuses] = useState<Set<string>>(new Set());
   const [channelIds, setChannelIds] = useState<Set<number>>(new Set());
   const [labelIds, setLabelIds] = useState<Set<number>>(new Set());
   const [chatStatuses, setChatStatuses] = useState<Set<string>>(new Set());
