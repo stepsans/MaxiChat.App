@@ -243,12 +243,13 @@ async function generateNarrative(ownerUserId: number, period: PeriodKey): Promis
   const user = `Berikut adalah data percakapan customer service untuk periode ${p.label}:
 
 Total chat: ${summary.totalChats}
-Chat diselesaikan AI: ${ai.resolvedByAi}%
-Chat dieskalasi ke agent: ${ai.escalatedToAgent}%
-Perubahan eskalasi vs periode sebelumnya: ${ai.escalatedChange}%
+Chat diselesaikan otomatis AI/bot (auto-reply AI atau chatbot flow, tanpa campur tangan manusia): ${ai.resolvedByAi}%
+Chat ditangani manusia/agent (ada balasan manusia atau diambil alih): ${ai.escalatedToAgent}%
+Perubahan chat ditangani manusia vs periode sebelumnya: ${ai.escalatedChange}%
 Waktu respons rata-rata: ${summary.avgResponseTimeSeconds} detik
+Catatan: sisa persentase adalah chat masuk yang belum dibalas sama sekali.
 
-Topik yang paling sering dieskalasi:
+Topik yang paling sering ditangani manusia:
 ${topics}
 
 Berikan insight dalam format JSON:

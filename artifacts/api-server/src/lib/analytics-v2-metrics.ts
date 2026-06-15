@@ -148,20 +148,10 @@ export async function computeSummary(
     countActiveChats(ownerUserId, p.prevStart, p.prevEnd),
   ]);
 
-  const aiRes = await db.execute(sql`
-    SELECT COUNT(DISTINCT c.id)::int AS n
-    FROM chats c
-    JOIN channels ch ON ch.id = c.channel_id
-    WHERE ch.user_id = ${ownerUserId}
-      AND c.status = 'ai_handled'
-      AND c.is_human_takeover = false
-      AND EXISTS (
-        SELECT 1 FROM chat_messages cm
-        WHERE cm.chat_id = c.id AND cm.direction = 'inbound'
-          AND cm.created_at >= ${p.start.toISOString()} AND cm.created_at < ${p.end.toISOString()}
-      )
-  `);
-  const aiHandledCount = Number((aiRes.rows[0] as { n: number } | undefined)?.n ?? 0);
+  // AI-handled = the AI genuinely replied (message-level is_ai_generated) with no
+  // human stepping in — NOT chats.status (defaults to 'ai_handled' and rarely
+  // changes, which would count nearly every chat as AI-handled).
+  const aiHandledCount = await countAiResolved(ownerUserId, p.start, p.end);
 
   const [rt, prevRt] = await Promise.all([
     medianFirstResponseSeconds(ownerUserId, p.start, p.end),
@@ -238,18 +228,74 @@ export interface AiPerformanceMetrics {
   topEscalationTopics: EscalationTopic[];
 }
 
+// --- Authorship predicates (mirror ACR's isHumanMessage, acr-build.ts) -------
+// A flow bot is NOT a human. "Human" = a dashboard send (sent_by_user_id set) OR
+// a phone reply with NO automated signature; AI auto-reply, chatbot-flow, and
+// follow-up automation are all bots. Anchored regex matches the tag suffix only
+// (so a customer typing "Chatbot" mid-message is never misread). All fragments
+// are correlated on the outer alias `c`.
+
+// An outbound HUMAN reply to chat c within [start, end).
+function humanReplyExists(start: Date, end: Date) {
+  return sql`EXISTS (
+    SELECT 1 FROM chat_messages o
+    WHERE o.chat_id = c.id AND o.direction = 'outbound' AND o.is_ai_generated = false
+      AND (o.sent_by_user_id IS NOT NULL
+           OR COALESCE(o.content, '') !~ '_(Chatbot|powered by AI|follow-up otomatis)_[[:space:]]*$')
+      AND o.created_at >= ${start.toISOString()} AND o.created_at < ${end.toISOString()}
+  )`;
+}
+
+// An outbound BOT reply (AI auto-reply OR chatbot-flow / follow-up automation).
+function botReplyExists(start: Date, end: Date) {
+  return sql`EXISTS (
+    SELECT 1 FROM chat_messages a
+    WHERE a.chat_id = c.id AND a.direction = 'outbound'
+      AND (a.is_ai_generated = true
+           OR (a.sent_by_user_id IS NULL
+               AND COALESCE(a.content, '') ~ '_(Chatbot|powered by AI|follow-up otomatis)_[[:space:]]*$'))
+      AND a.created_at >= ${start.toISOString()} AND a.created_at < ${end.toISOString()}
+  )`;
+}
+
+// At least one inbound (customer) message to chat c within [start, end).
+function inboundExists(start: Date, end: Date) {
+  return sql`EXISTS (
+    SELECT 1 FROM chat_messages i
+    WHERE i.chat_id = c.id AND i.direction = 'inbound'
+      AND i.created_at >= ${start.toISOString()} AND i.created_at < ${end.toISOString()}
+  )`;
+}
+
+// Chats a HUMAN had to handle in the window: an explicit takeover, OR a real
+// human-authored outbound reply (see humanReplyExists). NOT derived from
+// chats.status (defaults to 'ai_handled' and rarely changes).
 async function countEscalated(ownerUserId: number, start: Date, end: Date): Promise<number> {
   const res = await db.execute(sql`
     SELECT COUNT(DISTINCT c.id)::int AS n
     FROM chats c
     JOIN channels ch ON ch.id = c.channel_id
     WHERE ch.user_id = ${ownerUserId}
-      AND (c.status = 'needs_human' OR c.is_human_takeover = true)
-      AND EXISTS (
-        SELECT 1 FROM chat_messages cm
-        WHERE cm.chat_id = c.id AND cm.direction = 'inbound'
-          AND cm.created_at >= ${start.toISOString()} AND cm.created_at < ${end.toISOString()}
-      )
+      AND ${inboundExists(start, end)}
+      AND (c.is_human_takeover = true OR ${humanReplyExists(start, end)})
+  `);
+  return Number((res.rows[0] as { n: number } | undefined)?.n ?? 0);
+}
+
+// Chats GENUINELY resolved by a BOT (AI auto-reply OR chatbot flow): a bot
+// replied, no human takeover, and NO human reply. A chat the bot never answered
+// is NOT counted — fixing the old "total − escalated" formula that counted every
+// non-escalated chat (incl. unanswered ones) as AI-resolved.
+async function countAiResolved(ownerUserId: number, start: Date, end: Date): Promise<number> {
+  const res = await db.execute(sql`
+    SELECT COUNT(DISTINCT c.id)::int AS n
+    FROM chats c
+    JOIN channels ch ON ch.id = c.channel_id
+    WHERE ch.user_id = ${ownerUserId}
+      AND c.is_human_takeover = false
+      AND ${inboundExists(start, end)}
+      AND ${botReplyExists(start, end)}
+      AND NOT ${humanReplyExists(start, end)}
   `);
   return Number((res.rows[0] as { n: number } | undefined)?.n ?? 0);
 }
@@ -269,7 +315,7 @@ async function topEscalationTopics(ownerUserId: number, start: Date, end: Date, 
     JOIN chats c ON c.id = cm.chat_id
     JOIN channels ch ON ch.id = c.channel_id
     WHERE ch.user_id = ${ownerUserId}
-      AND (c.status = 'needs_human' OR c.is_human_takeover = true)
+      AND (c.is_human_takeover = true OR ${humanReplyExists(start, end)})
       AND cm.direction = 'inbound'
       AND cm.created_at >= ${start.toISOString()} AND cm.created_at < ${end.toISOString()}
       AND cm.content <> ''
@@ -310,9 +356,10 @@ export async function computeAiPerformance(
   `);
   const total = Number((totalRes.rows[0] as { n: number } | undefined)?.n ?? 0);
 
-  const [escalatedCount, prevEscalated] = await Promise.all([
+  const [escalatedCount, prevEscalated, aiResolvedCount] = await Promise.all([
     countEscalated(ownerUserId, p.start, p.end),
     countEscalated(ownerUserId, p.prevStart, p.prevEnd),
+    countAiResolved(ownerUserId, p.start, p.end),
   ]);
 
   const msgRes = await db.execute(sql`
@@ -354,7 +401,7 @@ export async function computeAiPerformance(
   const topics = await topEscalationTopics(ownerUserId, p.start, p.end, escalatedCount);
 
   return {
-    resolvedByAi: total > 0 ? Math.round(((total - escalatedCount) / total) * 1000) / 10 : 0,
+    resolvedByAi: total > 0 ? Math.round((aiResolvedCount / total) * 1000) / 10 : 0,
     escalatedToAgent: total > 0 ? Math.round((escalatedCount / total) * 1000) / 10 : 0,
     escalatedCount,
     escalatedChange: pctChange(escalatedCount, prevEscalated),
