@@ -200,7 +200,10 @@ export default function CredentialsPage() {
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-4 space-y-6">
-        <AiProviderCard />
+        {/* AI Provider (BYOK) hidden — the platform now runs a single
+            centralized AI engine for all tenants; per-tenant config is dead
+            config and would only confuse. Component kept for easy restore. */}
+        {/* <AiProviderCard /> */}
 
         {isLoading ? (
           <div className="space-y-2">

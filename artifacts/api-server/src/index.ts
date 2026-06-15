@@ -13,6 +13,9 @@ import { startMonthlyCloseScheduler } from "./lib/monthly-close";
 import { startFollowUpScheduler } from "./lib/follow-up-engine";
 import { startAiPipelineScheduler } from "./lib/ai-pipeline-scheduler";
 import { startAcrSchedulesPoller } from "./lib/acr-schedules-poller";
+import { startReportSchedulePoller } from "./lib/report-schedule-runner";
+import { startCreditHoldSweeper } from "./lib/credit-wallet";
+import { startEngineReprobeScheduler } from "./lib/platform-ai-engine";
 import { startDripScheduler } from "./lib/drip-engine";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
@@ -159,6 +162,17 @@ async function main(): Promise<void> {
   // AI Chat Report: multi-schedule recurring-report poller (every 60s). Runs
   // due acr_schedules. Replaces the legacy single-per-tenant acr-scheduler.
   startAcrSchedulesPoller();
+  // Laporan & Jadwal: report-schedule poller (every 60s). Sends due scheduled
+  // reports via email and logs each attempt. Additive; no-op when no schedules.
+  startReportSchedulePoller();
+  // Prepaid AI-credit wallet: reclaim reservations whose calls never settled
+  // (crash / dropped path) so `reserved` never leaks. Additive; no-op when the
+  // wallet gate is off / no holds exist.
+  startCreditHoldSweeper();
+  // Prepaid AI engine: actively re-probe tripped engines once their breaker
+  // window expires and restore them (auto-failback) before a customer message
+  // hits them cold. Additive; no-op when the platform engine is inactive.
+  startEngineReprobeScheduler();
   // Trial onboarding: behavior-based drip campaign engine. Evaluates active
   // trial tenants and enqueues/sends nudge emails (no-op when Resend is
   // unconfigured — logs only). Default-safe, additive.

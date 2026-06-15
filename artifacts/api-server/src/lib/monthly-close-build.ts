@@ -104,8 +104,9 @@ export function buildMonthlyCloseLines(
     },
   ];
 
-  const tokenLine = deltaLine(quota.tokenLimit - plan.quotaTokens, addons.token);
-  if (tokenLine) lines.push(tokenLine);
+  // SPEC BAGIAN 1: AI tokens are NOT a recurring monthly_close line — token
+  // add-ons are prepaid credit top-ups (their own payment invoice), so they're
+  // excluded from the standing-add-on reconstruction to avoid double billing.
 
   const channelLine = deltaLine(
     quota.channelLimit - plan.quotaChannels,

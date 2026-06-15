@@ -84,13 +84,22 @@ async function getEmailConfig(): Promise<EmailConfig> {
   return emailCache;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  /** Raw file bytes. */
+  content: Buffer;
+  contentType?: string;
+}
+
 export interface SendEmailInput {
   to: string; subject: string; text: string; html?: string;
+  attachments?: EmailAttachment[];
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
   const config = await getEmailConfig();
   const html = input.html ?? `<div style="font-family:sans-serif;max-width:600px">${input.text.replace(/\n/g, "<br>")}</div>`;
+  const hasAttachments = !!input.attachments?.length;
 
   if (config.provider === "resend") {
     const resend = new Resend(config.resendApiKey!);
@@ -100,6 +109,9 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       subject: input.subject,
       text: input.text,
       html,
+      ...(hasAttachments
+        ? { attachments: input.attachments!.map((a) => ({ filename: a.filename, content: a.content })) }
+        : {}),
     });
     if (error) throw new Error(`Resend error: ${error.message}`);
     logger.info({ to: input.to, subject: input.subject, provider: "resend" }, "Email sent");
@@ -123,6 +135,9 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       subject: input.subject,
       text: input.text,
       html,
+      ...(hasAttachments
+        ? { attachments: input.attachments!.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })) }
+        : {}),
     });
     logger.info({ to: input.to, subject: input.subject, provider: "gmail" }, "Email sent");
     return;

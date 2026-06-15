@@ -70,6 +70,8 @@ import {
   sendScheduledPdfWa,
 } from "../lib/acr-wa-sender";
 import { snapshotFromConfig } from "../lib/acr-scheduler";
+import { buildAcrFilterSnapshot } from "../lib/acr-filters";
+import { deliverJobOutputs } from "../lib/acr-deliver";
 import { buildAcrCsv, buildAcrPdf } from "../lib/acr-pdf";
 import { logger } from "../lib/logger";
 
@@ -142,6 +144,11 @@ function serializeConfig(c: AcrConfigRow) {
     allowanceGradeE: c.allowanceGradeE,
     complaintHandlingEnabled: c.complaintHandlingEnabled,
     includeOwnerInEvaluation: c.includeOwnerInEvaluation,
+    defaultLeadStatuses: c.defaultLeadStatuses,
+    defaultChatStatuses: c.defaultChatStatuses,
+    defaultGeneratePdf: c.defaultGeneratePdf,
+    defaultSendWhatsappPdf: c.defaultSendWhatsappPdf,
+    defaultNotifyUserIds: c.defaultNotifyUserIds,
     autoScheduleEnabled: c.autoScheduleEnabled,
     autoScheduleFrequency: c.autoScheduleFrequency,
     autoScheduleDayOfMonth: c.autoScheduleDayOfMonth,
@@ -180,6 +187,7 @@ function serializeJob(
     jobType: j.jobType,
     pdfPath: j.pdfPath,
     pdfGeneratedAt: j.pdfGeneratedAt?.toISOString() ?? null,
+    filterSnapshot: j.filterSnapshot ?? null,
   };
 }
 
@@ -468,6 +476,37 @@ router.put(
         notifyIds = valid.map((v) => v.id);
       }
     }
+    // ── Global filter & action defaults (Section 5b) ──────────────────────
+    const LEAD_STATUSES = ["lead", "not_lead", "unknown"] as const;
+    const CHAT_STATUSES = ["ai_handled", "needs_human", "closed"] as const;
+    const defaultLeadStatuses = Array.isArray(b.defaultLeadStatuses)
+      ? [...new Set(b.defaultLeadStatuses.filter((s) => LEAD_STATUSES.includes(s)))]
+      : ["lead", "unknown"];
+    const defaultChatStatuses =
+      Array.isArray(b.defaultChatStatuses) && b.defaultChatStatuses.length > 0
+        ? [...new Set(b.defaultChatStatuses.filter((s) => CHAT_STATUSES.includes(s)))]
+        : null;
+    // defaultNotifyUserIds must stay inside the tenant.
+    let defaultNotifyIds: number[] = [];
+    if (Array.isArray(b.defaultNotifyUserIds) && b.defaultNotifyUserIds.length) {
+      const candidates = b.defaultNotifyUserIds.filter((n) => Number.isInteger(n));
+      if (candidates.length > 0) {
+        const valid = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(
+            and(
+              inArray(usersTable.id, candidates),
+              or(
+                eq(usersTable.id, caller.ownerUserId),
+                eq(usersTable.parentUserId, caller.ownerUserId)
+              )
+            )
+          );
+        defaultNotifyIds = valid.map((v) => v.id);
+      }
+    }
+
     const nextRunAt = b.autoScheduleEnabled
       ? computeNextRunAt(
           {
@@ -509,6 +548,11 @@ router.put(
         allowanceGradeE: b.allowanceGradeE,
         complaintHandlingEnabled: b.complaintHandlingEnabled,
         includeOwnerInEvaluation: b.includeOwnerInEvaluation === true,
+        defaultLeadStatuses,
+        defaultChatStatuses,
+        defaultGeneratePdf: b.defaultGeneratePdf !== false,
+        defaultSendWhatsappPdf: b.defaultSendWhatsappPdf === true,
+        defaultNotifyUserIds: defaultNotifyIds,
         autoScheduleEnabled: b.autoScheduleEnabled,
         autoScheduleFrequency: frequency,
         autoScheduleDayOfMonth: b.autoScheduleDayOfMonth ?? 1,
@@ -524,6 +568,87 @@ router.put(
 );
 
 // ─── Jobs (Section 3.2) ─────────────────────────────────────────────────────
+
+const ACR_CHAT_STATUSES = ["ai_handled", "needs_human", "closed"] as const;
+const ACR_LEAD_STATUSES = ["lead", "not_lead", "unknown"] as const;
+
+interface AcrAnalysisFilters {
+  leadStatuses: string[];
+  channelIds: number[] | null;
+  customerLabelIds: number[] | null;
+  chatStatuses: string[] | null;
+}
+
+// Validate the four analysis filters (lead status / channel / customer label /
+// chat handling status) against the tenant. Shared by manual jobs and recurring
+// schedules so both narrow identically. Empty/omitted = no restriction (all).
+// Returns normalized arrays or a user-facing error string.
+async function validateAcrAnalysisFilters(
+  data: {
+    leadStatuses?: unknown;
+    channelIds?: unknown;
+    customerLabelIds?: unknown;
+    chatStatuses?: unknown;
+  },
+  ownerUserId: number
+): Promise<AcrAnalysisFilters | { error: string }> {
+  // channel_ids must belong to this tenant. Empty/omitted = all channels.
+  let channelIds: number[] | null = null;
+  if (Array.isArray(data.channelIds) && data.channelIds.length > 0) {
+    const candidates = data.channelIds.filter((n) => Number.isInteger(n)) as number[];
+    const valid = await db
+      .select({ id: channelsTable.id })
+      .from(channelsTable)
+      .where(
+        and(
+          eq(channelsTable.userId, ownerUserId),
+          inArray(channelsTable.id, candidates.length ? candidates : [-1])
+        )
+      );
+    channelIds = valid.map((v) => v.id);
+    if (channelIds.length === 0) return { error: "Channel yang dipilih tidak valid." };
+  }
+
+  // customer_label_ids must belong to this tenant. Empty/omitted = no filter.
+  let customerLabelIds: number[] | null = null;
+  if (Array.isArray(data.customerLabelIds) && data.customerLabelIds.length > 0) {
+    const candidates = data.customerLabelIds.filter((n) => Number.isInteger(n)) as number[];
+    const valid = await db
+      .select({ id: customerLabelsTable.id })
+      .from(customerLabelsTable)
+      .where(
+        and(
+          eq(customerLabelsTable.ownerUserId, ownerUserId),
+          inArray(customerLabelsTable.id, candidates.length ? candidates : [-1])
+        )
+      );
+    customerLabelIds = valid.map((v) => v.id);
+    if (customerLabelIds.length === 0)
+      return { error: "Label customer yang dipilih tidak valid." };
+  }
+
+  // chat_statuses — subset of the known handling statuses. Empty/omitted = all.
+  let chatStatuses: string[] | null = null;
+  if (Array.isArray(data.chatStatuses) && data.chatStatuses.length > 0) {
+    chatStatuses = [
+      ...new Set(data.chatStatuses.filter((s) => ACR_CHAT_STATUSES.includes(s as never))),
+    ] as string[];
+    if (chatStatuses.length === 0) return { error: "Status chat yang dipilih tidak valid." };
+  }
+
+  // lead_statuses — subset of the known lead classifications. Empty/omitted =
+  // no restriction (evaluate every chat).
+  let leadStatuses: string[] = [];
+  if (Array.isArray(data.leadStatuses) && data.leadStatuses.length > 0) {
+    const valid = [
+      ...new Set(data.leadStatuses.filter((s) => ACR_LEAD_STATUSES.includes(s as never))),
+    ] as string[];
+    if (valid.length === 0) return { error: "Lead status yang dipilih tidak valid." };
+    leadStatuses = valid;
+  }
+
+  return { leadStatuses, channelIds, customerLabelIds, chatStatuses };
+}
 
 router.post(
   "/jobs",
@@ -596,77 +721,42 @@ router.post(
       }
     }
 
-    // channel_ids must belong to this tenant. Empty/omitted = all channels.
-    let channelIds: number[] | null = null;
-    if (Array.isArray(parsed.data.channelIds) && parsed.data.channelIds.length > 0) {
-      const candidates = parsed.data.channelIds.filter((n) => Number.isInteger(n));
-      const valid = await db
-        .select({ id: channelsTable.id })
-        .from(channelsTable)
-        .where(
-          and(
-            eq(channelsTable.userId, caller.ownerUserId),
-            inArray(channelsTable.id, candidates.length ? candidates : [-1])
-          )
-        );
-      channelIds = valid.map((v) => v.id);
-      if (channelIds.length === 0) {
-        res.status(400).json({ error: "Channel yang dipilih tidak valid." });
-        return;
-      }
+    // Lead status / channel / customer label / chat handling status — shared
+    // validation with recurring schedules.
+    const filters = await validateAcrAnalysisFilters(parsed.data, caller.ownerUserId);
+    if ("error" in filters) {
+      res.status(400).json({ error: filters.error });
+      return;
+    }
+    const { channelIds, customerLabelIds } = filters;
+    // Lead & chat status now live as Global Defaults (Section 5b). The manual
+    // UI no longer sends them, so inherit the tenant default when omitted; an
+    // explicit request value still overrides.
+    const leadStatuses = filters.leadStatuses.length > 0 ? filters.leadStatuses : (cfg.defaultLeadStatuses ?? []);
+    const chatStatuses = filters.chatStatuses ?? cfg.defaultChatStatuses ?? null;
+
+    // Post-report actions: request value wins, else the tenant default.
+    const generatePdf =
+      typeof parsed.data.generatePdf === "boolean" ? parsed.data.generatePdf : cfg.defaultGeneratePdf;
+    const sendWhatsappPdf =
+      typeof parsed.data.sendWhatsappPdf === "boolean"
+        ? parsed.data.sendWhatsappPdf
+        : cfg.defaultSendWhatsappPdf;
+    const members = await tenantMemberIds(caller.ownerUserId);
+    let notifyUserIds = (cfg.defaultNotifyUserIds ?? []).filter((id) => members.has(id));
+    if (Array.isArray(parsed.data.notifyUserIds)) {
+      notifyUserIds = [...new Set(parsed.data.notifyUserIds.map(Number))].filter(
+        (n) => Number.isInteger(n) && members.has(n)
+      );
     }
 
-    // customer_label_ids must belong to this tenant. Empty/omitted = no filter.
-    let customerLabelIds: number[] | null = null;
-    if (
-      Array.isArray(parsed.data.customerLabelIds) &&
-      parsed.data.customerLabelIds.length > 0
-    ) {
-      const candidates = parsed.data.customerLabelIds.filter((n) => Number.isInteger(n));
-      const valid = await db
-        .select({ id: customerLabelsTable.id })
-        .from(customerLabelsTable)
-        .where(
-          and(
-            eq(customerLabelsTable.ownerUserId, caller.ownerUserId),
-            inArray(customerLabelsTable.id, candidates.length ? candidates : [-1])
-          )
-        );
-      customerLabelIds = valid.map((v) => v.id);
-      if (customerLabelIds.length === 0) {
-        res.status(400).json({ error: "Label customer yang dipilih tidak valid." });
-        return;
-      }
-    }
-
-    // chat_statuses — subset of the known handling statuses. Empty/omitted = all.
-    const CHAT_STATUSES = ["ai_handled", "needs_human", "closed"] as const;
-    let chatStatuses: string[] | null = null;
-    if (Array.isArray(parsed.data.chatStatuses) && parsed.data.chatStatuses.length > 0) {
-      chatStatuses = [
-        ...new Set(parsed.data.chatStatuses.filter((s) => CHAT_STATUSES.includes(s))),
-      ];
-      if (chatStatuses.length === 0) {
-        res.status(400).json({ error: "Status chat yang dipilih tidak valid." });
-        return;
-      }
-    }
-
-    // lead_statuses — subset of the known lead classifications. Empty/omitted
-    // = no restriction (evaluate every chat); the report only narrows to
-    // specific lead classes when the caller explicitly selects them.
-    const LEAD_STATUSES = ["lead", "not_lead", "unknown"] as const;
-    let leadStatuses: string[] = [];
-    if (Array.isArray(parsed.data.leadStatuses) && parsed.data.leadStatuses.length > 0) {
-      const valid = [
-        ...new Set(parsed.data.leadStatuses.filter((s) => LEAD_STATUSES.includes(s))),
-      ];
-      if (valid.length === 0) {
-        res.status(400).json({ error: "Lead status yang dipilih tidak valid." });
-        return;
-      }
-      leadStatuses = valid;
-    }
+    const filterSnapshot = await buildAcrFilterSnapshot(caller.ownerUserId, {
+      leadStatuses,
+      channelIds,
+      customerLabelIds,
+      chatStatuses,
+      includeOwner,
+    });
 
     const [job] = await db
       .insert(acrJobsTable)
@@ -682,16 +772,21 @@ router.post(
         customerLabelIds,
         chatStatuses,
         includeOwner,
+        notifyUserIds,
+        generatePdf,
+        sendWhatsappPdf,
+        filterSnapshot,
         jobType: "manual",
         status: "pending",
         configSnapshot: snapshotFromConfig(cfg),
       })
       .returning();
 
-    // Run async — never block the HTTP response (Section 15.1).
-    void runAcrJob(job!.id).catch((err) =>
-      logger.error({ err, jobId: job!.id }, "[acr] async job run failed")
-    );
+    // Run async — never block the HTTP response (Section 15.1) — then deliver
+    // notifications / PDF / WhatsApp (manual reports now deliver too, v2.6).
+    void runAcrJob(job!.id)
+      .then(() => deliverJobOutputs(job!.id))
+      .catch((err) => logger.error({ err, jobId: job!.id }, "[acr] async job run failed"));
 
     res.status(201).json(serializeJob(job!));
   }
@@ -1517,6 +1612,11 @@ function serializeSchedule(s: AcrScheduleRow) {
     timezone: s.timezone,
     agentIds: s.agentUserIds,
     notifyUserIds: s.notifyUserIds,
+    leadStatuses: s.leadStatuses,
+    channelIds: s.channelIds,
+    customerLabelIds: s.customerLabelIds,
+    chatStatuses: s.chatStatuses,
+    includeOwner: s.includeOwner,
     generatePdf: s.generatePdf,
     sendWhatsappPdf: s.sendWhatsappPdf,
     nextRunAt: s.nextRunAt.toISOString(),
@@ -1554,6 +1654,11 @@ interface ScheduleValues {
   cutoffMinute: number;
   agentUserIds: number[] | null;
   notifyUserIds: number[];
+  leadStatuses: string[];
+  channelIds: number[] | null;
+  customerLabelIds: number[] | null;
+  chatStatuses: string[] | null;
+  includeOwner: boolean | null;
   generatePdf: boolean;
   sendWhatsappPdf: boolean;
   isActive: boolean;
@@ -1612,6 +1717,12 @@ async function buildScheduleValues(
     );
   }
 
+  // Analysis filters — shared validation with manual jobs.
+  const filters = await validateAcrAnalysisFilters(body, ownerUserId);
+  if ("error" in filters) return { error: filters.error };
+
+  const includeOwner = typeof body.includeOwner === "boolean" ? body.includeOwner : null;
+
   const nextRunAt = computeScheduleNextRun(
     { frequency, dayOfWeek, dayOfMonth, cutoffHour, cutoffMinute },
     new Date()
@@ -1627,6 +1738,11 @@ async function buildScheduleValues(
       cutoffMinute,
       agentUserIds,
       notifyUserIds,
+      leadStatuses: filters.leadStatuses,
+      channelIds: filters.channelIds,
+      customerLabelIds: filters.customerLabelIds,
+      chatStatuses: filters.chatStatuses,
+      includeOwner,
       generatePdf: body.generatePdf !== false,
       sendWhatsappPdf: body.sendWhatsappPdf === true,
       isActive: body.isActive !== false,

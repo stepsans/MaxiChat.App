@@ -26,6 +26,7 @@ import {
   useRunAcrSchedule,
   type AcrJob,
   type AcrSchedule,
+  type AcrFilterSnapshot,
 } from "@workspace/api-client-react";
 import {
   Archive,
@@ -252,6 +253,64 @@ function StatusBadge({ status }: { status: AcrJob["status"] }) {
   );
 }
 
+// ─── Filter Aktif badges (history "Filter Aktif" column) ────────────────────
+
+const LEAD_LABELS: Record<string, string> = {
+  lead: "Lead",
+  not_lead: "Bukan Lead",
+  unknown: "Belum Ditandai",
+};
+const CHAT_STATUS_LABELS: Record<string, string> = {
+  ai_handled: "AI",
+  needs_human: "Manusia",
+  closed: "Selesai",
+};
+
+// Compact summary of the analysis filters a job ran with. Renders one chip per
+// active filter group; falls back to "Semua" when nothing was narrowed, and
+// "—" for pre-feature jobs that never recorded a snapshot.
+function FilterAktifBadges({ snapshot }: { snapshot: AcrFilterSnapshot | null }) {
+  if (!snapshot) return <span className="text-xs text-muted-foreground">—</span>;
+
+  const chips: string[] = [];
+  const cap = (items: string[], prefix: string) => {
+    if (items.length === 0) return;
+    const shown = items.slice(0, 2).join(", ");
+    chips.push(`${prefix}: ${shown}${items.length > 2 ? ` +${items.length - 2}` : ""}`);
+  };
+
+  cap(
+    snapshot.leadStatuses.map((s) => LEAD_LABELS[s] ?? s),
+    "Lead"
+  );
+  cap(
+    snapshot.channels.map((c) => c.label),
+    "Channel"
+  );
+  cap(
+    snapshot.customerLabels.map((l) => l.name),
+    "Label"
+  );
+  cap(
+    snapshot.chatStatuses.map((s) => CHAT_STATUS_LABELS[s] ?? s),
+    "Status"
+  );
+  if (snapshot.includeOwner) chips.push("Owner");
+
+  if (chips.length === 0)
+    return <span className="text-xs text-muted-foreground">Semua</span>;
+
+  return (
+    <div className="flex max-w-[220px] flex-wrap gap-1">
+      {chips.map((c) => (
+        <Badge key={c} variant="outline" className="text-[10px] font-normal">
+          {c}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
 // ─── Create report modal ────────────────────────────────────────────────────
 
 function CreateReportDialog({
@@ -268,13 +327,15 @@ function CreateReportDialog({
   const [end, setEnd] = useState(def.end);
   const [mode, setMode] = useState<"all" | "select">("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  // Lead status: empty = no restriction (evaluate every chat). The user can
-  // narrow to specific lead classes; CS-KPI is orthogonal to the sales funnel.
-  const [leadStatuses, setLeadStatuses] = useState<Set<string>>(new Set());
+  // v2.6: lead status + chat status are Global Defaults (Pengaturan), no longer
+  // set per manual report — they're inherited from config on the server.
   const [channelIds, setChannelIds] = useState<Set<number>>(new Set());
   const [labelIds, setLabelIds] = useState<Set<number>>(new Set());
-  const [chatStatuses, setChatStatuses] = useState<Set<string>>(new Set());
   const [includeOwner, setIncludeOwner] = useState(false);
+  // Notification recipients + post-report actions (default from config).
+  const [notifyIds, setNotifyIds] = useState<Set<number>>(new Set());
+  const [generatePdf, setGeneratePdf] = useState(true);
+  const [sendWhatsappPdf, setSendWhatsappPdf] = useState(false);
   // Manual vs Otomatis (schedule) tab.
   const [modalTab, setModalTab] = useState("manual");
   const [sched, setSched] = useState<SchedValue>(emptySched());
@@ -301,15 +362,22 @@ function CreateReportDialog({
       setEnd(d.end);
       setMode("all");
       setSelected(new Set());
-      setLeadStatuses(new Set(["lead"]));
       setChannelIds(new Set());
       setLabelIds(new Set());
-      setChatStatuses(new Set());
       setIncludeOwner(config?.includeOwnerInEvaluation ?? false);
+      setNotifyIds(new Set(config?.defaultNotifyUserIds ?? []));
+      setGeneratePdf(config?.defaultGeneratePdf ?? true);
+      setSendWhatsappPdf(config?.defaultSendWhatsappPdf ?? false);
       setModalTab("manual");
       setSched(emptySched());
     }
-  }, [open, config?.includeOwnerInEvaluation]);
+  }, [
+    open,
+    config?.includeOwnerInEvaluation,
+    config?.defaultGeneratePdf,
+    config?.defaultSendWhatsappPdf,
+    config?.defaultNotifyUserIds,
+  ]);
 
   const schedInvalid =
     !sched.name.trim() || (sched.agentMode === "select" && sched.agentIds.length === 0);
@@ -343,8 +411,7 @@ function CreateReportDialog({
     !end ||
     end < start ||
     spanDays > 90 ||
-    (mode === "select" && selected.size === 0) ||
-    leadStatuses.size === 0;
+    (mode === "select" && selected.size === 0);
 
   const preset = (days: number | "month") => {
     const now = new Date();
@@ -366,14 +433,12 @@ function CreateReportDialog({
           periodStart: start,
           periodEnd: end,
           agentIds: mode === "select" ? [...selected] : undefined,
-          leadStatuses: [...leadStatuses] as ("lead" | "not_lead" | "unknown")[],
           channelIds: channelIds.size > 0 ? [...channelIds] : undefined,
           customerLabelIds: labelIds.size > 0 ? [...labelIds] : undefined,
-          chatStatuses:
-            chatStatuses.size > 0
-              ? ([...chatStatuses] as ("ai_handled" | "needs_human" | "closed")[])
-              : undefined,
           includeOwner,
+          notifyUserIds: [...notifyIds],
+          generatePdf,
+          sendWhatsappPdf,
         },
       },
       {
@@ -496,35 +561,6 @@ function CreateReportDialog({
           </div>
 
           <div>
-            <Label className="mb-1 block">Status Lead</Label>
-            <div className="flex flex-wrap gap-3">
-              {(
-                [
-                  ["lead", "Lead"],
-                  ["not_lead", "Bukan Lead"],
-                  ["unknown", "Belum Ditandai"],
-                ] as const
-              ).map(([value, text]) => (
-                <label key={value} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={leadStatuses.has(value)}
-                    onCheckedChange={(v) => {
-                      const next = new Set(leadStatuses);
-                      if (v) next.add(value);
-                      else next.delete(value);
-                      setLeadStatuses(next);
-                    }}
-                  />
-                  {text}
-                </label>
-              ))}
-            </div>
-            {leadStatuses.size === 0 && (
-              <p className="mt-1 text-xs text-red-500">Pilih minimal satu status lead.</p>
-            )}
-          </div>
-
-          <div>
             <Label className="mb-1 block">Channel</Label>
             <p className="mb-1 text-xs text-muted-foreground">
               Kosongkan untuk menilai semua channel.
@@ -585,35 +621,6 @@ function CreateReportDialog({
           </div>
 
           <div>
-            <Label className="mb-1 block">Status Penanganan Chat</Label>
-            <p className="mb-1 text-xs text-muted-foreground">
-              Kosongkan untuk menilai semua status.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              {(
-                [
-                  ["ai_handled", "Ditangani AI"],
-                  ["needs_human", "Perlu Manusia"],
-                  ["closed", "Selesai"],
-                ] as const
-              ).map(([value, text]) => (
-                <label key={value} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={chatStatuses.has(value)}
-                    onCheckedChange={(v) => {
-                      const next = new Set(chatStatuses);
-                      if (v) next.add(value);
-                      else next.delete(value);
-                      setChatStatuses(next);
-                    }}
-                  />
-                  {text}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={includeOwner}
@@ -623,24 +630,60 @@ function CreateReportDialog({
             </label>
           </div>
 
-          {config && (
-            <div className="rounded-md border bg-muted/40 p-3 text-xs">
-              <p className="mb-1 font-medium">Preview Konfigurasi Bobot</p>
-              <p>
-                Kecepatan Balas {config.weightResponseTime} · Kualitas Bahasa{" "}
-                {config.weightLanguageQuality} · Ketepatan {config.weightAnswerQuality} ·
-                Komplain {config.weightComplaintHandling} · Missed {config.weightMissedChat}
-              </p>
-              <a
-                href="/ai-chat-report/settings"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-block text-primary underline"
-              >
-                Ubah Konfigurasi →
-              </a>
+          <div>
+            <Label className="mb-1 block">Kirim Notifikasi Ke</Label>
+            <label className="mb-1 flex items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox checked disabled />
+              Super Admin / Owner Tenant (selalu menerima)
+            </label>
+            <p className="mb-1 text-xs text-muted-foreground">
+              Default penerima diatur di Pengaturan. Tambah penerima khusus laporan ini.
+            </p>
+            <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+              {(members ?? []).map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={notifyIds.has(m.id)}
+                    onCheckedChange={(v) => {
+                      const next = new Set(notifyIds);
+                      if (v) next.add(m.id);
+                      else next.delete(m.id);
+                      setNotifyIds(next);
+                    }}
+                  />
+                  {m.name ?? m.email}
+                  <span className="text-xs text-muted-foreground">({m.teamRole})</span>
+                </label>
+              ))}
+              {(members ?? []).length === 0 && (
+                <p className="text-xs text-muted-foreground">Belum ada anggota tim.</p>
+              )}
             </div>
-          )}
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Aksi Setelah Laporan Selesai</Label>
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox checked disabled />
+                Simpan ke Dashboard KPI (selalu aktif)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={generatePdf}
+                  onCheckedChange={(v) => setGeneratePdf(v === true)}
+                />
+                Generate PDF otomatis
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={sendWhatsappPdf}
+                  onCheckedChange={(v) => setSendWhatsappPdf(v === true)}
+                />
+                Kirim PDF via WhatsApp ke penerima
+              </label>
+            </div>
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -662,6 +705,9 @@ function CreateReportDialog({
               value={sched}
               onChange={(p) => setSched((v) => ({ ...v, ...p }))}
               members={members ?? []}
+              channels={channels ?? []}
+              labels={labels ?? []}
+              config={config}
             />
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -692,9 +738,12 @@ interface SchedValue {
   cutoffMinute: number;
   agentMode: "all" | "select";
   agentIds: number[];
-  notifyIds: number[];
-  generatePdf: boolean;
-  sendWhatsappPdf: boolean;
+  // v2.6: lead status, recipients, and post-report actions are Global Defaults
+  // (Pengaturan), read live at run time — not part of a schedule.
+  channelIds: number[];
+  labelIds: number[];
+  chatStatuses: ("ai_handled" | "needs_human" | "closed")[];
+  includeOwner: boolean;
   isActive: boolean;
 }
 
@@ -707,9 +756,10 @@ const emptySched = (): SchedValue => ({
   cutoffMinute: 0,
   agentMode: "all",
   agentIds: [],
-  notifyIds: [],
-  generatePdf: true,
-  sendWhatsappPdf: false,
+  channelIds: [],
+  labelIds: [],
+  chatStatuses: [],
+  includeOwner: false,
   isActive: true,
 });
 
@@ -722,9 +772,10 @@ const schedFromApi = (s: AcrSchedule): SchedValue => ({
   cutoffMinute: s.cutoffMinute,
   agentMode: s.agentIds && s.agentIds.length > 0 ? "select" : "all",
   agentIds: s.agentIds ?? [],
-  notifyIds: s.notifyUserIds ?? [],
-  generatePdf: s.generatePdf ?? true,
-  sendWhatsappPdf: s.sendWhatsappPdf ?? false,
+  channelIds: s.channelIds ?? [],
+  labelIds: s.customerLabelIds ?? [],
+  chatStatuses: s.chatStatuses ?? [],
+  includeOwner: s.includeOwner ?? false,
   isActive: s.isActive,
 });
 
@@ -736,9 +787,10 @@ const schedToPayload = (v: SchedValue) => ({
   cutoffHour: v.cutoffHour,
   cutoffMinute: v.cutoffMinute,
   agentIds: v.agentMode === "select" ? v.agentIds : undefined,
-  notifyUserIds: v.notifyIds,
-  generatePdf: v.generatePdf,
-  sendWhatsappPdf: v.sendWhatsappPdf,
+  channelIds: v.channelIds.length > 0 ? v.channelIds : undefined,
+  customerLabelIds: v.labelIds.length > 0 ? v.labelIds : undefined,
+  chatStatuses: v.chatStatuses.length > 0 ? v.chatStatuses : undefined,
+  includeOwner: v.includeOwner,
   isActive: v.isActive,
 });
 
@@ -753,14 +805,45 @@ function ScheduleFields({
   value,
   onChange,
   members,
+  channels,
+  labels,
+  config,
 }: {
   value: SchedValue;
   onChange: (patch: Partial<SchedValue>) => void;
   members: { id: number; name?: string | null; email: string; teamRole: string }[];
+  channels: { id: number; label: string; color: string }[];
+  labels: { id: number; name: string; color: string }[];
+  config?: {
+    weightResponseTime: number;
+    weightLanguageQuality: number;
+    weightAnswerQuality: number;
+    weightComplaintHandling: number;
+    weightMissedChat: number;
+  };
 }) {
   const invalidName = !value.name.trim();
+  const [subTab, setSubTab] = useState("jadwal");
+  const toggle = <T,>(list: T[], item: T, on: boolean): T[] =>
+    on ? [...list, item] : list.filter((x) => x !== item);
+  // Active filter count badge for the "Filter & Bobot" tab.
+  const filterCount =
+    value.channelIds.length +
+    value.labelIds.length +
+    value.chatStatuses.length +
+    (value.includeOwner ? 1 : 0);
   return (
-    <div className="space-y-4">
+    <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
+      <TabsList className="grid w-full grid-cols-2">
+        <TabsTrigger value="jadwal" className={invalidName ? "text-red-500" : ""}>
+          Jadwal & Agent
+        </TabsTrigger>
+        <TabsTrigger value="filter">
+          Filter & Bobot{filterCount > 0 ? ` (${filterCount})` : ""}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="jadwal" className="mt-3 space-y-4">
       <div>
         <Label className="mb-1 block">Nama Jadwal</Label>
         <Input
@@ -892,55 +975,124 @@ function ScheduleFields({
         </div>
       </div>
 
+      </TabsContent>
+
+      <TabsContent value="filter" className="mt-3 space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Status Lead, penerima notifikasi, dan aksi (PDF/WhatsApp) mengikuti Default Filter
+        Global di Pengaturan saat jadwal dijalankan.
+      </p>
+
       <div>
-        <Label className="mb-1 block">Kirim Notifikasi Ke</Label>
+        <Label className="mb-1 block">Channel</Label>
+        <p className="mb-1 text-xs text-muted-foreground">
+          Kosongkan untuk menilai semua channel.
+        </p>
         <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
-          {members.map((m) => (
-            <label key={m.id} className="flex items-center gap-2 text-sm">
+          {channels.map((ch) => (
+            <label key={ch.id} className="flex items-center gap-2 text-sm">
               <Checkbox
-                checked={value.notifyIds.includes(m.id)}
+                checked={value.channelIds.includes(ch.id)}
                 onCheckedChange={(c) =>
-                  onChange({
-                    notifyIds: c
-                      ? [...value.notifyIds, m.id]
-                      : value.notifyIds.filter((x) => x !== m.id),
-                  })
+                  onChange({ channelIds: toggle(value.channelIds, ch.id, c === true) })
                 }
               />
-              {m.name ?? m.email}
-              <span className="text-xs text-muted-foreground">({m.teamRole})</span>
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: ch.color }}
+              />
+              {ch.label}
             </label>
           ))}
-          {members.length === 0 && (
-            <p className="text-xs text-muted-foreground">Belum ada anggota tim.</p>
+          {channels.length === 0 && (
+            <p className="text-xs text-muted-foreground">Belum ada channel.</p>
           )}
         </div>
       </div>
 
       <div>
-        <Label className="mb-1 block">Aksi Setelah Laporan Selesai</Label>
-        <div className="space-y-2 rounded-md border p-3">
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked disabled />
-            Simpan ke Dashboard KPI (selalu aktif)
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={value.generatePdf}
-              onCheckedChange={(c) => onChange({ generatePdf: c === true })}
-            />
-            Generate PDF otomatis
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={value.sendWhatsappPdf}
-              onCheckedChange={(c) => onChange({ sendWhatsappPdf: c === true })}
-            />
-            Kirim PDF via WhatsApp ke penerima
-          </label>
+        <Label className="mb-1 block">Label Customer</Label>
+        <p className="mb-1 text-xs text-muted-foreground">
+          Kosongkan untuk menilai semua chat tanpa filter label.
+        </p>
+        <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-2">
+          {labels.map((lb) => (
+            <label key={lb.id} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={value.labelIds.includes(lb.id)}
+                onCheckedChange={(c) =>
+                  onChange({ labelIds: toggle(value.labelIds, lb.id, c === true) })
+                }
+              />
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: lb.color }}
+              />
+              {lb.name}
+            </label>
+          ))}
+          {labels.length === 0 && (
+            <p className="text-xs text-muted-foreground">Belum ada label customer.</p>
+          )}
         </div>
       </div>
-    </div>
+
+      <div>
+        <Label className="mb-1 block">Status Penanganan Chat</Label>
+        <p className="mb-1 text-xs text-muted-foreground">
+          Kosongkan untuk menilai semua status.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {(
+            [
+              ["ai_handled", "Ditangani AI"],
+              ["needs_human", "Perlu Manusia"],
+              ["closed", "Selesai"],
+            ] as const
+          ).map(([v, text]) => (
+            <label key={v} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={value.chatStatuses.includes(v)}
+                onCheckedChange={(c) =>
+                  onChange({ chatStatuses: toggle(value.chatStatuses, v, c === true) })
+                }
+              />
+              {text}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={value.includeOwner}
+            onCheckedChange={(c) => onChange({ includeOwner: c === true })}
+          />
+          Sertakan super admin (owner) sebagai agent yang dinilai
+        </label>
+      </div>
+
+      {config && (
+        <div className="rounded-md border bg-muted/40 p-3 text-xs">
+          <p className="mb-1 font-medium">Preview Konfigurasi Bobot</p>
+          <p>
+            Kecepatan Balas {config.weightResponseTime} · Kualitas Bahasa{" "}
+            {config.weightLanguageQuality} · Ketepatan {config.weightAnswerQuality} · Komplain{" "}
+            {config.weightComplaintHandling} · Missed {config.weightMissedChat}
+          </p>
+          <a
+            href="/ai-chat-report/settings"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-block text-primary underline"
+          >
+            Ubah Konfigurasi →
+          </a>
+        </div>
+      )}
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -959,6 +1111,15 @@ function ScheduleDialog({
   const { data: members } = useListAcrTeamMembers({
     query: { queryKey: getListAcrTeamMembersQueryKey(), enabled: open },
   });
+  const { data: config } = useGetAcrConfig({
+    query: { queryKey: getGetAcrConfigQueryKey(), enabled: open },
+  });
+  const { data: channels } = useListChannels({
+    query: { queryKey: getListChannelsQueryKey(), enabled: open },
+  });
+  const { data: labels } = useListCustomerLabels({
+    query: { queryKey: getListCustomerLabelsQueryKey(), enabled: open },
+  });
   const create = useCreateAcrSchedule();
   const update = useUpdateAcrSchedule();
   const pending = create.isPending || update.isPending;
@@ -967,7 +1128,8 @@ function ScheduleDialog({
     if (open) setValue(editing ? schedFromApi(editing) : emptySched());
   }, [open, editing]);
 
-  const invalid = !value.name.trim() || (value.agentMode === "select" && value.agentIds.length === 0);
+  const invalid =
+    !value.name.trim() || (value.agentMode === "select" && value.agentIds.length === 0);
 
   const submit = () => {
     const data = schedToPayload(value);
@@ -1001,11 +1163,16 @@ function ScheduleDialog({
             eksekusi (harian/mingguan/bulanan).
           </DialogDescription>
         </DialogHeader>
-        <ScheduleFields
-          value={value}
-          onChange={(patch) => setValue((v) => ({ ...v, ...patch }))}
-          members={members ?? []}
-        />
+        <div className="max-h-[70vh] overflow-y-auto pr-1">
+          <ScheduleFields
+            value={value}
+            onChange={(patch) => setValue((v) => ({ ...v, ...patch }))}
+            members={members ?? []}
+            channels={channels ?? []}
+            labels={labels ?? []}
+            config={config}
+          />
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Batal
@@ -1277,6 +1444,7 @@ export default function AIChatReport() {
                 <TableHead>Dibuat Oleh</TableHead>
                 <TableHead className="text-right">Agent Dinilai</TableHead>
                 <TableHead className="text-right">Percakapan</TableHead>
+                <TableHead>Filter Aktif</TableHead>
                 <TableHead>Dijalankan</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
@@ -1315,6 +1483,9 @@ export default function AIChatReport() {
                   <TableCell className="text-right">{job.totalAgentsEvaluated}</TableCell>
                   <TableCell className="text-right">
                     {job.totalConversationsAnalyzed}
+                  </TableCell>
+                  <TableCell>
+                    <FilterAktifBadges snapshot={job.filterSnapshot ?? null} />
                   </TableCell>
                   <TableCell>{fmtDateTime(job.startedAt ?? job.createdAt)}</TableCell>
                   <TableCell>

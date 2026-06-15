@@ -14,6 +14,7 @@ import { parseCsv } from "../lib/sheet-sync";
 import ExcelJS from "exceljs";
 import { requireSupervisorOrAbove } from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
+import { invalidateInsightCache } from "../lib/report-ai-insights";
 import type { Request, Response } from "express";
 import {
   requireOwnerUserId,
@@ -250,6 +251,9 @@ router.post("/", async (req, res): Promise<void> => {
       return;
     }
 
+    // KB changed → drop cached AI insights so recommendations refresh.
+    void invalidateInsightCache(owner.ownerUserId);
+
     res.status(201).json({
       ...entry,
       channelIds: channelIds ?? [],
@@ -305,6 +309,7 @@ router.put("/:id", async (req, res): Promise<void> => {
     if (!updated) { res.status(404).json({ error: "Entry not found" }); return; }
 
     await replaceChannelAssignments("knowledge", updated.id, channelIds, ownerUserId);
+    void invalidateInsightCache(ownerUserId);
     const joins = await loadChannelIdsBatch("knowledge", [updated.id]);
 
     res.json({
@@ -339,6 +344,7 @@ router.delete("/:id", async (req, res): Promise<void> => {
 
     if (deleted.length === 0) { res.status(404).json({ error: "Entry not found" }); return; }
 
+    void invalidateInsightCache(ownerUserId);
     res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete knowledge entry");

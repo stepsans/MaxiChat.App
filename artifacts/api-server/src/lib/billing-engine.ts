@@ -6,14 +6,16 @@
 //   db      = ceil(storageMb / 500)  * dbPricePer500Mb
 //   user    = childUserCount         * userPricePerUser
 //   channel = ceil(channelCount / 2) * channelPricePer2
-//   ai      = ceil(tokenUsage / 100) * aiPricePer100Tokens
-//   total   = sum of the four
+//   total   = sum of the three
+//
+// NOTE: AI is NOT billed here. It rides the prepaid credit wallet (platform-ai);
+// `tokenUsage` is kept as an informational COGS figure only. The old metered
+// aiCharge / aiPricePer100Tokens were removed (SPEC BAGIAN 1).
 
 export interface BillingPricing {
   dbPricePer500Mb: number;
   userPricePerUser: number;
   channelPricePer2: number;
-  aiPricePer100Tokens: number;
 }
 
 export interface BillingUsage {
@@ -27,7 +29,6 @@ export interface BillBreakdown {
   dbCharge: number;
   userCharge: number;
   channelCharge: number;
-  aiCharge: number;
   total: number;
 }
 
@@ -53,12 +54,10 @@ export function computeMonthlyBill(
     Math.max(0, pricing.userPricePerUser);
   const channelCharge =
     buckets(usage.channelCount, 2) * Math.max(0, pricing.channelPricePer2);
-  const aiCharge =
-    buckets(usage.tokenUsage, 100) * Math.max(0, pricing.aiPricePer100Tokens);
 
-  const total = dbCharge + userCharge + channelCharge + aiCharge;
+  const total = dbCharge + userCharge + channelCharge;
 
-  return { dbCharge, userCharge, channelCharge, aiCharge, total };
+  return { dbCharge, userCharge, channelCharge, total };
 }
 
 // ----- Subscription status (db-free, so it's unit-testable) -----

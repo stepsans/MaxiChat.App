@@ -16,7 +16,6 @@ export interface RevenueTrendPoint {
   dbCharge: number;
   userCharge: number;
   channelCharge: number;
-  aiCharge: number;
 }
 
 // Minimal projection of an invoice row the aggregators need.
@@ -80,6 +79,5 @@ export function dailyRevenueTrendFromInvoices(
       dbCharge: 0,
       userCharge: 0,
       channelCharge: 0,
-      aiCharge: 0,
     }));
 }

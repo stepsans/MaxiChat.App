@@ -18,7 +18,6 @@ const FIELDS: { key: FieldKey; label: string; unit: string }[] = [
   { key: "dbPricePer500Mb", label: "Penyimpanan Database", unit: "per 500 MB" },
   { key: "userPricePerUser", label: "User Tim (anak)", unit: "per user" },
   { key: "channelPricePer2", label: "Channel", unit: "per 2 channel" },
-  { key: "aiPricePer100Tokens", label: "Token AI", unit: "per 100 token" },
 ];
 
 export default function Pricing() {
@@ -31,7 +30,6 @@ export default function Pricing() {
     dbPricePer500Mb: "",
     userPricePerUser: "",
     channelPricePer2: "",
-    aiPricePer100Tokens: "",
   });
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +40,6 @@ export default function Pricing() {
         dbPricePer500Mb: String(data.dbPricePer500Mb),
         userPricePerUser: String(data.userPricePerUser),
         channelPricePer2: String(data.channelPricePer2),
-        aiPricePer100Tokens: String(data.aiPricePer100Tokens),
       });
     }
   }, [data]);
@@ -68,7 +65,6 @@ export default function Pricing() {
       dbPricePer500Mb: Number(form.dbPricePer500Mb),
       userPricePerUser: Number(form.userPricePerUser),
       channelPricePer2: Number(form.channelPricePer2),
-      aiPricePer100Tokens: Number(form.aiPricePer100Tokens),
     };
     for (const f of FIELDS) {
       const v = parsed[f.key];
@@ -181,8 +177,7 @@ export default function Pricing() {
         <p className="text-[11px] text-muted-foreground">
           Contoh saat ini: penyimpanan Rp {fmtRp(data.dbPricePer500Mb)}/500MB,
           user Rp {fmtRp(data.userPricePerUser)}/user, channel Rp{" "}
-          {fmtRp(data.channelPricePer2)}/2 channel, token Rp{" "}
-          {fmtRp(data.aiPricePer100Tokens)}/100 token.
+          {fmtRp(data.channelPricePer2)}/2 channel.
         </p>
       )}
     </div>

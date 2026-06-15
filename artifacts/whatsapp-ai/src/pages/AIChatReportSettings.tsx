@@ -58,6 +58,12 @@ type FormState = {
   allowanceGradeE: number;
   complaintHandlingEnabled: boolean;
   includeOwnerInEvaluation: boolean;
+  // Global filter & action defaults (Section 5b).
+  defaultLeadStatuses: ("lead" | "not_lead" | "unknown")[];
+  defaultChatStatuses: ("ai_handled" | "needs_human" | "closed")[];
+  defaultGeneratePdf: boolean;
+  defaultSendWhatsappPdf: boolean;
+  defaultNotifyUserIds: number[];
   autoScheduleEnabled: boolean;
   autoScheduleFrequency: "weekly" | "monthly" | "custom";
   autoScheduleDayOfMonth: number;
@@ -92,6 +98,11 @@ const DEFAULTS: FormState = {
   allowanceGradeE: 0,
   complaintHandlingEnabled: true,
   includeOwnerInEvaluation: false,
+  defaultLeadStatuses: ["lead", "unknown"],
+  defaultChatStatuses: [],
+  defaultGeneratePdf: true,
+  defaultSendWhatsappPdf: false,
+  defaultNotifyUserIds: [],
   autoScheduleEnabled: false,
   autoScheduleFrequency: "monthly",
   autoScheduleDayOfMonth: 1,
@@ -127,6 +138,11 @@ function fromConfig(c: AcrConfig): FormState {
     allowanceGradeE: c.allowanceGradeE,
     complaintHandlingEnabled: c.complaintHandlingEnabled,
     includeOwnerInEvaluation: c.includeOwnerInEvaluation ?? false,
+    defaultLeadStatuses: c.defaultLeadStatuses ?? ["lead", "unknown"],
+    defaultChatStatuses: c.defaultChatStatuses ?? [],
+    defaultGeneratePdf: c.defaultGeneratePdf ?? true,
+    defaultSendWhatsappPdf: c.defaultSendWhatsappPdf ?? false,
+    defaultNotifyUserIds: c.defaultNotifyUserIds ?? [],
     autoScheduleEnabled: c.autoScheduleEnabled,
     autoScheduleFrequency:
       c.autoScheduleFrequency === "weekly" || c.autoScheduleFrequency === "custom"
@@ -221,6 +237,9 @@ export default function AIChatReportSettings() {
 
   const { data: config, isLoading } = useGetAcrConfig({
     query: { queryKey: getGetAcrConfigQueryKey() },
+  });
+  const { data: teamMembers } = useListAcrTeamMembers({
+    query: { queryKey: getListAcrTeamMembersQueryKey() },
   });
   useEffect(() => {
     if (config) setForm(fromConfig(config));
@@ -551,6 +570,141 @@ export default function AIChatReportSettings() {
               onCheckedChange={(v) => set("includeOwnerInEvaluation", v)}
               data-testid="acr-include-owner"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 5b: Default Filter Global */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Default Filter Global</CardTitle>
+          <CardDescription>
+            Setelan awal untuk SEMUA laporan baru (Manual maupun Otomatis). Bisa diubah per
+            laporan. Perubahan hanya berlaku untuk laporan yang dibuat setelah disimpan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div>
+            <Label className="mb-1 block">Default Status Lead</Label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Status lead customer yang diikutkan secara default. Bisa diubah per laporan.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ["lead", "Leads"],
+                  ["not_lead", "Bukan Leads"],
+                  ["unknown", "Belum Ditandai"],
+                ] as const
+              ).map(([v, text]) => (
+                <label key={v} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.defaultLeadStatuses.includes(v)}
+                    onCheckedChange={(c) =>
+                      set(
+                        "defaultLeadStatuses",
+                        c
+                          ? [...form.defaultLeadStatuses, v]
+                          : form.defaultLeadStatuses.filter((x) => x !== v)
+                      )
+                    }
+                    data-testid={`acr-default-lead-${v}`}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Default Status Penanganan Chat</Label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Jika tidak ada yang dicentang, semua status percakapan diikutkan. Bisa diubah per
+              laporan.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ["ai_handled", "Ditangani AI"],
+                  ["needs_human", "Perlu Manusia"],
+                  ["closed", "Selesai"],
+                ] as const
+              ).map(([v, text]) => (
+                <label key={v} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.defaultChatStatuses.includes(v)}
+                    onCheckedChange={(c) =>
+                      set(
+                        "defaultChatStatuses",
+                        c
+                          ? [...form.defaultChatStatuses, v]
+                          : form.defaultChatStatuses.filter((x) => x !== v)
+                      )
+                    }
+                    data-testid={`acr-default-chat-${v}`}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Penerima Laporan Default</Label>
+            <label className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox checked disabled />
+              Super Admin / Owner Tenant (selalu menerima, tidak bisa dimatikan)
+            </label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Tambah penerima lain yang menerima notifikasi setiap laporan selesai. Bisa diubah
+              per laporan.
+            </p>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+              {(teamMembers ?? []).map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.defaultNotifyUserIds.includes(m.id)}
+                    onCheckedChange={(c) =>
+                      set(
+                        "defaultNotifyUserIds",
+                        c
+                          ? [...form.defaultNotifyUserIds, m.id]
+                          : form.defaultNotifyUserIds.filter((x) => x !== m.id)
+                      )
+                    }
+                  />
+                  {m.name ?? m.email}
+                  <span className="text-xs text-muted-foreground">({m.teamRole})</span>
+                </label>
+              ))}
+              {(teamMembers ?? []).length === 0 && (
+                <p className="text-xs text-muted-foreground">Belum ada anggota tim.</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Aksi Default Setelah Laporan Selesai</Label>
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox checked disabled />
+                Simpan ke Dashboard KPI (selalu aktif)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.defaultGeneratePdf}
+                  onCheckedChange={(c) => set("defaultGeneratePdf", c === true)}
+                />
+                Generate PDF otomatis
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.defaultSendWhatsappPdf}
+                  onCheckedChange={(c) => set("defaultSendWhatsappPdf", c === true)}
+                />
+                Kirim PDF via WhatsApp ke penerima
+              </label>
+            </div>
           </div>
         </CardContent>
       </Card>

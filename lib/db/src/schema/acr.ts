@@ -80,6 +80,26 @@ export const acrConfigsTable = pgTable(
       .notNull()
       .default(false),
 
+    // ── Global filter & action defaults (Bagian v2.6, Section 5b) ──────────
+    // Initial values for every new report (manual & scheduled). A manual
+    // report may override per-run; scheduled runs read these live at run time.
+    // Lead classes evaluated by default ('lead'|'not_lead'|'unknown').
+    defaultLeadStatuses: text("default_lead_statuses")
+      .array()
+      .notNull()
+      .default(sql`ARRAY['lead','unknown']::text[]`),
+    // Chat handling statuses by default. Null/empty = all statuses.
+    defaultChatStatuses: text("default_chat_statuses").array(),
+    // Default post-report actions.
+    defaultGeneratePdf: boolean("default_generate_pdf").notNull().default(true),
+    defaultSendWhatsappPdf: boolean("default_send_whatsapp_pdf").notNull().default(false),
+    // Default extra notification recipients (super admin always notified, not
+    // listed here). Stored as user ids inside the tenant.
+    defaultNotifyUserIds: integer("default_notify_user_ids")
+      .array()
+      .notNull()
+      .default([]),
+
     autoScheduleEnabled: boolean("auto_schedule_enabled").notNull().default(false),
     // 'weekly' | 'monthly' | 'custom'
     autoScheduleFrequency: text("auto_schedule_frequency").notNull().default("monthly"),
@@ -102,6 +122,17 @@ export const acrConfigsTable = pgTable(
   },
   (t) => [uniqueIndex("acr_configs_owner_unique").on(t.ownerUserId)]
 );
+
+// Snapshot of the analysis filters a job (manual or scheduled) ran with.
+// Channel/label names are resolved at creation so the history view stays
+// readable even after the underlying channel/label is renamed or removed.
+export type AcrFilterSnapshot = {
+  leadStatuses: string[];
+  channels: { id: number; label: string }[];
+  customerLabels: { id: number; name: string }[];
+  chatStatuses: string[];
+  includeOwner: boolean;
+};
 
 // One evaluation run. config_snapshot is immutable after creation — all
 // calculations use the snapshot, never the live config.
@@ -144,6 +175,20 @@ export const acrJobsTable = pgTable(
     // Per-job override of the config's includeOwnerInEvaluation. Null = inherit
     // the config snapshot; set at creation so re-runs stay consistent.
     includeOwner: boolean("include_owner"),
+
+    // Human-readable snapshot of the analysis filters applied to this job, with
+    // channel/label display names resolved at creation time so the history
+    // "Filter Aktif" column survives a later channel/label rename or delete.
+    // Null for pre-feature rows = no recorded filter.
+    filterSnapshot: jsonb("filter_snapshot").$type<AcrFilterSnapshot>(),
+
+    // Resolved post-report actions for this run (v2.6). For manual jobs taken
+    // from the create request (falling back to config defaults); for scheduled
+    // jobs resolved from the tenant's global defaults at run time. Read by the
+    // shared post-run delivery step (notify + PDF + WhatsApp).
+    notifyUserIds: integer("notify_user_ids").array().notNull().default([]),
+    generatePdf: boolean("generate_pdf").notNull().default(false),
+    sendWhatsappPdf: boolean("send_whatsapp_pdf").notNull().default(false),
 
     // Source of the job. 'manual' (user-triggered) | 'scheduled' (acr_schedules).
     jobType: text("job_type").notNull().default("manual"),
@@ -440,6 +485,16 @@ export const acrSchedulesTable = pgTable(
     // null/empty = all agents.
     agentUserIds: integer("agent_user_ids").array(),
     notifyUserIds: integer("notify_user_ids").array().notNull().default([]),
+
+    // Analysis filters — mirror acr_jobs so scheduled runs apply the same
+    // narrowing as a manual report. Null/empty = no restriction (all).
+    leadStatuses: text("lead_statuses").array(),
+    channelIds: integer("channel_ids").array(),
+    customerLabelIds: integer("customer_label_ids").array(),
+    chatStatuses: text("chat_statuses").array(),
+    // Per-schedule override of the config's includeOwnerInEvaluation.
+    // Null = inherit the config at run time.
+    includeOwner: boolean("include_owner"),
 
     // Reserved for the "full" phase (PDF auto-gen + WhatsApp); stored now.
     generatePdf: boolean("generate_pdf").notNull().default(true),

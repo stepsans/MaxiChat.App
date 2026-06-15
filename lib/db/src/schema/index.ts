@@ -39,3 +39,5 @@ export * from "./agent-invitations";
 export * from "./platform-settings";
 export * from "./workboard";
 export * from "./acr";
+export * from "./report-schedules";
+export * from "./platform-ai";
