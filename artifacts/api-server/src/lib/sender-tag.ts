@@ -1,29 +1,17 @@
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 
-// WhatsApp italic syntax uses underscores. We append on the next line so
-// the tag is visually separated from the message body. Empty/whitespace-
-// only inputs return the tag as a standalone message (used as a caption
-// fallback when an agent attaches media with no caption).
-export function withTag(text: string | null | undefined, tag: string): string {
-  const body = (text ?? "").trimEnd();
-  const sig = `_${tag}_`;
-  if (!body) return sig;
-  return `${body}\n${sig}`;
-}
-
-export const CHATBOT_TAG = "Chatbot";
-export const AI_TAG = "powered by AI";
-export const FOLLOW_UP_TAG = "follow-up otomatis";
-
-// Strip a trailing `\n\n_<anything>_` signature from a stored outbound
-// message before feeding it back to the LLM as conversation history.
-// Without this, the model sees its own past `_powered by AI_` (and the
-// agent/chatbot tags) and is tempted to either roleplay as that agent
-// or to emit a signature itself — which `withTag` would then double up.
-export function stripTrailingTag(text: string): string {
-  return text.replace(/\n*_[^_\n]+_\s*$/u, "").trimEnd();
-}
+// The pure (db-free) signature helpers live in sender-tag-pure.ts so db-free
+// modules can use them. Re-exported here so existing importers of
+// "../lib/sender-tag.js" keep working unchanged.
+export {
+  withTag,
+  stripTrailingTag,
+  hasAutomatedSignature,
+  CHATBOT_TAG,
+  AI_TAG,
+  FOLLOW_UP_TAG,
+} from "./sender-tag-pure.js";
 
 // Resolve the display name to use for a human agent's signature. Prefers
 // the `name` column; falls back to the email's local part so we always

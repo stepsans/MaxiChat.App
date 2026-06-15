@@ -10,6 +10,11 @@ import {
   defaultConversationAiResult,
   gradeFor,
   missedChatToRawScore,
+  consistencyToRawScore,
+  leadCoverageToRawScore,
+  combineResponseTimeRaw,
+  combineMissedChatRaw,
+  countWorkingDays,
   normalizeConversationAiResult,
   parseAiJson,
   periodToUtcRange,
@@ -63,12 +68,15 @@ function msg(
       : direction === "outbound" && !ai && !opts.bot
         ? 1
         : null;
+  // A bot-flow send carries the "_Chatbot_" signature (and no sentByUserId) —
+  // that's exactly how isHumanMessage tells it apart from a human phone reply.
+  const content = opts.content ?? (opts.bot ? "halo\n_Chatbot_" : "halo");
   return {
     id: nextId++,
     direction,
     isAiGenerated: ai,
     sentByUserId,
-    content: opts.content ?? "halo",
+    content,
     createdAt: at(minutes),
   };
 }
@@ -156,9 +164,36 @@ describe("computeResponseMetrics", () => {
     assert.equal(m.responseTimesMinutes[0], 60); // from first inbound to human
   });
 
-  it("treats a bot-flow send (non-AI, no sentByUserId) as automated, not human (v2.3)", () => {
+  it("treats a bot-flow send (non-AI, no sentByUserId, _Chatbot_ signature) as automated, not human (v2.3)", () => {
     const m = computeResponseMetrics(
       [msg("inbound", 0), msg("outbound", 1, { bot: true })],
+      60
+    );
+    assert.equal(m.missedTurns, 1);
+    assert.equal(m.totalAgentMessages, 0);
+  });
+
+  it("treats a phone-typed reply (no sentByUserId, no signature) as human", () => {
+    // Customer 10:00, agent replies from the phone 10:30 (sentByUserId null,
+    // plain content). Counts as a human reply with a 30-minute response time.
+    const m = computeResponseMetrics(
+      [msg("inbound", 0), msg("outbound", 30, { sentByUserId: null })],
+      60
+    );
+    assert.equal(m.missedTurns, 0);
+    assert.equal(m.totalAgentMessages, 1);
+    assert.equal(m.responseTimesMinutes[0], 30);
+  });
+
+  it("treats a null-sender follow-up send (_follow-up otomatis_) as automated, not human", () => {
+    const m = computeResponseMetrics(
+      [
+        msg("inbound", 0),
+        msg("outbound", 1, {
+          sentByUserId: null,
+          content: "Halo, masih di sana?\n_follow-up otomatis_",
+        }),
+      ],
       60
     );
     assert.equal(m.missedTurns, 1);
@@ -489,5 +524,66 @@ describe("schedulePeriod & buildPeriodLabel", () => {
       "13 Mei – 12 Jun 2026"
     );
     assert.match(buildPeriodLabel("weekly", "2026-06-08", "2026-06-14"), /^Minggu ke-\d+, 2026$/);
+  });
+});
+
+describe("sub-weight scoring (v2.4 §4.5/§4.6)", () => {
+  it("consistencyToRawScore maps the active-day bands", () => {
+    assert.equal(consistencyToRawScore(100), 100);
+    assert.equal(consistencyToRawScore(95), 100);
+    assert.equal(consistencyToRawScore(80), 80);
+    assert.equal(consistencyToRawScore(60), 55);
+    assert.equal(consistencyToRawScore(40), 30);
+    assert.equal(consistencyToRawScore(39.9), 0);
+  });
+
+  it("leadCoverageToRawScore is neutral 85 when no contacts handled", () => {
+    assert.equal(leadCoverageToRawScore(0, 0), 85);
+    assert.equal(leadCoverageToRawScore(90, 10), 100);
+    assert.equal(leadCoverageToRawScore(75, 10), 80);
+    assert.equal(leadCoverageToRawScore(39, 10), 0);
+  });
+
+  it("combine* default to pure scores when sub-weights are absent (pre-v2.4)", () => {
+    // No sub-weights on cfg → 100/0, so consistency/lead are ignored.
+    assert.equal(combineResponseTimeRaw(40, 100, cfg), 40);
+    assert.equal(combineMissedChatRaw(50, 100, cfg), 50);
+  });
+
+  it("combine* blend the two sub-components with spec defaults (80/20, 60/40)", () => {
+    const c: AcrConfigSnapshot = {
+      ...cfg,
+      responseTimeSubweight: 80,
+      consistencySubweight: 20,
+      missedChatSubweight: 60,
+      leadCoverageSubweight: 40,
+    };
+    // 100*0.8 + 0*0.2 = 80 ; 50*0.6 + 100*0.4 = 70.
+    assert.equal(combineResponseTimeRaw(100, 0, c), 80);
+    assert.equal(combineMissedChatRaw(50, 100, c), 70);
+  });
+
+  it("countWorkingDays excludes Sundays", () => {
+    // 2026-06-08 (Mon) … 2026-06-14 (Sun): 6 working days.
+    assert.equal(countWorkingDays("2026-06-08", "2026-06-14"), 6);
+    // Single Sunday → 0.
+    assert.equal(countWorkingDays("2026-06-14", "2026-06-14"), 0);
+  });
+
+  it("validateConfigInput rejects sub-weights that don't total 100", () => {
+    assert.equal(
+      validateConfigInput({ ...cfg, responseTimeSubweight: 70, consistencySubweight: 20 }),
+      "Total sub-bobot Kecepatan Balas harus 100."
+    );
+    assert.equal(
+      validateConfigInput({
+        ...cfg,
+        responseTimeSubweight: 80,
+        consistencySubweight: 20,
+        missedChatSubweight: 60,
+        leadCoverageSubweight: 40,
+      }),
+      null
+    );
   });
 });

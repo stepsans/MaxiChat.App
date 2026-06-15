@@ -60,26 +60,25 @@ test("buildMonthlyCloseLines: plan only when quota equals the plan base", () => 
   assert.equal(invoiceTotals(lines).totalIdr, 300_000);
 });
 
-test("buildMonthlyCloseLines: standing add-ons priced from quota deltas", () => {
+test("buildMonthlyCloseLines: standing add-ons priced from quota deltas (token excluded — prepaid credit)", () => {
   const quota: MonthlyCloseQuota = {
-    tokenLimit: 300_000, // +200k → 2 token blocks
+    tokenLimit: 300_000, // delta IGNORED — token rides the prepaid wallet, not monthly_close
     channelLimit: 4, // +2 → 2 channel blocks
     userLimit: 8, // +3 → 3 seats
     storageLimit: 30_000, // +20k → 2 storage blocks
   };
   const lines = buildMonthlyCloseLines(PLAN, quota, ADDONS);
-  assert.equal(lines.length, 5);
+  assert.equal(lines.length, 4); // plan + channel + seat + storage (NO token line)
   const byType = Object.fromEntries(lines.map((l) => [l.refId, l]));
-  assert.equal(byType[11].quantity, 2);
-  assert.equal(byType[11].amountIdr, 100_000);
+  assert.equal(byType[11], undefined); // token add-on never billed here
   assert.equal(byType[12].quantity, 2);
   assert.equal(byType[12].amountIdr, 150_000);
   assert.equal(byType[13].quantity, 3);
   assert.equal(byType[13].amountIdr, 75_000);
   assert.equal(byType[14].quantity, 2);
   assert.equal(byType[14].amountIdr, 80_000);
-  // 300k plan + 100k + 150k + 75k + 80k
-  assert.equal(invoiceTotals(lines).totalIdr, 705_000);
+  // 300k plan + 150k + 75k + 80k (token excluded)
+  assert.equal(invoiceTotals(lines).totalIdr, 605_000);
 });
 
 test("buildMonthlyCloseLines: no add-on line when catalog has no matching add-on", () => {
@@ -95,25 +94,26 @@ test("buildMonthlyCloseLines: no add-on line when catalog has no matching add-on
 });
 
 test("buildMonthlyCloseLines: non-multiple deltas bill only WHOLE blocks (floor, never round up)", () => {
+  // Storage add-on (id 14): unitAmount 10_000, priceIdr 40_000.
   const quota: MonthlyCloseQuota = {
-    tokenLimit: 251_000, // +151k → 1 whole 100k block (floor), remainder dropped
+    tokenLimit: PLAN.quotaTokens,
     channelLimit: PLAN.quotaChannels,
     userLimit: PLAN.quotaUsers,
-    storageLimit: PLAN.quotaStorageBytes,
+    storageLimit: PLAN.quotaStorageBytes + 15_000, // +15k → 1 whole 10k block (floor), remainder dropped
   };
   const lines = buildMonthlyCloseLines(PLAN, quota, ADDONS);
   assert.equal(lines.length, 2);
-  const token = lines.find((l) => l.refId === 11)!;
-  assert.equal(token.quantity, 1); // floor(151000/100000), not round → 2
-  assert.equal(token.amountIdr, 50_000);
+  const storage = lines.find((l) => l.refId === 14)!;
+  assert.equal(storage.quantity, 1); // floor(15000/10000), not round → 2
+  assert.equal(storage.amountIdr, 40_000);
 });
 
 test("buildMonthlyCloseLines: a delta below one whole block emits no line", () => {
   const quota: MonthlyCloseQuota = {
-    tokenLimit: PLAN.quotaTokens + 50_000, // +50k < 100k block → no line (floor → 0)
+    tokenLimit: PLAN.quotaTokens,
     channelLimit: PLAN.quotaChannels,
     userLimit: PLAN.quotaUsers,
-    storageLimit: PLAN.quotaStorageBytes,
+    storageLimit: PLAN.quotaStorageBytes + 5_000, // +5k < 10k block → no line (floor → 0)
   };
   const lines = buildMonthlyCloseLines(PLAN, quota, ADDONS);
   assert.equal(lines.length, 1);
@@ -122,10 +122,10 @@ test("buildMonthlyCloseLines: a delta below one whole block emits no line", () =
 
 test("buildMonthlyCloseLines: negative/zero deltas never emit a line", () => {
   const quota: MonthlyCloseQuota = {
-    tokenLimit: PLAN.quotaTokens - 50_000, // below base (shouldn't happen, guard anyway)
+    tokenLimit: PLAN.quotaTokens,
     channelLimit: PLAN.quotaChannels,
     userLimit: PLAN.quotaUsers,
-    storageLimit: PLAN.quotaStorageBytes,
+    storageLimit: PLAN.quotaStorageBytes - 50_000, // below base (shouldn't happen, guard anyway)
   };
   const lines = buildMonthlyCloseLines(PLAN, quota, ADDONS);
   assert.equal(lines.length, 1);

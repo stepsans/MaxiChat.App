@@ -66,6 +66,16 @@ export const channelsTable = pgTable(
     // channel per user should have this set; the PATCH endpoint enforces that
     // by clearing the flag on all siblings when setting it on a new one.
     isDefault: boolean("is_default").notNull().default(false),
+    // Penanggung jawab channel — the team member (supervisor/agent, or the
+    // owner) accountable for everything happening on this channel. Used by the
+    // AI Chat Report to attribute KPI for replies that carry no per-message
+    // author: a WhatsApp reply typed directly on the phone has no
+    // sentByUserId, so its KPI rolls up to this PIC (after any per-chat
+    // assignment). NULL = no PIC set; attribution falls back to the owner.
+    // ON DELETE SET NULL so removing a member doesn't cascade-delete channels.
+    picUserId: integer("pic_user_id").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

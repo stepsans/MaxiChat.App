@@ -2,12 +2,9 @@ import { and, eq, lte } from "drizzle-orm";
 import { db, acrSchedulesTable, acrJobsTable, acrConfigsTable } from "@workspace/db";
 import { computeScheduleNextRun, schedulePeriod, type ScheduleFrequency } from "./acr-build";
 import { snapshotFromConfig } from "./acr-scheduler";
-import {
-  runAcrJob,
-  sendAutoScheduleNotifications,
-  generateAndStoreJobPdf,
-} from "./acr-engine";
-import { sendScheduledPdfWa } from "./acr-wa-sender";
+import { runAcrJob } from "./acr-engine";
+import { deliverJobOutputs } from "./acr-deliver";
+import { buildAcrFilterSnapshot } from "./acr-filters";
 import { logger } from "./logger";
 
 // Recurring AI Chat Report scheduler (Bagian II). Every 60s it finds active
@@ -79,6 +76,19 @@ async function tick(): Promise<void> {
         if (dup) continue;
 
         const cfg = await getConfig(sched.ownerUserId);
+        const includeOwner = sched.includeOwner ?? cfg.includeOwnerInEvaluation;
+        // v2.6: lead status + recipients + actions come from the tenant's
+        // Global Defaults (read live at run time), not the schedule. The
+        // schedule still owns channel / label / chat-status / agent filters.
+        const leadStatuses = cfg.defaultLeadStatuses ?? [];
+        const notifyUserIds = cfg.defaultNotifyUserIds ?? [];
+        const filterSnapshot = await buildAcrFilterSnapshot(sched.ownerUserId, {
+          leadStatuses,
+          channelIds: sched.channelIds,
+          customerLabelIds: sched.customerLabelIds,
+          chatStatuses: sched.chatStatuses,
+          includeOwner,
+        });
         const [job] = await db
           .insert(acrJobsTable)
           .values({
@@ -90,32 +100,24 @@ async function tick(): Promise<void> {
             jobType: "scheduled",
             scheduleId: sched.id,
             agentUserIds: sched.agentUserIds,
+            leadStatuses,
+            channelIds: sched.channelIds,
+            customerLabelIds: sched.customerLabelIds,
+            chatStatuses: sched.chatStatuses,
+            includeOwner,
+            notifyUserIds,
+            generatePdf: cfg.defaultGeneratePdf,
+            sendWhatsappPdf: cfg.defaultSendWhatsappPdf,
+            filterSnapshot,
             status: "pending",
             configSnapshot: snapshotFromConfig(cfg),
           })
           .returning({ id: acrJobsTable.id });
 
         await runAcrJob(job!.id);
-        if (sched.generatePdf) {
-          try {
-            await generateAndStoreJobPdf(job!.id);
-          } catch (err) {
-            logger.error({ err, jobId: job!.id }, "[acr-schedules] PDF auto-gen failed");
-          }
-        }
-        // Opt-in WhatsApp PDF delivery — bounded to the notify list only.
-        if (sched.sendWhatsappPdf && (sched.notifyUserIds ?? []).length > 0) {
-          try {
-            await sendScheduledPdfWa(sched.ownerUserId, job!.id, sched.notifyUserIds ?? []);
-          } catch (err) {
-            logger.error({ err, jobId: job!.id }, "[acr-schedules] WA PDF delivery failed");
-          }
-        }
-        await sendAutoScheduleNotifications(
-          job!.id,
-          sched.ownerUserId,
-          sched.notifyUserIds ?? []
-        );
+        // Shared delivery: PDF + WhatsApp + in-app notifications (super admin
+        // always notified). Reads the resolved actions stored on the job.
+        await deliverJobOutputs(job!.id);
         await db
           .update(acrSchedulesTable)
           .set({ lastRunAt: new Date(), lastRunJobId: job!.id, totalRuns: sched.totalRuns + 1 })

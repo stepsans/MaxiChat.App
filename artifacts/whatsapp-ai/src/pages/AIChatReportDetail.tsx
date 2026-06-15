@@ -322,6 +322,16 @@ function AgentDetailDrawer({
                 </p>
                 <p className="text-muted-foreground">Chat tidak terjawab</p>
                 <p className="text-right font-medium">{s.totalMissedChats}</p>
+                <p className="text-muted-foreground">Konsistensi aktif harian</p>
+                <p className="text-right font-medium">
+                  {(s.activeDays ?? 0)}/{(s.workingDays ?? 0)} hari
+                  {s.consistencyPct != null ? ` (${Math.round(s.consistencyPct)}%)` : ""}
+                </p>
+                <p className="text-muted-foreground">Lead status coverage</p>
+                <p className="text-right font-medium">
+                  {(s.contactsWithLeadStatus ?? 0)}/{(s.totalContactsHandled ?? 0)} kontak
+                  {s.leadCoveragePct != null ? ` (${Math.round(s.leadCoveragePct)}%)` : ""}
+                </p>
                 <p className="text-muted-foreground">Percakapan komplain</p>
                 <p className="text-right font-medium">
                   {s.totalComplaints}

@@ -11,7 +11,6 @@ const PRICING = {
   dbPricePer500Mb: 50000,
   userPricePerUser: 50000,
   channelPricePer2: 50000,
-  aiPricePer100Tokens: 50000,
 };
 
 const MB = 1024 * 1024;
@@ -25,7 +24,6 @@ test("zero usage bills nothing", () => {
     dbCharge: 0,
     userCharge: 0,
     channelCharge: 0,
-    aiCharge: 0,
     total: 0,
   });
 });
@@ -86,45 +84,29 @@ test("channels bill in buckets of two, rounded up", () => {
   );
 });
 
-test("AI tokens bill per 100, rounded up", () => {
-  assert.equal(
-    computeMonthlyBill(
-      { storageBytes: 0, childUserCount: 0, channelCount: 0, tokenUsage: 1 },
-      PRICING
-    ).aiCharge,
-    50000
+test("AI tokens are NOT billed here (rides the prepaid wallet)", () => {
+  const bill = computeMonthlyBill(
+    { storageBytes: 0, childUserCount: 0, channelCount: 0, tokenUsage: 250 },
+    PRICING
   );
-  assert.equal(
-    computeMonthlyBill(
-      { storageBytes: 0, childUserCount: 0, channelCount: 0, tokenUsage: 100 },
-      PRICING
-    ).aiCharge,
-    50000
-  );
-  assert.equal(
-    computeMonthlyBill(
-      { storageBytes: 0, childUserCount: 0, channelCount: 0, tokenUsage: 250 },
-      PRICING
-    ).aiCharge,
-    150000
-  );
+  assert.equal(bill.total, 0);
+  assert.equal(Object.prototype.hasOwnProperty.call(bill, "aiCharge"), false);
 });
 
-test("total sums all four components", () => {
+test("total sums the three metered components (AI excluded)", () => {
   const bill = computeMonthlyBill(
     {
       storageBytes: 600 * MB, // 2 buckets -> 100000
       childUserCount: 2, // 100000
       channelCount: 4, // 2 buckets -> 100000
-      tokenUsage: 150, // 2 buckets -> 100000
+      tokenUsage: 150, // not billed
     },
     PRICING
   );
   assert.equal(bill.dbCharge, 100000);
   assert.equal(bill.userCharge, 100000);
   assert.equal(bill.channelCharge, 100000);
-  assert.equal(bill.aiCharge, 100000);
-  assert.equal(bill.total, 400000);
+  assert.equal(bill.total, 300000);
 });
 
 test("custom pricing is respected", () => {
@@ -157,7 +139,6 @@ test("negative usage is clamped to zero", () => {
     dbCharge: 0,
     userCharge: 0,
     channelCharge: 0,
-    aiCharge: 0,
     total: 0,
   });
 });

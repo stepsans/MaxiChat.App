@@ -28,10 +28,17 @@ export const aiUsageEventsTable = pgTable(
     channelId: integer("channel_id"),
     // "replit" (managed default) or the BYOK provider key (openai/gemini/openrouter).
     provider: text("provider").notNull().default("replit"),
+    // The centralized platform engine that actually served the call
+    // (deepseek/gemini/openai/anthropic) — null for the managed/BYOK path. COGS
+    // reconciliation is split per engine (SPEC BAGIAN 14).
+    engine: text("engine"),
     model: text("model").notNull().default(""),
     promptTokens: integer("prompt_tokens").notNull().default(0),
     completionTokens: integer("completion_tokens").notNull().default(0),
     totalTokens: integer("total_tokens").notNull().default(0),
+    // AI credits charged for this call (prepaid-wallet audit). 0 for the legacy
+    // managed/Replit path and for any call made before the wallet shipped.
+    creditsCharged: integer("credits_charged").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

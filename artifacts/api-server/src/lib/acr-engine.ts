@@ -43,6 +43,11 @@ import {
   gradeFor,
   isHumanMessage,
   missedChatToRawScore,
+  consistencyToRawScore,
+  leadCoverageToRawScore,
+  combineResponseTimeRaw,
+  combineMissedChatRaw,
+  countWorkingDays,
   normalizeCoachingAiResult,
   normalizeConversationAiResult,
   parseAiJson,
@@ -261,19 +266,22 @@ async function executeJob(job: AcrJobRow): Promise<void> {
   }
 
   // Conversations replied by a human in the period, attributed per message to
-  // sent_by_user_id, falling back to chats.assigned_user_id, and finally to
-  // the OWNER — historical rows predate the sent_by_user_id column, and in a
-  // single-operator tenant every human outbound is effectively the owner's.
+  // sent_by_user_id, falling back to chats.assigned_user_id, then the
+  // channel's penanggung jawab (channels.pic_user_id), and finally to the
+  // OWNER — replies typed on the phone (and historical pre-column rows) carry
+  // no sent_by_user_id, so the channel PIC / owner absorbs their KPI.
   // Group chats and status broadcasts are out of scope for CS evaluation.
   // Group by the raw columns and resolve the author fallback chain in JS —
   // a parameterised COALESCE in both SELECT and GROUP BY binds as two
   // different placeholders, which Postgres rejects as a non-grouped column.
-  // Per-job chat filters (AND together; null/empty = no restriction).
-  // Lead status defaults to ['lead'] when the job carries none (new reports
-  // evaluate only lead-marked chats; pre-feature rows may be null).
-  const leadStatuses =
-    job.leadStatuses && job.leadStatuses.length > 0 ? job.leadStatuses : ["lead"];
-  const chatFilters = [inArray(chatsTable.leadStatus, leadStatuses)];
+  // Per-job chat filters (AND together; null/empty = no restriction). Lead
+  // status restricts only when the job carries an explicit selection — empty/
+  // null evaluates every chat regardless of lead classification, since CS-KPI
+  // is orthogonal to the sales funnel and most tenants never classify leads.
+  const chatFilters = [];
+  if (job.leadStatuses && job.leadStatuses.length > 0) {
+    chatFilters.push(inArray(chatsTable.leadStatus, job.leadStatuses));
+  }
   if (job.chatStatuses && job.chatStatuses.length > 0) {
     chatFilters.push(inArray(chatsTable.status, job.chatStatuses));
   }
@@ -299,20 +307,29 @@ async function executeJob(job: AcrJobRow): Promise<void> {
       chatId: chatMessagesTable.chatId,
       sentByUserId: chatMessagesTable.sentByUserId,
       assignedUserId: chatsTable.assignedUserId,
+      channelPicUserId: channelsTable.picUserId,
       contactName: chatsTable.contactName,
       channelId: chatsTable.channelId,
       msgCount: sql<number>`count(*)::int`,
     })
     .from(chatMessagesTable)
     .innerJoin(chatsTable, eq(chatMessagesTable.chatId, chatsTable.id))
+    .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
     .where(
       and(
         inArray(chatsTable.channelId, channelIds),
         eq(chatMessagesTable.direction, "outbound"),
         eq(chatMessagesTable.isAiGenerated, false),
-        // Human-authored only (Section 4.1/4.1a). AI sends are isAiGenerated;
-        // bot-flow + historical rows have a null sentByUserId — both excluded.
-        isNotNull(chatMessagesTable.sentByUserId),
+        // Human-authored only (Section 4.1/4.1a). Mirror isHumanMessage: a
+        // dashboard send sets sentByUserId; a reply typed on the phone has a
+        // null sentByUserId AND no automated signature. Automated bot-flow /
+        // follow-up sends carry a tag (_Chatbot_ / _follow-up otomatis_, plus
+        // _powered by AI_ for the rare non-isAiGenerated case) and are
+        // excluded. COALESCE so a null-content media reply counts as human.
+        or(
+          isNotNull(chatMessagesTable.sentByUserId),
+          sql`COALESCE(${chatMessagesTable.content}, '') !~ '_(Chatbot|powered by AI|follow-up otomatis)_[[:space:]]*$'`
+        ),
         gte(chatMessagesTable.createdAt, start),
         lte(chatMessagesTable.createdAt, end),
         sql`${chatsTable.phoneNumber} NOT LIKE '%@g.us'`,
@@ -324,6 +341,7 @@ async function executeJob(job: AcrJobRow): Promise<void> {
       chatMessagesTable.chatId,
       chatMessagesTable.sentByUserId,
       chatsTable.assignedUserId,
+      channelsTable.picUserId,
       chatsTable.contactName,
       chatsTable.channelId
     );
@@ -337,8 +355,17 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     { chatId: number; agentId: number; count: number; contactName: string; channelId: number }
   >();
   for (const row of outboundRows) {
-    // sentByUserId is guaranteed non-null by the query filter above (human-authored).
-    const author = row.sentByUserId ?? row.assignedUserId ?? ownerUserId;
+    // Attribution chain, most-specific → least-specific (Section 4.1):
+    //   1. sentByUserId   — the individual who actually replied (dashboard).
+    //   2. assignedUserId — the agent this chat is assigned to.
+    //   3. channelPicUserId — the channel's penanggung jawab (KPI for replies
+    //      typed on the phone, which carry no per-message author).
+    //   4. ownerUserId    — tenant owner, last resort.
+    const author =
+      row.sentByUserId ??
+      row.assignedUserId ??
+      row.channelPicUserId ??
+      ownerUserId;
     if (!members.has(author)) continue;
     const key = `${row.chatId}|${author}`;
     const prev = countByChatAuthor.get(key);
@@ -437,6 +464,9 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     const agent = members.get(agentId)!;
     const agentName = agent.name?.trim() || agent.email.split("@")[0] || "Agent";
     const outcomes: ConversationOutcome[] = [];
+    // Distinct WIB dates on which this agent sent a substantive human message
+    // (Section 4.5: human msg, content length >= 10). Drives consistency_pct.
+    const activeDaySet = new Set<string>();
 
     for (const conv of work) {
       const rows = await db
@@ -472,6 +502,14 @@ async function executeJob(job: AcrJobRow): Promise<void> {
       if (messages.length === 0) {
         progressCompleted++;
         continue;
+      }
+
+      // Daily-active consistency: a day counts when the agent sent a human
+      // message of >= 10 chars on it (Section 4.5).
+      for (const m of messages) {
+        if (isHumanMessage(m) && (m.content?.trim().length ?? 0) >= 10) {
+          activeDaySet.add(formatWibTimestamp(m.createdAt).slice(0, 10));
+        }
       }
 
       const metrics = computeResponseMetrics(messages, cfg.slaCriticalMinutes);
@@ -592,10 +630,43 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     const avgOf = (vals: number[]): number | null =>
       vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 
+    // ── Kecepatan Balas sub-component: daily-active consistency (Section 4.5) ──
+    const activeDays = activeDaySet.size;
+    const workingDays = countWorkingDays(job.periodStart, job.periodEnd);
+    const consistencyPct = workingDays > 0 ? (activeDays / workingDays) * 100 : 0;
+
+    // ── Chat Tak Terjawab sub-component: lead-status coverage (Section 4.6) ──
+    // A contact maps to a chat; "filled" = leadStatus is set and not 'unknown'.
+    const chatIds = outcomes.map((o) => o.chatId);
+    const contactsHandled = chatIds.length;
+    let contactsWithLeadStatus = 0;
+    if (chatIds.length > 0) {
+      const leadRows = await db
+        .select({ id: chatsTable.id, leadStatus: chatsTable.leadStatus })
+        .from(chatsTable)
+        .where(inArray(chatsTable.id, chatIds));
+      for (const r of leadRows) {
+        if (r.leadStatus && r.leadStatus !== "unknown") contactsWithLeadStatus++;
+      }
+    }
+    const leadCoveragePct =
+      contactsHandled > 0 ? (contactsWithLeadStatus / contactsHandled) * 100 : 0;
+
+    const combinedResponseTimeRaw = combineResponseTimeRaw(
+      responseTimeToRawScore(avgRt, cfg),
+      consistencyToRawScore(consistencyPct),
+      cfg
+    );
+    const combinedMissedChatRaw = combineMissedChatRaw(
+      missedChatToRawScore(totalMissed, totalCustomerMsgs),
+      leadCoverageToRawScore(leadCoveragePct, contactsHandled),
+      cfg
+    );
+
     const weighted = aggregateAgentScores(
       {
-        rawResponseTimeScore: responseTimeToRawScore(avgRt, cfg),
-        rawMissedChatScore: missedChatToRawScore(totalMissed, totalCustomerMsgs),
+        rawResponseTimeScore: combinedResponseTimeRaw,
+        rawMissedChatScore: combinedMissedChatRaw,
         rawLanguageScore: avgOf(outcomes.map((o) => o.convScores.language)),
         rawAnswerScore: avgOf(outcomes.map((o) => o.convScores.answer)),
         rawComplaintScore: avgOf(
@@ -629,6 +700,12 @@ async function executeJob(job: AcrJobRow): Promise<void> {
         totalComplaints: complaintConvs.length,
         complaintsResolved: complaintConvs.filter((o) => o.ai.complaint_resolved).length,
         insufficientData: outcomes.length < 5,
+        activeDays,
+        workingDays,
+        consistencyPct: consistencyPct.toFixed(2),
+        totalContactsHandled: contactsHandled,
+        contactsWithLeadStatus,
+        leadCoveragePct: leadCoveragePct.toFixed(2),
         grade,
         allowanceAmount: allowance,
       })

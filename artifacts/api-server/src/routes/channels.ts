@@ -7,6 +7,7 @@ import {
   chatsTable,
   whatsappStatusesTable,
   settingsTable,
+  usersTable,
 } from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "../lib/auth";
 import { loadOwnedChannel, listOwnedChannels } from "../lib/channel-context";
@@ -61,6 +62,9 @@ const ChannelUpdateBody = z.object({
   color: z.string().regex(HEX_COLOR).optional(),
   icon: z.string().trim().min(1).max(40).optional(),
   isDefault: z.boolean().optional(),
+  // null clears the penanggung jawab; a number assigns one (validated against
+  // the owner's team in the handler). undefined = leave unchanged.
+  picUserId: z.number().int().positive().nullable().optional(),
 });
 
 // Strip secrets (currently: the Telegram bot token + webhook secret) from
@@ -92,6 +96,7 @@ function serialize(c: typeof channelsTable.$inferSelect) {
     status: c.status,
     ownerPhone: c.ownerPhone,
     isDefault: c.isDefault,
+    picUserId: c.picUserId,
     metadata: redactMetadata(c.metadata as Record<string, unknown> | null),
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
@@ -209,7 +214,8 @@ router.patch("/:id", requirePermission("channels", "edit"), async (req, res): Pr
     patch.label === undefined &&
     patch.color === undefined &&
     patch.icon === undefined &&
-    patch.isDefault === undefined
+    patch.isDefault === undefined &&
+    patch.picUserId === undefined
   ) {
     res.status(400).json({ error: "No fields to update" });
     return;
@@ -219,6 +225,31 @@ router.patch("/:id", requirePermission("channels", "edit"), async (req, res): Pr
     if (!existing) {
       res.status(404).json({ error: "Channel not found" });
       return;
+    }
+    // Validate the penanggung jawab: must be the owner themselves or one of
+    // their supervisors/agents. A null clears it. Scoped to existing.userId
+    // (the effective owner) so a tenant can't point a PIC at another tenant's
+    // user. Resolves the channel's KPI attribution in the AI Chat Report.
+    if (patch.picUserId != null) {
+      const [member] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(
+          and(
+            eq(usersTable.id, patch.picUserId),
+            or(
+              eq(usersTable.id, existing.userId),
+              eq(usersTable.parentUserId, existing.userId)
+            )
+          )
+        )
+        .limit(1);
+      if (!member) {
+        res.status(400).json({
+          error: "Penanggung jawab harus anggota tim Anda.",
+        });
+        return;
+      }
     }
     // Enforce single default: when setting isDefault=true, clear the flag on
     // every other channel owned by this user first.
@@ -237,6 +268,7 @@ router.patch("/:id", requirePermission("channels", "edit"), async (req, res): Pr
         ...(patch.color !== undefined ? { color: patch.color } : {}),
         ...(patch.icon !== undefined ? { icon: patch.icon.trim() } : {}),
         ...(patch.isDefault !== undefined ? { isDefault: patch.isDefault } : {}),
+        ...(patch.picUserId !== undefined ? { picUserId: patch.picUserId } : {}),
         updatedAt: sql`now()`,
       })
       .where(eq(channelsTable.id, id))

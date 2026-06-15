@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from "wouter";
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,13 +18,10 @@ import Settings from "@/pages/Settings";
 import AIStudio from "@/pages/AIStudio";
 import Usage from "@/pages/Usage";
 import Billing from "@/pages/Billing";
-import Analytics from "@/pages/Analytics";
+import ReportsAndSchedules from "@/pages/ReportsAndSchedules";
 import AIPipeline from "@/pages/AIPipeline";
 import AIPipelineNew from "@/pages/AIPipelineNew";
 import AIPipelineDetail from "@/pages/AIPipelineDetail";
-import AIChatReport from "@/pages/AIChatReport";
-import AIChatReportDetail from "@/pages/AIChatReportDetail";
-import AIChatReportSettings from "@/pages/AIChatReportSettings";
 import Products from "@/pages/Products";
 import Flows from "@/pages/Flows";
 import FlowEditor from "@/pages/FlowEditor";
@@ -130,12 +127,14 @@ function AuthGate() {
         <Route path="/usage" component={Usage} />
         <Route path="/billing" component={Billing} />
         <Route path="/profile" component={Profile} />
-        <Route path="/analytics" component={Analytics} />
+        <Route path="/analytics" component={ReportsAndSchedules} />
         <Route path="/workboard" component={WorkBoard} />
         <Route path="/workboard/:boardId" component={BoardDetail} />
-        <Route path="/ai-chat-report" component={AIChatReport} />
-        <Route path="/ai-chat-report/settings" component={AIChatReportSettings} />
-        <Route path="/ai-chat-report/:jobId" component={AIChatReportDetail} />
+        {/* ACR pages folded into Laporan & Jadwal — keep old links working. */}
+        {/* AI Chat Report (ACR) retired into Laporan & Jadwal — keep old links working. */}
+        <Route path="/ai-chat-report/settings">{() => <Redirect to="/analytics?tab=summary" />}</Route>
+        <Route path="/ai-chat-report/:jobId">{() => <Redirect to="/analytics?tab=ai" />}</Route>
+        <Route path="/ai-chat-report">{() => <Redirect to="/analytics?tab=ai" />}</Route>
         <Route path="/ai-pipeline" component={AIPipeline} />
         <Route path="/ai-pipeline/new" component={AIPipelineNew} />
         <Route path="/ai-pipeline/:id/edit" component={AIPipelineDetail} />

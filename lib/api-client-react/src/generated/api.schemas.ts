@@ -1079,6 +1079,79 @@ export interface WalletSummary {
   transactions: WalletTransaction[];
 }
 
+export type CreditWalletViewNotice = typeof CreditWalletViewNotice[keyof typeof CreditWalletViewNotice];
+
+
+export const CreditWalletViewNotice = {
+  ok: 'ok',
+  low: 'low',
+  critical: 'critical',
+  empty: 'empty',
+} as const;
+
+/**
+ * Prepaid AI-credit wallet (SPEC BAGIAN 13.2). Credits, NOT Rupiah.
+ */
+export interface CreditWalletView {
+  /** Plan allowance (Ember A), 0 if expired; spent first. */
+  grantBalance: number;
+  grantExpiresAt?: string | null;
+  /** Purchased top-ups (Ember B); rollover, never reset. */
+  paidBalance: number;
+  paidExpiresAt?: string | null;
+  /** Sum of in-flight call holds. */
+  reserved: number;
+  /** effective grant + paid. */
+  total: number;
+  /** total − reserved (spendable). */
+  available: number;
+  spentLast30d: number;
+  /** Projected runway days from the 30-day burn (null = unknown). */
+  estDaysLeft?: number | null;
+  /** 0..100 of this period's starting balance. */
+  percentRemaining: number;
+  notice: CreditWalletViewNotice;
+}
+
+export interface CreditUsageEvent {
+  createdAt: string;
+  channelId?: number | null;
+  engine?: string | null;
+  model: string;
+  totalTokens: number;
+  creditsCharged: number;
+}
+
+export type CreditLedgerEntryBucket = typeof CreditLedgerEntryBucket[keyof typeof CreditLedgerEntryBucket];
+
+
+export const CreditLedgerEntryBucket = {
+  grant: 'grant',
+  paid: 'paid',
+} as const;
+
+export type CreditLedgerEntryReason = typeof CreditLedgerEntryReason[keyof typeof CreditLedgerEntryReason];
+
+
+export const CreditLedgerEntryReason = {
+  topup: 'topup',
+  usage: 'usage',
+  grant: 'grant',
+  expire: 'expire',
+  adjust: 'adjust',
+} as const;
+
+export interface CreditLedgerEntry {
+  id: number;
+  /** + fill, − spend. */
+  delta: number;
+  bucket: CreditLedgerEntryBucket;
+  reason: CreditLedgerEntryReason;
+  engine?: string | null;
+  balanceAfter: number;
+  createdAt: string;
+}
+
 /**
  * Pay an OPEN invoice. Wallet credit is applied first; if it fully covers the invoice the payment settles immediately, otherwise a gateway/manual checkout is started for the full amount.
  */
@@ -2350,8 +2423,6 @@ export interface PricingConfig {
   userPricePerUser: number;
   /** Rupiah per 2 channels per month. */
   channelPricePer2: number;
-  /** Rupiah per 100 AI tokens per month. */
-  aiPricePer100Tokens: number;
 }
 
 export interface UpdatePricingInput {
@@ -2361,8 +2432,208 @@ export interface UpdatePricingInput {
   userPricePerUser: number;
   /** @minimum 0 */
   channelPricePer2: number;
+}
+
+export type PlatformAiEngineViewEngine = typeof PlatformAiEngineViewEngine[keyof typeof PlatformAiEngineViewEngine];
+
+
+export const PlatformAiEngineViewEngine = {
+  deepseek: 'deepseek',
+  gemini: 'gemini',
+  openai: 'openai',
+  anthropic: 'anthropic',
+} as const;
+
+export type PlatformAiEngineViewHealth = typeof PlatformAiEngineViewHealth[keyof typeof PlatformAiEngineViewHealth];
+
+
+export const PlatformAiEngineViewHealth = {
+  healthy: 'healthy',
+  unhealthy: 'unhealthy',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * One of the four centralized AI engines (masked credentials).
+ */
+export interface PlatformAiEngineView {
+  engine: PlatformAiEngineViewEngine;
+  label: string;
+  baseUrl?: string | null;
+  model?: string | null;
+  isEnabled: boolean;
+  /** 1..4 (1 = primary). */
+  priority: number;
+  creditPer1kToken: number;
+  health: PlatformAiEngineViewHealth;
+  /** Circuit-breaker window end; engine is skipped until this time. */
+  unhealthyUntil?: string | null;
+  lastError?: string | null;
+  hasApiKey: boolean;
+  apiKeyMask?: string | null;
+}
+
+/**
+ * DEPRECATED single-engine field; use `engines` instead.
+ */
+export type PlatformAiConfigViewEngine = typeof PlatformAiConfigViewEngine[keyof typeof PlatformAiConfigViewEngine];
+
+
+export const PlatformAiConfigViewEngine = {
+  anthropic: 'anthropic',
+  gemini: 'gemini',
+} as const;
+
+/**
+ * Platform AI engine config (owner only). The API key is never returned in plaintext — only a mask.
+ */
+export interface PlatformAiConfigView {
+  /** DEPRECATED single-engine field; use `engines` instead. */
+  engine: PlatformAiConfigViewEngine;
+  model?: string | null;
+  baseUrl?: string | null;
+  isActive: boolean;
+  /** Markup in basis points (5000 = +50%). */
+  markupBps: number;
+  creditPer1kTokenAnthropic: number;
+  creditPer1kTokenGemini: number;
+  minStopCredits: number;
+  autoFailover: boolean;
+  autoFailback: boolean;
+  /** Circuit-breaker window in minutes. */
+  unhealthyMinutes: number;
+  /** Retry the whole engine list once after a short delay if all fail. */
+  bothFailedRetry: boolean;
+  hasApiKey: boolean;
+  /** Masked stored key, e.g. "sk-ant-…AB12". */
+  apiKeyMask?: string | null;
+  updatedAt: string;
+  /** The four centralized engines, priority-ordered. */
+  engines: PlatformAiEngineView[];
+}
+
+/**
+ * DEPRECATED; the global update no longer changes per-engine credentials.
+ */
+export type AdminUpdatePlatformAiBodyEngine = typeof AdminUpdatePlatformAiBodyEngine[keyof typeof AdminUpdatePlatformAiBodyEngine];
+
+
+export const AdminUpdatePlatformAiBodyEngine = {
+  anthropic: 'anthropic',
+  gemini: 'gemini',
+} as const;
+
+export interface AdminUpdatePlatformAiBody {
+  /** DEPRECATED; the global update no longer changes per-engine credentials. */
+  engine?: AdminUpdatePlatformAiBodyEngine;
+  model?: string | null;
+  baseUrl?: string | null;
+  /** Omit to keep the stored key; empty string to clear it. */
+  apiKey?: string | null;
+  isActive?: boolean;
   /** @minimum 0 */
-  aiPricePer100Tokens: number;
+  markupBps?: number;
+  /** @minimum 1 */
+  creditPer1kTokenAnthropic?: number;
+  /** @minimum 1 */
+  creditPer1kTokenGemini?: number;
+  /** @minimum 0 */
+  minStopCredits?: number;
+  autoFailover?: boolean;
+  autoFailback?: boolean;
+  /** @minimum 1 */
+  unhealthyMinutes?: number;
+  bothFailedRetry?: boolean;
+}
+
+/**
+ * Upsert one engine's credentials/config (priority is set via reorder).
+ */
+export interface AdminUpdateEngineBody {
+  baseUrl?: string | null;
+  model?: string | null;
+  /** Omit to keep the stored key; empty string to clear it. */
+  apiKey?: string | null;
+  isEnabled?: boolean;
+  /** @minimum 1 */
+  creditPer1kToken?: number;
+}
+
+export type AdminReorderEnginesBodyOrderItem = typeof AdminReorderEnginesBodyOrderItem[keyof typeof AdminReorderEnginesBodyOrderItem];
+
+
+export const AdminReorderEnginesBodyOrderItem = {
+  deepseek: 'deepseek',
+  gemini: 'gemini',
+  openai: 'openai',
+  anthropic: 'anthropic',
+} as const;
+
+export interface AdminReorderEnginesBody {
+  /** The four engine names in desired priority order (#1 first). */
+  order: AdminReorderEnginesBodyOrderItem[];
+}
+
+export type AdminTestPlatformAiBodyEngine = typeof AdminTestPlatformAiBodyEngine[keyof typeof AdminTestPlatformAiBodyEngine];
+
+
+export const AdminTestPlatformAiBodyEngine = {
+  anthropic: 'anthropic',
+  gemini: 'gemini',
+} as const;
+
+export interface AdminTestPlatformAiBody {
+  engine: AdminTestPlatformAiBodyEngine;
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  model?: string | null;
+}
+
+export interface AdminTestEngineBody {
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  model?: string | null;
+}
+
+export interface PlatformAiTestResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface PlatformAiEngineMargin {
+  engine: string;
+  calls: number;
+  totalTokens: number;
+  /** Credits charged to tenants (with markup). */
+  revenueCredits: number;
+  /** Un-marked-up base credits (provider-cost proxy). */
+  costCredits: number;
+  marginCredits: number;
+  marginPct: number;
+}
+
+export interface PlatformAiEngineMarginTotals {
+  calls: number;
+  totalTokens: number;
+  revenueCredits: number;
+  costCredits: number;
+  marginCredits: number;
+  marginPct: number;
+}
+
+export interface PlatformAiMarginReconciliation {
+  usageCredits: number;
+  topupCredits: number;
+  grantCredits: number;
+  expireCredits: number;
+}
+
+export interface PlatformAiMarginView {
+  perEngine: PlatformAiEngineMargin[];
+  totals: PlatformAiEngineMarginTotals;
+  /** Actual paid top-up revenue in whole Rupiah. */
+  revenueIdr: number;
+  reconciliation: PlatformAiMarginReconciliation;
 }
 
 export interface Plan {
@@ -2572,7 +2843,6 @@ export interface BillBreakdown {
   dbCharge: number;
   userCharge: number;
   channelCharge: number;
-  aiCharge: number;
   total: number;
 }
 
@@ -2659,7 +2929,6 @@ export interface RevenueTrendPoint {
   dbCharge: number;
   userCharge: number;
   channelCharge: number;
-  aiCharge: number;
 }
 
 export interface OwnerTrend {
@@ -3876,6 +4145,8 @@ export interface Channel {
   status: ChannelStatus;
   /** Whether this is the tenant's default channel (single per owner) */
   isDefault: boolean;
+  /** Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set. */
+  picUserId?: number | null;
   /** WhatsApp-only: paired phone number (digits) */
   ownerPhone?: string | null;
   /** Kind-specific extras (e.g. last error, page id, shop id). Shape varies per kind. */
@@ -3915,6 +4186,8 @@ export interface ChannelUpdate {
   icon?: string;
   /** Set true to make this the tenant's default channel */
   isDefault?: boolean;
+  /** Set the channel's penanggung jawab (team member id), or null to clear it. Must be a supervisor/agent under the owner, or the owner. */
+  picUserId?: number | null;
 }
 
 export interface TelegramConnect {
@@ -4142,6 +4415,24 @@ export interface AiPipelineCutoffLog {
   createdAt: string;
 }
 
+export type AcrConfigInputDefaultLeadStatusesItem = typeof AcrConfigInputDefaultLeadStatusesItem[keyof typeof AcrConfigInputDefaultLeadStatusesItem];
+
+
+export const AcrConfigInputDefaultLeadStatusesItem = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+  unknown: 'unknown',
+} as const;
+
+export type AcrConfigInputDefaultChatStatusesItem = typeof AcrConfigInputDefaultChatStatusesItem[keyof typeof AcrConfigInputDefaultChatStatusesItem];
+
+
+export const AcrConfigInputDefaultChatStatusesItem = {
+  ai_handled: 'ai_handled',
+  needs_human: 'needs_human',
+  closed: 'closed',
+} as const;
+
 export type AcrConfigInputAutoScheduleFrequency = typeof AcrConfigInputAutoScheduleFrequency[keyof typeof AcrConfigInputAutoScheduleFrequency];
 
 
@@ -4177,6 +4468,30 @@ export interface AcrConfigInput {
      * @maximum 100
      */
   weightMissedChat: number;
+  /**
+     * Sub-weight of pure response time within Kecepatan Balas. With consistencySubweight must total 100.
+     * @minimum 0
+     * @maximum 100
+     */
+  responseTimeSubweight: number;
+  /**
+     * Sub-weight of daily-active consistency within Kecepatan Balas.
+     * @minimum 0
+     * @maximum 100
+     */
+  consistencySubweight: number;
+  /**
+     * Sub-weight of missed chats within Chat Tak Terjawab. With leadCoverageSubweight must total 100.
+     * @minimum 0
+     * @maximum 100
+     */
+  missedChatSubweight: number;
+  /**
+     * Sub-weight of lead-status coverage within Chat Tak Terjawab.
+     * @minimum 0
+     * @maximum 100
+     */
+  leadCoverageSubweight: number;
   /** @minimum 1 */
   slaExcellentMinutes: number;
   /** @minimum 1 */
@@ -4216,6 +4531,16 @@ export interface AcrConfigInput {
   complaintHandlingEnabled: boolean;
   /** Evaluate the tenant owner as an agent too (testing / solo CS). */
   includeOwnerInEvaluation: boolean;
+  /** Global default lead classes evaluated by new reports (Section 5b). Default [lead, unknown]. */
+  defaultLeadStatuses?: AcrConfigInputDefaultLeadStatusesItem[];
+  /** Global default chat handling statuses for new reports. Null/empty = all statuses. */
+  defaultChatStatuses?: AcrConfigInputDefaultChatStatusesItem[] | null;
+  /** Default for the 'Generate PDF' action on new reports. */
+  defaultGeneratePdf?: boolean;
+  /** Default for the 'Send PDF via WhatsApp' action on new reports. */
+  defaultSendWhatsappPdf?: boolean;
+  /** Global default extra notification recipients (super admin is always notified). */
+  defaultNotifyUserIds?: number[];
   autoScheduleEnabled: boolean;
   autoScheduleFrequency?: AcrConfigInputAutoScheduleFrequency;
   /**
@@ -4277,6 +4602,12 @@ export interface AcrJobCreate {
   chatStatuses?: AcrJobCreateChatStatusesItem[];
   /** Override the tenant config's include-owner-in-evaluation for this report. Omitted = inherit config. */
   includeOwner?: boolean;
+  /** Extra notification recipients for this report (super admin always notified). Omitted = config default. */
+  notifyUserIds?: number[];
+  /** Generate a PDF after the report completes. Omitted = config default. */
+  generatePdf?: boolean;
+  /** Send the PDF via WhatsApp to recipients after completion. Omitted = config default. */
+  sendWhatsappPdf?: boolean;
 }
 
 export type AcrJobStatus = typeof AcrJobStatus[keyof typeof AcrJobStatus];
@@ -4288,6 +4619,42 @@ export const AcrJobStatus = {
   completed: 'completed',
   failed: 'failed',
 } as const;
+
+export type AcrFilterSnapshotLeadStatusesItem = typeof AcrFilterSnapshotLeadStatusesItem[keyof typeof AcrFilterSnapshotLeadStatusesItem];
+
+
+export const AcrFilterSnapshotLeadStatusesItem = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+  unknown: 'unknown',
+} as const;
+
+export type AcrFilterSnapshotChatStatusesItem = typeof AcrFilterSnapshotChatStatusesItem[keyof typeof AcrFilterSnapshotChatStatusesItem];
+
+
+export const AcrFilterSnapshotChatStatusesItem = {
+  ai_handled: 'ai_handled',
+  needs_human: 'needs_human',
+  closed: 'closed',
+} as const;
+
+export type AcrFilterSnapshotChannelsItem = {
+  id: number;
+  label: string;
+};
+
+export type AcrFilterSnapshotCustomerLabelsItem = {
+  id: number;
+  name: string;
+};
+
+export interface AcrFilterSnapshot {
+  leadStatuses: AcrFilterSnapshotLeadStatusesItem[];
+  channels: AcrFilterSnapshotChannelsItem[];
+  customerLabels: AcrFilterSnapshotCustomerLabelsItem[];
+  chatStatuses: AcrFilterSnapshotChatStatusesItem[];
+  includeOwner: boolean;
+}
 
 export interface AcrJob {
   id: string;
@@ -4313,6 +4680,8 @@ export interface AcrJob {
   /** Stored PDF URL once auto-generated for a scheduled job. */
   pdfPath?: string | null;
   pdfGeneratedAt?: string | null;
+  /** Analysis filters applied to this job, with channel/label display names resolved at creation. Null for pre-feature jobs. */
+  filterSnapshot?: AcrFilterSnapshot | null;
 }
 
 export interface AcrJobList {
@@ -4360,6 +4729,16 @@ export interface AcrAgentScore {
   totalComplaints?: number;
   complaintsResolved?: number;
   insufficientData?: boolean;
+  /** Distinct days the agent sent a substantive human message. */
+  activeDays?: number;
+  /** Mon–Sat days in the period (Sunday excluded). */
+  workingDays?: number;
+  /** active_days / working_days × 100. */
+  consistencyPct?: number;
+  totalContactsHandled?: number;
+  contactsWithLeadStatus?: number;
+  /** contacts_with_lead_status / total_contacts_handled × 100. */
+  leadCoveragePct?: number;
   grade: AcrAgentScoreGrade;
   /** Whole-integer Rupiah from the job's config snapshot. */
   allowanceAmount?: number;
@@ -4587,6 +4966,230 @@ export interface AcrTeamMember {
   teamRole: string;
 }
 
+export interface ChannelBreakdownItem {
+  channelId: number;
+  channelName: string;
+  type: string;
+  count: number;
+  pct: number;
+}
+
+export interface SatisfactionBreakdown {
+  very_satisfied: number;
+  satisfied: number;
+  neutral: number;
+  unsatisfied: number;
+}
+
+export interface AnalyticsV2Summary {
+  totalChats: number;
+  /** Percent change vs previous period */
+  totalChatsChange: number;
+  aiHandledRate: number;
+  aiHandledCount: number;
+  avgResponseTimeSeconds: number;
+  avgResponseTimeChange: number;
+  unrepliedCount: number;
+  channelBreakdown: ChannelBreakdownItem[];
+  satisfactionBreakdown: SatisfactionBreakdown;
+  /** False when the tenant has no satisfaction ratings (UI shows empty state). */
+  hasSatisfactionData: boolean;
+}
+
+export interface EscalationTopic {
+  topic: string;
+  count: number;
+  escalationRate: number;
+}
+
+export interface AiPerformance {
+  resolvedByAi: number;
+  escalatedToAgent: number;
+  escalatedCount: number;
+  escalatedChange: number;
+  avgSessionLength: number;
+  tokensUsed: number;
+  /** -1 when unlimited (infinity owner / no cap) */
+  tokensRemaining: number;
+  topEscalationTopics: EscalationTopic[];
+}
+
+export type ChatHistoryItemHandledBy = typeof ChatHistoryItemHandledBy[keyof typeof ChatHistoryItemHandledBy];
+
+
+export const ChatHistoryItemHandledBy = {
+  ai: 'ai',
+  agent: 'agent',
+  escalated: 'escalated',
+} as const;
+
+export type ChatHistoryItemStatus = typeof ChatHistoryItemStatus[keyof typeof ChatHistoryItemStatus];
+
+
+export const ChatHistoryItemStatus = {
+  done: 'done',
+  in_progress: 'in_progress',
+  unreplied: 'unreplied',
+} as const;
+
+export interface ChatHistoryItem {
+  chatId: number;
+  contactName: string;
+  phoneNumber?: string | null;
+  channelId: number;
+  channelName: string;
+  channelType: string;
+  handledBy: ChatHistoryItemHandledBy;
+  durationMinutes?: number | null;
+  satisfaction?: string | null;
+  status: ChatHistoryItemStatus;
+  startedAt: string;
+  lastMessageAt?: string | null;
+}
+
+export interface ChatHistoryResult {
+  records: ChatHistoryItem[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export type AiInsightResponseType = typeof AiInsightResponseType[keyof typeof AiInsightResponseType];
+
+
+export const AiInsightResponseType = {
+  narrative: 'narrative',
+  anomaly: 'anomaly',
+  kb_recommendations: 'kb_recommendations',
+} as const;
+
+/**
+ * Shape depends on type. narrative => {criticalIssue, opportunity, positive, totalChatsAnalyzed}. anomaly => {anomalies: [...]}. kb_recommendations => {recommendations: [...]}.
+ */
+export type AiInsightResponseContent = { [key: string]: unknown };
+
+export interface AiInsightResponse {
+  type: AiInsightResponseType;
+  generatedAt: string;
+  expiresAt: string;
+  fromCache: boolean;
+  /** Set when generation failed; content is empty. */
+  error?: string | null;
+  /** Shape depends on type. narrative => {criticalIssue, opportunity, positive, totalChatsAnalyzed}. anomaly => {anomalies: [...]}. kb_recommendations => {recommendations: [...]}. */
+  content: AiInsightResponseContent;
+}
+
+export type NextActionItemSeverity = typeof NextActionItemSeverity[keyof typeof NextActionItemSeverity];
+
+
+export const NextActionItemSeverity = {
+  red: 'red',
+  yellow: 'yellow',
+  blue: 'blue',
+} as const;
+
+export interface NextActionItem {
+  severity: NextActionItemSeverity;
+  text: string;
+  ctaText?: string | null;
+  ctaRoute?: string | null;
+}
+
+export type ReportScheduleInputContentTypesItem = typeof ReportScheduleInputContentTypesItem[keyof typeof ReportScheduleInputContentTypesItem];
+
+
+export const ReportScheduleInputContentTypesItem = {
+  kpi: 'kpi',
+  ai_analysis: 'ai_analysis',
+  chat_history: 'chat_history',
+  trend: 'trend',
+} as const;
+
+export type ReportScheduleInputFrequency = typeof ReportScheduleInputFrequency[keyof typeof ReportScheduleInputFrequency];
+
+
+export const ReportScheduleInputFrequency = {
+  once: 'once',
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface ReportScheduleInput {
+  /** @maxLength 100 */
+  name: string;
+  contentTypes: ReportScheduleInputContentTypesItem[];
+  frequency: ReportScheduleInputFrequency;
+  /** Weekly only — ISO weekday numbers (1=Monday). */
+  recurrenceDays?: number[] | null;
+  /** HH:mm in the schedule timezone */
+  sendTime?: string;
+  timezone?: string;
+  recipientEmails: string[];
+  isActive?: boolean;
+}
+
+export interface ReportScheduleToggleInput {
+  isActive: boolean;
+}
+
+export type ReportScheduleFrequency = typeof ReportScheduleFrequency[keyof typeof ReportScheduleFrequency];
+
+
+export const ReportScheduleFrequency = {
+  once: 'once',
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface ReportSchedule {
+  id: number;
+  name: string;
+  contentTypes: string[];
+  frequency: ReportScheduleFrequency;
+  recurrenceDays?: number[] | null;
+  sendTime: string;
+  timezone: string;
+  recipientEmails: string[];
+  isActive: boolean;
+  lastSentAt?: string | null;
+  lastSendStatus?: string | null;
+  lastSendError?: string | null;
+  nextScheduledAt?: string | null;
+  createdAt: string;
+}
+
+export type ReportScheduleLogTriggeredBy = typeof ReportScheduleLogTriggeredBy[keyof typeof ReportScheduleLogTriggeredBy];
+
+
+export const ReportScheduleLogTriggeredBy = {
+  scheduler: 'scheduler',
+  manual: 'manual',
+} as const;
+
+export type ReportScheduleLogStatus = typeof ReportScheduleLogStatus[keyof typeof ReportScheduleLogStatus];
+
+
+export const ReportScheduleLogStatus = {
+  pending: 'pending',
+  sent: 'sent',
+  failed: 'failed',
+} as const;
+
+export interface ReportScheduleLog {
+  id: number;
+  scheduleId: number;
+  scheduleName?: string | null;
+  triggeredBy: ReportScheduleLogTriggeredBy;
+  status: ReportScheduleLogStatus;
+  recipientEmails: string[];
+  errorMessage?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+}
+
 export type AcrScheduleInputFrequency = typeof AcrScheduleInputFrequency[keyof typeof AcrScheduleInputFrequency];
 
 
@@ -4594,6 +5197,24 @@ export const AcrScheduleInputFrequency = {
   daily: 'daily',
   weekly: 'weekly',
   monthly: 'monthly',
+} as const;
+
+export type AcrScheduleInputLeadStatusesItem = typeof AcrScheduleInputLeadStatusesItem[keyof typeof AcrScheduleInputLeadStatusesItem];
+
+
+export const AcrScheduleInputLeadStatusesItem = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+  unknown: 'unknown',
+} as const;
+
+export type AcrScheduleInputChatStatusesItem = typeof AcrScheduleInputChatStatusesItem[keyof typeof AcrScheduleInputChatStatusesItem];
+
+
+export const AcrScheduleInputChatStatusesItem = {
+  ai_handled: 'ai_handled',
+  needs_human: 'needs_human',
+  closed: 'closed',
 } as const;
 
 export interface AcrScheduleInput {
@@ -4624,6 +5245,16 @@ export interface AcrScheduleInput {
   /** Empty/omitted = all agents. */
   agentIds?: number[];
   notifyUserIds?: number[];
+  /** Manual lead classifications whose chats are analyzed. Empty/omitted = no restriction (all chats). */
+  leadStatuses?: AcrScheduleInputLeadStatusesItem[];
+  /** Restrict analysis to these channels. Empty/omitted = all channels. */
+  channelIds?: number[];
+  /** Restrict to chats whose contact carries one of these customer labels. Empty/omitted = no label filter. */
+  customerLabelIds?: number[];
+  /** Restrict to chats with one of these handling statuses. Empty/omitted = all statuses. */
+  chatStatuses?: AcrScheduleInputChatStatusesItem[];
+  /** Override the tenant config's include-owner-in-evaluation for this schedule. Omitted = inherit config. */
+  includeOwner?: boolean;
   generatePdf?: boolean;
   sendWhatsappPdf?: boolean;
   isActive?: boolean;
@@ -4642,6 +5273,24 @@ export const AcrScheduleFrequency = {
   monthly: 'monthly',
 } as const;
 
+export type AcrScheduleLeadStatusesItem = typeof AcrScheduleLeadStatusesItem[keyof typeof AcrScheduleLeadStatusesItem];
+
+
+export const AcrScheduleLeadStatusesItem = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+  unknown: 'unknown',
+} as const;
+
+export type AcrScheduleChatStatusesItem = typeof AcrScheduleChatStatusesItem[keyof typeof AcrScheduleChatStatusesItem];
+
+
+export const AcrScheduleChatStatusesItem = {
+  ai_handled: 'ai_handled',
+  needs_human: 'needs_human',
+  closed: 'closed',
+} as const;
+
 export interface AcrSchedule {
   id: string;
   name: string;
@@ -4654,6 +5303,11 @@ export interface AcrSchedule {
   timezone?: string;
   agentIds?: number[] | null;
   notifyUserIds?: number[];
+  leadStatuses?: AcrScheduleLeadStatusesItem[] | null;
+  channelIds?: number[] | null;
+  customerLabelIds?: number[] | null;
+  chatStatuses?: AcrScheduleChatStatusesItem[] | null;
+  includeOwner?: boolean | null;
   generatePdf?: boolean;
   sendWhatsappPdf?: boolean;
   nextRunAt: string;
@@ -4878,6 +5532,14 @@ export type GetMyBillingTrendParams = {
 days?: number;
 };
 
+export type GetMyCreditWalletUsageParams = {
+/**
+ * @minimum 1
+ * @maximum 365
+ */
+days?: number;
+};
+
 export type AdminGetRevenueParams = {
 /**
  * Trend window length in days (default 30).
@@ -5053,6 +5715,123 @@ chatId?: number;
 export type SyncSalesOrderToSheet200 = {
   ok: boolean;
   syncedAt?: string;
+};
+
+export type GetAnalyticsV2SummaryParams = {
+period?: GetAnalyticsV2SummaryPeriod;
+from?: string;
+to?: string;
+};
+
+export type GetAnalyticsV2SummaryPeriod = typeof GetAnalyticsV2SummaryPeriod[keyof typeof GetAnalyticsV2SummaryPeriod];
+
+
+export const GetAnalyticsV2SummaryPeriod = {
+  today: 'today',
+  '7d': '7d',
+  '30d': '30d',
+  custom: 'custom',
+} as const;
+
+export type GetAiPerformanceParams = {
+period?: GetAiPerformancePeriod;
+from?: string;
+to?: string;
+};
+
+export type GetAiPerformancePeriod = typeof GetAiPerformancePeriod[keyof typeof GetAiPerformancePeriod];
+
+
+export const GetAiPerformancePeriod = {
+  today: 'today',
+  '7d': '7d',
+  '30d': '30d',
+  custom: 'custom',
+} as const;
+
+export type GetAnalyticsChatHistoryParams = {
+period?: GetAnalyticsChatHistoryPeriod;
+from?: string;
+to?: string;
+channel?: string;
+handledBy?: GetAnalyticsChatHistoryHandledBy;
+satisfaction?: string;
+status?: GetAnalyticsChatHistoryStatus;
+search?: string;
+page?: number;
+limit?: number;
+};
+
+export type GetAnalyticsChatHistoryPeriod = typeof GetAnalyticsChatHistoryPeriod[keyof typeof GetAnalyticsChatHistoryPeriod];
+
+
+export const GetAnalyticsChatHistoryPeriod = {
+  today: 'today',
+  '7d': '7d',
+  '30d': '30d',
+  custom: 'custom',
+} as const;
+
+export type GetAnalyticsChatHistoryHandledBy = typeof GetAnalyticsChatHistoryHandledBy[keyof typeof GetAnalyticsChatHistoryHandledBy];
+
+
+export const GetAnalyticsChatHistoryHandledBy = {
+  all: 'all',
+  ai: 'ai',
+  agent: 'agent',
+  escalated: 'escalated',
+} as const;
+
+export type GetAnalyticsChatHistoryStatus = typeof GetAnalyticsChatHistoryStatus[keyof typeof GetAnalyticsChatHistoryStatus];
+
+
+export const GetAnalyticsChatHistoryStatus = {
+  all: 'all',
+  done: 'done',
+  in_progress: 'in_progress',
+  unreplied: 'unreplied',
+} as const;
+
+export type GetAiInsightsParams = {
+type: GetAiInsightsType;
+period?: GetAiInsightsPeriod;
+refresh?: boolean;
+};
+
+export type GetAiInsightsType = typeof GetAiInsightsType[keyof typeof GetAiInsightsType];
+
+
+export const GetAiInsightsType = {
+  narrative: 'narrative',
+  anomaly: 'anomaly',
+  kb_recommendations: 'kb_recommendations',
+} as const;
+
+export type GetAiInsightsPeriod = typeof GetAiInsightsPeriod[keyof typeof GetAiInsightsPeriod];
+
+
+export const GetAiInsightsPeriod = {
+  today: 'today',
+  '7d': '7d',
+  '30d': '30d',
+} as const;
+
+export type GetNextActionsParams = {
+context?: GetNextActionsContext;
+};
+
+export type GetNextActionsContext = typeof GetNextActionsContext[keyof typeof GetNextActionsContext];
+
+
+export const GetNextActionsContext = {
+  summary: 'summary',
+  ai: 'ai',
+  history: 'history',
+  schedule: 'schedule',
+} as const;
+
+export type ListReportScheduleLogsParams = {
+limit?: number;
 };
 
 export type ListTeamMemberPermissions200 = {

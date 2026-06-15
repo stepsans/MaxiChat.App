@@ -3,6 +3,15 @@ import { db, aiProviderConfigTable, type AiProviderConfig } from "@workspace/db"
 import { openai, createOpenAiClient } from "@workspace/integrations-openai-ai-server";
 import { decryptString } from "./crypto";
 import { resolveOwnerUserId } from "./seed";
+import { resolvePlatformEngine, getPlatformAiConfig, type PlatformEngine } from "./platform-ai-config";
+import { getEnabledEnginesByPriority } from "./platform-ai-engine";
+import { createFailoverClient } from "./ai-failover";
+
+// Full centralization (owner's decision): tenants do NOT use their own BYOK key
+// — every tenant rides the centralized platform engine (precedence #2 below).
+// Default false. Set POLICY_ALLOW_TENANT_BYOK=true only to re-enable per-tenant
+// BYOK as an escape hatch.
+const POLICY_ALLOW_TENANT_BYOK = process.env["POLICY_ALLOW_TENANT_BYOK"] === "true";
 
 // Derive the client type from the lib factory so api-server never needs a
 // direct dependency on the `openai` package (it stays transitive).
@@ -119,40 +128,72 @@ export async function getAiProviderConfig(
 export interface ResolvedAiClient {
   client: AiClient;
   model: string;
-  provider: "replit" | AiProvider;
+  provider: "replit" | "platform" | AiProvider | PlatformEngine;
   ownerUserId: number;
 }
 
-// Resolve the AI client + model to use for a tenant. Defaults to the managed
-// Replit integration (no key required). Only when the tenant has explicitly
-// chosen "byok" with a stored key do we build a client from their own key.
+// Resolve the AI client + model to use for a tenant. Precedence:
+//   1) tenant BYOK key — only when POLICY_ALLOW_TENANT_BYOK is on
+//   2) the centralized PLATFORM engine (owner's credentials) — when active
+//   3) the managed Replit integration (legacy fallback — unchanged)
 export async function resolveAiClient(
   userId: number
 ): Promise<ResolvedAiClient> {
   const ownerUserId = await resolveOwnerUserId(userId);
-  const cfg = await getAiProviderConfig(ownerUserId);
-  if (!cfg || cfg.mode !== "byok" || !cfg.apiKeyEnc) {
-    return {
-      client: openai,
-      model: DEFAULT_REPLIT_MODEL,
-      provider: "replit",
-      ownerUserId,
-    };
+
+  // 1) Tenant BYOK (policy-gated).
+  if (POLICY_ALLOW_TENANT_BYOK) {
+    const cfg = await getAiProviderConfig(ownerUserId);
+    if (cfg && cfg.mode === "byok" && cfg.apiKeyEnc) {
+      const provider = asProvider(cfg.provider);
+      const defaults = PROVIDER_DEFAULTS[provider];
+      const apiKey = decryptString(cfg.apiKeyEnc);
+      // Defense-in-depth: ignore a stored base URL that fails the SSRF guard.
+      let baseURL = defaults.baseUrl;
+      const stored = cfg.baseUrl?.trim();
+      if (stored) {
+        const v = validateBaseUrl(stored);
+        baseURL = v.ok ? v.url : defaults.baseUrl;
+      }
+      const client = createOpenAiClient({ apiKey, baseURL });
+      const model = cfg.model?.trim() || defaults.defaultModel;
+      return { client, model, provider, ownerUserId };
+    }
   }
-  const provider = asProvider(cfg.provider);
-  const defaults = PROVIDER_DEFAULTS[provider];
-  const apiKey = decryptString(cfg.apiKeyEnc);
-  // Defense-in-depth: ignore a stored base URL that fails the SSRF guard and
-  // fall back to the provider default rather than issuing the request.
-  let baseURL = defaults.baseUrl;
-  const stored = cfg.baseUrl?.trim();
-  if (stored) {
-    const v = validateBaseUrl(stored);
-    baseURL = v.ok ? v.url : defaults.baseUrl;
+
+  // 2) Centralized platform engine with 4-engine priority failover (SPEC). When
+  // the platform is active AND at least one engine is enabled, return the
+  // transparent failover client — its create() runs the prepaid gate +
+  // worst-case reserve (flag-gated) and the #1→#4 failover chain, attaching the
+  // serving engine to the response so recordAiUsage settles + records it.
+  const cfg = await getPlatformAiConfig();
+  if (cfg.isActive) {
+    const enabled = await getEnabledEnginesByPriority();
+    if (enabled.length > 0) {
+      return {
+        client: createFailoverClient(ownerUserId),
+        model: "auto", // chosen per-engine inside the failover client
+        provider: "platform",
+        ownerUserId,
+      };
+    }
   }
-  const client = createOpenAiClient({ apiKey, baseURL });
-  const model = cfg.model?.trim() || defaults.defaultModel;
-  return { client, model, provider, ownerUserId };
+
+  // 2-legacy) Old single-engine platform config (DEPRECATED — kept so an owner
+  // who configured the pre-failover engine keeps working until they enable the
+  // 4 engines). No credit accounting on this path.
+  const platform = await resolvePlatformEngine();
+  if (platform) {
+    return { client: platform.client, model: platform.model, provider: platform.engine, ownerUserId };
+  }
+
+  // 3) Managed Replit default.
+  return {
+    client: openai,
+    model: DEFAULT_REPLIT_MODEL,
+    provider: "replit",
+    ownerUserId,
+  };
 }
 
 // Live connectivity check: a tiny chat completion against the given provider.

@@ -17,6 +17,7 @@ import { logger } from "./logger";
 import { createInvoiceForPayment } from "./invoices";
 import { markInvoicePaid, clearDunningForOwner } from "./dunning";
 import { decodeInvoiceDirective } from "./proration-directive";
+import { grantCredits, addPaidCredits } from "./credit-wallet";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -111,6 +112,15 @@ export async function activatePlanForOwner(
         updatedAt: now,
       },
     });
+
+  // SPEC BAGIAN 9: the plan's token allowance becomes a GRANT (Ember A) of AI
+  // credits, reset each period and expiring at the period end (spent before
+  // purchased paid credits). 1 quota-token = 1 credit grant. tokenLimit above is
+  // now informational only (AI is gated by the wallet, not tokenLimit).
+  await grantCredits(
+    { ownerUserId: ownerId, amount: plan.quotaTokens, expiresAt: periodEnd, now },
+    exec,
+  );
 }
 
 // Apply a mid-period PLAN SWITCH via proration (Billing v2 — FASE D). Unlike
@@ -208,14 +218,19 @@ export async function addAddonToQuota(
   quantity: number,
   exec: DbExecutor = db
 ): Promise<void> {
-  await getOrCreateTenantQuota(ownerId, exec);
   const delta = addon.unitAmount * Math.max(1, quantity);
   const now = new Date();
 
-  const set: Partial<typeof tenantQuotaTable.$inferInsert> = { updatedAt: now };
+  // SPEC BAGIAN 1/10: a 'token' add-on is a prepaid AI-credit TOP-UP — it fills
+  // the wallet's paid_balance (Ember B, rollover), NOT tenant_quota.tokenLimit.
   if (addon.type === "token") {
-    set.tokenLimit = sql`${tenantQuotaTable.tokenLimit} + ${delta}` as never;
-  } else if (addon.type === "channel") {
+    await addPaidCredits({ ownerUserId: ownerId, amount: delta, reason: "topup", now }, exec);
+    return;
+  }
+
+  await getOrCreateTenantQuota(ownerId, exec);
+  const set: Partial<typeof tenantQuotaTable.$inferInsert> = { updatedAt: now };
+  if (addon.type === "channel") {
     set.channelLimit = sql`${tenantQuotaTable.channelLimit} + ${delta}` as never;
   } else if (addon.type === "user_seat") {
     set.userLimit = sql`${tenantQuotaTable.userLimit} + ${delta}` as never;

@@ -87,5 +87,4 @@ test("dailyRevenueTrendFromInvoices: breakdown fields are zeroed", () => {
   assert.equal(trend[0].dbCharge, 0);
   assert.equal(trend[0].userCharge, 0);
   assert.equal(trend[0].channelCharge, 0);
-  assert.equal(trend[0].aiCharge, 0);
 });

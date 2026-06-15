@@ -28,13 +28,13 @@ import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/hooks/use-permissions";
 import CheckoutSection from "@/components/CheckoutSection";
 import ChangePlanSection from "@/components/ChangePlanSection";
+import CreditWalletCard from "@/components/CreditWalletCard";
 import InvoiceHistory from "@/components/InvoiceHistory";
 import {
   Wallet,
   Database,
   Users as UsersIcon,
   MessageSquare,
-  Cpu,
   ShieldAlert,
 } from "lucide-react";
 
@@ -251,15 +251,8 @@ export default function Billing() {
       rate: data ? `${fmtRp(data.pricing.channelPricePer2)} / 2 channel` : "—",
       charge: data?.breakdown.channelCharge ?? 0,
     },
-    {
-      label: "Token AI",
-      Icon: Cpu,
-      detail: data ? `${fmtNum(data.usage.tokenUsage)} token` : "—",
-      rate: data
-        ? `${fmtRp(data.pricing.aiPricePer100Tokens)} / 100 token`
-        : "—",
-      charge: data?.breakdown.aiCharge ?? 0,
-    },
+    // NOTE: AI is no longer metered here — it rides the prepaid credit wallet.
+    // The credit-balance widget is added in Langkah 9 (SPEC BAGIAN 13.2).
   ];
 
   return (
@@ -352,9 +345,17 @@ export default function Billing() {
         <>
       <WalletCard />
 
+      <CreditWalletCard
+        onTopup={() =>
+          document.getElementById("checkout-section")?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+      />
+
       <ChangePlanSection />
 
-      <CheckoutSection />
+      <div id="checkout-section">
+        <CheckoutSection />
+      </div>
 
       <Card>
         <CardHeader>

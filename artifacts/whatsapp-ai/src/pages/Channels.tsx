@@ -22,10 +22,13 @@ import {
   useGetChannelQr,
   useConnectTelegramChannel,
   useDisconnectTelegramChannel,
+  useListAcrTeamMembers,
   getListChannelsQueryKey,
   getGetChannelQrQueryKey,
+  getListAcrTeamMembersQueryKey,
   type Channel,
   type ChannelPairQr,
+  type AcrTeamMember,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -365,12 +368,18 @@ function TelegramTokenDialog({
   );
 }
 
+// Sentinel for the "no PIC" option — shadcn Select can't use an empty-string
+// value, so we map this to null when saving.
+const PIC_NONE = "__none__";
+
 function ChannelRow({
   channel,
+  members,
   onPair,
   onConnectTelegram,
 }: {
   channel: Channel;
+  members: AcrTeamMember[];
   onPair: (id: number) => void;
   onConnectTelegram: (id: number) => void;
 }) {
@@ -430,6 +439,27 @@ function ChannelRow({
         }),
     },
   });
+
+  const setPic = useUpdateChannel({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey() });
+        toast({ title: "Penanggung jawab diperbarui" });
+      },
+      onError: (err) =>
+        toast({
+          title: "Gagal",
+          description:
+            (err as { data?: { error?: string } } | null)?.data?.error ??
+            (err as Error | null)?.message ??
+            "Gagal",
+          variant: "destructive",
+        }),
+    },
+  });
+
+  const memberLabel = (m: AcrTeamMember) =>
+    (m.name && m.name.trim()) || m.email.split("@")[0] || `User ${m.id}`;
 
   const pair = usePairChannel({
     mutation: {
@@ -619,6 +649,46 @@ function ChannelRow({
           </Button>
         </div>
       </div>
+      {canEdit && (
+        <div className="pt-2 border-t border-border/60">
+          <Label
+            htmlFor={`pic-${channel.id}`}
+            className="text-[11px] text-foreground/70"
+          >
+            Penanggung jawab
+          </Label>
+          <Select
+            value={channel.picUserId != null ? String(channel.picUserId) : PIC_NONE}
+            onValueChange={(v) =>
+              setPic.mutate({
+                id: channel.id,
+                data: { picUserId: v === PIC_NONE ? null : Number(v) },
+              })
+            }
+            disabled={setPic.isPending}
+          >
+            <SelectTrigger
+              id={`pic-${channel.id}`}
+              className="h-8 text-sm mt-0.5 sm:w-72"
+              data-testid={`channel-pic-${channel.id}`}
+            >
+              <SelectValue placeholder="Tidak ada" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={PIC_NONE}>Tidak ada (ke owner)</SelectItem>
+              {members.map((m) => (
+                <SelectItem key={m.id} value={String(m.id)}>
+                  {memberLabel(m)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-foreground/55 mt-1">
+            KPI balasan yang diketik dari HP (tanpa identitas pengirim) dihitung
+            ke penanggung jawab channel ini.
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 pt-2 border-t border-border/60">
         {canEdit && (
           <Button
@@ -939,6 +1009,17 @@ export default function Channels() {
   const { data, isLoading } = useListChannels();
   const { menus } = usePermissions();
   const canCreate = menus.channels.canCreate;
+  const canEditChannels = menus.channels.canEdit;
+  // Candidate PICs for the channel dropdown (supervisors + agents, and the
+  // owner when the include-owner toggle is on). Only fetched when the user can
+  // edit channels — the endpoint requires acr:view, which agents lack.
+  const { data: teamMembers } = useListAcrTeamMembers({
+    query: {
+      queryKey: getListAcrTeamMembersQueryKey(),
+      enabled: canEditChannels,
+    },
+  });
+  const members = useMemo(() => teamMembers ?? [], [teamMembers]);
   const [addOpen, setAddOpen] = useState(() => {
     if (typeof window === "undefined") return false;
     return new URLSearchParams(window.location.search).get("add") === "1";
@@ -988,6 +1069,7 @@ export default function Channels() {
             <ChannelRow
               key={c.id}
               channel={c}
+              members={members}
               onPair={(id) => setPairChannelId(id)}
               onConnectTelegram={(id) => setTgChannelId(id)}
             />

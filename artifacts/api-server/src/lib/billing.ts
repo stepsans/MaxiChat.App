@@ -50,7 +50,6 @@ export async function getPricing(): Promise<BillingPricing> {
       dbPricePer500Mb: row.dbPricePer500Mb,
       userPricePerUser: row.userPricePerUser,
       channelPricePer2: row.channelPricePer2,
-      aiPricePer100Tokens: row.aiPricePer100Tokens,
     };
   }
   // Self-heal: seed the singleton with column defaults if it's somehow missing.
@@ -63,13 +62,11 @@ export async function getPricing(): Promise<BillingPricing> {
     dbPricePer500Mb: 50000,
     userPricePerUser: 50000,
     channelPricePer2: 50000,
-    aiPricePer100Tokens: 50000,
   };
   return {
     dbPricePer500Mb: r.dbPricePer500Mb,
     userPricePerUser: r.userPricePerUser,
     channelPricePer2: r.channelPricePer2,
-    aiPricePer100Tokens: r.aiPricePer100Tokens,
   };
 }
 
@@ -412,7 +409,7 @@ export async function snapshotOwner(
       dbCharge: breakdown.dbCharge,
       userCharge: breakdown.userCharge,
       channelCharge: breakdown.channelCharge,
-      aiCharge: breakdown.aiCharge,
+      aiCharge: 0, // AI no longer metered here (kept for historical rows)
       totalCharge: breakdown.total,
     })
     .onConflictDoUpdate({
@@ -425,7 +422,7 @@ export async function snapshotOwner(
         dbCharge: breakdown.dbCharge,
         userCharge: breakdown.userCharge,
         channelCharge: breakdown.channelCharge,
-        aiCharge: breakdown.aiCharge,
+        aiCharge: 0,
         totalCharge: breakdown.total,
       },
     });
@@ -631,7 +628,6 @@ export async function computeOwnerTrend(
       dbCharge: usageSnapshotsTable.dbCharge,
       userCharge: usageSnapshotsTable.userCharge,
       channelCharge: usageSnapshotsTable.channelCharge,
-      aiCharge: usageSnapshotsTable.aiCharge,
     })
     .from(usageSnapshotsTable)
     .where(
@@ -647,6 +643,5 @@ export async function computeOwnerTrend(
     dbCharge: r.dbCharge,
     userCharge: r.userCharge,
     channelCharge: r.channelCharge,
-    aiCharge: r.aiCharge,
   }));
 }

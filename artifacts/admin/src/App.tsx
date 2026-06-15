@@ -13,6 +13,7 @@ import {
   Package,
   CreditCard,
   Rocket,
+  Bot,
   Settings as SettingsIcon,
 } from "lucide-react";
 import Login from "./pages/Login";
@@ -25,6 +26,7 @@ import Analytics from "./pages/Analytics";
 import PaymentGateway from "./pages/PaymentGateway";
 import TrialMonitor from "./pages/TrialMonitor";
 import PlatformSettings from "./pages/PlatformSettings";
+import MesinAi from "./pages/MesinAi";
 import { useLogoutMutation } from "./lib/useLogoutMutation";
 
 const queryClient = new QueryClient();
@@ -38,6 +40,7 @@ type AdminTab =
   | "billing"
   | "analytics"
   | "trial"
+  | "mesin-ai"
   | "platform";
 
 function Shell() {
@@ -150,6 +153,7 @@ function Shell() {
             { key: "gateway", label: "Gateway Pembayaran", Icon: CreditCard },
             { key: "pricing", label: "Harga Pemakaian", Icon: Tag },
             { key: "usage", label: "Pemakaian Token", Icon: Cpu },
+            { key: "mesin-ai", label: "Mesin AI Platform", Icon: Bot },
             { key: "platform", label: "Platform Settings", Icon: SettingsIcon },
           ] as const
         ).map(({ key, label, Icon }) => (
@@ -177,6 +181,7 @@ function Shell() {
         {tab === "gateway" && <PaymentGateway />}
         {tab === "pricing" && <Pricing />}
         {tab === "usage" && <TokenUsage />}
+        {tab === "mesin-ai" && <MesinAi />}
         {tab === "platform" && <PlatformSettings />}
       </main>
     </div>

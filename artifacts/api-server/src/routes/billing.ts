@@ -38,6 +38,12 @@ import {
   listWalletTransactions,
   recordWalletTransaction,
 } from "../lib/wallet";
+import {
+  getCreditWalletSummary,
+  listCreditUsage,
+  listCreditLedger,
+} from "../lib/credit-wallet";
+import { getPlatformAiConfig } from "../lib/platform-ai-config";
 import { settleInvoiceByWallet, settleCartByWallet } from "../lib/pay-invoice";
 import { startInvoiceGatewayCheckout } from "../lib/gateway-checkout";
 import { createOpenProrationInvoice } from "../lib/proration";
@@ -805,6 +811,83 @@ router.get("/wallet", async (req, res): Promise<void> => {
     });
   } catch (err) {
     req.log.error({ err }, "getMyWallet failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/credit-wallet — the tenant's prepaid AI-CREDIT wallet (distinct
+// from the Rupiah wallet above): two-bucket balances, runway, and banner level.
+router.get("/credit-wallet", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+    const cfg = await getPlatformAiConfig();
+    const s = await getCreditWalletSummary(ownerUserId, cfg.minStopCredits);
+    res.json({
+      grantBalance: s.grantBalance,
+      grantExpiresAt: s.grantExpiresAt,
+      paidBalance: s.paidBalance,
+      paidExpiresAt: s.paidExpiresAt,
+      reserved: s.reserved,
+      total: s.total,
+      available: s.available,
+      spentLast30d: s.spentLast30d,
+      estDaysLeft: s.estDaysLeft,
+      percentRemaining: s.percentRemaining,
+      notice: s.notice,
+    });
+  } catch (err) {
+    req.log.error({ err }, "getMyCreditWallet failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/credit-wallet/usage — recent AI usage charged to the wallet.
+router.get("/credit-wallet/usage", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+    const rawDays = Number(req.query.days);
+    const days = Number.isFinite(rawDays) && rawDays >= 1 && rawDays <= 365 ? Math.floor(rawDays) : 30;
+    const rows = await listCreditUsage(ownerUserId, days);
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "getMyCreditWalletUsage failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /billing/credit-wallet/ledger — recent credit-wallet ledger entries.
+router.get("/credit-wallet/ledger", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+    const rows = await listCreditLedger(ownerUserId, 100);
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        delta: r.delta,
+        bucket: r.bucket,
+        reason: r.reason,
+        engine: r.engine,
+        balanceAfter: r.balanceAfter,
+        createdAt: r.createdAt,
+      })),
+    );
+  } catch (err) {
+    req.log.error({ err }, "getMyCreditWalletLedger failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

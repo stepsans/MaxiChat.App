@@ -38,6 +38,10 @@ type FormState = {
   weightAnswerQuality: number;
   weightComplaintHandling: number;
   weightMissedChat: number;
+  responseTimeSubweight: number;
+  consistencySubweight: number;
+  missedChatSubweight: number;
+  leadCoverageSubweight: number;
   slaExcellentMinutes: number;
   slaGoodMinutes: number;
   slaAcceptableMinutes: number;
@@ -54,6 +58,12 @@ type FormState = {
   allowanceGradeE: number;
   complaintHandlingEnabled: boolean;
   includeOwnerInEvaluation: boolean;
+  // Global filter & action defaults (Section 5b).
+  defaultLeadStatuses: ("lead" | "not_lead" | "unknown")[];
+  defaultChatStatuses: ("ai_handled" | "needs_human" | "closed")[];
+  defaultGeneratePdf: boolean;
+  defaultSendWhatsappPdf: boolean;
+  defaultNotifyUserIds: number[];
   autoScheduleEnabled: boolean;
   autoScheduleFrequency: "weekly" | "monthly" | "custom";
   autoScheduleDayOfMonth: number;
@@ -68,6 +78,10 @@ const DEFAULTS: FormState = {
   weightAnswerQuality: 25,
   weightComplaintHandling: 15,
   weightMissedChat: 10,
+  responseTimeSubweight: 80,
+  consistencySubweight: 20,
+  missedChatSubweight: 60,
+  leadCoverageSubweight: 40,
   slaExcellentMinutes: 3,
   slaGoodMinutes: 5,
   slaAcceptableMinutes: 15,
@@ -84,6 +98,11 @@ const DEFAULTS: FormState = {
   allowanceGradeE: 0,
   complaintHandlingEnabled: true,
   includeOwnerInEvaluation: false,
+  defaultLeadStatuses: ["lead", "unknown"],
+  defaultChatStatuses: [],
+  defaultGeneratePdf: true,
+  defaultSendWhatsappPdf: false,
+  defaultNotifyUserIds: [],
   autoScheduleEnabled: false,
   autoScheduleFrequency: "monthly",
   autoScheduleDayOfMonth: 1,
@@ -99,6 +118,10 @@ function fromConfig(c: AcrConfig): FormState {
     weightAnswerQuality: c.weightAnswerQuality,
     weightComplaintHandling: c.weightComplaintHandling,
     weightMissedChat: c.weightMissedChat,
+    responseTimeSubweight: c.responseTimeSubweight ?? 80,
+    consistencySubweight: c.consistencySubweight ?? 20,
+    missedChatSubweight: c.missedChatSubweight ?? 60,
+    leadCoverageSubweight: c.leadCoverageSubweight ?? 40,
     slaExcellentMinutes: c.slaExcellentMinutes,
     slaGoodMinutes: c.slaGoodMinutes,
     slaAcceptableMinutes: c.slaAcceptableMinutes,
@@ -115,6 +138,11 @@ function fromConfig(c: AcrConfig): FormState {
     allowanceGradeE: c.allowanceGradeE,
     complaintHandlingEnabled: c.complaintHandlingEnabled,
     includeOwnerInEvaluation: c.includeOwnerInEvaluation ?? false,
+    defaultLeadStatuses: c.defaultLeadStatuses ?? ["lead", "unknown"],
+    defaultChatStatuses: c.defaultChatStatuses ?? [],
+    defaultGeneratePdf: c.defaultGeneratePdf ?? true,
+    defaultSendWhatsappPdf: c.defaultSendWhatsappPdf ?? false,
+    defaultNotifyUserIds: c.defaultNotifyUserIds ?? [],
     autoScheduleEnabled: c.autoScheduleEnabled,
     autoScheduleFrequency:
       c.autoScheduleFrequency === "weekly" || c.autoScheduleFrequency === "custom"
@@ -166,6 +194,32 @@ const WEIGHT_ROWS: Array<{
   },
 ];
 
+// Sub-weight pairs (Section 4.5 / 4.6). Each pair must total 100; editing one
+// side auto-adjusts the other. Keyed by the parent dimension's weight key.
+type SubKey =
+  | "responseTimeSubweight"
+  | "consistencySubweight"
+  | "missedChatSubweight"
+  | "leadCoverageSubweight";
+
+const SUBWEIGHTS: Partial<
+  Record<
+    "weightResponseTime" | "weightMissedChat",
+    { primary: [SubKey, string]; secondary: [SubKey, string]; hint: string }
+  >
+> = {
+  weightResponseTime: {
+    primary: ["responseTimeSubweight", "Response Time Murni"],
+    secondary: ["consistencySubweight", "Konsistensi Aktif Harian"],
+    hint: "Agent cepat balas tapi hanya aktif sebagian hari kerja → skor kecepatan balas dikurangi dari porsi konsistensi.",
+  },
+  weightMissedChat: {
+    primary: ["missedChatSubweight", "Chat Tak Terjawab"],
+    secondary: ["leadCoverageSubweight", "Lead Status Coverage %"],
+    hint: "0 chat terlewat tapi banyak kontak tanpa lead status → skor dimensi ini tidak sempurna.",
+  },
+};
+
 const DAY_NAMES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
 
 export default function AIChatReportSettings() {
@@ -183,6 +237,9 @@ export default function AIChatReportSettings() {
 
   const { data: config, isLoading } = useGetAcrConfig({
     query: { queryKey: getGetAcrConfigQueryKey() },
+  });
+  const { data: teamMembers } = useListAcrTeamMembers({
+    query: { queryKey: getListAcrTeamMembersQueryKey() },
   });
   useEffect(() => {
     if (config) setForm(fromConfig(config));
@@ -216,10 +273,25 @@ export default function AIChatReportSettings() {
     form.allowanceGradeD,
     form.allowanceGradeE,
   ].some((v) => !Number.isInteger(v) || v < 0);
-  const invalid = totalWeight !== 100 || slaError || gradeError || allowanceError;
+  const rtSubError = form.responseTimeSubweight + form.consistencySubweight !== 100;
+  const missedSubError = form.missedChatSubweight + form.leadCoverageSubweight !== 100;
+  const invalid =
+    totalWeight !== 100 ||
+    slaError ||
+    gradeError ||
+    allowanceError ||
+    rtSubError ||
+    missedSubError;
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // Edit one sub-weight; the partner is forced to the complement so the pair
+  // always totals 100 (Section 2.1 invariant).
+  const setSubPair = (changed: SubKey, partner: SubKey, value: number) => {
+    const v = Math.max(0, Math.min(100, value));
+    setForm((f) => ({ ...f, [changed]: v, [partner]: 100 - v }));
+  };
 
   const numInput = (v: string): number => {
     const n = Number(v);
@@ -300,6 +372,47 @@ export default function AIChatReportSettings() {
                 step={1}
                 onValueChange={([v]) => set(row.key, v ?? 0)}
               />
+              {SUBWEIGHTS[row.key as "weightResponseTime" | "weightMissedChat"] &&
+                (() => {
+                  const sw = SUBWEIGHTS[row.key as "weightResponseTime" | "weightMissedChat"]!;
+                  const sum = form[sw.primary[0]] + form[sw.secondary[0]];
+                  return (
+                    <div className="mt-3 ml-1 space-y-2 border-l-2 border-border/60 pl-3">
+                      <p className="text-xs font-medium text-foreground/70">
+                        Sub-bobot (total harus 100)
+                      </p>
+                      {[sw.primary, sw.secondary].map(([k, l]) => (
+                        <div key={k} className="flex items-center justify-between gap-2">
+                          <Label className="text-xs font-normal">{l}</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            className="h-8 w-20 text-right"
+                            value={form[k]}
+                            onChange={(e) =>
+                              setSubPair(
+                                k,
+                                k === sw.primary[0] ? sw.secondary[0] : sw.primary[0],
+                                numInput(e.target.value)
+                              )
+                            }
+                            data-testid={`acr-${k}`}
+                          />
+                        </div>
+                      ))}
+                      <p
+                        className={cn(
+                          "text-xs",
+                          sum === 100 ? "text-emerald-600" : "text-red-500"
+                        )}
+                      >
+                        Total sub: {sum} / 100 {sum === 100 ? "✓" : "— harus 100"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">ℹ️ {sw.hint}</p>
+                    </div>
+                  );
+                })()}
             </div>
           ))}
           <p
@@ -457,6 +570,141 @@ export default function AIChatReportSettings() {
               onCheckedChange={(v) => set("includeOwnerInEvaluation", v)}
               data-testid="acr-include-owner"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 5b: Default Filter Global */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Default Filter Global</CardTitle>
+          <CardDescription>
+            Setelan awal untuk SEMUA laporan baru (Manual maupun Otomatis). Bisa diubah per
+            laporan. Perubahan hanya berlaku untuk laporan yang dibuat setelah disimpan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div>
+            <Label className="mb-1 block">Default Status Lead</Label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Status lead customer yang diikutkan secara default. Bisa diubah per laporan.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ["lead", "Leads"],
+                  ["not_lead", "Bukan Leads"],
+                  ["unknown", "Belum Ditandai"],
+                ] as const
+              ).map(([v, text]) => (
+                <label key={v} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.defaultLeadStatuses.includes(v)}
+                    onCheckedChange={(c) =>
+                      set(
+                        "defaultLeadStatuses",
+                        c
+                          ? [...form.defaultLeadStatuses, v]
+                          : form.defaultLeadStatuses.filter((x) => x !== v)
+                      )
+                    }
+                    data-testid={`acr-default-lead-${v}`}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Default Status Penanganan Chat</Label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Jika tidak ada yang dicentang, semua status percakapan diikutkan. Bisa diubah per
+              laporan.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ["ai_handled", "Ditangani AI"],
+                  ["needs_human", "Perlu Manusia"],
+                  ["closed", "Selesai"],
+                ] as const
+              ).map(([v, text]) => (
+                <label key={v} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.defaultChatStatuses.includes(v)}
+                    onCheckedChange={(c) =>
+                      set(
+                        "defaultChatStatuses",
+                        c
+                          ? [...form.defaultChatStatuses, v]
+                          : form.defaultChatStatuses.filter((x) => x !== v)
+                      )
+                    }
+                    data-testid={`acr-default-chat-${v}`}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Penerima Laporan Default</Label>
+            <label className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox checked disabled />
+              Super Admin / Owner Tenant (selalu menerima, tidak bisa dimatikan)
+            </label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Tambah penerima lain yang menerima notifikasi setiap laporan selesai. Bisa diubah
+              per laporan.
+            </p>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+              {(teamMembers ?? []).map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.defaultNotifyUserIds.includes(m.id)}
+                    onCheckedChange={(c) =>
+                      set(
+                        "defaultNotifyUserIds",
+                        c
+                          ? [...form.defaultNotifyUserIds, m.id]
+                          : form.defaultNotifyUserIds.filter((x) => x !== m.id)
+                      )
+                    }
+                  />
+                  {m.name ?? m.email}
+                  <span className="text-xs text-muted-foreground">({m.teamRole})</span>
+                </label>
+              ))}
+              {(teamMembers ?? []).length === 0 && (
+                <p className="text-xs text-muted-foreground">Belum ada anggota tim.</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-1 block">Aksi Default Setelah Laporan Selesai</Label>
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox checked disabled />
+                Simpan ke Dashboard KPI (selalu aktif)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.defaultGeneratePdf}
+                  onCheckedChange={(c) => set("defaultGeneratePdf", c === true)}
+                />
+                Generate PDF otomatis
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.defaultSendWhatsappPdf}
+                  onCheckedChange={(c) => set("defaultSendWhatsappPdf", c === true)}
+                />
+                Kirim PDF via WhatsApp ke penerima
+              </label>
+            </div>
           </div>
         </CardContent>
       </Card>

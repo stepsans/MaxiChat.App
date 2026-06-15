@@ -368,9 +368,8 @@ export default function Billing() {
                       </div>
                     </td>
                     <td className="px-3 py-2 text-right text-xs">
-                      <div className="tabular-nums">
-                        {fmtRp(r.breakdown.aiCharge)}
-                      </div>
+                      {/* AI no longer metered (prepaid wallet); token count is
+                          informational COGS only. */}
                       <div className="text-[11px] text-muted-foreground tabular-nums">
                         {fmtNum(r.usage.tokenUsage)} tok
                       </div>

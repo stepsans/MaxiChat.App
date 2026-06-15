@@ -13,6 +13,7 @@ import statusesRouter from "./statuses";
 import shortcutsRouter from "./shortcuts";
 import flowsRouter from "./flows";
 import adminRouter from "./admin";
+import platformAiAdminRouter from "./platform-ai";
 import plansAdminRouter from "./plans";
 import paymentConfigAdminRouter from "./payment-config";
 import taxConfigAdminRouter from "./tax-config";
@@ -43,6 +44,8 @@ import storageRouter from "./storage";
 import salesRouter from "./sales";
 import aiPipelineRouter from "./ai-pipeline";
 import acrRouter from "./acr";
+import analyticsV2Router from "./analytics-v2";
+import reportSchedulesRouter from "./report-schedules";
 import workboardRouter from "./workboard";
 import chatClassifierRouter from "./chat-classifier";
 import waOtpRouter from "./wa-otp";
@@ -95,6 +98,10 @@ router.use("/knowledge", knowledgeSyncRouter);
 router.use("/knowledge", knowledgeRouter);
 router.use("/settings", settingsRouter);
 router.use("/analytics", analyticsRouter);
+// Laporan & Jadwal (analytics v2) — /analytics/v2/* (no path overlap with the
+// legacy analytics routes above).
+router.use("/analytics", analyticsV2Router);
+router.use("/report-schedules", reportSchedulesRouter);
 // products-sync is mounted under /products so its routes (/products/sync-config,
 // /products/sync-run) sit alongside the existing product CRUD. Mounted BEFORE
 // productsRouter so the explicit /sync-* paths take priority over a CRUD
@@ -135,6 +142,7 @@ router.use(storageRouter);
 // Super-admin only. requireAdmin re-checks the DB so a user demoted
 // mid-session loses admin access on their next /admin/* call.
 router.use("/admin", requireAdmin, adminRouter);
+router.use("/admin", requireAdmin, platformAiAdminRouter);
 router.use("/admin", requireAdmin, plansAdminRouter);
 router.use("/admin", requireAdmin, paymentConfigAdminRouter);
 router.use("/admin", requireAdmin, taxConfigAdminRouter);

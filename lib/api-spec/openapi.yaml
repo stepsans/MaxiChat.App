@@ -20,6 +20,8 @@ tags:
     description: AI settings
   - name: analytics
     description: Analytics and reporting
+  - name: report-schedules
+    description: Scheduled report delivery (Laporan & Jadwal)
   - name: products
     description: Product catalog management
   - name: auth
@@ -1150,6 +1152,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/WalletSummary"
 
+  /billing/credit-wallet:
+    get:
+      operationId: getMyCreditWallet
+      tags: [billing]
+      summary: The tenant's prepaid AI-credit wallet summary (two buckets + runway)
+      responses:
+        "200":
+          description: Credit wallet summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditWalletView"
+
+  /billing/credit-wallet/usage:
+    get:
+      operationId: getMyCreditWalletUsage
+      tags: [billing]
+      summary: Recent AI usage charged to the credit wallet (per engine)
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+      responses:
+        "200":
+          description: Usage events, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditUsageEvent"
+
+  /billing/credit-wallet/ledger:
+    get:
+      operationId: getMyCreditWalletLedger
+      tags: [billing]
+      summary: Recent credit-wallet ledger entries (top-ups, usage, grants, expiries)
+      responses:
+        "200":
+          description: Ledger entries, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CreditLedgerEntry"
+
   /billing/change-plan:
     post:
       operationId: changeMyPlan
@@ -1350,6 +1403,203 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PricingConfig"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/platform-ai:
+    get:
+      operationId: adminGetPlatformAi
+      tags: [admin]
+      summary: Get the centralized platform AI engine config (owner only, key masked)
+      responses:
+        "200":
+          description: Platform AI config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAiConfigView"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: adminUpdatePlatformAi
+      tags: [admin]
+      summary: Update the platform AI engine config (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdatePlatformAiBody"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAiConfigView"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/platform-ai/test:
+    post:
+      operationId: adminTestPlatformAi
+      tags: [admin]
+      summary: Live connectivity test for the platform AI engine (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTestPlatformAiBody"
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAiTestResult"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/platform-ai/engine/{engine}:
+    put:
+      operationId: adminUpdatePlatformAiEngine
+      tags: [admin]
+      summary: Update one of the four platform AI engines (owner only)
+      parameters:
+        - name: engine
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [deepseek, gemini, openai, anthropic]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateEngineBody"
+      responses:
+        "200":
+          description: Updated engine list (priority-ordered)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlatformAiEngineView"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/platform-ai/engine/{engine}/test:
+    post:
+      operationId: adminTestPlatformAiEngine
+      tags: [admin]
+      summary: Live connectivity test for one platform AI engine (owner only)
+      parameters:
+        - name: engine
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [deepseek, gemini, openai, anthropic]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTestEngineBody"
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAiTestResult"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/platform-ai/margin:
+    get:
+      operationId: adminGetPlatformAiMargin
+      tags: [admin]
+      summary: Revenue vs COGS per engine + ledger reconciliation (owner only)
+      responses:
+        "200":
+          description: Margin view
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAiMarginView"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/platform-ai/reorder:
+    post:
+      operationId: adminReorderPlatformAiEngines
+      tags: [admin]
+      summary: Set the failover priority order of the four engines (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReorderEnginesBody"
+      responses:
+        "200":
+          description: Reordered engine list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlatformAiEngineView"
         "400":
           description: Invalid input
           content:
@@ -3691,6 +3941,272 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StorageUsage"
+
+  # ---------------------------------------------------------------------------
+  # Laporan & Jadwal (analytics v2) — unified reports dashboard endpoints.
+  # Namespaced under /analytics/v2 so the legacy /analytics/summary used by the
+  # old Dashboard/Analytics pages stays untouched.
+  # ---------------------------------------------------------------------------
+  /analytics/v2/summary:
+    get:
+      operationId: getAnalyticsV2Summary
+      tags: [analytics]
+      summary: KPI summary for the Ringkasan tab (period-aware)
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsV2Summary"
+
+  /analytics/v2/ai-performance:
+    get:
+      operationId: getAiPerformance
+      tags: [analytics]
+      summary: AI handling metrics + top escalation topics
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: AI performance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPerformance"
+
+  /analytics/v2/chat-history:
+    get:
+      operationId: getAnalyticsChatHistory
+      tags: [analytics]
+      summary: Filterable chat history list
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: channel, in: query, schema: { type: string } }
+        - { name: handledBy, in: query, schema: { type: string, enum: [all, ai, agent, escalated] } }
+        - { name: satisfaction, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [all, done, in_progress, unreplied] } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Chat history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatHistoryResult"
+
+  /analytics/v2/ai-insights:
+    get:
+      operationId: getAiInsights
+      tags: [analytics]
+      summary: AI insight narrative / anomaly detection / KB recommendations (cached)
+      parameters:
+        - { name: type, in: query, required: true, schema: { type: string, enum: [narrative, anomaly, kb_recommendations] } }
+        - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d] } }
+        - { name: refresh, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: AI insight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiInsightResponse"
+
+  /analytics/v2/next-actions:
+    get:
+      operationId: getNextActions
+      tags: [analytics]
+      summary: Contextual "what to do now" items computed from real data
+      parameters:
+        - { name: context, in: query, schema: { type: string, enum: [summary, ai, history, schedule] } }
+      responses:
+        "200":
+          description: Next actions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NextActionItem"
+
+  /report-schedules:
+    get:
+      operationId: listReportSchedules
+      tags: [report-schedules]
+      summary: List the owner's report schedules
+      responses:
+        "200":
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportSchedule"
+    post:
+      operationId: createReportSchedule
+      tags: [report-schedules]
+      summary: Create a report schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportScheduleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /report-schedules/{id}:
+    get:
+      operationId: getReportSchedule
+      tags: [report-schedules]
+      summary: Get a report schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateReportSchedule
+      tags: [report-schedules]
+      summary: Update a report schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportScheduleInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteReportSchedule
+      tags: [report-schedules]
+      summary: Delete a report schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /report-schedules/{id}/toggle:
+    patch:
+      operationId: toggleReportSchedule
+      tags: [report-schedules]
+      summary: Activate or deactivate a report schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportScheduleToggleInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSchedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /report-schedules/{id}/send-now:
+    post:
+      operationId: sendReportScheduleNow
+      tags: [report-schedules]
+      summary: Trigger an immediate send of a report schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "202":
+          description: Send started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /report-schedules/{id}/logs:
+    get:
+      operationId: listReportScheduleLogs
+      tags: [report-schedules]
+      summary: Delivery history for a report schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportScheduleLog"
 
   /chats/purge:
     post:
@@ -8381,6 +8897,88 @@ components:
           items:
             $ref: "#/components/schemas/WalletTransaction"
 
+    CreditWalletView:
+      type: object
+      description: Prepaid AI-credit wallet (SPEC BAGIAN 13.2). Credits, NOT Rupiah.
+      required:
+        [grantBalance, paidBalance, reserved, total, available, spentLast30d, percentRemaining, notice]
+      properties:
+        grantBalance:
+          type: integer
+          description: Plan allowance (Ember A), 0 if expired; spent first.
+        grantExpiresAt:
+          type: string
+          nullable: true
+        paidBalance:
+          type: integer
+          description: Purchased top-ups (Ember B); rollover, never reset.
+        paidExpiresAt:
+          type: string
+          nullable: true
+        reserved:
+          type: integer
+          description: Sum of in-flight call holds.
+        total:
+          type: integer
+          description: effective grant + paid.
+        available:
+          type: integer
+          description: total − reserved (spendable).
+        spentLast30d:
+          type: integer
+        estDaysLeft:
+          type: integer
+          nullable: true
+          description: Projected runway days from the 30-day burn (null = unknown).
+        percentRemaining:
+          type: integer
+          description: 0..100 of this period's starting balance.
+        notice:
+          type: string
+          enum: [ok, low, critical, empty]
+
+    CreditUsageEvent:
+      type: object
+      required: [createdAt, model, totalTokens, creditsCharged]
+      properties:
+        createdAt:
+          type: string
+        channelId:
+          type: integer
+          nullable: true
+        engine:
+          type: string
+          nullable: true
+        model:
+          type: string
+        totalTokens:
+          type: integer
+        creditsCharged:
+          type: integer
+
+    CreditLedgerEntry:
+      type: object
+      required: [id, delta, bucket, reason, balanceAfter, createdAt]
+      properties:
+        id:
+          type: integer
+        delta:
+          type: integer
+          description: "+ fill, − spend."
+        bucket:
+          type: string
+          enum: [grant, paid]
+        reason:
+          type: string
+          enum: [topup, usage, grant, expire, adjust]
+        engine:
+          type: string
+          nullable: true
+        balanceAfter:
+          type: integer
+        createdAt:
+          type: string
+
     PayInvoiceInput:
       type: object
       description: >-
@@ -9625,7 +10223,6 @@ components:
           dbPricePer500Mb,
           userPricePerUser,
           channelPricePer2,
-          aiPricePer100Tokens,
         ]
       properties:
         dbPricePer500Mb:
@@ -9637,9 +10234,6 @@ components:
         channelPricePer2:
           type: integer
           description: Rupiah per 2 channels per month.
-        aiPricePer100Tokens:
-          type: integer
-          description: Rupiah per 100 AI tokens per month.
 
     UpdatePricingInput:
       type: object
@@ -9648,7 +10242,6 @@ components:
           dbPricePer500Mb,
           userPricePerUser,
           channelPricePer2,
-          aiPricePer100Tokens,
         ]
       properties:
         dbPricePer500Mb:
@@ -9660,9 +10253,274 @@ components:
         channelPricePer2:
           type: integer
           minimum: 0
-        aiPricePer100Tokens:
+
+    PlatformAiEngineView:
+      type: object
+      description: One of the four centralized AI engines (masked credentials).
+      required: [engine, label, isEnabled, priority, creditPer1kToken, health, hasApiKey]
+      properties:
+        engine:
+          type: string
+          enum: [deepseek, gemini, openai, anthropic]
+        label:
+          type: string
+        baseUrl:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        isEnabled:
+          type: boolean
+        priority:
+          type: integer
+          description: 1..4 (1 = primary).
+        creditPer1kToken:
+          type: integer
+        health:
+          type: string
+          enum: [healthy, unhealthy, unknown]
+        unhealthyUntil:
+          type: string
+          nullable: true
+          description: Circuit-breaker window end; engine is skipped until this time.
+        lastError:
+          type: string
+          nullable: true
+        hasApiKey:
+          type: boolean
+        apiKeyMask:
+          type: string
+          nullable: true
+
+    PlatformAiConfigView:
+      type: object
+      description: Platform AI engine config (owner only). The API key is never returned in plaintext — only a mask.
+      required:
+        [engine, isActive, markupBps, creditPer1kTokenAnthropic, creditPer1kTokenGemini, minStopCredits, hasApiKey, updatedAt, autoFailover, autoFailback, unhealthyMinutes, bothFailedRetry, engines]
+      properties:
+        engine:
+          type: string
+          enum: [anthropic, gemini]
+          description: DEPRECATED single-engine field; use `engines` instead.
+        model:
+          type: string
+          nullable: true
+        baseUrl:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        markupBps:
+          type: integer
+          description: Markup in basis points (5000 = +50%).
+        creditPer1kTokenAnthropic:
+          type: integer
+        creditPer1kTokenGemini:
+          type: integer
+        minStopCredits:
+          type: integer
+        autoFailover:
+          type: boolean
+        autoFailback:
+          type: boolean
+        unhealthyMinutes:
+          type: integer
+          description: Circuit-breaker window in minutes.
+        bothFailedRetry:
+          type: boolean
+          description: Retry the whole engine list once after a short delay if all fail.
+        hasApiKey:
+          type: boolean
+        apiKeyMask:
+          type: string
+          nullable: true
+          description: Masked stored key, e.g. "sk-ant-…AB12".
+        updatedAt:
+          type: string
+        engines:
+          type: array
+          description: The four centralized engines, priority-ordered.
+          items:
+            $ref: "#/components/schemas/PlatformAiEngineView"
+
+    AdminUpdatePlatformAiBody:
+      type: object
+      properties:
+        engine:
+          type: string
+          enum: [anthropic, gemini]
+          description: DEPRECATED; the global update no longer changes per-engine credentials.
+        model:
+          type: string
+          nullable: true
+        baseUrl:
+          type: string
+          nullable: true
+        apiKey:
+          type: string
+          nullable: true
+          description: Omit to keep the stored key; empty string to clear it.
+        isActive:
+          type: boolean
+        markupBps:
           type: integer
           minimum: 0
+        creditPer1kTokenAnthropic:
+          type: integer
+          minimum: 1
+        creditPer1kTokenGemini:
+          type: integer
+          minimum: 1
+        minStopCredits:
+          type: integer
+          minimum: 0
+        autoFailover:
+          type: boolean
+        autoFailback:
+          type: boolean
+        unhealthyMinutes:
+          type: integer
+          minimum: 1
+        bothFailedRetry:
+          type: boolean
+
+    AdminUpdateEngineBody:
+      type: object
+      description: Upsert one engine's credentials/config (priority is set via reorder).
+      properties:
+        baseUrl:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        apiKey:
+          type: string
+          nullable: true
+          description: Omit to keep the stored key; empty string to clear it.
+        isEnabled:
+          type: boolean
+        creditPer1kToken:
+          type: integer
+          minimum: 1
+
+    AdminReorderEnginesBody:
+      type: object
+      required: [order]
+      properties:
+        order:
+          type: array
+          description: The four engine names in desired priority order (#1 first).
+          items:
+            type: string
+            enum: [deepseek, gemini, openai, anthropic]
+
+    AdminTestPlatformAiBody:
+      type: object
+      required: [engine]
+      properties:
+        engine:
+          type: string
+          enum: [anthropic, gemini]
+        apiKey:
+          type: string
+          nullable: true
+        baseUrl:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+
+    AdminTestEngineBody:
+      type: object
+      properties:
+        apiKey:
+          type: string
+          nullable: true
+        baseUrl:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+
+    PlatformAiTestResult:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+
+    PlatformAiEngineMargin:
+      type: object
+      required: [engine, calls, totalTokens, revenueCredits, costCredits, marginCredits, marginPct]
+      properties:
+        engine:
+          type: string
+        calls:
+          type: integer
+        totalTokens:
+          type: integer
+        revenueCredits:
+          type: integer
+          description: Credits charged to tenants (with markup).
+        costCredits:
+          type: integer
+          description: Un-marked-up base credits (provider-cost proxy).
+        marginCredits:
+          type: integer
+        marginPct:
+          type: integer
+
+    PlatformAiMarginView:
+      type: object
+      required: [perEngine, totals, revenueIdr, reconciliation]
+      properties:
+        perEngine:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlatformAiEngineMargin"
+        totals:
+          $ref: "#/components/schemas/PlatformAiEngineMarginTotals"
+        revenueIdr:
+          type: integer
+          description: Actual paid top-up revenue in whole Rupiah.
+        reconciliation:
+          $ref: "#/components/schemas/PlatformAiMarginReconciliation"
+
+    PlatformAiEngineMarginTotals:
+      type: object
+      required: [calls, totalTokens, revenueCredits, costCredits, marginCredits, marginPct]
+      properties:
+        calls:
+          type: integer
+        totalTokens:
+          type: integer
+        revenueCredits:
+          type: integer
+        costCredits:
+          type: integer
+        marginCredits:
+          type: integer
+        marginPct:
+          type: integer
+
+    PlatformAiMarginReconciliation:
+      type: object
+      required: [usageCredits, topupCredits, grantCredits, expireCredits]
+      properties:
+        usageCredits:
+          type: integer
+        topupCredits:
+          type: integer
+        grantCredits:
+          type: integer
+        expireCredits:
+          type: integer
 
     Plan:
       type: object
@@ -9931,15 +10789,13 @@ components:
 
     BillBreakdown:
       type: object
-      required: [dbCharge, userCharge, channelCharge, aiCharge, total]
+      required: [dbCharge, userCharge, channelCharge, total]
       properties:
         dbCharge:
           type: integer
         userCharge:
           type: integer
         channelCharge:
-          type: integer
-        aiCharge:
           type: integer
         total:
           type: integer
@@ -10023,7 +10879,7 @@ components:
     RevenueTrendPoint:
       type: object
       required:
-        [date, totalCharge, dbCharge, userCharge, channelCharge, aiCharge]
+        [date, totalCharge, dbCharge, userCharge, channelCharge]
       properties:
         date:
           type: string
@@ -10035,8 +10891,6 @@ components:
         userCharge:
           type: integer
         channelCharge:
-          type: integer
-        aiCharge:
           type: integer
 
     OwnerTrend:
@@ -11256,6 +12110,10 @@ components:
         isDefault:
           type: boolean
           description: "Whether this is the tenant's default channel (single per owner)"
+        picUserId:
+          type: integer
+          nullable: true
+          description: "Penanggung jawab channel: the team member accountable for this channel. Phone-typed replies (no per-message author) attribute their AI Chat Report KPI to this user. Null = none set."
         ownerPhone:
           type: string
           nullable: true
@@ -11300,6 +12158,10 @@ components:
         isDefault:
           type: boolean
           description: "Set true to make this the tenant's default channel"
+        picUserId:
+          type: integer
+          nullable: true
+          description: "Set the channel's penanggung jawab (team member id), or null to clear it. Must be a supervisor/agent under the owner, or the owner."
 
     TelegramConnect:
       type: object
@@ -11740,6 +12602,10 @@ components:
           weightAnswerQuality,
           weightComplaintHandling,
           weightMissedChat,
+          responseTimeSubweight,
+          consistencySubweight,
+          missedChatSubweight,
+          leadCoverageSubweight,
           slaExcellentMinutes,
           slaGoodMinutes,
           slaAcceptableMinutes,
@@ -11764,6 +12630,26 @@ components:
         weightAnswerQuality: { type: integer, minimum: 0, maximum: 100 }
         weightComplaintHandling: { type: integer, minimum: 0, maximum: 100 }
         weightMissedChat: { type: integer, minimum: 0, maximum: 100 }
+        responseTimeSubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of pure response time within Kecepatan Balas. With consistencySubweight must total 100."
+        consistencySubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of daily-active consistency within Kecepatan Balas."
+        missedChatSubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of missed chats within Chat Tak Terjawab. With leadCoverageSubweight must total 100."
+        leadCoverageSubweight:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: "Sub-weight of lead-status coverage within Chat Tak Terjawab."
         slaExcellentMinutes: { type: integer, minimum: 1 }
         slaGoodMinutes: { type: integer, minimum: 1 }
         slaAcceptableMinutes: { type: integer, minimum: 1 }
@@ -11784,6 +12670,29 @@ components:
         includeOwnerInEvaluation:
           type: boolean
           description: Evaluate the tenant owner as an agent too (testing / solo CS).
+        defaultLeadStatuses:
+          type: array
+          items:
+            type: string
+            enum: [lead, not_lead, unknown]
+          description: "Global default lead classes evaluated by new reports (Section 5b). Default [lead, unknown]."
+        defaultChatStatuses:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [ai_handled, needs_human, closed]
+          description: "Global default chat handling statuses for new reports. Null/empty = all statuses."
+        defaultGeneratePdf:
+          type: boolean
+          description: Default for the 'Generate PDF' action on new reports.
+        defaultSendWhatsappPdf:
+          type: boolean
+          description: Default for the 'Send PDF via WhatsApp' action on new reports.
+        defaultNotifyUserIds:
+          type: array
+          items: { type: integer }
+          description: Global default extra notification recipients (super admin is always notified).
         autoScheduleEnabled: { type: boolean }
         autoScheduleFrequency:
           type: string
@@ -11847,6 +12756,16 @@ components:
         includeOwner:
           type: boolean
           description: Override the tenant config's include-owner-in-evaluation for this report. Omitted = inherit config.
+        notifyUserIds:
+          type: array
+          items: { type: integer }
+          description: Extra notification recipients for this report (super admin always notified). Omitted = config default.
+        generatePdf:
+          type: boolean
+          description: Generate a PDF after the report completes. Omitted = config default.
+        sendWhatsappPdf:
+          type: boolean
+          description: Send the PDF via WhatsApp to recipients after completion. Omitted = config default.
 
     AcrJob:
       type: object
@@ -11880,6 +12799,43 @@ components:
           nullable: true
           description: Stored PDF URL once auto-generated for a scheduled job.
         pdfGeneratedAt: { type: string, format: date-time, nullable: true }
+        filterSnapshot:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AcrFilterSnapshot"
+          description: Analysis filters applied to this job, with channel/label display names resolved at creation. Null for pre-feature jobs.
+
+    AcrFilterSnapshot:
+      type: object
+      required: [leadStatuses, channels, customerLabels, chatStatuses, includeOwner]
+      properties:
+        leadStatuses:
+          type: array
+          items:
+            type: string
+            enum: [lead, not_lead, unknown]
+        channels:
+          type: array
+          items:
+            type: object
+            required: [id, label]
+            properties:
+              id: { type: integer }
+              label: { type: string }
+        customerLabels:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: integer }
+              name: { type: string }
+        chatStatuses:
+          type: array
+          items:
+            type: string
+            enum: [ai_handled, needs_human, closed]
+        includeOwner: { type: boolean }
 
     AcrJobList:
       type: object
@@ -11925,6 +12881,20 @@ components:
         totalComplaints: { type: integer }
         complaintsResolved: { type: integer }
         insufficientData: { type: boolean }
+        activeDays:
+          type: integer
+          description: Distinct days the agent sent a substantive human message.
+        workingDays:
+          type: integer
+          description: Mon–Sat days in the period (Sunday excluded).
+        consistencyPct:
+          type: number
+          description: active_days / working_days × 100.
+        totalContactsHandled: { type: integer }
+        contactsWithLeadStatus: { type: integer }
+        leadCoveragePct:
+          type: number
+          description: contacts_with_lead_status / total_contacts_handled × 100.
         grade:
           type: string
           enum: [A, B, C, D, E]
@@ -12212,6 +13182,219 @@ components:
         email: { type: string }
         teamRole: { type: string }
 
+    # --- Laporan & Jadwal (analytics v2) ---------------------------------------
+    ChannelBreakdownItem:
+      type: object
+      required: [channelId, channelName, type, count, pct]
+      properties:
+        channelId: { type: integer }
+        channelName: { type: string }
+        type: { type: string }
+        count: { type: integer }
+        pct: { type: number }
+
+    SatisfactionBreakdown:
+      type: object
+      required: [very_satisfied, satisfied, neutral, unsatisfied]
+      properties:
+        very_satisfied: { type: integer }
+        satisfied: { type: integer }
+        neutral: { type: integer }
+        unsatisfied: { type: integer }
+
+    AnalyticsV2Summary:
+      type: object
+      required:
+        [
+          totalChats,
+          totalChatsChange,
+          aiHandledRate,
+          aiHandledCount,
+          avgResponseTimeSeconds,
+          avgResponseTimeChange,
+          unrepliedCount,
+          channelBreakdown,
+          satisfactionBreakdown,
+          hasSatisfactionData,
+        ]
+      properties:
+        totalChats: { type: integer }
+        totalChatsChange: { type: number, description: Percent change vs previous period }
+        aiHandledRate: { type: number }
+        aiHandledCount: { type: integer }
+        avgResponseTimeSeconds: { type: integer }
+        avgResponseTimeChange: { type: number }
+        unrepliedCount: { type: integer }
+        channelBreakdown:
+          type: array
+          items: { $ref: "#/components/schemas/ChannelBreakdownItem" }
+        satisfactionBreakdown: { $ref: "#/components/schemas/SatisfactionBreakdown" }
+        hasSatisfactionData:
+          type: boolean
+          description: False when the tenant has no satisfaction ratings (UI shows empty state).
+
+    EscalationTopic:
+      type: object
+      required: [topic, count, escalationRate]
+      properties:
+        topic: { type: string }
+        count: { type: integer }
+        escalationRate: { type: number }
+
+    AiPerformance:
+      type: object
+      required:
+        [
+          resolvedByAi,
+          escalatedToAgent,
+          escalatedCount,
+          escalatedChange,
+          avgSessionLength,
+          tokensUsed,
+          tokensRemaining,
+          topEscalationTopics,
+        ]
+      properties:
+        resolvedByAi: { type: number }
+        escalatedToAgent: { type: number }
+        escalatedCount: { type: integer }
+        escalatedChange: { type: number }
+        avgSessionLength: { type: number }
+        tokensUsed: { type: integer }
+        tokensRemaining: { type: integer, description: -1 when unlimited (infinity owner / no cap) }
+        topEscalationTopics:
+          type: array
+          items: { $ref: "#/components/schemas/EscalationTopic" }
+
+    ChatHistoryItem:
+      type: object
+      required: [chatId, contactName, channelId, channelName, channelType, handledBy, status, startedAt]
+      properties:
+        chatId: { type: integer }
+        contactName: { type: string }
+        phoneNumber: { type: string, nullable: true }
+        channelId: { type: integer }
+        channelName: { type: string }
+        channelType: { type: string }
+        handledBy: { type: string, enum: [ai, agent, escalated] }
+        durationMinutes: { type: integer, nullable: true }
+        satisfaction: { type: string, nullable: true }
+        status: { type: string, enum: [done, in_progress, unreplied] }
+        startedAt: { type: string, format: date-time }
+        lastMessageAt: { type: string, format: date-time, nullable: true }
+
+    ChatHistoryResult:
+      type: object
+      required: [records, total, page, limit, hasMore]
+      properties:
+        records:
+          type: array
+          items: { $ref: "#/components/schemas/ChatHistoryItem" }
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        hasMore: { type: boolean }
+
+    AiInsightResponse:
+      type: object
+      required: [type, generatedAt, expiresAt, fromCache, content]
+      properties:
+        type: { type: string, enum: [narrative, anomaly, kb_recommendations] }
+        generatedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        fromCache: { type: boolean }
+        error: { type: string, nullable: true, description: Set when generation failed; content is empty. }
+        content:
+          type: object
+          additionalProperties: true
+          description: >-
+            Shape depends on type. narrative => {criticalIssue, opportunity,
+            positive, totalChatsAnalyzed}. anomaly => {anomalies: [...]}.
+            kb_recommendations => {recommendations: [...]}.
+
+    NextActionItem:
+      type: object
+      required: [severity, text]
+      properties:
+        severity: { type: string, enum: [red, yellow, blue] }
+        text: { type: string }
+        ctaText: { type: string, nullable: true }
+        ctaRoute: { type: string, nullable: true }
+
+    ReportScheduleInput:
+      type: object
+      required: [name, contentTypes, frequency, recipientEmails]
+      properties:
+        name: { type: string, maxLength: 100 }
+        contentTypes:
+          type: array
+          items:
+            type: string
+            enum: [kpi, ai_analysis, chat_history, trend]
+        frequency:
+          type: string
+          enum: [once, daily, weekly, monthly]
+        recurrenceDays:
+          type: array
+          nullable: true
+          items: { type: integer, minimum: 1, maximum: 7 }
+          description: Weekly only — ISO weekday numbers (1=Monday).
+        sendTime: { type: string, description: HH:mm in the schedule timezone }
+        timezone: { type: string }
+        recipientEmails:
+          type: array
+          items: { type: string }
+        isActive: { type: boolean }
+
+    ReportScheduleToggleInput:
+      type: object
+      required: [isActive]
+      properties:
+        isActive: { type: boolean }
+
+    ReportSchedule:
+      type: object
+      required:
+        [id, name, contentTypes, frequency, sendTime, timezone, recipientEmails, isActive, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        contentTypes:
+          type: array
+          items: { type: string }
+        frequency: { type: string, enum: [once, daily, weekly, monthly] }
+        recurrenceDays:
+          type: array
+          nullable: true
+          items: { type: integer }
+        sendTime: { type: string }
+        timezone: { type: string }
+        recipientEmails:
+          type: array
+          items: { type: string }
+        isActive: { type: boolean }
+        lastSentAt: { type: string, format: date-time, nullable: true }
+        lastSendStatus: { type: string, nullable: true }
+        lastSendError: { type: string, nullable: true }
+        nextScheduledAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    ReportScheduleLog:
+      type: object
+      required: [id, scheduleId, triggeredBy, status, recipientEmails, createdAt]
+      properties:
+        id: { type: integer }
+        scheduleId: { type: integer }
+        scheduleName: { type: string, nullable: true }
+        triggeredBy: { type: string, enum: [scheduler, manual] }
+        status: { type: string, enum: [pending, sent, failed] }
+        recipientEmails:
+          type: array
+          items: { type: string }
+        errorMessage: { type: string, nullable: true }
+        sentAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
     AcrScheduleInput:
       type: object
       required: [name, frequency, cutoffHour, cutoffMinute]
@@ -12241,6 +13424,29 @@ components:
         notifyUserIds:
           type: array
           items: { type: integer }
+        leadStatuses:
+          type: array
+          items:
+            type: string
+            enum: [lead, not_lead, unknown]
+          description: Manual lead classifications whose chats are analyzed. Empty/omitted = no restriction (all chats).
+        channelIds:
+          type: array
+          items: { type: integer }
+          description: Restrict analysis to these channels. Empty/omitted = all channels.
+        customerLabelIds:
+          type: array
+          items: { type: integer }
+          description: Restrict to chats whose contact carries one of these customer labels. Empty/omitted = no label filter.
+        chatStatuses:
+          type: array
+          items:
+            type: string
+            enum: [ai_handled, needs_human, closed]
+          description: Restrict to chats with one of these handling statuses. Empty/omitted = all statuses.
+        includeOwner:
+          type: boolean
+          description: Override the tenant config's include-owner-in-evaluation for this schedule. Omitted = inherit config.
         generatePdf: { type: boolean }
         sendWhatsappPdf: { type: boolean }
         isActive: { type: boolean }
@@ -12273,6 +13479,27 @@ components:
         notifyUserIds:
           type: array
           items: { type: integer }
+        leadStatuses:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [lead, not_lead, unknown]
+        channelIds:
+          type: array
+          nullable: true
+          items: { type: integer }
+        customerLabelIds:
+          type: array
+          nullable: true
+          items: { type: integer }
+        chatStatuses:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [ai_handled, needs_human, closed]
+        includeOwner: { type: boolean, nullable: true }
         generatePdf: { type: boolean }
         sendWhatsappPdf: { type: boolean }
         nextRunAt: { type: string, format: date-time }
