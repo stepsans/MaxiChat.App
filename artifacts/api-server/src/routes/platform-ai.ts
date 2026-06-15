@@ -23,6 +23,7 @@ import {
   updateEngine,
   reorderEngines,
   testEngineConnection,
+  markHealthy,
   PlatformAiEngineError,
 } from "../lib/platform-ai-engine";
 import { getPlatformAiMarginSafe } from "../lib/platform-ai-margin";
@@ -152,13 +153,16 @@ router.post("/platform-ai/engine/:engine/test", async (req, res): Promise<void> 
       return;
     }
     const b = parsed.data;
-    res.json(
-      await testEngineConnection(req.params.engine, {
-        apiKey: b.apiKey,
-        baseUrl: b.baseUrl,
-        model: b.model,
-      }),
-    );
+    const result = await testEngineConnection(req.params.engine, {
+      apiKey: b.apiKey,
+      baseUrl: b.baseUrl,
+      model: b.model,
+    });
+    // A successful manual test marks the engine healthy (clears any tripped
+    // breaker) so the dashboard badge reflects it immediately — useful for
+    // standby fallback engines that live traffic hasn't exercised yet.
+    if (result.ok) await markHealthy(req.params.engine);
+    res.json(result);
   } catch (err) {
     req.log.error({ err }, "adminTestPlatformAiEngine failed");
     res.status(500).json({ error: "Internal server error" });

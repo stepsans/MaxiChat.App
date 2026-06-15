@@ -108,6 +108,10 @@ export const reportAiCacheTable = pgTable(
     // 'anomaly_detection' | 'insight_narrative' | 'kb_recommendations' (may be period-suffixed).
     cacheKey: varchar("cache_key", { length: 255 }).notNull(),
     content: jsonb("content").$type<ReportAiCacheContent>().notNull(),
+    // Friendly label of the AI engine that produced this insight (e.g.
+    // "Gemini · gemini-2.5-flash"), so the owner can compare engines. Null for
+    // rows generated before the centralized-engine switch.
+    engine: varchar("engine", { length: 96 }),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },

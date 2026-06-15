@@ -4135,6 +4135,7 @@ export const GetAiInsightsResponse = zod.object({
   "expiresAt": zod.coerce.date(),
   "fromCache": zod.boolean(),
   "error": zod.string().nullish().describe('Set when generation failed; content is empty.'),
+  "engine": zod.string().nullish().describe('Friendly label of the AI engine that produced this insight (e.g. \"Gemini · gemini-2.5-flash\"). Null on error. Lets the owner compare which centralized engine generated each analysis.'),
   "content": zod.record(zod.string(), zod.unknown()).describe('Shape depends on type. narrative => {criticalIssue, opportunity, positive, totalChatsAnalyzed}. anomaly => {anomalies: [...]}. kb_recommendations => {recommendations: [...]}.')
 })
 

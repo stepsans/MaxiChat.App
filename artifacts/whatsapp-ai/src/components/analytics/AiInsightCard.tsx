@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Sparkles, RefreshCw, Share2, AlertTriangle } from "lucide-react";
+import { EngineBadge } from "./EngineBadge";
 
 type InsightPeriod = "today" | "7d" | "30d";
 
@@ -48,10 +49,11 @@ export function AiInsightCard({ period }: { period: InsightPeriod }) {
     <Card className="border-purple-200 dark:border-purple-900/60">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-sm">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
             <Sparkles className="h-4 w-4 text-purple-500" />
             Insight AI
             {data?.fromCache && <span className="text-xs font-normal text-muted-foreground">(tersimpan)</span>}
+            <EngineBadge engine={data?.engine} />
           </CardTitle>
           <div className="flex items-center gap-1">
             <Button

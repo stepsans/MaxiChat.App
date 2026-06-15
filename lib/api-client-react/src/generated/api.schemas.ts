@@ -5076,6 +5076,8 @@ export interface AiInsightResponse {
   fromCache: boolean;
   /** Set when generation failed; content is empty. */
   error?: string | null;
+  /** Friendly label of the AI engine that produced this insight (e.g. "Gemini · gemini-2.5-flash"). Null on error. Lets the owner compare which centralized engine generated each analysis. */
+  engine?: string | null;
   /** Shape depends on type. narrative => {criticalIssue, opportunity, positive, totalChatsAnalyzed}. anomaly => {anomalies: [...]}. kb_recommendations => {recommendations: [...]}. */
   content: AiInsightResponseContent;
 }

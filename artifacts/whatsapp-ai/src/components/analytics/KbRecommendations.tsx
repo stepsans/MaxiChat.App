@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookOpen, Plus } from "lucide-react";
+import { EngineBadge } from "./EngineBadge";
 
 type InsightPeriod = "today" | "7d" | "30d";
 
@@ -27,9 +28,10 @@ export function KbRecommendations({ period }: { period: InsightPeriod }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
           <BookOpen className="h-4 w-4 text-muted-foreground" />
           Rekomendasi tambahan Knowledge Base
+          <EngineBadge engine={data?.engine} />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
