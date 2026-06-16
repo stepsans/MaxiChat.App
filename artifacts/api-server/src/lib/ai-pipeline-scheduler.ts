@@ -29,7 +29,18 @@ export async function scheduleCutoffLogs(
   }
 
   if (rows.length > 0) {
-    await db.insert(aiPipelineCutoffLogsTable).values(rows).onConflictDoNothing();
+    // Dedupe on (pipeline_id, scheduled_time) — this path runs at the end of
+    // every analysis run, so without an explicit conflict target it would keep
+    // inserting duplicate pending logs and trigger a runaway loop.
+    await db
+      .insert(aiPipelineCutoffLogsTable)
+      .values(rows)
+      .onConflictDoNothing({
+        target: [
+          aiPipelineCutoffLogsTable.pipelineId,
+          aiPipelineCutoffLogsTable.scheduledTime,
+        ],
+      });
   }
 }
 

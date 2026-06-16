@@ -695,6 +695,8 @@ async function serializeEntry(e: typeof aiPipelineEntriesTable.$inferSelect, wit
     nextFollowupAt: e.nextFollowupAt?.toISOString() ?? null,
     doNotFollowup: e.doNotFollowup,
     doNotFollowupReason: e.doNotFollowupReason,
+    cooled: e.cooled,
+    cooledAt: e.cooledAt?.toISOString() ?? null,
     scoreHistory: e.scoreHistory,
     enteredAt: e.enteredAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),

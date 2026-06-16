@@ -12481,6 +12481,12 @@ components:
         doNotFollowupReason:
           type: string
           nullable: true
+        cooled:
+          type: boolean
+        cooledAt:
+          type: string
+          format: date-time
+          nullable: true
         scoreHistory:
           type: array
           items:

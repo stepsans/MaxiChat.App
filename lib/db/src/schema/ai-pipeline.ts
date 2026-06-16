@@ -198,6 +198,11 @@ export const aiPipelineEntriesTable = pgTable(
     doNotFollowup: boolean("do_not_followup").notNull().default(false),
     doNotFollowupReason: text("do_not_followup_reason"),
     doNotFollowupAt: timestamp("do_not_followup_at", { withTimezone: true }),
+    // Lead has gone cold: a later analysis scored it below the pipeline's
+    // threshold. The entry stays in the pipeline (sticky) but is flagged so the
+    // team can see/filter cooled leads. Cleared when it scores back above.
+    cooled: boolean("cooled").notNull().default(false),
+    cooledAt: timestamp("cooled_at", { withTimezone: true }),
     // Array of { score, date, cutoff_window } objects.
     scoreHistory: jsonb("score_history")
       .$type<Array<{ score: number; date: string; cutoffWindow: string }>>()
@@ -268,6 +273,13 @@ export const aiPipelineCutoffLogsTable = pgTable(
   (t) => [
     index("ai_pipeline_cutoff_logs_pipeline_idx").on(t.pipelineId),
     index("ai_pipeline_cutoff_logs_status_time_idx").on(t.status, t.scheduledTime),
+    // One cutoff log per (pipeline, scheduled_time). Without this, the
+    // onConflictDoNothing() in scheduleCutoffLogs never dedupes and the
+    // re-schedule-every-run path explodes into a runaway insert loop.
+    uniqueIndex("ai_pipeline_cutoff_logs_pipeline_time_unique").on(
+      t.pipelineId,
+      t.scheduledTime
+    ),
   ]
 );
 

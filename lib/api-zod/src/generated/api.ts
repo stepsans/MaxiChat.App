@@ -6419,6 +6419,8 @@ export const ListAiPipelineEntriesResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),
@@ -6468,6 +6470,8 @@ export const GetAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),
@@ -6517,6 +6521,8 @@ export const UpdateAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),
@@ -6566,6 +6572,8 @@ export const DoNotFollowupAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),

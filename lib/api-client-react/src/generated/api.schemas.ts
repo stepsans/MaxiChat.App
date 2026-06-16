@@ -4364,6 +4364,8 @@ export interface AiPipelineEntry {
   nextFollowupAt?: string | null;
   doNotFollowup?: boolean;
   doNotFollowupReason?: string | null;
+  cooled?: boolean;
+  cooledAt?: string | null;
   scoreHistory?: AiPipelineEntryScoreHistoryItem[];
   followupLogs?: AiPipelineFollowupLog[];
   enteredAt: string;

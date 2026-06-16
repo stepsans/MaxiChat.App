@@ -44,6 +44,62 @@ interface AiAnalysisResult {
 
 // ─── Prompt builder ────────────────────────────────────────────────────────────
 
+// Output contract appended to EVERY prompt (default or custom) so the parser at
+// the call site never breaks, regardless of what the tenant writes. The 6
+// dimensions + ranges stay fixed so `scoreThreshold` keeps a consistent meaning
+// across pipelines even when the scoring *emphasis* is customized.
+function buildOutputContract(): string {
+  return `Beri skor berdasarkan 6 dimensi:
+1. buying_signal (0-30): Seberapa kuat sinyal pembelian (tanya harga, stok, minta penawaran, dll)
+2. urgency (0-20): Tingkat urgensi (butuh segera, ada deadline, dll)
+3. engagement (0-20): Seberapa aktif dan responsif dalam percakapan
+4. commitment (0-15): Tanda-tanda komitmen (setuju harga, minta invoice, konfirmasi, dll)
+5. product_fit (0-10): Seberapa cocok produk dengan kebutuhan yang disampaikan
+6. barrier_adjustment (-5 to +5): Hambatan seperti keluhan harga, kompetitor, dll (negatif = hambatan besar)
+
+Total skor = jumlah semua dimensi (0-100).
+
+Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
+{
+  "score": <integer 0-100>,
+  "scoreBreakdown": {
+    "buying_signal": <integer 0-30>,
+    "urgency": <integer 0-20>,
+    "engagement": <integer 0-20>,
+    "commitment": <integer 0-15>,
+    "product_fit": <integer 0-10>,
+    "barrier_adjustment": <integer -5 to 5>
+  },
+  "status": "<hot|warm|cold>",
+  "estimatedValue": <integer dalam Rupiah, 0 jika tidak ada indikasi>,
+  "productInterest": "<produk/jasa yang diminati, kosong jika tidak ada>",
+  "recommendation": "<rekomendasi tindak lanjut, 1-2 kalimat>",
+  "scoreReason": "<alasan skor dalam 1-2 kalimat>",
+  "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
+  "contextHash": "<3-5 kata kunci topik utama percakapan, dipisah koma>"
+}`;
+}
+
+// Wraps a tenant's custom prompt: their text drives the scoring *persona &
+// emphasis*, while the conversation transcript and the fixed JSON output
+// contract are appended by the system so output stays parseable.
+function buildCustomPrompt(
+  customPrompt: string,
+  transcript: string,
+  contactName: string | null,
+  channelType: string | null
+): string {
+  return `${customPrompt.trim()}
+
+Nama kontak: ${contactName ?? "Tidak diketahui"}
+Platform: ${channelType ?? "WhatsApp"}
+
+TRANSKIP PERCAKAPAN:
+${transcript}
+
+${buildOutputContract()}`;
+}
+
 function buildAnalysisPrompt(
   transcript: string,
   contactName: string | null,
@@ -152,6 +208,9 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
     const { client, model, provider, ownerUserId } = await resolveAiClient(pipeline.ownerUserId);
 
     // Find all chats in these channels that have had messages in the window.
+    // When directionFilter is on, a chat only qualifies if it received an
+    // INBOUND message (customer → you) in the window — outbound-only chats are
+    // skipped so the pipeline focuses on prospects who actually replied.
     const activeChats = await db
       .selectDistinct({ chatId: chatMessagesTable.chatId })
       .from(chatMessagesTable)
@@ -160,7 +219,10 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
         and(
           inArray(chatsTable.channelId, channelIds),
           gte(chatMessagesTable.createdAt, windowStart),
-          lte(chatMessagesTable.createdAt, windowEnd)
+          lte(chatMessagesTable.createdAt, windowEnd),
+          ...(pipeline.directionFilter
+            ? [eq(chatMessagesTable.direction, "inbound")]
+            : [])
         )
       );
 
@@ -221,6 +283,7 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           windowStart,
           windowEnd,
           channelType: channelTypeMap.get(chat.channelId) ?? null,
+          customPrompt: pipeline.customPrompt,
           client,
           model,
           provider,
@@ -326,12 +389,13 @@ async function analyzeChat(opts: {
   windowStart: Date;
   windowEnd: Date;
   channelType: string | null;
+  customPrompt: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any;
   model: string;
   provider: string;
 }): Promise<AiAnalysisResult | null> {
-  const { chat, windowStart, windowEnd, channelType, client, model, provider, ownerUserId } = opts;
+  const { chat, windowStart, windowEnd, channelType, customPrompt, client, model, provider, ownerUserId } = opts;
 
   // Load messages in the window.
   const messages = await db
@@ -364,7 +428,12 @@ async function analyzeChat(opts: {
     })
     .join("\n");
 
-  const prompt = buildAnalysisPrompt(transcript, chat.contactName, channelType);
+  // A tenant-supplied custom prompt overrides the default scoring persona; the
+  // system still appends the transcript + fixed JSON contract so output parses.
+  // Empty/blank custom prompt → fall back to the hardcoded default (no change).
+  const prompt = customPrompt && customPrompt.trim().length > 0
+    ? buildCustomPrompt(customPrompt, transcript, chat.contactName, channelType)
+    : buildAnalysisPrompt(transcript, chat.contactName, channelType);
 
   // Call AI.
   const completion = await (client.chat.completions.create as Function)({
@@ -497,6 +566,9 @@ async function applyPipelineEntryRules(opts: {
         productInterest: analysis.productInterest ?? existingEntry.productInterest,
         analysisId: analysis.id,
         scoreHistory: newHistory,
+        // Score recovered to/above threshold → lead is warm again.
+        cooled: false,
+        cooledAt: null,
         updatedAt: new Date(),
       })
       .where(eq(aiPipelineEntriesTable.id, existingEntry.id));
@@ -508,14 +580,22 @@ async function applyPipelineEntryRules(opts: {
     return { entered: true, entryId: existingEntry.id };
   }
 
-  // Case 3: Existing entry + score below threshold → update score history only, no pipeline flag.
+  // Case 3: Existing entry + score below threshold. The entry stays in the
+  // pipeline (sticky) but is flagged as cooled so the team can see/filter leads
+  // that have gone cold. Preserve the original cooledAt if already cooled.
   const newHistory = [
     ...((existingEntry.scoreHistory as typeof scoreHistoryItem[]) ?? []),
     scoreHistoryItem,
   ].slice(-10);
 
   await db.update(aiPipelineEntriesTable)
-    .set({ currentScore: analysis.score, scoreHistory: newHistory, updatedAt: new Date() })
+    .set({
+      currentScore: analysis.score,
+      scoreHistory: newHistory,
+      cooled: true,
+      cooledAt: existingEntry.cooled ? existingEntry.cooledAt : new Date(),
+      updatedAt: new Date(),
+    })
     .where(eq(aiPipelineEntriesTable.id, existingEntry.id));
 
   return { entered: false, entryId: existingEntry.id };

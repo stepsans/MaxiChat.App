@@ -65,6 +65,7 @@ import {
   Save,
   Check,
   GripVertical,
+  Snowflake,
   LayoutGrid,
   BarChart3,
   Settings2,
@@ -967,6 +968,12 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
             </div>
             <div className="flex flex-col items-end gap-1.5 shrink-0">
               {scoreBadge(entry.currentScore)}
+              {entry.cooled && (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300">
+                  <Snowflake className="w-3 h-3" />
+                  Mendingin
+                </span>
+              )}
               {colInfo ? (
                 <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium"
                   style={{ color: colInfo.color, borderColor: colInfo.color + "40", background: colInfo.color + "15" }}>
@@ -1698,6 +1705,12 @@ function EntryCard({
               <span className="text-[10px] font-semibold text-rose-600 flex items-center gap-0.5">
                 <Clock className="w-3 h-3" />
                 Terlambat
+              </span>
+            )}
+            {entry.cooled && (
+              <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300">
+                <Snowflake className="w-3 h-3" />
+                Mendingin
               </span>
             )}
           </div>
