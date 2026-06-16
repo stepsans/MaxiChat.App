@@ -29,7 +29,7 @@ const ENGINE_LABELS: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Claude",
   platform: "Mesin platform",
-  replit: "OpenAI (Replit)",
+  replit: "OpenAI",
   openrouter: "OpenRouter",
 };
 
