@@ -2,7 +2,6 @@ import { useGetAiPerformance, getGetAiPerformanceQueryKey } from "@workspace/api
 import { InfoBar } from "./InfoBar";
 import { KpiCard } from "./KpiCard";
 import { NextActionBox } from "./NextActionBox";
-import { EscalationTopics } from "./EscalationTopics";
 import { AiInsightCard } from "./AiInsightCard";
 import { AnomalyList } from "./AnomalyList";
 import { KbRecommendations } from "./KbRecommendations";
@@ -23,7 +22,7 @@ export function AiAnalysisTab({ period, from, to }: { period: PeriodKey; from?: 
     <div className="space-y-4">
       <InfoBar
         dismissKey="ai"
-        text="Menampilkan seberapa efektif AI menangani percakapan — tingkat penyelesaian, topik yang dieskalasi ke agent, dan rekomendasi perbaikan. Ini tentang performa AI dalam melayani customer Anda, bukan tentang AI itu sendiri."
+        text="Menampilkan seberapa efektif AI menangani percakapan — tingkat penyelesaian, eskalasi ke agent, dan rekomendasi perbaikan. Ini tentang performa AI dalam melayani customer Anda, bukan tentang AI itu sendiri."
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -49,8 +48,6 @@ export function AiAnalysisTab({ period, from, to }: { period: PeriodKey; from?: 
           loading={isLoading}
         />
       </div>
-
-      <EscalationTopics topics={data?.topEscalationTopics} loading={isLoading} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <AiInsightCard period={insightPeriod} />

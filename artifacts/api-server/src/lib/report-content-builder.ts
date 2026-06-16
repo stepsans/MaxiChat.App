@@ -86,7 +86,6 @@ export async function buildReportContent(opts: {
 
   if (opts.contentTypes.includes("ai_analysis")) {
     const ai = await computeAiPerformance(opts.ownerUserId, p);
-    const topics = ai.topEscalationTopics.map((t) => `<li>${escapeHtml(t.topic)} — ${t.count} (${t.escalationRate}%)</li>`).join("");
     sections.push(`
       <h3 style="margin:24px 0 8px">Analisa Percakapan AI</h3>
       <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -94,8 +93,7 @@ export async function buildReportContent(opts: {
         ${row("Dieskalasi ke agent", `${ai.escalatedToAgent}% (${ai.escalatedCount})`)}
         ${row("Avg. panjang sesi", `${ai.avgSessionLength} pesan`)}
         ${row("Token AI dipakai", ai.tokensUsed.toLocaleString("id-ID"))}
-      </table>
-      ${topics ? `<p style="margin:12px 0 4px;font-weight:600">Topik paling sering dieskalasi:</p><ul style="margin:0;padding-left:18px">${topics}</ul>` : ""}`);
+      </table>`);
     textParts.push(
       `ANALISA AI\nDiselesaikan AI: ${ai.resolvedByAi}%\nDieskalasi: ${ai.escalatedToAgent}% (${ai.escalatedCount})\nAvg sesi: ${ai.avgSessionLength} pesan\nToken: ${ai.tokensUsed}`,
     );
