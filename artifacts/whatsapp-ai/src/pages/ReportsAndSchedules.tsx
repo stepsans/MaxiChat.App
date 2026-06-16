@@ -4,6 +4,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
 import { PeriodPicker, type PeriodState } from "@/components/analytics/PeriodPicker";
+import { ChannelFilter } from "@/components/analytics/ChannelFilter";
 import { SummaryTab } from "@/components/analytics/SummaryTab";
 import { AiAnalysisTab } from "@/components/analytics/AiAnalysisTab";
 import { ChatHistoryTab } from "@/components/analytics/ChatHistoryTab";
@@ -35,6 +36,7 @@ export default function ReportsAndSchedules() {
   const sp = useMemo(() => new URLSearchParams(search), [search]);
   const urlTab = sp.get("tab") as TabKey | null;
   const urlPeriod = sp.get("period") as PeriodKey | null;
+  const urlChannel = Number(sp.get("channel"));
 
   const [tab, setTab] = useState<TabKey>(urlTab && TAB_KEYS.has(urlTab) ? urlTab : "summary");
   const [period, setPeriod] = useState<PeriodState>({
@@ -42,6 +44,10 @@ export default function ReportsAndSchedules() {
     from: sp.get("from") ?? undefined,
     to: sp.get("to") ?? undefined,
   });
+  // undefined = "Semua channel" (every channel the viewer can access).
+  const [channel, setChannel] = useState<number | undefined>(
+    Number.isInteger(urlChannel) && urlChannel > 0 ? urlChannel : undefined,
+  );
 
   // Keep tab in sync when the URL changes externally (e.g. a redirect or a
   // next-action link that points at ?tab=...).
@@ -50,7 +56,7 @@ export default function ReportsAndSchedules() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlTab]);
 
-  const syncUrl = (nextTab: TabKey, nextPeriod: PeriodState) => {
+  const syncUrl = (nextTab: TabKey, nextPeriod: PeriodState, nextChannel: number | undefined) => {
     const next = new URLSearchParams();
     next.set("tab", nextTab);
     next.set("period", nextPeriod.period);
@@ -58,17 +64,22 @@ export default function ReportsAndSchedules() {
       if (nextPeriod.from) next.set("from", nextPeriod.from);
       if (nextPeriod.to) next.set("to", nextPeriod.to);
     }
+    if (nextChannel != null) next.set("channel", String(nextChannel));
     navigate(`/analytics?${next.toString()}`, { replace: true });
   };
 
   const onTabChange = (v: string) => {
     const t = v as TabKey;
     setTab(t);
-    syncUrl(t, period);
+    syncUrl(t, period, channel);
   };
   const onPeriodChange = (v: PeriodState) => {
     setPeriod(v);
-    syncUrl(tab, v);
+    syncUrl(tab, v, channel);
+  };
+  const onChannelChange = (v: number | undefined) => {
+    setChannel(v);
+    syncUrl(tab, period, v);
   };
 
   // Only the from/to that form a complete custom range get passed downstream.
@@ -102,7 +113,11 @@ export default function ReportsAndSchedules() {
           <h1 className="text-base font-semibold">Laporan &amp; Jadwal</h1>
           <p className="text-xs text-muted-foreground">Data diperbarui setiap 15 menit · WIB</p>
         </div>
-        <PeriodPicker value={period} onChange={onPeriodChange} />
+        <div className="flex items-center gap-2">
+          {/* Channel scope applies to the analysis tabs, not the schedule tab. */}
+          {tab !== "schedule" && <ChannelFilter value={channel} onChange={onChannelChange} />}
+          <PeriodPicker value={period} onChange={onPeriodChange} />
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={onTabChange} className="flex min-h-0 flex-1 flex-col">
@@ -118,13 +133,13 @@ export default function ReportsAndSchedules() {
 
         <div className="min-h-0 flex-1 overflow-auto p-6">
           <TabsContent value="summary" className="mt-0">
-            <SummaryTab period={periodArgs.period} from={periodArgs.from} to={periodArgs.to} />
+            <SummaryTab period={periodArgs.period} from={periodArgs.from} to={periodArgs.to} channel={channel} />
           </TabsContent>
           <TabsContent value="ai" className="mt-0">
-            <AiAnalysisTab period={periodArgs.period} from={periodArgs.from} to={periodArgs.to} />
+            <AiAnalysisTab period={periodArgs.period} from={periodArgs.from} to={periodArgs.to} channel={channel} />
           </TabsContent>
           <TabsContent value="history" className="mt-0">
-            <ChatHistoryTab period={periodArgs.period} from={periodArgs.from} to={periodArgs.to} />
+            <ChatHistoryTab period={periodArgs.period} from={periodArgs.from} to={periodArgs.to} channel={channel} />
           </TabsContent>
           <TabsContent value="schedule" className="mt-0">
             <ScheduleTab />

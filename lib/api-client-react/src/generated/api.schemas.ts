@@ -5723,6 +5723,10 @@ export type GetAnalyticsV2SummaryParams = {
 period?: GetAnalyticsV2SummaryPeriod;
 from?: string;
 to?: string;
+/**
+ * Restrict to a single channel id. Omit for all channels the viewer can access.
+ */
+channel?: number;
 };
 
 export type GetAnalyticsV2SummaryPeriod = typeof GetAnalyticsV2SummaryPeriod[keyof typeof GetAnalyticsV2SummaryPeriod];
@@ -5739,6 +5743,10 @@ export type GetAiPerformanceParams = {
 period?: GetAiPerformancePeriod;
 from?: string;
 to?: string;
+/**
+ * Restrict to a single channel id. Omit for all channels the viewer can access.
+ */
+channel?: number;
 };
 
 export type GetAiPerformancePeriod = typeof GetAiPerformancePeriod[keyof typeof GetAiPerformancePeriod];

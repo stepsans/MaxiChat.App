@@ -3956,6 +3956,7 @@ paths:
         - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
         - { name: from, in: query, schema: { type: string } }
         - { name: to, in: query, schema: { type: string } }
+        - { name: channel, in: query, description: "Restrict to a single channel id. Omit for all channels the viewer can access.", schema: { type: integer } }
       responses:
         "200":
           description: Summary
@@ -3973,6 +3974,7 @@ paths:
         - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
         - { name: from, in: query, schema: { type: string } }
         - { name: to, in: query, schema: { type: string } }
+        - { name: channel, in: query, description: "Restrict to a single channel id. Omit for all channels the viewer can access.", schema: { type: integer } }
       responses:
         "200":
           description: AI performance

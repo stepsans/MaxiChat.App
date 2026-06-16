@@ -4029,7 +4029,8 @@ export const GetStorageUsageResponse = zod.object({
 export const GetAnalyticsV2SummaryQueryParams = zod.object({
   "period": zod.enum(['today', '7d', '30d', 'custom']).optional(),
   "from": zod.coerce.string().optional(),
-  "to": zod.coerce.string().optional()
+  "to": zod.coerce.string().optional(),
+  "channel": zod.coerce.number().optional().describe('Restrict to a single channel id. Omit for all channels the viewer can access.')
 })
 
 export const GetAnalyticsV2SummaryResponse = zod.object({
@@ -4063,7 +4064,8 @@ export const GetAnalyticsV2SummaryResponse = zod.object({
 export const GetAiPerformanceQueryParams = zod.object({
   "period": zod.enum(['today', '7d', '30d', 'custom']).optional(),
   "from": zod.coerce.string().optional(),
-  "to": zod.coerce.string().optional()
+  "to": zod.coerce.string().optional(),
+  "channel": zod.coerce.number().optional().describe('Restrict to a single channel id. Omit for all channels the viewer can access.')
 })
 
 export const GetAiPerformanceResponse = zod.object({

@@ -9,8 +9,8 @@ import type { PeriodKey } from "./format";
 
 type InsightPeriod = "today" | "7d" | "30d";
 
-export function AiAnalysisTab({ period, from, to }: { period: PeriodKey; from?: string; to?: string }) {
-  const params = { period, ...(from ? { from } : {}), ...(to ? { to } : {}) };
+export function AiAnalysisTab({ period, from, to, channel }: { period: PeriodKey; from?: string; to?: string; channel?: number }) {
+  const params = { period, ...(from ? { from } : {}), ...(to ? { to } : {}), ...(channel != null ? { channel } : {}) };
   const { data, isLoading } = useGetAiPerformance(params, {
     query: { queryKey: getGetAiPerformanceQueryKey(params) },
   });
@@ -48,6 +48,12 @@ export function AiAnalysisTab({ period, from, to }: { period: PeriodKey; from?: 
           loading={isLoading}
         />
       </div>
+
+      {channel != null && (
+        <p className="text-xs text-muted-foreground">
+          Insight AI, deteksi anomali & rekomendasi KB di bawah dihitung untuk semua channel (bukan channel terpilih).
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <AiInsightCard period={insightPeriod} />
