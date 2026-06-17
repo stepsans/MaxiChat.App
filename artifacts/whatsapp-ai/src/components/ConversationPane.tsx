@@ -347,6 +347,24 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
     const id = requestAnimationFrame(() => replyRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [chatId]);
+  // Prefill the compose box from a `?text=` query param so deep-links into a
+  // chat (e.g. the AI Pipeline "Kirim via WhatsApp" follow-up action) land with
+  // the drafted message ready to review and send. Consumed once per chat open,
+  // then stripped from the URL so navigating away and back can't re-inject it.
+  useEffect(() => {
+    if (!chatId) return;
+    const params = new URLSearchParams(window.location.search);
+    const prefill = params.get("text");
+    if (!prefill) return;
+    setReply(prefill);
+    params.delete("text");
+    const qs = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (qs ? `?${qs}` : "")
+    );
+  }, [chatId]);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [sendingContact, setSendingContact] = useState(false);

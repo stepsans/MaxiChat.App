@@ -69,6 +69,7 @@ import type {
   AiPipelineDashboardStats,
   AiPipelineEntry,
   AiPipelineEntryList,
+  AiPipelineGenerateFollowupResponse,
   AiProviderConfig,
   AiProviderInput,
   AiProviderTestInput,
@@ -19809,6 +19810,78 @@ export const useDoNotFollowupAiPipelineEntry = <TError = ErrorType<ErrorResponse
         TContext
       > => {
       return useMutation(getDoNotFollowupAiPipelineEntryMutationOptions(options));
+    }
+
+export const getGenerateFollowupAiPipelineEntryUrl = (id: number,
+    eid: number,) => {
+
+
+
+
+  return `/api/ai-pipelines/${id}/entries/${eid}/generate-followup`
+}
+
+/**
+ * @summary Generate (without sending) an AI follow-up message for a pipeline entry
+ */
+export const generateFollowupAiPipelineEntry = async (id: number,
+    eid: number, options?: RequestInit): Promise<AiPipelineGenerateFollowupResponse> => {
+
+  return customFetch<AiPipelineGenerateFollowupResponse>(getGenerateFollowupAiPipelineEntryUrl(id,eid),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGenerateFollowupAiPipelineEntryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateFollowupAiPipelineEntry>>, TError,{id: number;eid: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateFollowupAiPipelineEntry>>, TError,{id: number;eid: number}, TContext> => {
+
+const mutationKey = ['generateFollowupAiPipelineEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateFollowupAiPipelineEntry>>, {id: number;eid: number}> = (props) => {
+          const {id,eid} = props ?? {};
+
+          return  generateFollowupAiPipelineEntry(id,eid,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateFollowupAiPipelineEntryMutationResult = NonNullable<Awaited<ReturnType<typeof generateFollowupAiPipelineEntry>>>
+
+    export type GenerateFollowupAiPipelineEntryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate (without sending) an AI follow-up message for a pipeline entry
+ */
+export const useGenerateFollowupAiPipelineEntry = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateFollowupAiPipelineEntry>>, TError,{id: number;eid: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateFollowupAiPipelineEntry>>,
+        TError,
+        {id: number;eid: number},
+        TContext
+      > => {
+      return useMutation(getGenerateFollowupAiPipelineEntryMutationOptions(options));
     }
 
 export const getGetAiPipelineDashboardStatsUrl = (id: number,) => {

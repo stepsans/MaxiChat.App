@@ -28,7 +28,10 @@ import {
   useDeleteAiPipeline,
   useListChannels,
   useListCustomerLabels,
+  useOpenChatByPhone,
+  useGenerateFollowupAiPipelineEntry,
   getGetAiPipelineQueryKey,
+  getListChatsQueryKey,
   getGetAiPipelineEntryQueryKey,
   getGetAiPipelineAnalysisQueryKey,
   getListAiPipelinesQueryKey,
@@ -866,10 +869,58 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
   });
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  // Draft message to drop into the chat composer once the chat opens. Stashed
+  // in a ref (not closed over) so the single mutation's onSuccess knows which
+  // button fired it: the header/Detail icons open the chat empty, while
+  // "Kirim via WhatsApp" carries the follow-up template.
+  const pendingDraft = useRef("");
+  const openChat = useOpenChatByPhone({
+    mutation: {
+      onSuccess: (result) => {
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        const draft = pendingDraft.current;
+        pendingDraft.current = "";
+        onClose();
+        navigate(
+          `/chats/${result.chatId}${draft ? `?text=${encodeURIComponent(draft)}` : ""}`
+        );
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal membuka chat",
+          description:
+            err instanceof Error ? err.message : "Periksa koneksi WhatsApp Anda.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   const [tab, setTab] = useState<EntryModalTab>("detail");
   const [template, setTemplate] = useState("");
   const templateInit = useRef(false);
+
+  // Ask the AI to draft a follow-up grounded in this contact's conversation,
+  // then drop it into the composer for review. Mark templateInit so the
+  // "seed from last AI message" effect can't clobber the fresh draft.
+  const generateFollowup = useGenerateFollowupAiPipelineEntry({
+    mutation: {
+      onSuccess: (res) => {
+        templateInit.current = true;
+        setTemplate(res.message);
+        toast({ title: "Pesan follow-up dibuat AI." });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal membuat pesan",
+          description: err instanceof Error ? err.message : "Coba lagi sebentar.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
   const [editingStatus, setEditingStatus] = useState(false);
 
   const { mutate: doNotFollowup, isPending: blocking } = useDoNotFollowupAiPipelineEntry({
@@ -907,10 +958,14 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
 
   const displayName = entry.contactName ?? entry.contactPhone;
   const bgColor = avatarColor(displayName);
-  const waPhone = entry.contactPhone.replace(/[^0-9]/g, "").replace(/^0/, "62");
-  const waLink = template.trim()
-    ? `https://wa.me/${waPhone}?text=${encodeURIComponent(template.trim())}`
-    : `https://wa.me/${waPhone}`;
+  // Open this contact's conversation inside MaxiChat (resolving/creating the
+  // chat by phone) instead of bouncing out to the WhatsApp app. An optional
+  // draft is prefilled into the composer via the chat route's ?text= param.
+  function openCustomerChat(draft?: string) {
+    if (openChat.isPending) return;
+    pendingDraft.current = draft?.trim() ?? "";
+    openChat.mutate({ data: { phoneNumber: entry!.contactPhone } });
+  }
 
   const scoreChartData = (entry.scoreHistory ?? []).map((h) => ({
     label: h.cutoffWindow ?? (h.date ? new Date(h.date).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : ""),
@@ -954,10 +1009,10 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                 <button type="button" onClick={copyPhone} className="text-muted-foreground hover:text-foreground" title="Salin nomor">
                   <Copy className="w-3 h-3" />
                 </button>
-                <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noopener noreferrer"
-                  className="text-green-600 hover:text-green-700" title="Buka WhatsApp">
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                <button type="button" onClick={() => openCustomerChat()} disabled={openChat.isPending}
+                  className="text-green-600 hover:text-green-700 disabled:opacity-50" title="Buka chat di MaxiChat">
+                  <MessageSquare className="w-3 h-3" />
+                </button>
               </div>
               {entry.channelType ? (
                 <div className="flex items-center gap-1 mt-0.5">
@@ -1084,14 +1139,15 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                     >
                       <Copy className="w-3.5 h-3.5" />
                     </button>
-                    <a
-                      href={`https://wa.me/${entry.contactPhone.replace(/[^0-9]/g, "").replace(/^0/, "62")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-green-600 hover:text-green-700"
+                    <button
+                      type="button"
+                      onClick={() => openCustomerChat()}
+                      disabled={openChat.isPending}
+                      className="text-green-600 hover:text-green-700 disabled:opacity-50"
+                      title="Buka chat di MaxiChat"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                      <MessageSquare className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   {entry.channelType ? (
                     <div className="flex items-center gap-2">
@@ -1509,12 +1565,28 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-medium">Pesan WhatsApp</p>
-                    {aiTemplate && template !== aiTemplate ? (
-                      <button type="button" className="text-[10px] text-primary hover:underline"
-                        onClick={() => setTemplate(aiTemplate)}>
-                        Reset ke pesan AI terakhir
+                    <div className="flex items-center gap-2">
+                      {aiTemplate && template !== aiTemplate ? (
+                        <button type="button" className="text-[10px] text-primary hover:underline"
+                          onClick={() => setTemplate(aiTemplate)}>
+                          Reset ke pesan AI terakhir
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => generateFollowup.mutate({ id: pipelineId, eid: entry.id })}
+                        disabled={generateFollowup.isPending}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline disabled:opacity-50"
+                        title="Buatkan pesan follow-up dengan AI sesuai percakapan"
+                      >
+                        {generateFollowup.isPending ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3 h-3" />
+                        )}
+                        {generateFollowup.isPending ? "Membuat…" : "Buat dengan AI"}
                       </button>
-                    ) : null}
+                    </div>
                   </div>
                   <Textarea value={template} onChange={(e) => setTemplate(e.target.value)}
                     placeholder="Tulis pesan follow up manual, atau gunakan pesan AI terakhir di bawah…"
@@ -1528,11 +1600,11 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                 </div>
 
                 {/* WA send button */}
-                <a href={waLink} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 rounded-md text-sm font-medium h-9 px-4 bg-green-600 hover:bg-green-700 text-white transition-colors w-full">
-                  <Smartphone className="w-4 h-4" />
-                  Kirim via WhatsApp
-                </a>
+                <button type="button" onClick={() => openCustomerChat(template)} disabled={openChat.isPending}
+                  className="flex items-center justify-center gap-2 rounded-md text-sm font-medium h-9 px-4 bg-green-600 hover:bg-green-700 text-white transition-colors w-full disabled:opacity-60">
+                  <Send className="w-4 h-4" />
+                  {openChat.isPending ? "Membuka chat…" : "Kirim via WhatsApp"}
+                </button>
 
                 {/* Follow-up log */}
                 {logs.length === 0 ? (

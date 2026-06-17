@@ -6477,6 +6477,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ai-pipelines/{id}/entries/{eid}/generate-followup:
+    post:
+      operationId: generateFollowupAiPipelineEntry
+      tags: [ai-pipeline]
+      summary: Generate (without sending) an AI follow-up message for a pipeline entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Generated follow-up message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineGenerateFollowupResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ai-pipelines/{id}/dashboard-stats:
     get:
       operationId: getAiPipelineDashboardStats
@@ -12411,6 +12453,13 @@ components:
           type: integer
         pageSize:
           type: integer
+
+    AiPipelineGenerateFollowupResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
 
     AiPipelineFollowupLog:
       type: object

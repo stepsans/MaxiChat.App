@@ -165,7 +165,7 @@ async function sendFollowup(entryId: number): Promise<void> {
 
 // ─── AI follow-up generation ───────────────────────────────────────────────────
 
-async function generateFollowupMessage(
+export async function generateFollowupMessage(
   entry: typeof aiPipelineEntriesTable.$inferSelect,
   pipeline: typeof aiPipelinesTable.$inferSelect
 ): Promise<string | null> {

@@ -6595,6 +6595,19 @@ export const DoNotFollowupAiPipelineEntryResponse = zod.object({
 
 
 /**
+ * @summary Generate (without sending) an AI follow-up message for a pipeline entry
+ */
+export const GenerateFollowupAiPipelineEntryParams = zod.object({
+  "id": zod.coerce.number(),
+  "eid": zod.coerce.number()
+})
+
+export const GenerateFollowupAiPipelineEntryResponse = zod.object({
+  "message": zod.string()
+})
+
+
+/**
  * @summary Get dashboard stats for a pipeline
  */
 export const GetAiPipelineDashboardStatsParams = zod.object({

@@ -23,6 +23,7 @@ import {
   CreateAiPipelineBody,
 } from "@workspace/api-zod";
 import { scheduleCutoffLogs } from "../lib/ai-pipeline-scheduler";
+import { generateFollowupMessage } from "../lib/ai-pipeline-followup";
 import { resolveAiClient } from "../lib/ai-provider";
 
 const router = Router();
@@ -869,6 +870,31 @@ router.post("/:id/entries/:eid/do-not-followup", async (req: Request, res: Respo
     .returning();
 
   res.json(await serializeEntry(updated, true));
+});
+
+// Generate (but do NOT send) an AI follow-up message for this entry, grounded
+// in the contact's recent conversation. The UI drops the result into the
+// follow-up composer for the operator to review/edit before sending.
+router.post("/:id/entries/:eid/generate-followup", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  const eid = parseInt(String(req.params.eid), 10);
+  if (isNaN(id) || isNaN(eid)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const entry = await db.query.aiPipelineEntriesTable.findFirst({
+    where: and(eq(aiPipelineEntriesTable.id, eid), eq(aiPipelineEntriesTable.pipelineId, id))
+  });
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+
+  const message = await generateFollowupMessage(entry, pipeline);
+  if (!message) { res.status(502).json({ error: "Gagal membuat pesan follow-up. Coba lagi." }); return; }
+
+  res.json({ message });
 });
 
 // ─── Prompt versions ─────────────────────────────────────────────────────────

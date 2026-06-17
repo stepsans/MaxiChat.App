@@ -4330,6 +4330,10 @@ export interface AiPipelineAnalysisList {
   pageSize: number;
 }
 
+export interface AiPipelineGenerateFollowupResponse {
+  message: string;
+}
+
 export interface AiPipelineFollowupLog {
   id: number;
   entryId: number;
