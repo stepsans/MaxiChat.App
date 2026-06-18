@@ -125,7 +125,13 @@
       "Bash(ls artifacts/mobile/assets/images/)",
       "Bash(git -C /home/runner/workspace status --short)",
       "Bash(git -C /home/runner/workspace stash push -- artifacts/api-server/src/lib/sales-insight-build.ts)",
-      "Bash(git -C /home/runner/workspace stash list)"
+      "Bash(git -C /home/runner/workspace stash list)",
+      "Bash(printenv)",
+      "Bash(printenv NODE_ENV)",
+      "Bash(ps -eo pid,ppid,etime,args)",
+      "Bash(kill 754 753 733 352 153)",
+      "Bash(pkill -f \"api-server run start\")",
+      "Bash(ps -eo pid,args)"
     ]
   }
 }

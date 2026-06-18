@@ -6,7 +6,6 @@ import {
   usersTable,
   subscriptionsTable,
   emailOtpTable,
-  platformSettingsTable,
 } from "@workspace/db";
 import { getSessionUserId, getEffectiveOwnerUserId } from "../lib/auth";
 import { requestEmailOtp, verifyEmailOtp, resendEmailOtp } from "../lib/email-otp";
@@ -19,32 +18,10 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-// Fallback OTP for owner/admin accounts (no email is sent for owners). Defaults
-// to the historical "161712"; set OWNER_FALLBACK_OTP in production to a strong
-// secret value to rotate this away from a publicly-known code. Both the web
-// (/otp/verify) and mobile (/mobile-login) owner paths use it.
-const OWNER_FALLBACK_OTP = process.env.OWNER_FALLBACK_OTP ?? "161712";
-
 const otpLimit = rateLimit({
   windowMs: 3600_000, limit: 15, standardHeaders: "draft-7", legacyHeaders: false,
   message: { error: "Terlalu banyak permintaan. Coba lagi dalam 1 jam." },
 });
-
-async function isOwnerEmail(email: string): Promise<boolean> {
-  const normalizedEmail = email.toLowerCase().trim();
-  try {
-    const [row] = await db.select().from(platformSettingsTable)
-      .where(eq(platformSettingsTable.key, "owner_email")).limit(1);
-    const ownerEmail = row?.value?.toLowerCase().trim();
-    if (ownerEmail && ownerEmail === normalizedEmail) return true;
-  } catch {
-    // platform_settings table may not exist yet — fall through to role check
-  }
-  // Always treat role=admin users as owners regardless of owner_email setting
-  const [user] = await db.select({ role: usersTable.role })
-    .from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
-  return user?.role === "admin";
-}
 
 async function setSession(req: import("express").Request, userId: number, role: string, teamRole: string): Promise<void> {
   await new Promise<void>((resolve, reject) =>
@@ -84,11 +61,6 @@ router.post("/otp/request", otpLimit, async (req, res): Promise<void> => {
     const purpose: "login" | "signup" = req.body?.purpose === "signup" ? "signup" : "login";
     if (!email || !email.includes("@")) { res.status(400).json({ error: "Email tidak valid." }); return; }
 
-    // Owner: no email sent, just acknowledge
-    if (await isOwnerEmail(email)) {
-      res.json({ ok: true, expiresAt: new Date(Date.now() + 600_000).toISOString() }); return;
-    }
-
     if (purpose === "login") {
       const [user] = await db.select({ status: usersTable.status, emailVerifiedAt: usersTable.emailVerifiedAt })
         .from(usersTable).where(eq(usersTable.email, email)).limit(1);
@@ -122,21 +94,6 @@ router.post("/otp/verify", otpLimit, async (req, res): Promise<void> => {
     const otp = String(req.body?.otp ?? "").trim();
     const purpose: "login" | "signup" = req.body?.purpose === "signup" ? "signup" : "login";
     if (!email || !otp) { res.status(400).json({ error: "Email dan OTP wajib diisi." }); return; }
-
-    // Owner: fixed OTP 161712
-    if (await isOwnerEmail(email)) {
-      if (otp !== OWNER_FALLBACK_OTP) { res.status(401).json({ error: "Kode OTP salah." }); return; }
-      let [owner] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-      if (!owner) {
-        const [n] = await db.insert(usersTable).values({
-          email, role: "admin", status: "active", teamRole: "super_admin", emailVerifiedAt: new Date(),
-        }).returning();
-        owner = n;
-      }
-      await setSession(req, owner.id, owner.role, owner.teamRole);
-      res.json(serializeUser(owner));
-      return;
-    }
 
     const result = await verifyEmailOtp(email, otp, purpose);
     if (!result.ok) { res.status(401).json({ error: result.error }); return; }
@@ -390,15 +347,6 @@ router.post("/mobile-login", async (req, res): Promise<void> => {
     const email = String(req.body?.email ?? "").toLowerCase().trim();
     const otp = String(req.body?.otp ?? "").trim();
     if (!email || !otp) { res.status(400).json({ error: "Email dan OTP wajib diisi" }); return; }
-
-    if (await isOwnerEmail(email)) {
-      if (otp !== OWNER_FALLBACK_OTP) { res.status(401).json({ error: "Kode OTP salah" }); return; }
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-      if (!user) { res.status(401).json({ error: "Akun tidak ditemukan" }); return; }
-      const label = typeof req.body?.deviceLabel === "string" ? req.body.deviceLabel.slice(0, 80) : null;
-      const token = await createMobileToken(user.id, label);
-      res.json({ token, user: serializeUser(user) }); return;
-    }
 
     const result = await verifyEmailOtp(email, otp, "login");
     if (!result.ok) { res.status(401).json({ error: result.error }); return; }
