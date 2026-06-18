@@ -2259,6 +2259,106 @@ paths:
               schema:
                 $ref: "#/components/schemas/Chat"
 
+  /chats/{id}/mute:
+    put:
+      operationId: muteChat
+      tags: [chats]
+      summary: Mute or unmute a chat's notifications until a timestamp
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MuteChatInput"
+      responses:
+        "200":
+          description: Updated chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+  /chats/{id}/block:
+    put:
+      operationId: blockChat
+      tags: [chats]
+      summary: Block or unblock the chat's contact on WhatsApp
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockChatInput"
+      responses:
+        "200":
+          description: Updated chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+  /chats/{id}/location:
+    post:
+      operationId: sendLocationToChat
+      tags: [chats]
+      summary: Send a geo-location pin to the chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendLocationInput"
+      responses:
+        "200":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+
+  /chats/{id}/contact:
+    post:
+      operationId: sendContactToChat
+      tags: [chats]
+      summary: Send a contact card (vCard) to the chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendContactInput"
+      responses:
+        "200":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+
   /chats/{id}/labels:
     put:
       operationId: setChatLabels
@@ -9199,6 +9299,12 @@ components:
           type: integer
         profilePicUrl:
           type: ["string", "null"]
+        mutedUntil:
+          type: ["string", "null"]
+          description: ISO timestamp until which notifications are muted; null = not muted.
+        isBlocked:
+          type: boolean
+          description: Whether the contact is currently blocked on WhatsApp.
         createdAt:
           type: string
         assignedUserId:
@@ -9347,6 +9453,25 @@ components:
           type: integer
         profilePicUrl:
           type: ["string", "null"]
+        mutedUntil:
+          type: ["string", "null"]
+          description: ISO timestamp until which notifications are muted; null = not muted.
+        isBlocked:
+          type: boolean
+          description: Whether the contact is currently blocked on WhatsApp.
+        presence:
+          type: ["object", "null"]
+          description: >
+            Best-effort live presence from WhatsApp, populated after the chat is
+            opened (the server subscribes on first fetch and reads it on the next
+            poll). Null when unknown / not yet received.
+          properties:
+            status:
+              type: string
+              enum: [available, unavailable, composing, recording]
+            lastSeen:
+              type: ["integer", "null"]
+              description: Unix epoch seconds of the contact's last-seen, when shared.
         createdAt:
           type: string
         assignedUserId:
@@ -9431,6 +9556,49 @@ components:
         customerCode:
           type: ["string", "null"]
           description: Customer code (kode customer), entered manually in the chat Info tab.
+
+    MuteChatInput:
+      type: object
+      required: [mutedUntil]
+      properties:
+        mutedUntil:
+          type: ["string", "null"]
+          format: date-time
+          description: ISO timestamp until which the chat is muted; null to unmute.
+
+    BlockChatInput:
+      type: object
+      required: [blocked]
+      properties:
+        blocked:
+          type: boolean
+          description: True to block the contact on WhatsApp, false to unblock.
+
+    SendLocationInput:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+        name:
+          type: string
+          description: Optional place name shown with the pin.
+        address:
+          type: string
+          description: Optional address line shown with the pin.
+
+    SendContactInput:
+      type: object
+      required: [name, phoneNumber]
+      properties:
+        name:
+          type: string
+          description: Display name of the contact being shared.
+        phoneNumber:
+          type: string
+          description: Phone number of the contact (digits / +; server normalises into the vCard).
 
     BulkChatUpdateInput:
       type: object
@@ -9773,7 +9941,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, stock, stockOnHand, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
+      required: [id, code, name, category, description, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, stock, stockOnHand, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -9783,6 +9951,9 @@ components:
           type: string
         category:
           type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+          description: "Free-text product description (deskripsi). Public/customer-safe."
         price:
           type: integer
           description: "Harga Pricelist — public price shown to customers"
@@ -9841,6 +10012,8 @@ components:
           type: string
           minLength: 1
         category:
+          type: ["string", "null"]
+        description:
           type: ["string", "null"]
         price:
           type: integer

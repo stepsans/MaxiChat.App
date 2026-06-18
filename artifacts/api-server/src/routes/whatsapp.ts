@@ -115,6 +115,88 @@ const MAX_RECONNECT_RETRIES = 10;
 
 const channelCtxs = new Map<number, ChannelCtx>();
 
+// ───────────────────────────────────────────────────────────────────────────
+// Live presence (online / typing / last-seen)
+//
+// Baileys only emits presence.update for a jid AFTER we presenceSubscribe to it,
+// and only while the socket is open. We keep the latest presence per
+// (channel, jid) in memory and let the chat detail endpoint subscribe on open +
+// read it on the next poll. Best-effort and transient — never persisted.
+// ───────────────────────────────────────────────────────────────────────────
+
+export type ChatPresenceStatus =
+  | "available"
+  | "unavailable"
+  | "composing"
+  | "recording";
+
+type StoredPresence = {
+  status: ChatPresenceStatus;
+  lastSeen: number | null;
+  at: number;
+};
+
+const presenceStore = new Map<string, StoredPresence>();
+const presenceKey = (channelId: number, jid: string) => `${channelId}:${jid}`;
+
+// "online"/typing states go stale fast — if we haven't heard an update in 45s
+// treat the contact as offline so a sticky "online" doesn't linger forever.
+const PRESENCE_FRESH_MS = 45_000;
+
+export function getChatPresence(
+  channelId: number,
+  jid: string,
+): { status: ChatPresenceStatus; lastSeen: number | null } | null {
+  const p = presenceStore.get(presenceKey(channelId, jid));
+  if (!p) return null;
+  if (p.status !== "unavailable" && Date.now() - p.at > PRESENCE_FRESH_MS) {
+    return { status: "unavailable", lastSeen: p.lastSeen };
+  }
+  return { status: p.status, lastSeen: p.lastSeen };
+}
+
+export async function subscribeChatPresence(
+  channelId: number,
+  jid: string,
+): Promise<void> {
+  const sock = getSockForChannel(channelId);
+  if (!sock) return;
+  try {
+    await sock.presenceSubscribe(jid);
+  } catch {
+    // best-effort; socket may have dropped between check and call
+  }
+}
+
+// Fold a raw Baileys presence.update payload into the per-channel store.
+function recordPresenceUpdate(
+  channelId: number,
+  id: string,
+  presences: Record<string, { lastKnownPresence?: string; lastSeen?: number }> | undefined,
+): void {
+  if (!presences) return;
+  // For a DM the participant key is the contact's own jid; fall back to the
+  // first entry for safety.
+  const entry = presences[id] ?? Object.values(presences)[0];
+  if (!entry) return;
+  const lk = entry.lastKnownPresence;
+  const status: ChatPresenceStatus =
+    lk === "composing"
+      ? "composing"
+      : lk === "recording"
+        ? "recording"
+        : lk === "available"
+          ? "available"
+          : "unavailable";
+  const prev = presenceStore.get(presenceKey(channelId, id));
+  presenceStore.set(presenceKey(channelId, id), {
+    status,
+    lastSeen:
+      typeof entry.lastSeen === "number" ? entry.lastSeen : prev?.lastSeen ?? null,
+    at: Date.now(),
+  });
+}
+
 function getCtxByChannel(channelId: number, userId: number): ChannelCtx {
   let c = channelCtxs.get(channelId);
   if (!c) {
@@ -258,6 +340,7 @@ export async function disconnectChannelRuntime(
       ctx.sock.ev.removeAllListeners("connection.update");
       ctx.sock.ev.removeAllListeners("contacts.upsert");
       ctx.sock.ev.removeAllListeners("contacts.update");
+      ctx.sock.ev.removeAllListeners("presence.update");
       ctx.sock.ev.removeAllListeners("chats.upsert");
       ctx.sock.ev.removeAllListeners("chats.update");
     } catch {}
@@ -549,6 +632,7 @@ export async function sendMediaToJid(
   caption?: string,
   filename?: string,
   channelId?: number,
+  ptt?: boolean,
 ): Promise<string | null> {
   // Send from the chat's OWN channel when a channelId is supplied, so a
   // multi-channel tenant doesn't leak a media message out of the primary
@@ -578,7 +662,7 @@ export async function sendMediaToJid(
     sent = await sock.sendMessage(jid, {
       audio: buffer,
       mimetype: mimeType,
-      ptt: false,
+      ptt: ptt ?? false,
     });
   } else {
     sent = await sock.sendMessage(jid, {
@@ -990,6 +1074,35 @@ export async function sendContactToJid(
     contacts: {
       displayName: contactName,
       contacts: [{ vcard }],
+    },
+  });
+  return sent?.key?.id ?? null;
+}
+
+// Send a geo-location pin to a chat over its OWN channel (mirrors
+// sendContactToJid). Returns the WhatsApp message id, or throws if the
+// channel socket isn't connected.
+export async function sendLocationToJid(
+  userId: number,
+  jid: string,
+  latitude: number,
+  longitude: number,
+  name: string | undefined,
+  address: string | undefined,
+  channelId?: number,
+): Promise<string | null> {
+  const sock =
+    channelId != null
+      ? getSockForChannel(channelId)
+      : ((await getPrimaryCtxForUser(await resolveOwnerUserId(userId)))?.sock ??
+        null);
+  if (!sock) throw new Error("WhatsApp is not connected");
+  const sent = await sock.sendMessage(jid, {
+    location: {
+      degreesLatitude: latitude,
+      degreesLongitude: longitude,
+      ...(name ? { name } : {}),
+      ...(address ? { address } : {}),
     },
   });
   return sent?.key?.id ?? null;
@@ -3711,6 +3824,17 @@ async function startBaileys(userId: number, channelId: number) {
     sock.ev.on("contacts.upsert", handleContacts);
     sock.ev.on("contacts.update", handleContacts);
 
+    // Live presence for chats the operator currently has open (subscribed via
+    // the chat detail endpoint). Transient + best-effort; never persisted.
+    sock.ev.on("presence.update", ({ id, presences }) => {
+      if (myEpoch !== ctx.epoch) return;
+      try {
+        recordPresenceUpdate(channelId, id, presences as any);
+      } catch {
+        // ignore malformed payloads
+      }
+    });
+
     const handleChatMeta = async (
       updates: Array<{ id?: string } & Record<string, unknown>>,
     ) => {
@@ -4166,6 +4290,7 @@ router.post("/disconnect", async (req, res): Promise<void> => {
         ctx.sock.ev.removeAllListeners("connection.update");
         ctx.sock.ev.removeAllListeners("contacts.upsert");
         ctx.sock.ev.removeAllListeners("contacts.update");
+        ctx.sock.ev.removeAllListeners("presence.update");
         ctx.sock.ev.removeAllListeners("chats.upsert");
         ctx.sock.ev.removeAllListeners("chats.update");
       } catch {}

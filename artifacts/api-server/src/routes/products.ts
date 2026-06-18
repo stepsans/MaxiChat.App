@@ -10,7 +10,10 @@ import { resolveOwnerUserId } from "../lib/seed";
 import { refreshChecklist } from "../lib/onboarding";
 import { saveTenantMedia } from "../lib/tenant-storage";
 import { checkStorageQuota } from "../lib/storage-enforce";
-import { requireSupervisorOrAbove } from "../lib/team-permissions";
+import {
+  requireSupervisorOrAbove,
+  getCurrentTeamRole,
+} from "../lib/team-permissions";
 import { requirePermission } from "../lib/role-permissions";
 import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import {
@@ -70,22 +73,42 @@ const fileUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
+// Internal pricing tiers are operator-confidential and must never reach an
+// agent (or any customer-facing surface). We strip them by nulling the fields
+// (keeping the response shape identical to the OpenAPI contract) for callers
+// who aren't supervisor-or-above. Stock figures stay — the agent app is allowed
+// to display stock; only the tier prices are withheld.
 function serialize(
   p: typeof productsTable.$inferSelect,
-  channelIds: number[]
+  channelIds: number[],
+  includeInternalPricing: boolean
 ) {
   return {
     ...p,
+    priceSilver: includeInternalPricing ? p.priceSilver : null,
+    priceGold: includeInternalPricing ? p.priceGold : null,
+    pricePlatinum: includeInternalPricing ? p.pricePlatinum : null,
+    priceReseller: includeInternalPricing ? p.priceReseller : null,
+    priceDistributor: includeInternalPricing ? p.priceDistributor : null,
     channelIds,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };
 }
 
+// Tier prices are visible only to supervisor-and-above (the catalog managers).
+async function callerCanSeeInternalPricing(req: Request): Promise<boolean> {
+  const userId = req.session.userId;
+  if (userId == null) return false;
+  const role = await getCurrentTeamRole(userId);
+  return role === "super_admin" || role === "supervisor";
+}
+
 const ProductBody = z.object({
   code: z.string().trim().min(1, "Kode wajib diisi"),
   name: z.string().trim().min(1, "Nama wajib diisi"),
   category: z.string().trim().nullable().optional(),
+  description: z.string().trim().nullable().optional(),
   price: z.number().int().nonnegative(),
   priceSilver: z.number().int().nonnegative().nullable().optional(),
   priceGold: z.number().int().nonnegative().nullable().optional(),
@@ -126,6 +149,7 @@ function bodyToInsert(b: z.infer<typeof ProductBody>) {
     code: b.code.trim(),
     name: b.name.trim(),
     category: norm(b.category),
+    description: norm(b.description),
     price: b.price,
     priceSilver: num(b.priceSilver),
     priceGold: num(b.priceGold),
@@ -174,7 +198,12 @@ router.get("/", async (req, res): Promise<void> => {
       "product",
       rows.map((r) => r.id)
     );
-    res.json(rows.map((r) => serialize(r, joins.get(r.id) ?? [])));
+    const includeInternalPricing = await callerCanSeeInternalPricing(req);
+    res.json(
+      rows.map((r) =>
+        serialize(r, joins.get(r.id) ?? [], includeInternalPricing)
+      )
+    );
   } catch (err) {
     req.log.error({ err }, "Failed to list products");
     res.status(500).json({ error: "Internal server error" });
@@ -224,7 +253,8 @@ router.post("/", async (req, res): Promise<void> => {
       } catch {
         /* best-effort */
       }
-      res.status(201).json(serialize(created, channelIds ?? []));
+      // Writers are supervisor-or-above, so they get the full pricing back.
+      res.status(201).json(serialize(created, channelIds ?? [], true));
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === "23505") {
         res.status(409).json({ error: "Kode produk sudah dipakai" });
@@ -272,7 +302,7 @@ router.put("/:id", async (req, res): Promise<void> => {
       if (!updated) { res.status(404).json({ error: "Product not found" }); return; }
       await replaceChannelAssignments("product", updated.id, channelIds, ownerUserId);
       const joins = await loadChannelIdsBatch("product", [updated.id]);
-      res.json(serialize(updated, joins.get(updated.id) ?? []));
+      res.json(serialize(updated, joins.get(updated.id) ?? [], true));
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === "23505") {
         res.status(409).json({ error: "Kode produk sudah dipakai" });
@@ -337,6 +367,7 @@ const EXPORT_HEADERS = [
   "code",
   "name",
   "category",
+  "description",
   "price",
   "priceSilver",
   "priceGold",
@@ -350,6 +381,16 @@ const EXPORT_HEADERS = [
   "productUrl",
   "videoUrls",
 ] as const;
+
+// Internal pricing tiers are operator-confidential — blanked in exports for
+// callers below supervisor, same as the JSON serializer.
+const INTERNAL_PRICE_HEADERS = new Set<string>([
+  "priceSilver",
+  "priceGold",
+  "pricePlatinum",
+  "priceReseller",
+  "priceDistributor",
+]);
 
 function neutralizeFormula(s: string): string {
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
@@ -387,10 +428,15 @@ router.get("/export.csv", async (req, res): Promise<void> => {
       .from(productsTable)
       .where(eq(productsTable.userId, ownerUserId))
       .orderBy(productsTable.id);
+    const includeInternalPricing = await callerCanSeeInternalPricing(req);
     const lines: string[] = [EXPORT_HEADERS.join(",")];
     for (const r of rows) {
       lines.push(
-        EXPORT_HEADERS.map((h) => rowToCsvField((r as Record<string, unknown>)[h])).join(","),
+        EXPORT_HEADERS.map((h) =>
+          !includeInternalPricing && INTERNAL_PRICE_HEADERS.has(h)
+            ? ""
+            : rowToCsvField((r as Record<string, unknown>)[h]),
+        ).join(","),
       );
     }
     const body = "\uFEFF" + lines.join("\n");
@@ -415,12 +461,14 @@ router.get("/export.xlsx", async (req, res): Promise<void> => {
       .from(productsTable)
       .where(eq(productsTable.userId, ownerUserId))
       .orderBy(productsTable.id);
+    const includeInternalPricing = await callerCanSeeInternalPricing(req);
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Products");
     ws.addRow([...EXPORT_HEADERS]);
     for (const r of rows) {
       ws.addRow(
         EXPORT_HEADERS.map((h) => {
+          if (!includeInternalPricing && INTERNAL_PRICE_HEADERS.has(h)) return "";
           const v = (r as Record<string, unknown>)[h];
           if (Array.isArray(v)) return v.join(" | ");
           return v ?? "";
@@ -572,6 +620,9 @@ export const HEADER_ALIASES: Record<string, keyof typeof EXPORT_HEADERS_MAP> = {
   "nama produk": "name",
   category: "category",
   kategori: "category",
+  description: "description",
+  deskripsi: "description",
+  keterangan: "description",
   price: "price",
   "harga pricelist": "price",
   pricelist: "price",
@@ -629,6 +680,7 @@ export const EXPORT_HEADERS_MAP = {
   code: 0,
   name: 0,
   category: 0,
+  description: 0,
   price: 0,
   priceSilver: 0,
   priceGold: 0,
@@ -752,6 +804,7 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
         code,
         name: nm || code,
         category: cell(r, "category") || null,
+        description: cell(r, "description") || null,
         price,
         priceSilver: parseIntCell(cell(r, "priceSilver")),
         priceGold: parseIntCell(cell(r, "priceGold")),
@@ -797,6 +850,7 @@ router.post("/import", fileUpload.single("file"), async (req, res): Promise<void
           set: {
             name: sql`excluded.name`,
             category: sql`excluded.category`,
+            description: sql`excluded.description`,
             price: sql`excluded.price`,
             priceSilver: sql`excluded.price_silver`,
             priceGold: sql`excluded.price_gold`,

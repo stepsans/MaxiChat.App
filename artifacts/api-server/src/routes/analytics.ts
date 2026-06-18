@@ -5,6 +5,7 @@ import {
   chatMessagesTable,
   channelsTable,
   contactLabelsTable,
+  contactLeadStatusTable,
   customerLabelsTable,
 } from "@workspace/db";
 import { sql, inArray, eq, and } from "drizzle-orm";
@@ -50,10 +51,33 @@ router.get("/summary", async (req, res): Promise<void> => {
     const aiHandled = chats.filter((c) => c.status === "ai_handled").length;
     const needsHuman = chats.filter((c) => c.status === "needs_human").length;
     const closed = chats.filter((c) => c.status === "closed").length;
-    const leads = chats.filter((c) => c.leadStatus === "lead").length;
-    const notLeads = chats.filter((c) => c.leadStatus === "not_lead").length;
 
     const chatIds = chats.map((c) => c.id);
+
+    // Lead status is contact-level (contact_lead_status, keyed owner + phone),
+    // so a chat "is a lead" when its owner + phone has a matching row — counted
+    // per chat (mirroring the old per-chat tally), now resolved across channels.
+    const leadCounts = chatIds.length
+      ? await db
+          .select({
+            leadStatus: contactLeadStatusTable.leadStatus,
+            count: sql<number>`cast(count(*) as int)`,
+          })
+          .from(chatsTable)
+          .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
+          .innerJoin(
+            contactLeadStatusTable,
+            and(
+              eq(contactLeadStatusTable.ownerUserId, channelsTable.userId),
+              eq(contactLeadStatusTable.phoneNumber, chatsTable.phoneNumber)
+            )
+          )
+          .where(inArray(chatsTable.id, chatIds))
+          .groupBy(contactLeadStatusTable.leadStatus)
+      : [];
+    const leads = leadCounts.find((r) => r.leadStatus === "lead")?.count ?? 0;
+    const notLeads =
+      leadCounts.find((r) => r.leadStatus === "not_lead")?.count ?? 0;
     const [msgCount] = chatIds.length
       ? await db
           .select({ count: sql<number>`cast(count(*) as int)` })

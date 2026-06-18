@@ -120,7 +120,12 @@
       "Bash(git -c core.pager=cat status --short)",
       "Bash(git -c core.pager=cat log --oneline -1)",
       "Bash(pkill -f \"api-server/dist/index.mjs\")",
-      "Bash(pkill -f \"vite\")"
+      "Bash(pkill -f \"vite\")",
+      "Bash(find . -path ./node_modules -prune -o \\\\\\( -name 'maxichat-mobile-v*.html' -o -name 'maxichat-android-build.md' \\\\\\) -print)",
+      "Bash(ls artifacts/mobile/assets/images/)",
+      "Bash(git -C /home/runner/workspace status --short)",
+      "Bash(git -C /home/runner/workspace stash push -- artifacts/api-server/src/lib/sales-insight-build.ts)",
+      "Bash(git -C /home/runner/workspace stash list)"
     ]
   }
 }

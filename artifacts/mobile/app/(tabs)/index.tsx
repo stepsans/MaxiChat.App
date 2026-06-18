@@ -19,6 +19,7 @@ import {
   useSearchChatContent,
   getListChatsQueryKey,
   getSearchChatContentQueryKey,
+  ChatLeadStatus,
   type Chat,
   type CustomerLabel,
 } from "@workspace/api-client-react";
@@ -51,6 +52,7 @@ export default function ChatListScreen() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [labelFilter, setLabelFilter] = useState<number | null>(null);
+  const [leadOnly, setLeadOnly] = useState(false);
   const [scope, setScope] = useState<"personal" | "group">("personal");
 
   // Debounce the search term used for the server-side content lookup so we
@@ -99,6 +101,9 @@ export default function ChatListScreen() {
   const filtered = useMemo(() => {
     let list = chats ?? [];
     list = list.filter((c) => (scope === "group" ? isGroupChat(c) : !isGroupChat(c)));
+    if (leadOnly) {
+      list = list.filter((c) => c.leadStatus === ChatLeadStatus.lead);
+    }
     if (labelFilter != null) {
       list = list.filter((c) => c.labels.some((l) => l.id === labelFilter));
     }
@@ -114,7 +119,7 @@ export default function ChatListScreen() {
       );
     }
     return list;
-  }, [chats, labelFilter, search, scope, contentMatch]);
+  }, [chats, labelFilter, leadOnly, search, scope, contentMatch]);
 
   const renderItem = ({ item }: { item: Chat }) => (
     <TouchableOpacity
@@ -152,8 +157,49 @@ export default function ChatListScreen() {
             </View>
           ) : null}
         </View>
-        {item.labels.length > 0 ? (
+        {item.leadStatus === ChatLeadStatus.lead ||
+        item.leadStatus === ChatLeadStatus.not_lead ||
+        item.labels.length > 0 ? (
           <View style={styles.labelRow}>
+            {item.leadStatus === ChatLeadStatus.lead ||
+            item.leadStatus === ChatLeadStatus.not_lead ? (
+              <View
+                style={[
+                  styles.leadPill,
+                  {
+                    backgroundColor:
+                      (item.leadStatus === ChatLeadStatus.lead
+                        ? colors.success
+                        : colors.danger) + "22",
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.labelDot,
+                    {
+                      backgroundColor:
+                        item.leadStatus === ChatLeadStatus.lead
+                          ? colors.success
+                          : colors.danger,
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.leadPillText,
+                    {
+                      color:
+                        item.leadStatus === ChatLeadStatus.lead
+                          ? colors.success
+                          : colors.danger,
+                    },
+                  ]}
+                >
+                  {item.leadStatus === ChatLeadStatus.lead ? "Lead" : "Bukan"}
+                </Text>
+              </View>
+            ) : null}
             {item.labels.slice(0, 3).map((l: CustomerLabel) => (
               <View
                 key={l.id}
@@ -185,7 +231,17 @@ export default function ChatListScreen() {
         <Text style={[styles.headerTitle, { color: colors.headerForeground }]}>
           MaxiChat
         </Text>
-        <ChannelSwitcher />
+        <View style={styles.headerActions}>
+          <ChannelSwitcher />
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/status")}
+            style={styles.headerBtn}
+            hitSlop={8}
+            accessibilityLabel="Status"
+          >
+            <Feather name="circle" size={22} color={colors.headerForeground} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={[styles.searchWrap, { backgroundColor: colors.background }]}>
@@ -237,16 +293,48 @@ export default function ChatListScreen() {
         })}
       </View>
 
-      {labels && labels.length > 0 ? (
-        <FlatList
+      <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          data={[{ id: -1, name: "Semua", color: colors.primary } as CustomerLabel, ...labels]}
+          data={[
+            { id: -2, name: "Leads", color: colors.success } as CustomerLabel,
+            { id: -1, name: "Semua", color: colors.primary } as CustomerLabel,
+            ...(labels ?? []),
+          ]}
           keyExtractor={(l) => String(l.id)}
           style={styles.filterStrip}
           contentContainerStyle={styles.filterContent}
           renderItem={({ item }) => {
+            const isLeads = item.id === -2;
             const isAll = item.id === -1;
+            if (isLeads) {
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.filterPill,
+                    {
+                      backgroundColor: leadOnly ? colors.success : colors.secondary,
+                      borderColor: leadOnly ? colors.success : colors.border,
+                    },
+                  ]}
+                  onPress={() => setLeadOnly((v) => !v)}
+                >
+                  <Feather
+                    name="user-check"
+                    size={13}
+                    color={leadOnly ? "#ffffff" : colors.success}
+                  />
+                  <Text
+                    style={[
+                      styles.filterText,
+                      { color: leadOnly ? "#ffffff" : colors.foreground },
+                    ]}
+                  >
+                    Leads
+                  </Text>
+                </TouchableOpacity>
+              );
+            }
             const active = isAll ? labelFilter == null : labelFilter === item.id;
             return (
               <TouchableOpacity
@@ -280,7 +368,6 @@ export default function ChatListScreen() {
             );
           }}
         />
-      ) : null}
 
       {isLoading ? (
         <View style={styles.center}>
@@ -291,7 +378,7 @@ export default function ChatListScreen() {
           data={filtered}
           keyExtractor={(c) => String(c.id)}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
           ItemSeparatorComponent={() => (
             <View
               style={[styles.sep, { backgroundColor: colors.border }]}
@@ -334,6 +421,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerBtn: { padding: 4 },
   searchWrap: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 },
   searchBox: {
     flexDirection: "row",
@@ -412,5 +501,14 @@ const styles = StyleSheet.create({
   },
   labelDot: { width: 8, height: 8, borderRadius: 4 },
   labelText: { fontFamily: "Inter_500Medium", fontSize: 11 },
+  leadPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  leadPillText: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
   sep: { height: StyleSheet.hairlineWidth, marginLeft: 80 },
 });

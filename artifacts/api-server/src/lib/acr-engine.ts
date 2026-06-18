@@ -6,7 +6,7 @@
 // red-flag notifications. All calculations use the job's immutable
 // config_snapshot, never the live config.
 
-import { and, eq, gte, inArray, isNull, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, isNotNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import {
   db,
   acrJobsTable,
@@ -23,6 +23,7 @@ import {
   chatMessagesTable,
   channelsTable,
   contactLabelsTable,
+  contactLeadStatusTable,
   usersTable,
   userChannelAccessTable,
   productsTable,
@@ -280,7 +281,46 @@ async function executeJob(job: AcrJobRow): Promise<void> {
   // is orthogonal to the sales funnel and most tenants never classify leads.
   const chatFilters = [];
   if (job.leadStatuses && job.leadStatuses.length > 0) {
-    chatFilters.push(inArray(chatsTable.leadStatus, job.leadStatuses));
+    // Lead status is contact-level (contact_lead_status, keyed owner+phone) and
+    // resolves to "unknown" when a contact has no row. Match by the chat's phone
+    // number against the contact table; treat "unknown" as "no non-unknown row".
+    const nonUnknown = job.leadStatuses.filter((s) => s !== "unknown");
+    const includesUnknown = job.leadStatuses.includes("unknown");
+    const ors = [];
+    if (nonUnknown.length > 0) {
+      ors.push(
+        inArray(
+          chatsTable.phoneNumber,
+          db
+            .select({ phoneNumber: contactLeadStatusTable.phoneNumber })
+            .from(contactLeadStatusTable)
+            .where(
+              and(
+                eq(contactLeadStatusTable.ownerUserId, ownerUserId),
+                inArray(contactLeadStatusTable.leadStatus, nonUnknown)
+              )
+            )
+        )
+      );
+    }
+    if (includesUnknown) {
+      ors.push(
+        notInArray(
+          chatsTable.phoneNumber,
+          db
+            .select({ phoneNumber: contactLeadStatusTable.phoneNumber })
+            .from(contactLeadStatusTable)
+            .where(
+              and(
+                eq(contactLeadStatusTable.ownerUserId, ownerUserId),
+                ne(contactLeadStatusTable.leadStatus, "unknown")
+              )
+            )
+        )
+      );
+    }
+    if (ors.length === 1) chatFilters.push(ors[0]);
+    else if (ors.length > 1) chatFilters.push(or(...ors));
   }
   if (job.chatStatuses && job.chatStatuses.length > 0) {
     chatFilters.push(inArray(chatsTable.status, job.chatStatuses));
@@ -641,13 +681,25 @@ async function executeJob(job: AcrJobRow): Promise<void> {
     const contactsHandled = chatIds.length;
     let contactsWithLeadStatus = 0;
     if (chatIds.length > 0) {
+      // "filled" = the chat's contact has a non-unknown lead classification in
+      // the contact-level table (contact_lead_status, keyed owner+phone).
       const leadRows = await db
-        .select({ id: chatsTable.id, leadStatus: chatsTable.leadStatus })
+        .select({ id: chatsTable.id })
         .from(chatsTable)
-        .where(inArray(chatsTable.id, chatIds));
-      for (const r of leadRows) {
-        if (r.leadStatus && r.leadStatus !== "unknown") contactsWithLeadStatus++;
-      }
+        .innerJoin(
+          contactLeadStatusTable,
+          and(
+            eq(contactLeadStatusTable.ownerUserId, ownerUserId),
+            eq(contactLeadStatusTable.phoneNumber, chatsTable.phoneNumber)
+          )
+        )
+        .where(
+          and(
+            inArray(chatsTable.id, chatIds),
+            ne(contactLeadStatusTable.leadStatus, "unknown")
+          )
+        );
+      contactsWithLeadStatus = leadRows.length;
     }
     const leadCoveragePct =
       contactsHandled > 0 ? (contactsWithLeadStatus / contactsHandled) * 100 : 0;

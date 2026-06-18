@@ -72,6 +72,7 @@ type Product = {
   code: string;
   name: string;
   category: string | null;
+  description: string | null;
   price: number;
   priceSilver: number | null;
   priceGold: number | null;
@@ -218,6 +219,7 @@ export default function Products() {
     code: "",
     name: "",
     category: "",
+    description: "",
     price: "",
     priceSilver: "",
     priceGold: "",
@@ -295,6 +297,7 @@ export default function Products() {
       code: p.code,
       name: p.name,
       category: p.category ?? "",
+      description: p.description ?? "",
       price: String(p.price),
       priceSilver: p.priceSilver !== null ? String(p.priceSilver) : "",
       priceGold: p.priceGold !== null ? String(p.priceGold) : "",
@@ -356,6 +359,7 @@ export default function Products() {
       code,
       name,
       category: strOrNull(form.category),
+      description: strOrNull(form.description),
       price,
       priceSilver: numOrNull(form.priceSilver),
       priceGold: numOrNull(form.priceGold),
@@ -870,6 +874,19 @@ export default function Products() {
                     onChange={(v) => setForm({ ...form, name: v })}
                     placeholder="Serum Vitamin C Premium"
                     testid="input-product-name"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Deskripsi
+                  </label>
+                  <textarea
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Deskripsi produk (opsional) — tampil di detail katalog"
+                    className="mt-1 w-full text-sm rounded-md border border-input bg-background px-3 py-2 leading-tight resize-y min-h-[60px]"
+                    rows={3}
+                    data-testid="input-product-description"
                   />
                 </div>
               </div>

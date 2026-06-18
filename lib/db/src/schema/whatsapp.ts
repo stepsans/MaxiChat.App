@@ -44,6 +44,12 @@ export const chatsTable = pgTable(
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     isLid: boolean("is_lid").notNull().default(false),
     isArchived: boolean("is_archived").notNull().default(false),
+    // Notification mute: timestamp the mute expires at (null = not muted). The
+    // app suppresses local notifications while now() < muted_until.
+    mutedUntil: timestamp("muted_until", { withTimezone: true }),
+    // Whether this contact is blocked on WhatsApp (mirrors Baileys block state
+    // so the UI can reflect it without re-querying the socket).
+    isBlocked: boolean("is_blocked").notNull().default(false),
     unreadCount: integer("unread_count").notNull().default(0),
     profilePicUrl: text("profile_pic_url"),
     profilePicCheckedAt: timestamp("profile_pic_checked_at", { withTimezone: true }),
@@ -149,6 +155,36 @@ export const contactLabelsTable = pgTable(
 );
 
 export type ContactLabel = typeof contactLabelsTable.$inferSelect;
+
+// Contact-level manual lead classification. Like contactLabelsTable, a lead
+// status set on a phone number follows that contact across EVERY channel the
+// owner has, and onto chats created later for the same number — so a number
+// marked "lead" on WhatsApp 1 shows as a lead on WhatsApp 2 and in every chat
+// view. Keyed by (ownerUserId, phoneNumber), owner-scoped so a phone
+// reassignment never leaks another tenant's classification. Replaces the old
+// per-chat chats.lead_status column (which is kept as a now-unused legacy
+// column; reads resolve from here, writes upsert here).
+export const contactLeadStatusTable = pgTable(
+  "contact_lead_status",
+  {
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    phoneNumber: text("phone_number").notNull(),
+    // "unknown" (belum di-set) | "lead" | "not_lead".
+    leadStatus: text("lead_status").notNull().default("unknown"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    contactLeadStatusOwnerPhoneUnique: uniqueIndex(
+      "contact_lead_status_owner_phone_unique"
+    ).on(t.ownerUserId, t.phoneNumber),
+  })
+);
+
+export type ContactLeadStatus = typeof contactLeadStatusTable.$inferSelect;
 
 export const chatMessagesTable = pgTable(
   "chat_messages",
@@ -455,6 +491,9 @@ export const productsTable = pgTable(
     code: text("code").notNull(),
     name: text("name").notNull(),
     category: text("category"),
+    // Free-text product description (deskripsi). Public/customer-safe field
+    // shown in the catalog detail view. Null = not set.
+    description: text("description"),
     price: integer("price").notNull(),
     priceSilver: integer("price_silver"),
     priceGold: integer("price_gold"),

@@ -88,6 +88,7 @@ import type {
   AuthUser,
   AutoReplyUpdate,
   BillingCatalog,
+  BlockChatInput,
   BulkChatUpdateInput,
   BulkChatUpdateResult,
   ChangePlanInput,
@@ -201,6 +202,7 @@ import type {
   ManualReplyInput,
   MobileLoginInput,
   MobileSession,
+  MuteChatInput,
   NextActionItem,
   OkResponse,
   OpenChatByPhoneInput,
@@ -268,6 +270,8 @@ import type {
   SalesStageInput,
   SalesStageUpdate,
   SearchChatContentParams,
+  SendContactInput,
+  SendLocationInput,
   SendProductBody,
   SendQuotationBody,
   SendShortcutBody,
@@ -6748,6 +6752,294 @@ export const useTakeoverChat = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getTakeoverChatMutationOptions(options));
+    }
+
+export const getMuteChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/mute`
+}
+
+/**
+ * @summary Mute or unmute a chat's notifications until a timestamp
+ */
+export const muteChat = async (id: number,
+    muteChatInput: MuteChatInput, options?: RequestInit): Promise<Chat> => {
+
+  return customFetch<Chat>(getMuteChatUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      muteChatInput,)
+  }
+);}
+
+
+
+
+export const getMuteChatMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof muteChat>>, TError,{id: number;data: BodyType<MuteChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof muteChat>>, TError,{id: number;data: BodyType<MuteChatInput>}, TContext> => {
+
+const mutationKey = ['muteChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof muteChat>>, {id: number;data: BodyType<MuteChatInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  muteChat(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MuteChatMutationResult = NonNullable<Awaited<ReturnType<typeof muteChat>>>
+    export type MuteChatMutationBody = BodyType<MuteChatInput>
+    export type MuteChatMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Mute or unmute a chat's notifications until a timestamp
+ */
+export const useMuteChat = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof muteChat>>, TError,{id: number;data: BodyType<MuteChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof muteChat>>,
+        TError,
+        {id: number;data: BodyType<MuteChatInput>},
+        TContext
+      > => {
+      return useMutation(getMuteChatMutationOptions(options));
+    }
+
+export const getBlockChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/block`
+}
+
+/**
+ * @summary Block or unblock the chat's contact on WhatsApp
+ */
+export const blockChat = async (id: number,
+    blockChatInput: BlockChatInput, options?: RequestInit): Promise<Chat> => {
+
+  return customFetch<Chat>(getBlockChatUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      blockChatInput,)
+  }
+);}
+
+
+
+
+export const getBlockChatMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof blockChat>>, TError,{id: number;data: BodyType<BlockChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof blockChat>>, TError,{id: number;data: BodyType<BlockChatInput>}, TContext> => {
+
+const mutationKey = ['blockChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof blockChat>>, {id: number;data: BodyType<BlockChatInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  blockChat(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BlockChatMutationResult = NonNullable<Awaited<ReturnType<typeof blockChat>>>
+    export type BlockChatMutationBody = BodyType<BlockChatInput>
+    export type BlockChatMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Block or unblock the chat's contact on WhatsApp
+ */
+export const useBlockChat = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof blockChat>>, TError,{id: number;data: BodyType<BlockChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof blockChat>>,
+        TError,
+        {id: number;data: BodyType<BlockChatInput>},
+        TContext
+      > => {
+      return useMutation(getBlockChatMutationOptions(options));
+    }
+
+export const getSendLocationToChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/location`
+}
+
+/**
+ * @summary Send a geo-location pin to the chat
+ */
+export const sendLocationToChat = async (id: number,
+    sendLocationInput: SendLocationInput, options?: RequestInit): Promise<ChatMessage> => {
+
+  return customFetch<ChatMessage>(getSendLocationToChatUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sendLocationInput,)
+  }
+);}
+
+
+
+
+export const getSendLocationToChatMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendLocationToChat>>, TError,{id: number;data: BodyType<SendLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendLocationToChat>>, TError,{id: number;data: BodyType<SendLocationInput>}, TContext> => {
+
+const mutationKey = ['sendLocationToChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendLocationToChat>>, {id: number;data: BodyType<SendLocationInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendLocationToChat(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendLocationToChatMutationResult = NonNullable<Awaited<ReturnType<typeof sendLocationToChat>>>
+    export type SendLocationToChatMutationBody = BodyType<SendLocationInput>
+    export type SendLocationToChatMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a geo-location pin to the chat
+ */
+export const useSendLocationToChat = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendLocationToChat>>, TError,{id: number;data: BodyType<SendLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendLocationToChat>>,
+        TError,
+        {id: number;data: BodyType<SendLocationInput>},
+        TContext
+      > => {
+      return useMutation(getSendLocationToChatMutationOptions(options));
+    }
+
+export const getSendContactToChatUrl = (id: number,) => {
+
+
+
+
+  return `/api/chats/${id}/contact`
+}
+
+/**
+ * @summary Send a contact card (vCard) to the chat
+ */
+export const sendContactToChat = async (id: number,
+    sendContactInput: SendContactInput, options?: RequestInit): Promise<ChatMessage> => {
+
+  return customFetch<ChatMessage>(getSendContactToChatUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sendContactInput,)
+  }
+);}
+
+
+
+
+export const getSendContactToChatMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendContactToChat>>, TError,{id: number;data: BodyType<SendContactInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendContactToChat>>, TError,{id: number;data: BodyType<SendContactInput>}, TContext> => {
+
+const mutationKey = ['sendContactToChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendContactToChat>>, {id: number;data: BodyType<SendContactInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendContactToChat(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendContactToChatMutationResult = NonNullable<Awaited<ReturnType<typeof sendContactToChat>>>
+    export type SendContactToChatMutationBody = BodyType<SendContactInput>
+    export type SendContactToChatMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a contact card (vCard) to the chat
+ */
+export const useSendContactToChat = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendContactToChat>>, TError,{id: number;data: BodyType<SendContactInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendContactToChat>>,
+        TError,
+        {id: number;data: BodyType<SendContactInput>},
+        TContext
+      > => {
+      return useMutation(getSendContactToChatMutationOptions(options));
     }
 
 export const getSetChatLabelsUrl = (id: number,) => {

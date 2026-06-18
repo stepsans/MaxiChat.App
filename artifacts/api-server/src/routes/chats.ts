@@ -14,6 +14,7 @@ import {
   productsTable,
   channelsTable,
   contactLabelsTable,
+  contactLeadStatusTable,
   customerLabelsTable,
   textShortcutsTable,
 } from "@workspace/db";
@@ -50,6 +51,9 @@ import {
   ForwardMessageBody,
   EditMessageBody,
   AddGroupParticipantsBody,
+  MuteChatBody,
+  BlockChatBody,
+  SendLocationToChatBody,
 } from "@workspace/api-zod";
 import {
   jidDigits,
@@ -59,7 +63,10 @@ import { resolveGroupParticipants } from "../lib/group-info";
 import {
   sendMediaToJid,
   sendContactToJid,
+  sendLocationToJid,
   getSockForChannel,
+  getChatPresence,
+  subscribeChatPresence,
   getOrCreateChat,
   refreshChatProfilePic,
   isProfilePicRefreshDue,
@@ -477,6 +484,54 @@ async function fetchLabelsForChats(
   return map;
 }
 
+// Lead status is stored per-contact (owner + phone), not per-chat — like
+// labels — so a classification set on one channel surfaces on every chat that
+// shares the same phone number under the same owner, including chats created
+// later. We resolve it by joining each chat to its channel's owner and matching
+// contact_lead_status on phone number. Chats with no row default to "unknown".
+async function fetchLeadStatusForChats(
+  chatIds: number[]
+): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  if (chatIds.length === 0) return map;
+  const rows = await db
+    .select({
+      chatId: chatsTable.id,
+      leadStatus: contactLeadStatusTable.leadStatus,
+    })
+    .from(chatsTable)
+    .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
+    .innerJoin(
+      contactLeadStatusTable,
+      and(
+        eq(contactLeadStatusTable.ownerUserId, channelsTable.userId),
+        eq(contactLeadStatusTable.phoneNumber, chatsTable.phoneNumber)
+      )
+    )
+    .where(inArray(chatsTable.id, chatIds));
+  for (const r of rows) map.set(r.chatId, r.leadStatus);
+  return map;
+}
+
+// Upsert the contact-level lead status for an owner+phone. Applies to every
+// channel's chat with the same number at once (reads resolve from here).
+async function setContactLeadStatus(
+  ownerUserId: number,
+  phoneNumber: string,
+  leadStatus: string
+): Promise<void> {
+  await db
+    .insert(contactLeadStatusTable)
+    .values({ ownerUserId, phoneNumber, leadStatus })
+    .onConflictDoUpdate({
+      target: [
+        contactLeadStatusTable.ownerUserId,
+        contactLeadStatusTable.phoneNumber,
+      ],
+      set: { leadStatus, updatedAt: new Date() },
+    });
+}
+
 router.get("/", async (req, res): Promise<void> => {
   try {
     const parsed = ListChatsQueryParams.safeParse(req.query);
@@ -556,12 +611,17 @@ router.get("/", async (req, res): Promise<void> => {
       }
     }
 
-    const labelMap = await fetchLabelsForChats(filtered.map((c) => c.id));
+    const ids = filtered.map((c) => c.id);
+    const [labelMap, leadMap] = await Promise.all([
+      fetchLabelsForChats(ids),
+      fetchLeadStatusForChats(ids),
+    ]);
     res.json(
       filtered.map((c) => ({
         ...c,
         lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),
+        leadStatus: leadMap.get(c.id) ?? "unknown",
         labels: labelMap.get(c.id) ?? [],
       }))
     );
@@ -1739,13 +1799,32 @@ router.get("/:id", async (req, res): Promise<void> => {
       void refreshChatProfilePic(req.session.userId!, chat).catch(() => {});
     }
 
-    const labelMap = await fetchLabelsForChats([chat.id]);
+    // Live presence (online / typing / last-seen): only meaningful for 1:1
+    // chats on a connected channel. Subscribe (fire-and-forget) so the next
+    // poll has fresh data, and surface whatever we already have right now.
+    let presence: { status: string; lastSeen: number | null } | null = null;
+    const isGroup = chat.phoneNumber.endsWith("@g.us");
+    if (!isGroup && chat.channelId != null) {
+      const jid = chat.phoneNumber.includes("@")
+        ? chat.phoneNumber
+        : `${chat.phoneNumber.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+      void subscribeChatPresence(chat.channelId, jid).catch(() => {});
+      presence = getChatPresence(chat.channelId, jid);
+    }
+
+    const [labelMap, leadMap] = await Promise.all([
+      fetchLabelsForChats([chat.id]),
+      fetchLeadStatusForChats([chat.id]),
+    ]);
     res.json({
       ...chat,
       unreadCount: 0,
       lastMessageAt: chat.lastMessageAt?.toISOString() ?? null,
+      mutedUntil: chat.mutedUntil?.toISOString() ?? null,
       createdAt: chat.createdAt.toISOString(),
+      leadStatus: leadMap.get(chat.id) ?? "unknown",
       labels: labelMap.get(chat.id) ?? [],
+      presence,
       hasMoreMessages,
       messages: messages.map(serializeChatMessage),
     });
@@ -1767,7 +1846,9 @@ router.post("/bulk-update", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid body" });
       return;
     }
-    const { chatIds, addLabelId, ...fields } = parsed.data;
+    // leadStatus is contact-level (stored per owner+phone, not on the chat row),
+    // so pull it out of the generic chat-column update and apply it separately.
+    const { chatIds, addLabelId, leadStatus, ...fields } = parsed.data;
     // zod.number() accepts decimals — re-validate ids at the boundary.
     if (!chatIds.every((id) => Number.isInteger(id) && id > 0)) {
       res.status(400).json({ error: "Invalid chat id" });
@@ -1777,17 +1858,25 @@ router.post("/bulk-update", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Invalid label id" });
       return;
     }
-    if (Object.keys(fields).length === 0 && addLabelId === undefined) {
+    if (
+      Object.keys(fields).length === 0 &&
+      addLabelId === undefined &&
+      leadStatus === undefined
+    ) {
       res.status(400).json({ error: "No updatable field provided" });
       return;
     }
 
     // Validate the label BEFORE touching any chat row so a bad label id
-    // can't leave a half-applied bulk update behind.
+    // can't leave a half-applied bulk update behind. Lead status also needs the
+    // owner id to key the contact-level upsert, so resolve it up front when
+    // either contact-level operation is requested.
     let ownerUserId: number | null = null;
-    if (addLabelId !== undefined) {
+    if (addLabelId !== undefined || leadStatus !== undefined) {
       ownerUserId = await requireOwnerUserId(req, res);
       if (ownerUserId == null) return;
+    }
+    if (addLabelId !== undefined && ownerUserId != null) {
       const [label] = await db
         .select({ id: customerLabelsTable.id })
         .from(customerLabelsTable)
@@ -1844,6 +1933,21 @@ router.post("/bulk-update", async (req, res): Promise<void> => {
       updatedCount = Math.max(updatedCount, rows.length);
     }
 
+    if (leadStatus !== undefined && ownerUserId != null) {
+      // Lead status is contact-level: set it on each selected chat's phone
+      // number so the classification follows the contact across every channel
+      // and onto chats created later.
+      const rows = await db
+        .select({ phoneNumber: chatsTable.phoneNumber })
+        .from(chatsTable)
+        .where(az.where);
+      const phones = Array.from(new Set(rows.map((r) => r.phoneNumber)));
+      for (const phoneNumber of phones) {
+        await setContactLeadStatus(ownerUserId, phoneNumber, leadStatus);
+      }
+      updatedCount = Math.max(updatedCount, rows.length);
+    }
+
     res.json({ updated: updatedCount });
   } catch (err) {
     req.log.error({ err }, "Failed to bulk-update chats");
@@ -1866,21 +1970,39 @@ router.patch("/:id", async (req, res): Promise<void> => {
     const existing = await loadOwnedChat(req, res, idParsed.data.id);
     if (!existing) { res.status(404).json({ error: "Chat not found" }); return; }
 
-    const [updated] = await db
-      .update(chatsTable)
-      .set(bodyParsed.data)
-      .where(
-        sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.channelId} = ${existing.channelId}`
-      )
-      .returning();
+    // leadStatus is contact-level (per owner+phone) so it never writes the chat
+    // row — split it out and upsert it separately so it stays consistent across
+    // every channel's chat for this number.
+    const { leadStatus, ...chatFields } = bodyParsed.data;
 
-    if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
+    let updated = existing;
+    if (Object.keys(chatFields).length > 0) {
+      const [row] = await db
+        .update(chatsTable)
+        .set(chatFields)
+        .where(
+          sql`${chatsTable.id} = ${idParsed.data.id} AND ${chatsTable.channelId} = ${existing.channelId}`
+        )
+        .returning();
+      if (!row) { res.status(404).json({ error: "Chat not found" }); return; }
+      updated = row;
+    }
 
-    const labelMap = await fetchLabelsForChats([updated.id]);
+    if (leadStatus !== undefined) {
+      const ownerUserId = await requireOwnerUserId(req, res);
+      if (ownerUserId == null) return;
+      await setContactLeadStatus(ownerUserId, existing.phoneNumber, leadStatus);
+    }
+
+    const [labelMap, leadMap] = await Promise.all([
+      fetchLabelsForChats([updated.id]),
+      fetchLeadStatusForChats([updated.id]),
+    ]);
     res.json({
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
+      leadStatus: leadMap.get(updated.id) ?? "unknown",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
@@ -2229,15 +2351,198 @@ router.post("/:id/takeover", async (req, res): Promise<void> => {
 
     if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
 
-    const labelMap = await fetchLabelsForChats([updated.id]);
+    const [labelMap, leadMap] = await Promise.all([
+      fetchLabelsForChats([updated.id]),
+      fetchLeadStatusForChats([updated.id]),
+    ]);
     res.json({
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
+      leadStatus: leadMap.get(updated.id) ?? "unknown",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
     req.log.error({ err }, "Failed to toggle takeover");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Mute / unmute a chat's notifications. Body: { mutedUntil: Date | null }.
+// Purely a stored preference (null = not muted); the app suppresses local
+// notifications while now() < muted_until.
+router.put("/:id/mute", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const bodyParsed = MuteChatBody.safeParse(req.body);
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
+
+    const az = await authorizedChatWhere(req, res, id);
+    if (!az || !az.where) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [updated] = await db
+      .update(chatsTable)
+      .set({ mutedUntil: bodyParsed.data.mutedUntil })
+      .where(az.where)
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [labelMap, leadMap] = await Promise.all([
+      fetchLabelsForChats([updated.id]),
+      fetchLeadStatusForChats([updated.id]),
+    ]);
+    res.json({
+      ...updated,
+      lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
+      mutedUntil: updated.mutedUntil?.toISOString() ?? null,
+      createdAt: updated.createdAt.toISOString(),
+      leadStatus: leadMap.get(updated.id) ?? "unknown",
+      labels: labelMap.get(updated.id) ?? [],
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to mute chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Block / unblock the chat's contact on WhatsApp. Body: { blocked: boolean }.
+// Calls Baileys updateBlockStatus on the chat's OWN channel, then mirrors the
+// state onto the chat row. Groups can't be blocked.
+router.put("/:id/block", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const bodyParsed = BlockChatBody.safeParse(req.body);
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
+
+    const target = await jidForChat(req, res, id);
+    if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
+    if (target.jid.endsWith("@g.us")) {
+      res.status(400).json({ error: "Grup tidak dapat diblokir" });
+      return;
+    }
+
+    const sendChannelId = target.chat.channelId;
+    const sock = sendChannelId == null ? null : getSockForChannel(sendChannelId);
+    if (!sock) { res.status(503).json({ error: "WhatsApp belum terhubung" }); return; }
+
+    try {
+      await sock.updateBlockStatus(
+        target.jid,
+        bodyParsed.data.blocked ? "block" : "unblock",
+      );
+    } catch (err) {
+      req.log.error({ err }, "Failed to update block status via WhatsApp");
+      res.status(500).json({ error: "Gagal memperbarui status blokir" });
+      return;
+    }
+
+    const [updated] = await db
+      .update(chatsTable)
+      .set({ isBlocked: bodyParsed.data.blocked })
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${sendChannelId}`,
+      )
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const [labelMap, leadMap] = await Promise.all([
+      fetchLabelsForChats([updated.id]),
+      fetchLeadStatusForChats([updated.id]),
+    ]);
+    res.json({
+      ...updated,
+      lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
+      mutedUntil: updated.mutedUntil?.toISOString() ?? null,
+      createdAt: updated.createdAt.toISOString(),
+      leadStatus: leadMap.get(updated.id) ?? "unknown",
+      labels: labelMap.get(updated.id) ?? [],
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to block chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Send a geo-location pin to the chat. Body: { latitude, longitude, name?, address? }.
+router.post("/:id/location", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const bodyParsed = SendLocationToChatBody.safeParse(req.body);
+    if (!bodyParsed.success) { res.status(400).json({ error: "Invalid body" }); return; }
+
+    const target = await jidForChat(req, res, id);
+    if (!target) { res.status(404).json({ error: "Chat not found" }); return; }
+
+    const sendChannelId = target.chat.channelId;
+    if (sendChannelId == null || !getSockForChannel(sendChannelId)) {
+      res.status(503).json({ error: "WhatsApp belum terhubung" });
+      return;
+    }
+
+    const { latitude, longitude, name, address } = bodyParsed.data;
+    let waMessageId: string | null = null;
+    try {
+      waMessageId = await sendLocationToJid(
+        req.session.userId!,
+        target.jid,
+        latitude,
+        longitude,
+        name,
+        address,
+        sendChannelId,
+      );
+    } catch (err) {
+      req.log.error({ err }, "Failed to send location via WhatsApp");
+      res.status(500).json({ error: "Failed to send location" });
+      return;
+    }
+
+    const preview = "📍 Lokasi";
+    const insertedRows = await db
+      .insert(chatMessagesTable)
+      .values({
+        chatId: id,
+        direction: "outbound",
+        content: name || address || `${latitude}, ${longitude}`,
+        isAiGenerated: false,
+        sentByUserId: req.session.userId ?? null,
+        mediaType: "location",
+        mediaUrl: `geo:${latitude},${longitude}`,
+        mediaMimeType: null,
+        mediaFilename: name ?? null,
+        waMessageId,
+      })
+      .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
+      .returning();
+    const [message] = insertedRows.length
+      ? insertedRows
+      : await db
+          .select()
+          .from(chatMessagesTable)
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, id),
+              eq(chatMessagesTable.waMessageId, waMessageId!),
+            ),
+          )
+          .limit(1);
+
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: preview, lastMessageAt: new Date() })
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${target.chat.channelId}`,
+      );
+
+    res.json({ ...message, createdAt: message.createdAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send location");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2305,11 +2610,15 @@ router.patch("/:id/assign", async (req, res): Promise<void> => {
       )
       .returning();
     if (!updated) { res.status(404).json({ error: "Chat not found" }); return; }
-    const labelMap = await fetchLabelsForChats([updated.id]);
+    const [labelMap, leadMap] = await Promise.all([
+      fetchLabelsForChats([updated.id]),
+      fetchLeadStatusForChats([updated.id]),
+    ]);
     res.json({
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
+      leadStatus: leadMap.get(updated.id) ?? "unknown",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
@@ -2354,6 +2663,9 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     const mimeType = req.file.mimetype || "application/octet-stream";
     const mediaType = classifyMediaType(mimeType);
     const originalName = req.file.originalname;
+    // Recorded voice notes flag ptt=true so they transmit as a WhatsApp
+    // push-to-talk bubble rather than a regular audio attachment.
+    const ptt = mediaType === "audio" && req.body?.ptt === "true";
 
     let waMessageId: string | null = null;
     try {
@@ -2365,7 +2677,8 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
         mediaType,
         caption,
         originalName,
-        sendChannelId
+        sendChannelId,
+        ptt
       );
     } catch (err) {
       req.log.error({ err }, "Failed to send media via WhatsApp");
@@ -2433,6 +2746,149 @@ router.post("/:id/media", upload.single("file"), async (req, res) => {
     res.json({ ...message, createdAt: message.createdAt.toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to send media");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Send an album (multiple photos/videos) into a chat in one request. Baileys
+// has no native multi-image album construct, so we transmit the items as an
+// ordered sequence over the chat's OWN channel — with a small inter-message
+// delay so a burst of sends doesn't look bot-like and risk a ban. The optional
+// caption + the agent tag ride on the first item only (WhatsApp shows the
+// album's caption from its first media). One DB row is written per item;
+// the response is the list of inserted messages in send order.
+router.post("/:id/album", upload.array("files", 10), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    if (files.length === 0) {
+      res.status(400).json({ error: "Missing files" });
+      return;
+    }
+    // Album items must be photos/videos — reject documents/audio so we don't
+    // silently turn an album into a mixed media dump.
+    for (const f of files) {
+      const t = classifyMediaType(f.mimetype || "");
+      if (t !== "image" && t !== "video") {
+        res.status(400).json({ error: "Album hanya untuk foto/video" });
+        return;
+      }
+    }
+
+    const target = await jidForChat(req, res, id);
+    if (!target) {
+      res.status(404).json({ error: "Chat not found" });
+      return;
+    }
+    const sendChannelId = target.chat.channelId;
+    if (sendChannelId == null || !getSockForChannel(sendChannelId)) {
+      res.status(503).json({ error: "WhatsApp belum terhubung" });
+      return;
+    }
+
+    const rawCaption = (req.body?.caption as string | undefined)?.trim() || undefined;
+    const agentTag = await resolveAgentTag(req.session.userId!);
+    const ownerUserId = await resolveOwnerUserId(req.session.userId!);
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    const inserted: ChatMessageRow[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const mimeType = file.mimetype || "application/octet-stream";
+      const mediaType = classifyMediaType(mimeType) as "image" | "video";
+      // Caption (with the agent tag) only on the first item; the rest carry
+      // just the tag so the recipient can still tell who sent the album.
+      const caption =
+        i === 0 ? withTag(rawCaption ?? "", agentTag) : withTag("", agentTag);
+
+      let waMessageId: string | null = null;
+      try {
+        waMessageId = await sendMediaToJid(
+          req.session.userId!,
+          target.jid,
+          file.buffer,
+          mimeType,
+          mediaType,
+          caption,
+          file.originalname,
+          sendChannelId,
+        );
+      } catch (err) {
+        req.log.error({ err, index: i }, "Failed to send album item via WhatsApp");
+        // Stop on the first failure but keep whatever already went out.
+        break;
+      }
+
+      const { url: mediaUrl } = await saveTenantMedia({
+        ownerUserId,
+        channelId: sendChannelId,
+        buffer: file.buffer,
+        contentType: mimeType,
+        kind: mediaType,
+        preferredFilename: file.originalname,
+      });
+
+      const rows = await db
+        .insert(chatMessagesTable)
+        .values({
+          chatId: id,
+          direction: "outbound",
+          content: i === 0 ? (caption ?? "") : "",
+          isAiGenerated: false,
+          sentByUserId: req.session.userId ?? null,
+          mediaType,
+          mediaUrl,
+          mediaMimeType: mimeType,
+          mediaFilename: file.originalname,
+          waMessageId,
+        })
+        .onConflictDoNothing({ target: [chatMessagesTable.chatId, chatMessagesTable.waMessageId] })
+        .returning();
+      if (rows[0]) inserted.push(rows[0]);
+      else if (waMessageId) {
+        const [existing] = await db
+          .select()
+          .from(chatMessagesTable)
+          .where(
+            and(
+              eq(chatMessagesTable.chatId, id),
+              eq(chatMessagesTable.waMessageId, waMessageId),
+            ),
+          )
+          .limit(1);
+        if (existing) inserted.push(existing);
+      }
+
+      // Pace the sends (skip the wait after the last item).
+      if (i < files.length - 1) await sleep(700);
+    }
+
+    if (inserted.length === 0) {
+      res.status(500).json({ error: "Failed to send album" });
+      return;
+    }
+
+    const preview =
+      rawCaption || `📷 Album (${inserted.length} media)`;
+    await db
+      .update(chatsTable)
+      .set({ lastMessage: preview, lastMessageAt: new Date() })
+      .where(
+        sql`${chatsTable.id} = ${id} AND ${chatsTable.channelId} = ${sendChannelId}`,
+      );
+
+    res.json({
+      messages: inserted.map((m) => ({
+        ...m,
+        createdAt: m.createdAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to send album");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2647,7 +3103,12 @@ router.post("/:id/contact", async (req, res): Promise<void> => {
       return;
     }
     const name = (req.body?.name as string | undefined)?.trim();
-    const phone = (req.body?.phone as string | undefined)?.trim();
+    // Accept both `phoneNumber` (OpenAPI contract / mobile) and the legacy
+    // `phone` field the web app posts.
+    const phone = (
+      (req.body?.phoneNumber as string | undefined) ??
+      (req.body?.phone as string | undefined)
+    )?.trim();
     if (!name || !phone) {
       res.status(400).json({ error: "Name and phone are required" });
       return;

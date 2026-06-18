@@ -1,9 +1,11 @@
 import { Feather } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,7 +17,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChannel } from "@/contexts/ChannelContext";
-import { type ThemePreference, useTheme } from "@/contexts/ThemeContext";
+import {
+  WALLPAPER_OPTIONS,
+  type ThemePreference,
+  useTheme,
+} from "@/contexts/ThemeContext";
 import { useColors } from "@/hooks/useColors";
 import { resolveMediaUrl, uploadProfilePhoto } from "@/lib/api";
 
@@ -25,12 +31,55 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: keyof typeof
   { value: "system", label: "Sistem", icon: "smartphone" },
 ];
 
+const SUPPORT_WA = "https://wa.me/6285179813888";
+const HELP_URL = "https://maxipro.co.id";
+
+/** A single tappable/info row inside a settings card. */
+function Row({
+  icon,
+  label,
+  value,
+  onPress,
+  first,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  first?: boolean;
+}) {
+  const colors = useColors();
+  const Wrap: any = onPress ? TouchableOpacity : View;
+  return (
+    <Wrap
+      onPress={onPress}
+      style={[
+        styles.row,
+        !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+      ]}
+    >
+      <Feather name={icon} size={18} color={colors.mutedForeground} />
+      <Text style={[styles.rowLabel, { color: colors.foreground }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {value ? (
+        <Text style={[styles.rowValue, { color: colors.mutedForeground }]} numberOfLines={1}>
+          {value}
+        </Text>
+      ) : null}
+      {onPress ? (
+        <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+      ) : null}
+    </Wrap>
+  );
+}
+
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, signOut, refreshUser } = useAuth();
   const { channels, activeChannel, setActiveChannelId } = useChannel();
-  const { preference, setPreference } = useTheme();
+  const { preference, setPreference, wallpaper, setWallpaper } = useTheme();
   const [uploading, setUploading] = useState(false);
 
   const onChangePhoto = async () => {
@@ -120,6 +169,17 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          AKUN
+        </Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Row icon="user" label="Nama" value={user?.name || "-"} first />
+          <Row icon="mail" label="Email" value={user?.email || "-"} />
+          {user?.companyName ? (
+            <Row icon="briefcase" label="Perusahaan" value={user.companyName} />
+          ) : null}
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
           TAMPILAN
         </Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -155,10 +215,54 @@ export default function SettingsScreen() {
               );
             })}
           </View>
+
+          <View style={[styles.wallpaperBlock, { borderTopColor: colors.border }]}>
+            <Text style={[styles.wallpaperLabel, { color: colors.mutedForeground }]}>
+              Wallpaper Chat
+            </Text>
+            <View style={styles.wallpaperRow}>
+              {WALLPAPER_OPTIONS.map((w) => {
+                const active = wallpaper === w.value;
+                return (
+                  <TouchableOpacity
+                    key={w.value}
+                    onPress={() => setWallpaper(w.value)}
+                    style={[
+                      styles.swatch,
+                      {
+                        backgroundColor: w.color ?? colors.secondary,
+                        borderColor: active ? colors.primary : colors.border,
+                        borderWidth: active ? 2.5 : StyleSheet.hairlineWidth,
+                      },
+                    ]}
+                    accessibilityLabel={w.label}
+                  >
+                    {w.color === null ? (
+                      <Feather name="slash" size={16} color={colors.mutedForeground} />
+                    ) : active ? (
+                      <Feather name="check" size={16} color={colors.primary} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         </View>
 
         <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-          CHANNEL
+          NOTIFIKASI
+        </Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Row
+            icon="bell"
+            label="Pengaturan notifikasi perangkat"
+            onPress={() => Linking.openSettings().catch(() => {})}
+            first
+          />
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          CHANNEL & TIM
         </Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {channels.length === 0 ? (
@@ -193,6 +297,35 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          BANTUAN
+        </Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Row
+            icon="help-circle"
+            label="Pusat Bantuan"
+            onPress={() => Linking.openURL(HELP_URL).catch(() => {})}
+            first
+          />
+          <Row
+            icon="message-circle"
+            label="Hubungi Support"
+            onPress={() => Linking.openURL(SUPPORT_WA).catch(() => {})}
+          />
+        </View>
+
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          TENTANG
+        </Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Row icon="info" label="MaxiChat — Maximizing Your Chat with AI" first />
+          <Row
+            icon="tag"
+            label="Versi"
+            value={Constants.expoConfig?.version ?? "1.0.0"}
+          />
+        </View>
+
         <TouchableOpacity
           style={[styles.logout, { borderColor: colors.destructive }]}
           onPress={confirmSignOut}
@@ -210,6 +343,8 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 12 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  backBtn: { padding: 2, marginLeft: -6 },
   headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20 },
   profile: { alignItems: "center", paddingVertical: 28, gap: 6 },
   photoBadge: {
@@ -256,6 +391,15 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
   },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  rowLabel: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 15 },
+  rowValue: { fontFamily: "Inter_400Regular", fontSize: 14, maxWidth: 160 },
   channelDot: { width: 12, height: 12, borderRadius: 6 },
   channelLabel: { fontFamily: "Inter_600SemiBold", fontSize: 15 },
   channelSub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 },
@@ -283,4 +427,19 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   themeLabel: { fontFamily: "Inter_500Medium", fontSize: 13 },
+  wallpaperBlock: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  wallpaperLabel: { fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 10 },
+  wallpaperRow: { flexDirection: "row", flexWrap: "wrap", gap: 14 },
+  swatch: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

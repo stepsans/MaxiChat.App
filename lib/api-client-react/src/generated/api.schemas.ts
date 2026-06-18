@@ -1365,6 +1365,13 @@ export interface Chat {
   unreadCount: number;
   /** @nullable */
   profilePicUrl: string | null;
+  /**
+     * ISO timestamp until which notifications are muted; null = not muted.
+     * @nullable
+     */
+  mutedUntil?: string | null;
+  /** Whether the contact is currently blocked on WhatsApp. */
+  isBlocked?: boolean;
   createdAt: string;
   /** @nullable */
   assignedUserId: number | null;
@@ -1503,6 +1510,20 @@ export const ChatWithMessagesLeadStatus = {
   not_lead: 'not_lead',
 } as const;
 
+/**
+ * Best-effort live presence from WhatsApp, populated after the chat is opened (the server subscribes on first fetch and reads it on the next poll). Null when unknown / not yet received.
+
+ * @nullable
+ */
+export type ChatWithMessagesPresence = {
+  status?: 'available' | 'unavailable' | 'composing' | 'recording';
+  /**
+     * Unix epoch seconds of the contact's last-seen, when shared.
+     * @nullable
+     */
+  lastSeen?: number | null;
+} | null | null;
+
 export interface ChatWithMessages {
   id: number;
   /** The channel this chat belongs to. Used to scope channel-restricted resources (e.g. shortcuts) to the active chat. */
@@ -1539,6 +1560,19 @@ export interface ChatWithMessages {
   unreadCount: number;
   /** @nullable */
   profilePicUrl: string | null;
+  /**
+     * ISO timestamp until which notifications are muted; null = not muted.
+     * @nullable
+     */
+  mutedUntil?: string | null;
+  /** Whether the contact is currently blocked on WhatsApp. */
+  isBlocked?: boolean;
+  /**
+     * Best-effort live presence from WhatsApp, populated after the chat is opened (the server subscribes on first fetch and reads it on the next poll). Null when unknown / not yet received.
+
+     * @nullable
+     */
+  presence?: ChatWithMessagesPresence;
   createdAt: string;
   /** @nullable */
   assignedUserId: number | null;
@@ -1626,6 +1660,35 @@ export interface ChatUpdate {
      * @nullable
      */
   customerCode?: string | null;
+}
+
+export interface MuteChatInput {
+  /**
+     * ISO timestamp until which the chat is muted; null to unmute.
+     * @nullable
+     */
+  mutedUntil: string | null;
+}
+
+export interface BlockChatInput {
+  /** True to block the contact on WhatsApp, false to unblock. */
+  blocked: boolean;
+}
+
+export interface SendLocationInput {
+  latitude: number;
+  longitude: number;
+  /** Optional place name shown with the pin. */
+  name?: string;
+  /** Optional address line shown with the pin. */
+  address?: string;
+}
+
+export interface SendContactInput {
+  /** Display name of the contact being shared. */
+  name: string;
+  /** Phone number of the contact (digits / +; server normalises into the vCard). */
+  phoneNumber: string;
 }
 
 /**
@@ -1872,6 +1935,11 @@ export interface Product {
   name: string;
   /** @nullable */
   category: string | null;
+  /**
+     * Free-text product description (deskripsi). Public/customer-safe.
+     * @nullable
+     */
+  description: string | null;
   /** Harga Pricelist — public price shown to customers */
   price: number;
   /**
@@ -1936,6 +2004,8 @@ export interface ProductInput {
   name: string;
   /** @nullable */
   category?: string | null;
+  /** @nullable */
+  description?: string | null;
   /** @minimum 0 */
   price: number;
   /**

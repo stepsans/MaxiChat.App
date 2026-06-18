@@ -100,6 +100,38 @@ export async function uploadChatMedia(
   await rawUpload(`/api/chats/${chatId}/media`, fd);
 }
 
+/**
+ * Send an album (multiple photos/videos) into a chat in a single request. The
+ * backend transmits the items as an ordered sequence over the chat's channel,
+ * with a small inter-message delay. The caption (if any) rides on the first
+ * item. Not in OpenAPI (binary multipart).
+ */
+export async function uploadChatAlbum(
+  chatId: number,
+  files: UploadFile[],
+  caption: string,
+): Promise<void> {
+  const fd = new FormData();
+  for (const file of files) fd.append("files", file as unknown as Blob);
+  if (caption) fd.append("caption", caption);
+  await rawUpload(`/api/chats/${chatId}/album`, fd);
+}
+
+/**
+ * Send a recorded voice note into a chat. Same multipart endpoint as
+ * uploadChatMedia but flags `ptt=true` so the backend transmits it as a
+ * WhatsApp push-to-talk voice note (not a regular audio file).
+ */
+export async function uploadVoiceNote(
+  chatId: number,
+  file: UploadFile,
+): Promise<void> {
+  const fd = new FormData();
+  fd.append("file", file as unknown as Blob);
+  fd.append("ptt", "true");
+  await rawUpload(`/api/chats/${chatId}/media`, fd);
+}
+
 /** Post an image WhatsApp Status. Not in OpenAPI (binary multipart). */
 export async function uploadImageStatus(
   file: UploadFile,

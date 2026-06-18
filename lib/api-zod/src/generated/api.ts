@@ -1591,6 +1591,8 @@ export const ListChatsResponseItem = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
 })
@@ -1744,6 +1746,12 @@ export const GetChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
+  "presence": zod.object({
+  "status": zod.enum(['available', 'unavailable', 'composing', 'recording']).optional(),
+  "lastSeen": zod.number().nullish().describe('Unix epoch seconds of the contact\'s last-seen, when shared.')
+}).nullish().describe('Best-effort live presence from WhatsApp, populated after the chat is opened (the server subscribes on first fetch and reads it on the next poll). Null when unknown \/ not yet received.\n'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable(),
   "messages": zod.array(zod.object({
@@ -1817,6 +1825,8 @@ export const UpdateChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
 })
@@ -2048,6 +2058,8 @@ export const AssignChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
 })
@@ -2089,8 +2101,178 @@ export const TakeoverChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
+})
+
+
+/**
+ * @summary Mute or unmute a chat's notifications until a timestamp
+ */
+export const MuteChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const MuteChatBody = zod.object({
+  "mutedUntil": zod.coerce.date().nullable().describe('ISO timestamp until which the chat is muted; null to unmute.')
+})
+
+export const MuteChatResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
+  "phoneNumber": zod.string(),
+  "contactName": zod.string(),
+  "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
+  "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
+  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "isHumanTakeover": zod.boolean(),
+  "lastMessage": zod.string().nullable(),
+  "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
+  "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
+})
+
+
+/**
+ * @summary Block or unblock the chat's contact on WhatsApp
+ */
+export const BlockChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const BlockChatBody = zod.object({
+  "blocked": zod.boolean().describe('True to block the contact on WhatsApp, false to unblock.')
+})
+
+export const BlockChatResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
+  "phoneNumber": zod.string(),
+  "contactName": zod.string(),
+  "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
+  "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
+  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "isHumanTakeover": zod.boolean(),
+  "lastMessage": zod.string().nullable(),
+  "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
+  "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
+})
+
+
+/**
+ * @summary Send a geo-location pin to the chat
+ */
+export const SendLocationToChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendLocationToChatBody = zod.object({
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "name": zod.string().optional().describe('Optional place name shown with the pin.'),
+  "address": zod.string().optional().describe('Optional address line shown with the pin.')
+})
+
+export const SendLocationToChatResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "status": zod.union([zod.literal('sent'),zod.literal('delivered'),zod.literal('read'),zod.literal(null)]).nullish().describe('Outbound delivery\/read state mirroring WhatsApp\'s ticks (\"sent\"=single, \"delivered\"=double grey, \"read\"=double blue). Null for inbound messages and outbound messages whose status hasn\'t been observed yet (treated as \"sent\" by the UI).'),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
+})
+
+
+/**
+ * @summary Send a contact card (vCard) to the chat
+ */
+export const SendContactToChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendContactToChatBody = zod.object({
+  "name": zod.string().describe('Display name of the contact being shared.'),
+  "phoneNumber": zod.string().describe('Phone number of the contact (digits \/ +; server normalises into the vCard).')
+})
+
+export const SendContactToChatResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "status": zod.union([zod.literal('sent'),zod.literal('delivered'),zod.literal('read'),zod.literal(null)]).nullish().describe('Outbound delivery\/read state mirroring WhatsApp\'s ticks (\"sent\"=single, \"delivered\"=double grey, \"read\"=double blue). Null for inbound messages and outbound messages whose status hasn\'t been observed yet (treated as \"sent\" by the UI).'),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -2735,6 +2917,7 @@ export const ListProductsResponseItem = zod.object({
   "code": zod.string(),
   "name": zod.string(),
   "category": zod.string().nullable(),
+  "description": zod.string().nullable().describe('Free-text product description (deskripsi). Public\/customer-safe.'),
   "price": zod.number().describe('Harga Pricelist — public price shown to customers'),
   "priceSilver": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceGold": zod.number().nullable().describe('Internal only — never sent to customers'),
@@ -2783,6 +2966,7 @@ export const CreateProductBody = zod.object({
   "code": zod.string().min(1),
   "name": zod.string().min(1),
   "category": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "price": zod.number().min(createProductBodyPriceMin),
   "priceSilver": zod.number().min(createProductBodyPriceSilverMin).nullish(),
   "priceGold": zod.number().min(createProductBodyPriceGoldMin).nullish(),
@@ -2831,6 +3015,7 @@ export const UpdateProductBody = zod.object({
   "code": zod.string().min(1),
   "name": zod.string().min(1),
   "category": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "price": zod.number().min(updateProductBodyPriceMin),
   "priceSilver": zod.number().min(updateProductBodyPriceSilverMin).nullish(),
   "priceGold": zod.number().min(updateProductBodyPriceGoldMin).nullish(),
@@ -2854,6 +3039,7 @@ export const UpdateProductResponse = zod.object({
   "code": zod.string(),
   "name": zod.string(),
   "category": zod.string().nullable(),
+  "description": zod.string().nullable().describe('Free-text product description (deskripsi). Public\/customer-safe.'),
   "price": zod.number().describe('Harga Pricelist — public price shown to customers'),
   "priceSilver": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceGold": zod.number().nullable().describe('Internal only — never sent to customers'),
