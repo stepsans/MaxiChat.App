@@ -30,7 +30,28 @@ app.use(
     },
   }),
 );
-app.use(cors({ origin: true, credentials: true }));
+// CORS. By default (dev / unconfigured) we reflect any Origin — unchanged
+// behaviour. In production set ALLOWED_ORIGINS to a comma-separated allow-list
+// (e.g. "https://app.maxichat.app,https://admin.maxichat.app") to lock the
+// credentialed cookie API down to known web origins. Requests with no Origin
+// header (native mobile, curl, server-to-server) are always allowed — the
+// mobile app authenticates with a Bearer token, not a cross-site cookie.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    credentials: true,
+    origin:
+      allowedOrigins.length === 0
+        ? true
+        : (origin, cb) => {
+            if (!origin || allowedOrigins.includes(origin)) cb(null, true);
+            else cb(new Error("Origin not allowed by CORS"));
+          },
+  }),
+);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -65,7 +86,13 @@ const sessionMiddleware: RequestHandler = session({
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: false, // Replit's proxy terminates TLS; the cookie still rides on HTTPS to the browser.
+    // Flag the cookie Secure in production (served over HTTPS behind the proxy;
+    // `trust proxy` above makes this work). Stays false in dev (plain HTTP).
+    // Override explicitly with COOKIE_SECURE=true|false if the deploy differs.
+    secure:
+      process.env.COOKIE_SECURE != null
+        ? process.env.COOKIE_SECURE === "true"
+        : process.env.NODE_ENV === "production",
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
   },
 });

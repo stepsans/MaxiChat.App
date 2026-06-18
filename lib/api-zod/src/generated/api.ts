@@ -42,7 +42,7 @@ export const LoginResponse = zod.object({
 
 export const MobileLoginBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(1),
+  "otp": zod.string().min(1).describe('One-time code emailed to the user via POST \/auth\/otp\/request (purpose=login).'),
   "deviceLabel": zod.string().nullish().describe('Optional human label for the device (e.g. \'iPhone 15\').')
 })
 

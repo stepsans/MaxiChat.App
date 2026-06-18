@@ -11650,14 +11650,15 @@ components:
 
     MobileLoginInput:
       type: object
-      required: [email, password]
+      required: [email, otp]
       properties:
         email:
           type: string
           format: email
-        password:
+        otp:
           type: string
           minLength: 1
+          description: "One-time code emailed to the user via POST /auth/otp/request (purpose=login)."
         deviceLabel:
           type: ["string", "null"]
           description: "Optional human label for the device (e.g. 'iPhone 15')."

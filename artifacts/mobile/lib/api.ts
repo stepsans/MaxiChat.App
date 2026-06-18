@@ -3,6 +3,7 @@ import {
   setBaseUrl,
   setAuthTokenGetter,
   setChannelIdGetter,
+  setUnauthorizedHandler,
 } from "@workspace/api-client-react";
 
 export const API_BASE = `https://${process.env.EXPO_PUBLIC_API_DOMAIN}`;
@@ -11,6 +12,14 @@ const TOKEN_KEY = "maxichat_token";
 
 let currentToken: string | null = null;
 let currentChannelId: string | null = null;
+
+// Callback fired when an in-session request returns 401 (token expired/revoked).
+// AuthContext registers it to reset React auth state and bounce to login.
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedCallback(cb: (() => void) | null): void {
+  onUnauthorized = cb;
+}
 
 /**
  * Wire the generated API client to this app's auth + channel state. Called once
@@ -21,6 +30,15 @@ export function configureApiClient(): void {
   setBaseUrl(API_BASE);
   setAuthTokenGetter(() => currentToken);
   setChannelIdGetter(() => currentChannelId);
+  // Mid-session 401 → clear the dead token and let AuthContext route to login.
+  // Pre-auth 401s (e.g. a wrong OTP at login, when no token is held yet) are
+  // ignored so they surface as a normal login error instead of a "logout".
+  setUnauthorizedHandler(() => {
+    if (!currentToken) return;
+    void persistToken(null);
+    currentChannelId = null;
+    onUnauthorized?.();
+  });
 }
 
 export function setMemToken(token: string | null): void {
@@ -85,6 +103,54 @@ async function rawUpload<T = unknown>(
   } catch {
     return undefined as T;
   }
+}
+
+/**
+ * POST a JSON body to a public (no-auth) endpoint and return the parsed JSON.
+ * Used for the OTP login endpoints, which aren't in the OpenAPI spec (the web
+ * dashboard calls them the same way).
+ */
+async function postJson<T = unknown>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      msg = (j && (j.error || j.detail || j.message)) || msg;
+    } catch {
+      // ignore parse failure
+    }
+    throw new Error(msg);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return undefined as T;
+  }
+}
+
+/**
+ * Request a login OTP be emailed (via the backend's Resend integration) to the
+ * given address. `devOtp` is only returned by the backend outside production.
+ */
+export async function requestLoginOtp(
+  email: string,
+): Promise<{ ok?: boolean; expiresAt?: string; devOtp?: string }> {
+  return postJson("/api/auth/otp/request", { email, purpose: "login" });
+}
+
+/** Re-send the login OTP (separate rate limit on the backend). */
+export async function resendLoginOtp(
+  email: string,
+): Promise<{ ok?: boolean; expiresAt?: string; devOtp?: string }> {
+  return postJson("/api/auth/otp/resend", { email, purpose: "login" });
 }
 
 /** Send a media message into a chat. Not in OpenAPI (binary multipart). */

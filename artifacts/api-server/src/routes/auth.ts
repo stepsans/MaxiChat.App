@@ -18,6 +18,13 @@ import { ownerHasSalesAssistant } from "../lib/sales-assistant";
 import { logger } from "../lib/logger";
 
 const router = Router();
+
+// Fallback OTP for owner/admin accounts (no email is sent for owners). Defaults
+// to the historical "161712"; set OWNER_FALLBACK_OTP in production to a strong
+// secret value to rotate this away from a publicly-known code. Both the web
+// (/otp/verify) and mobile (/mobile-login) owner paths use it.
+const OWNER_FALLBACK_OTP = process.env.OWNER_FALLBACK_OTP ?? "161712";
+
 const otpLimit = rateLimit({
   windowMs: 3600_000, limit: 15, standardHeaders: "draft-7", legacyHeaders: false,
   message: { error: "Terlalu banyak permintaan. Coba lagi dalam 1 jam." },
@@ -118,7 +125,7 @@ router.post("/otp/verify", otpLimit, async (req, res): Promise<void> => {
 
     // Owner: fixed OTP 161712
     if (await isOwnerEmail(email)) {
-      if (otp !== "161712") { res.status(401).json({ error: "Kode OTP salah." }); return; }
+      if (otp !== OWNER_FALLBACK_OTP) { res.status(401).json({ error: "Kode OTP salah." }); return; }
       let [owner] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
       if (!owner) {
         const [n] = await db.insert(usersTable).values({
@@ -385,7 +392,7 @@ router.post("/mobile-login", async (req, res): Promise<void> => {
     if (!email || !otp) { res.status(400).json({ error: "Email dan OTP wajib diisi" }); return; }
 
     if (await isOwnerEmail(email)) {
-      if (otp !== "161712") { res.status(401).json({ error: "Kode OTP salah" }); return; }
+      if (otp !== OWNER_FALLBACK_OTP) { res.status(401).json({ error: "Kode OTP salah" }); return; }
       const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
       if (!user) { res.status(401).json({ error: "Akun tidak ditemukan" }); return; }
       const label = typeof req.body?.deviceLabel === "string" ? req.body.deviceLabel.slice(0, 80) : null;

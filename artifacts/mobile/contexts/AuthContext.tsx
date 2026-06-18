@@ -21,6 +21,7 @@ import {
   persistToken,
   setMemToken,
   setMemChannelId,
+  setUnauthorizedCallback,
 } from "@/lib/api";
 import { registerForPushNotificationsAsync } from "@/lib/push";
 
@@ -28,7 +29,8 @@ type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Verify the emailed OTP and establish a mobile session. */
+  signIn: (email: string, otp: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -94,12 +96,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const session = await mobileLogin({ email, password });
+  const signIn = useCallback(async (email: string, otp: string) => {
+    const session = await mobileLogin({ email, otp });
     await persistToken(session.token);
     setMemToken(session.token);
     setToken(session.token);
     setUser(session.user);
+  }, []);
+
+  // Reset auth state when the API client reports a mid-session 401 (the token
+  // was already cleared in lib/api). The `!!token` route guard then bounces to
+  // the login screen.
+  useEffect(() => {
+    setUnauthorizedCallback(() => {
+      setToken(null);
+      setUser(null);
+    });
+    return () => setUnauthorizedCallback(null);
   }, []);
 
   const signOut = useCallback(async () => {

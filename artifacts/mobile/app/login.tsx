@@ -14,39 +14,91 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { requestLoginOtp, resendLoginOtp } from "@/lib/api";
 import { useColors } from "@/hooks/useColors";
+
+type Step = "email" | "otp";
 
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
 
+  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [devOtp, setDevOtp] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = async () => {
+  const emailValid = /\S+@\S+\.\S+/.test(email.trim());
+
+  // Step 1 — email: ask the backend to email a one-time code.
+  const onRequestOtp = async () => {
     if (submitting) return;
     setError(null);
-    if (!email.trim() || !password) {
-      setError("Email dan kata sandi wajib diisi.");
+    setInfo(null);
+    if (!emailValid) {
+      setError("Masukkan email yang valid.");
       return;
     }
     setSubmitting(true);
     try {
-      await signIn(email.trim(), password);
+      const res = await requestLoginOtp(email.trim());
+      setDevOtp(res?.devOtp ?? null);
+      setStep("otp");
+      setInfo(`Kode dikirim ke ${email.trim()}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal mengirim kode.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Step 2 — otp: verify the code and establish the session.
+  const onVerify = async () => {
+    if (submitting) return;
+    setError(null);
+    if (otp.trim().length < 4) {
+      setError("Masukkan kode OTP yang dikirim ke email Anda.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await signIn(email.trim(), otp.trim());
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Gagal masuk.";
       setError(
-        /401|invalid|unauthorized/i.test(msg)
-          ? "Email atau kata sandi salah."
-          : msg,
+        /401|invalid|unauthorized|salah/i.test(msg) ? "Kode OTP salah atau kedaluwarsa." : msg,
       );
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const onResend = async () => {
+    if (submitting) return;
+    setError(null);
+    setInfo(null);
+    setSubmitting(true);
+    try {
+      const res = await resendLoginOtp(email.trim());
+      setDevOtp(res?.devOtp ?? null);
+      setInfo("Kode baru telah dikirim.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal mengirim ulang kode.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const backToEmail = () => {
+    setStep("email");
+    setOtp("");
+    setError(null);
+    setInfo(null);
+    setDevOtp(null);
   };
 
   return (
@@ -65,11 +117,11 @@ export default function LoginScreen() {
           <View style={[styles.logo, { backgroundColor: colors.primary }]}>
             <Feather name="message-circle" size={36} color="#ffffff" />
           </View>
-          <Text style={[styles.title, { color: colors.foreground }]}>
-            MaxiChat
-          </Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>MaxiChat</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Masuk untuk mengelola percakapan Anda
+            {step === "email"
+              ? "Masuk dengan kode sekali pakai (OTP)"
+              : "Masukkan kode yang dikirim ke email Anda"}
           </Text>
 
           <View style={styles.form}>
@@ -81,6 +133,7 @@ export default function LoginScreen() {
                   backgroundColor: colors.card,
                   borderColor: colors.border,
                   color: colors.foreground,
+                  opacity: step === "otp" ? 0.6 : 1,
                 },
               ]}
               placeholder="nama@perusahaan.com"
@@ -90,49 +143,50 @@ export default function LoginScreen() {
               keyboardType="email-address"
               value={email}
               onChangeText={setEmail}
-              editable={!submitting}
+              editable={!submitting && step === "email"}
+              onSubmitEditing={onRequestOtp}
+              returnKeyType="next"
             />
 
-            <Text style={[styles.label, { color: colors.foreground }]}>
-              Kata sandi
-            </Text>
-            <View style={styles.pwRow}>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.pwInput,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                    color: colors.foreground,
-                  },
-                ]}
-                placeholder="••••••••"
-                placeholderTextColor={colors.mutedForeground}
-                secureTextEntry={!showPw}
-                autoCapitalize="none"
-                value={password}
-                onChangeText={setPassword}
-                editable={!submitting}
-                onSubmitEditing={onSubmit}
-                returnKeyType="go"
-              />
-              <TouchableOpacity
-                style={styles.eye}
-                onPress={() => setShowPw((s) => !s)}
-              >
-                <Feather
-                  name={showPw ? "eye-off" : "eye"}
-                  size={20}
-                  color={colors.mutedForeground}
+            {step === "otp" ? (
+              <>
+                <Text style={[styles.label, { color: colors.foreground }]}>
+                  Kode OTP
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    styles.otpInput,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      color: colors.foreground,
+                    },
+                  ]}
+                  placeholder="••••••"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="number-pad"
+                  autoFocus
+                  maxLength={6}
+                  value={otp}
+                  onChangeText={(t) => setOtp(t.replace(/[^0-9]/g, ""))}
+                  editable={!submitting}
+                  onSubmitEditing={onVerify}
+                  returnKeyType="go"
                 />
-              </TouchableOpacity>
-            </View>
+                {devOtp ? (
+                  <Text style={[styles.dev, { color: colors.mutedForeground }]}>
+                    Kode dev: {devOtp}
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
 
+            {info ? (
+              <Text style={[styles.info, { color: colors.mutedForeground }]}>{info}</Text>
+            ) : null}
             {error ? (
-              <Text style={[styles.error, { color: colors.destructive }]}>
-                {error}
-              </Text>
+              <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text>
             ) : null}
 
             <TouchableOpacity
@@ -141,16 +195,33 @@ export default function LoginScreen() {
                 { backgroundColor: colors.primary },
                 submitting && { opacity: 0.7 },
               ]}
-              onPress={onSubmit}
+              onPress={step === "email" ? onRequestOtp : onVerify}
               disabled={submitting}
               activeOpacity={0.85}
             >
               {submitting ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.buttonText}>Masuk</Text>
+                <Text style={styles.buttonText}>
+                  {step === "email" ? "Kirim Kode" : "Masuk"}
+                </Text>
               )}
             </TouchableOpacity>
+
+            {step === "otp" ? (
+              <View style={styles.otpActions}>
+                <TouchableOpacity onPress={onResend} disabled={submitting}>
+                  <Text style={[styles.linkAction, { color: colors.primary }]}>
+                    Kirim ulang kode
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={backToEmail} disabled={submitting}>
+                  <Text style={[styles.linkAction, { color: colors.mutedForeground }]}>
+                    Ganti email
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -192,9 +263,22 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 16,
   },
-  pwRow: { position: "relative", justifyContent: "center" },
-  pwInput: { paddingRight: 48 },
-  eye: { position: "absolute", right: 12, padding: 4 },
+  otpInput: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 22,
+    letterSpacing: 8,
+    textAlign: "center",
+  },
+  dev: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    marginTop: 8,
+  },
+  info: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    marginTop: 14,
+  },
   error: {
     fontFamily: "Inter_400Regular",
     fontSize: 14,
@@ -211,5 +295,14 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontFamily: "Inter_600SemiBold",
     fontSize: 16,
+  },
+  otpActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+  },
+  linkAction: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 14,
   },
 });

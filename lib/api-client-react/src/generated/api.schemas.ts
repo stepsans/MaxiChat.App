@@ -3396,8 +3396,11 @@ export interface LoginInput {
 
 export interface MobileLoginInput {
   email: string;
-  /** @minLength 1 */
-  password: string;
+  /**
+     * One-time code emailed to the user via POST /auth/otp/request (purpose=login).
+     * @minLength 1
+     */
+  otp: string;
   /**
      * Optional human label for the device (e.g. 'iPhone 15').
      * @nullable
