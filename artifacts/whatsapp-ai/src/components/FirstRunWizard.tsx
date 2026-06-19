@@ -100,11 +100,11 @@ export function FirstRunWizard() {
   }
 
   return (
-    <div className="rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-5 shadow-sm" data-testid="first-run-wizard">
+    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10 p-5 shadow-sm" data-testid="first-run-wizard">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-orange-500" /> Mulai dalam 3 langkah
+            <Sparkles className="h-4 w-4 text-primary" /> Mulai dalam 3 langkah
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             Sampai AI-mu benar-benar membalas — kurang dari 2 menit.
@@ -122,13 +122,13 @@ export function FirstRunWizard() {
             <button
               onClick={() => go(s as 1 | 2 | 3)}
               className={`h-7 w-7 rounded-full text-xs font-semibold flex items-center justify-center transition ${
-                step === s ? "bg-orange-500 text-white" :
-                step > s ? "bg-orange-200 text-orange-700" : "bg-white border border-orange-200 text-orange-400"
+                step === s ? "bg-primary text-primary-foreground" :
+                step > s ? "bg-primary/15 text-primary" : "bg-card border border-border text-muted-foreground"
               }`}
             >
               {step > s ? <Check className="h-3.5 w-3.5" /> : s}
             </button>
-            {s < 3 && <div className={`h-0.5 flex-1 rounded ${step > s ? "bg-orange-300" : "bg-orange-100"}`} />}
+            {s < 3 && <div className={`h-0.5 flex-1 rounded ${step > s ? "bg-primary/40" : "bg-primary/15"}`} />}
           </div>
         ))}
       </div>
@@ -140,7 +140,7 @@ export function FirstRunWizard() {
             <MessageCircle className="h-4 w-4 text-green-600" /> Hubungkan WhatsApp
           </h4>
           {data.waConnected ? (
-            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2">
+            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2 dark:bg-green-950/40 dark:text-green-400 dark:border-green-900">
               <Check className="h-4 w-4" /> WhatsApp sudah terhubung.
             </div>
           ) : (
@@ -154,7 +154,7 @@ export function FirstRunWizard() {
                 Hubungkan WhatsApp
               </Link>
             )}
-            <button onClick={() => go(2)} className="inline-flex h-10 items-center rounded-lg border border-orange-200 bg-white px-4 text-sm font-semibold text-orange-700 hover:bg-orange-50">
+            <button onClick={() => go(2)} className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted">
               {data.waConnected ? "Lanjut" : "Lewati dulu"}
             </button>
           </div>
@@ -167,17 +167,17 @@ export function FirstRunWizard() {
           <h4 className="font-medium text-foreground">Beri makan AI-mu</h4>
           <p className="text-xs text-muted-foreground -mt-1">Singkat saja — ini yang menentukan cara AI membalas.</p>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Bisnismu jual apa?</label>
+            <label className="text-xs font-semibold text-foreground">Bisnismu jual apa?</label>
             <textarea
               value={businessDescription}
               onChange={(e) => setBusinessDescription(e.target.value)}
               rows={2}
               placeholder="Mis. Toko kopi specialty, jual biji kopi & alat seduh, terima grosir."
-              className="mt-1 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-500"
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Nada bicara AI</label>
+            <label className="text-xs font-semibold text-foreground">Nada bicara AI</label>
             <div className="mt-1 grid grid-cols-3 gap-2">
               {TONES.map((t) => (
                 <button
@@ -185,31 +185,31 @@ export function FirstRunWizard() {
                   type="button"
                   onClick={() => setAiTone(t.key)}
                   className={`rounded-lg border px-2 py-2 text-left transition ${
-                    aiTone === t.key ? "border-orange-500 bg-orange-50" : "border-slate-200 bg-white hover:border-orange-300"
+                    aiTone === t.key ? "border-primary bg-primary/10" : "border-border bg-background hover:border-primary/40"
                   }`}
                 >
-                  <div className="text-sm font-semibold text-slate-800">{t.label}</div>
+                  <div className="text-sm font-semibold text-foreground">{t.label}</div>
                   <div className="text-[11px] text-muted-foreground">{t.hint}</div>
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-700">Jam operasional (opsional)</label>
+            <label className="text-xs font-semibold text-foreground">Jam operasional (opsional)</label>
             <input
               value={operatingHours}
               onChange={(e) => setOperatingHours(e.target.value)}
               placeholder="Senin–Jumat 09.00–17.00"
-              className="mt-1 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-500"
+              className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
             />
           </div>
-          {profileErr && <div className="text-xs text-red-600">{profileErr}</div>}
+          {profileErr && <div className="text-xs text-destructive">{profileErr}</div>}
           <div className="flex gap-2">
-            <button onClick={() => go(1)} className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600">Kembali</button>
+            <button onClick={() => go(1)} className="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-muted-foreground hover:bg-muted">Kembali</button>
             <button
               onClick={saveProfile}
               disabled={savingProfile || !businessDescription.trim()}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
             >
               {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />} Simpan & coba AI
             </button>
@@ -221,7 +221,7 @@ export function FirstRunWizard() {
       {step === 3 && (
         <div className="space-y-3">
           <h4 className="font-medium text-foreground flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-orange-500" /> Coba AI-mu sekarang
+            <Sparkles className="h-4 w-4 text-primary" /> Coba AI-mu sekarang
           </h4>
           <p className="text-xs text-muted-foreground -mt-1">
             Ketik seperti customer. AI membalas pakai profil di atas — tidak ada pesan terkirim ke WhatsApp.
@@ -232,26 +232,26 @@ export function FirstRunWizard() {
               onChange={(e) => setSandboxMsg(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") runSandbox(); }}
               placeholder="Tulis pesan customer…"
-              className="flex-1 rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm outline-none focus:border-orange-500"
+              className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
             />
             <button
               onClick={runSandbox}
               disabled={sandboxLoading || !sandboxMsg.trim()}
-              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
             >
               {sandboxLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Coba
             </button>
           </div>
-          {sandboxErr && <div className="text-xs text-red-600">{sandboxErr}</div>}
+          {sandboxErr && <div className="text-xs text-destructive">{sandboxErr}</div>}
           {sandboxReply != null && (
-            <div className="rounded-lg border border-green-200 bg-white p-3" data-testid="sandbox-reply">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-green-600 mb-1">Balasan AI</div>
-              <div className="text-sm text-slate-800 whitespace-pre-wrap">{sandboxReply}</div>
+            <div className="rounded-lg border border-primary/20 bg-card p-3" data-testid="sandbox-reply">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-primary mb-1">Balasan AI</div>
+              <div className="text-sm text-foreground whitespace-pre-wrap">{sandboxReply}</div>
             </div>
           )}
           <div className="flex gap-2">
-            <button onClick={() => go(2)} className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600">Ubah profil</button>
-            <button onClick={finish} className="h-10 rounded-lg bg-green-600 px-4 text-sm font-semibold text-white hover:bg-green-700">
+            <button onClick={() => go(2)} className="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-muted-foreground hover:bg-muted">Ubah profil</button>
+            <button onClick={finish} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
               Selesai
             </button>
           </div>
