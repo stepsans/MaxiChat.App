@@ -2767,6 +2767,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Settings"
 
+  /settings/restore-previous:
+    post:
+      operationId: restorePreviousPrompt
+      tags: [settings]
+      summary: Restore the previous system prompt (single-step undo, super admin only)
+      responses:
+        "200":
+          description: Restored settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          description: No previous version available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /settings/auto-reply:
     put:
       operationId: updateAutoReply
@@ -9997,7 +10016,7 @@ components:
 
     Settings:
       type: object
-      required: [id, systemPrompt, autoReplyEnabled, replyDelayMin, replyDelayMax, fallbackMessage, flowCooldownMinutes, updatedAt]
+      required: [id, systemPrompt, autoReplyEnabled, replyDelayMin, replyDelayMax, fallbackMessage, flowCooldownMinutes, updatedAt, aiPromptSource, hasPreviousPrompt, hardGuardrails]
       properties:
         id:
           type: integer
@@ -10017,6 +10036,16 @@ components:
           description: "Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups."
         updatedAt:
           type: string
+        aiPromptSource:
+          type: string
+          enum: [default, wizard, manual]
+          description: "Provenance of the current systemPrompt; 'manual' means the wizard must confirm before overwriting."
+        hasPreviousPrompt:
+          type: boolean
+          description: "True when a single-step 'restore previous version' is available."
+        hardGuardrails:
+          type: string
+          description: "Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt."
 
     GeneralSettingsUpdate:
       type: object

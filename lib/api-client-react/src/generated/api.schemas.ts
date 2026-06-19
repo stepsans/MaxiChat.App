@@ -1835,6 +1835,18 @@ export const SettingsFlowCooldownMinutes = {
   NUMBER_120: 120,
 } as const;
 
+/**
+ * Provenance of the current systemPrompt; 'manual' means the wizard must confirm before overwriting.
+ */
+export type SettingsAiPromptSource = typeof SettingsAiPromptSource[keyof typeof SettingsAiPromptSource];
+
+
+export const SettingsAiPromptSource = {
+  default: 'default',
+  wizard: 'wizard',
+  manual: 'manual',
+} as const;
+
 export interface Settings {
   id: number;
   systemPrompt: string;
@@ -1845,6 +1857,12 @@ export interface Settings {
   /** Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. */
   flowCooldownMinutes: SettingsFlowCooldownMinutes;
   updatedAt: string;
+  /** Provenance of the current systemPrompt; 'manual' means the wizard must confirm before overwriting. */
+  aiPromptSource: SettingsAiPromptSource;
+  /** True when a single-step 'restore previous version' is available. */
+  hasPreviousPrompt: boolean;
+  /** Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt. */
+  hardGuardrails: string;
 }
 
 export type GeneralSettingsUpdateFlowCooldownMinutes = typeof GeneralSettingsUpdateFlowCooldownMinutes[keyof typeof GeneralSettingsUpdateFlowCooldownMinutes];

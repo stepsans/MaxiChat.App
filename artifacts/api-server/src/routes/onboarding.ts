@@ -12,6 +12,11 @@ import { refreshChecklist, getOrCreateChecklist } from "../lib/onboarding";
 import { getOrCreateTenantSettings } from "../lib/settings-store";
 import { composeSystemPrompt } from "../lib/compose-system-prompt";
 import { buildProductCatalogText } from "../lib/product-catalog";
+import {
+  buildPersonaPrompt,
+  normalizeWizardAnswers,
+  REFINE_PERSONA_INSTRUCTION,
+} from "../lib/ai-prompt-builder";
 import { resolveAiClient } from "../lib/ai-provider";
 
 const router = Router();
@@ -187,6 +192,130 @@ router.post("/ai-sandbox", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "POST /onboarding/ai-sandbox failed");
     res.status(500).json({ error: "Gagal menjalankan AI. Coba lagi." });
+  }
+});
+
+// ─── AI Setup Wizard (Step 2 "Beri makan AI-mu") ──────────────────────────────
+// Generate → Review → Setuju. Assembles LAPIS A + B-bisnis only; LAPIS C
+// (AI_HARD_GUARDRAILS) is appended at runtime by each AI path, never stored.
+
+// Owner-only guard shared by the wizard write paths.
+async function requireWizardOwner(
+  req: Parameters<typeof getSessionUserId>[0],
+  res: import("express").Response
+): Promise<number | null> {
+  const userId = getSessionUserId(req);
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return null; }
+  const ownerUserId = await getEffectiveOwnerUserId(userId);
+  if (ownerUserId !== userId) {
+    res.status(403).json({ error: "Hanya super admin yang dapat mengatur AI" });
+    return null;
+  }
+  return ownerUserId;
+}
+
+// GET /onboarding/ai-wizard — visibility + prefill. aiWizardCompletedAt is the
+// SOLE source of truth for whether the wizard auto-surfaces.
+router.get("/ai-wizard", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const ownerUserId = await getEffectiveOwnerUserId(userId);
+    const current = await getOrCreateTenantSettings(ownerUserId);
+    res.json({
+      completed: !!current.aiWizardCompletedAt,
+      aiPromptSource: current.aiPromptSource,
+      answers: current.wizardAnswers ?? null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "GET /onboarding/ai-wizard failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /onboarding/ai-wizard/generate — deterministic persona build (no AI).
+router.post("/ai-wizard/generate", async (req, res): Promise<void> => {
+  try {
+    const userId = getSessionUserId(req);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const answers = normalizeWizardAnswers(req.body);
+    if (!answers) { res.status(400).json({ error: "Nama bisnis dan deskripsi wajib diisi." }); return; }
+    res.json({ systemPrompt: buildPersonaPrompt(answers) });
+  } catch (err) {
+    req.log.error({ err }, "POST /onboarding/ai-wizard/generate failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /onboarding/ai-wizard/refine — optional "Perhalus dengan AI". Touches ONLY
+// the persona (Lapis A+B); guardrails (Lapis C) are never sent here.
+router.post("/ai-wizard/refine", async (req, res): Promise<void> => {
+  const ownerUserId = await requireWizardOwner(req, res);
+  if (ownerUserId == null) return;
+  const persona = String(req.body?.persona ?? "").trim().slice(0, 8000);
+  if (!persona) { res.status(400).json({ error: "Tidak ada teks untuk diperhalus." }); return; }
+  try {
+    const { client, model } = await resolveAiClient(ownerUserId);
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: REFINE_PERSONA_INSTRUCTION },
+        { role: "user", content: persona },
+      ],
+      max_tokens: 1500,
+      temperature: 0.7,
+    });
+    const refined = completion.choices?.[0]?.message?.content?.trim();
+    res.json({ refined: refined || persona });
+  } catch (err) {
+    req.log.error({ err }, "POST /onboarding/ai-wizard/refine failed");
+    // Token exhausted / engine down → tell the client so it keeps the template.
+    res.status(503).json({ reason: "ai_unavailable", error: "AI sedang tidak tersedia. Template tetap bisa dipakai tanpa diperhalus." });
+  }
+});
+
+// POST /onboarding/ai-wizard/save — persist the reviewed persona as the tenant
+// system_prompt. 409 needs_confirmation when overwriting a manual AI Studio edit.
+router.post("/ai-wizard/save", async (req, res): Promise<void> => {
+  const ownerUserId = await requireWizardOwner(req, res);
+  if (ownerUserId == null) return;
+  try {
+    const answers = normalizeWizardAnswers(req.body?.answers ?? req.body);
+    if (!answers) { res.status(400).json({ error: "Nama bisnis dan deskripsi wajib diisi." }); return; }
+
+    // The reviewed/edited text wins; fall back to a fresh build if absent.
+    const reviewed = typeof req.body?.systemPrompt === "string" ? req.body.systemPrompt.trim().slice(0, 8000) : "";
+    const systemPrompt = reviewed || buildPersonaPrompt(answers);
+
+    const current = await getOrCreateTenantSettings(ownerUserId);
+    const overwrite = req.body?.overwrite === true;
+    if (current.aiPromptSource === "manual" && !overwrite) {
+      res.status(409).json({
+        reason: "needs_confirmation",
+        message: "Prompt AI-mu di AI Studio sudah pernah diubah manual. Timpa dengan hasil wizard ini?",
+      });
+      return;
+    }
+
+    await db
+      .update(tenantSettingsTable)
+      .set({
+        systemPromptPrevious: current.systemPrompt, // snapshot for single-step undo
+        systemPrompt,
+        wizardAnswers: answers,
+        aiPromptSource: "wizard",
+        // Lock out the legacy composeSystemPrompt path so it never clobbers this.
+        systemPromptCustomized: true,
+        aiWizardCompletedAt: current.aiWizardCompletedAt ?? new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantSettingsTable.ownerUserId, ownerUserId));
+
+    await refreshChecklist(ownerUserId).catch(() => { /* best-effort */ });
+    res.json({ ok: true, systemPrompt });
+  } catch (err) {
+    req.log.error({ err }, "POST /onboarding/ai-wizard/save failed");
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

@@ -2549,7 +2549,10 @@ export const GetSettingsResponse = zod.object({
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
   "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
 })
 
 
@@ -2572,7 +2575,28 @@ export const UpdateGeneralSettingsResponse = zod.object({
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
   "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
+})
+
+
+/**
+ * @summary Restore the previous system prompt (single-step undo, super admin only)
+ */
+export const RestorePreviousPromptResponse = zod.object({
+  "id": zod.number(),
+  "systemPrompt": zod.string(),
+  "autoReplyEnabled": zod.boolean(),
+  "replyDelayMin": zod.number(),
+  "replyDelayMax": zod.number(),
+  "fallbackMessage": zod.string(),
+  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
 })
 
 
@@ -2591,7 +2615,10 @@ export const UpdateAutoReplyResponse = zod.object({
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
   "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
 })
 
 

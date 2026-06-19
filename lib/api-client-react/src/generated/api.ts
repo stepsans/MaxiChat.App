@@ -8353,6 +8353,76 @@ export const useUpdateGeneralSettings = <TError = ErrorType<unknown>,
       return useMutation(getUpdateGeneralSettingsMutationOptions(options));
     }
 
+export const getRestorePreviousPromptUrl = () => {
+
+
+
+
+  return `/api/settings/restore-previous`
+}
+
+/**
+ * @summary Restore the previous system prompt (single-step undo, super admin only)
+ */
+export const restorePreviousPrompt = async ( options?: RequestInit): Promise<Settings> => {
+
+  return customFetch<Settings>(getRestorePreviousPromptUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRestorePreviousPromptMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restorePreviousPrompt>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restorePreviousPrompt>>, TError,void, TContext> => {
+
+const mutationKey = ['restorePreviousPrompt'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restorePreviousPrompt>>, void> = () => {
+
+
+          return  restorePreviousPrompt(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestorePreviousPromptMutationResult = NonNullable<Awaited<ReturnType<typeof restorePreviousPrompt>>>
+
+    export type RestorePreviousPromptMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Restore the previous system prompt (single-step undo, super admin only)
+ */
+export const useRestorePreviousPrompt = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restorePreviousPrompt>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restorePreviousPrompt>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRestorePreviousPromptMutationOptions(options));
+    }
+
 export const getUpdateAutoReplyUrl = () => {
 
 
