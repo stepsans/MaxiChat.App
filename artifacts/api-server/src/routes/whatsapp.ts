@@ -43,6 +43,7 @@ import { saveTenantMedia } from "../lib/tenant-storage";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { isOwnerReadOnly } from "../lib/billing";
 import { buildProductCatalogText } from "../lib/product-catalog";
+import { AI_HARD_GUARDRAILS } from "../lib/ai-guardrails";
 import { enqueueChatDetection } from "../lib/sales-detection";
 import {
   resolveActiveChannel,
@@ -1414,6 +1415,11 @@ export async function generateAiReply(
         m.direction === "outbound" ? stripTrailingTag(m.content) : m.content,
     }));
 
+    // 3-lapis (lihat lib/ai-guardrails.ts): LAPIS A persona (tenant.systemPrompt)
+    // → LAPIS B konteks tugas (instruksi node Flow + panduan katalog auto-reply +
+    // data katalog/KB) → LAPIS C guardrail terkunci (AI_HARD_GUARDRAILS), SELALU
+    // paling akhir agar aturan keras selalu menang. Persona di sini berasal dari
+    // sumber yang sama (AI Studio) dengan Flow AI dan follow-up.
     const extraInstruction = (aiInstructionOverride ?? "").trim();
     const systemPrompt = `${tenant.systemPrompt}${
       extraInstruction
@@ -1425,12 +1431,9 @@ ${extraInstruction}
         : ""
     }
 
-ATURAN MUTLAK:
-- HANYA gunakan informasi dari KATALOG PRODUK dan KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
-- KATALOG PRODUK adalah daftar harga resmi terkini. Saat customer menyebut nama atau kode produk (sebagian pun), cari di KATALOG PRODUK lalu jawab harga sesuai data tersebut. Jangan mengarang harga atau kode.
+PANDUAN KATALOG (auto-reply):
 - Saat customer menanyakan produk dalam suatu kategori, tampilkan SEMUA produk yang relevan di kategori itu beserta harganya — JANGAN membatasi hanya beberapa item. Jika jumlahnya sangat banyak (lebih dari 20), sebutkan dulu total jumlah produk, tampilkan sebagian, lalu tawarkan untuk mengirim daftar lengkap atau bantu menyaring berdasarkan kebutuhan/budget.
 - Jika riwayat percakapan menyebut produk, kategori bisnis, atau bidang usaha yang TIDAK ADA di katalog/knowledge base saat ini, abaikan sepenuhnya dan jangan ulang. Data bisa berubah — anggap riwayat lama yang tidak konsisten dengan data saat ini sudah tidak berlaku.
-- Jika pertanyaan customer berada di luar katalog dan knowledge base, jawab dengan sopan bahwa admin akan membantu. Jangan menebak atau mengarang.
 
 --- KATALOG PRODUK ---
 ${productCatalog || "Belum ada produk di katalog."}
@@ -1438,7 +1441,9 @@ ${productCatalog || "Belum ada produk di katalog."}
 
 --- KNOWLEDGE BASE ---
 ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
---- END KNOWLEDGE BASE ---`;
+--- END KNOWLEDGE BASE ---
+
+${AI_HARD_GUARDRAILS}`;
 
     // Resolve the tenant's AI client + model. Defaults to the managed Replit
     // integration (gpt-4o-mini) when the tenant hasn't opted into BYOK.

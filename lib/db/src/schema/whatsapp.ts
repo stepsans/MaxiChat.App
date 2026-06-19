@@ -473,6 +473,21 @@ export const tenantSettingsTable = pgTable(
     operatingHours: text("operating_hours"),
     // Once true, stop auto-composing system_prompt from the fields above.
     systemPromptCustomized: boolean("system_prompt_customized").notNull().default(false),
+    // Source of the current system_prompt — gates whether the AI Setup Wizard may
+    // overwrite without confirmation.
+    //   'default' — system bootstrap, never touched
+    //   'wizard'  — last assembled by the AI Setup Wizard
+    //   'manual'  — last hand-edited by super_admin in AI Studio
+    aiPromptSource: text("ai_prompt_source").notNull().default("default"),
+    // Snapshot of the previous system_prompt, saved right before an overwrite, to
+    // power a single-step "restore previous version" undo.
+    systemPromptPrevious: text("system_prompt_previous"),
+    // Raw structured wizard answers (business type, tone, etc.) so the wizard can
+    // be re-prefilled and the prompt re-assembled without losing the input.
+    wizardAnswers: jsonb("wizard_answers"),
+    // Set once the one-shot wizard bootstrap has completed; the wizard does not
+    // auto-surface again after this.
+    aiWizardCompletedAt: timestamp("ai_wizard_completed_at", { withTimezone: true }),
     replyDelayMin: integer("reply_delay_min").notNull().default(1),
     replyDelayMax: integer("reply_delay_max").notNull().default(3),
     fallbackMessage: text("fallback_message").notNull(),

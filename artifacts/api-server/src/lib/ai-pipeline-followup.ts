@@ -10,6 +10,8 @@ import {
 } from "@workspace/db";
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
+import { getOrCreateTenantSettings } from "./settings-store";
+import { AI_HARD_GUARDRAILS } from "./ai-guardrails";
 
 // ─── Schedule follow-up for a newly entered pipeline entry ────────────────────
 
@@ -198,26 +200,44 @@ export async function generateFollowupMessage(
         .join("\n");
     }
 
-    const prompt = `Kamu adalah agen penjualan yang ramah dan profesional. Tulis pesan follow-up WhatsApp untuk prospek ini.
+    // 3-lapis (lib/ai-guardrails.ts): the follow-up no longer defines its own
+    // persona — it INHERITS the tenant persona from AI Studio (Lapis A), so changing
+    // the address term / tone there updates follow-ups too. Lapis B is the per-FU
+    // task instruction; Lapis C is the locked guardrail, always last.
+    const tenant = await getOrCreateTenantSettings(pipeline.ownerUserId);
 
-Nama kontak: ${entry.contactName ?? "Pelanggan"}
-Produk diminati: ${entry.productInterest ?? "tidak diketahui"}
-Follow-up ke-${entry.followupCount + 1} dari 3
+    const followupNumber = entry.followupCount + 1;
+    // Lapis B — task context only (persona lives in Lapis A; do not redefine style).
+    const TONE_BY_FU: Record<number, string> = {
+      1: "santai, sekadar menyambung konteks obrolan sebelumnya tanpa menagih",
+      2: "helpful — beri nilai/info yang berguna, bukan sekadar menanyakan jadi atau tidak",
+      3: "tulus; ini pesan terakhir, tutup dengan ramah dan biarkan pintu tetap terbuka",
+    };
+    const toneInstruction = TONE_BY_FU[followupNumber] ?? TONE_BY_FU[1];
 
-${recentContext ? `Konteks percakapan terakhir:\n${recentContext}\n` : ""}
+    const instruksiFollowup = `TUGAS SAAT INI: kamu sedang menulis SATU pesan follow-up WhatsApp untuk customer yang sebelumnya ngobrol tapi belum lanjut. Tetap pakai gaya & panggilan yang sama seperti yang sudah ditetapkan di atas (jangan berubah jadi formal).
 
-Tulis pesan follow-up yang:
-- Singkat (2-4 kalimat)
-- Natural dan ramah, tidak terlalu formal
-- Relevan dengan konteks percakapan
-- Tidak memaksa
-- Dalam bahasa Indonesia
+KONTEKS:
+- Ini follow-up nomor ${followupNumber} dari maksimal 3.
+- Arah pesan: ${toneInstruction}
+- Minat produk dari analisa sebelumnya: ${entry.productInterest ?? "tidak diketahui"}
+- Nama customer (kalau ada): ${entry.contactName ?? "-"}
 
-Balas HANYA dengan teks pesan follow-up (tanpa penjelasan tambahan).`;
+Pakai nama customer kalau tersedia. Sambungkan ke konteks obrolan sebelumnya — jangan seperti baru kenal. Balas pakai bahasa yang sama dengan percakapan sebelumnya. Output HANYA teks pesan yang akan dikirim: tanpa penjelasan, tanpa JSON, tanpa preamble.`;
+
+    const systemPrompt = `${tenant.systemPrompt}\n\n${instruksiFollowup}\n\n${AI_HARD_GUARDRAILS}`;
 
     const completion = await (client.chat.completions.create as Function)({
       model,
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: recentContext
+            ? `Konteks percakapan terakhir:\n${recentContext}`
+            : "(Belum ada percakapan sebelumnya — tulis pembuka follow-up yang hangat dan menyambung.)",
+        },
+      ],
       max_tokens: 300,
       temperature: 0.7,
     }) as { choices: Array<{ message: { content: string } }>; usage?: Record<string, number> };

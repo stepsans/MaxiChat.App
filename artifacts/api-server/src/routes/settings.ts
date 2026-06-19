@@ -46,10 +46,23 @@ router.put("/general", requireSuperAdmin, async (req, res): Promise<void> => {
     if (!channel) return;
 
     // Ensure a tenant row exists, then update it for this owner.
-    await getOrCreateTenantSettings(channel.userId);
+    const current = await getOrCreateTenantSettings(channel.userId);
+
+    // A hand-edit of the persona in AI Studio marks the prompt as 'manual' (so the
+    // wizard asks before overwriting) and snapshots the old text for single-step
+    // undo ("Kembalikan versi sebelumnya"). Lapis C guardrails are not stored here,
+    // so they can never be edited away through this path.
+    const patch: Partial<typeof tenantSettingsTable.$inferInsert> = {
+      ...parsed.data,
+      updatedAt: new Date(),
+    };
+    if (parsed.data.systemPrompt !== undefined && parsed.data.systemPrompt !== current.systemPrompt) {
+      patch.aiPromptSource = "manual";
+      patch.systemPromptPrevious = current.systemPrompt;
+    }
     await db
       .update(tenantSettingsTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set(patch)
       .where(eq(tenantSettingsTable.ownerUserId, channel.userId));
 
     res.json(await getMergedSettings(channel));
