@@ -22,7 +22,7 @@ type Step = "email" | "otp";
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { signIn } = useAuth();
+  const { signIn, completeTrustedLogin } = useAuth();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -46,6 +46,15 @@ export default function LoginScreen() {
     setSubmitting(true);
     try {
       const res = await requestLoginOtp(email.trim());
+      // Trusted-device fast-path → session ready, skip OTP entirely.
+      if (res.trusted && res.token && res.user) {
+        await completeTrustedLogin({
+          token: res.token,
+          user: res.user,
+          trustedDeviceToken: res.trustedDeviceToken,
+        });
+        return;
+      }
       setDevOtp(res?.devOtp ?? null);
       setStep("otp");
       setInfo(`Kode dikirim ke ${email.trim()}.`);

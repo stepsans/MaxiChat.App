@@ -43,7 +43,8 @@ export const LoginResponse = zod.object({
 export const MobileLoginBody = zod.object({
   "email": zod.string().email(),
   "otp": zod.string().min(1).describe('One-time code emailed to the user via POST \/auth\/otp\/request (purpose=login).'),
-  "deviceLabel": zod.string().nullish().describe('Optional human label for the device (e.g. \'iPhone 15\').')
+  "deviceLabel": zod.string().nullish().describe('Optional human label for the device (e.g. \'iPhone 15\').'),
+  "rememberDevice": zod.boolean().optional().describe('When not false (default true), issue a 30-day trusted-device token returned as `trustedDeviceToken` so the next login can skip OTP.')
 })
 
 export const MobileLoginResponse = zod.object({
@@ -60,7 +61,135 @@ export const MobileLoginResponse = zod.object({
   "profilePhotoUrl": zod.string().nullish(),
   "companyName": zod.string().nullish(),
   "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
+}),
+  "trustedDeviceToken": zod.string().nullish().describe('30-day trusted-device token (present when rememberDevice was not false). Store in SecureStore and replay as `X-Trusted-Device` on the next POST \/auth\/otp\/request to skip OTP.')
 })
+
+
+/**
+ * @summary Request a login OTP by email, or fast-path login via a trusted device
+ */
+export const LoginRequestOtpBody = zod.object({
+  "email": zod.string().email()
+})
+
+export const LoginRequestOtpResponse = zod.object({
+  "trusted": zod.boolean().describe('True when a valid trusted device let the user skip OTP and sign in immediately. When true, `user` (and `token` for mobile) is present. When false, an OTP was sent and `expiresAt` is present.'),
+  "ok": zod.boolean().optional(),
+  "expiresAt": zod.coerce.date().nullish(),
+  "user": zod.union([zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "name": zod.string().nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
+  "parentUserId": zod.number().nullish(),
+  "profilePhotoUrl": zod.string().nullish(),
+  "companyName": zod.string().nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
+}),zod.null()]).optional(),
+  "token": zod.string().nullish().describe('Mobile bearer token, present only on a mobile trusted-device fast-path.'),
+  "trustedDeviceToken": zod.string().nullish().describe('Rotated mobile trusted-device token on a fast-path login.')
+})
+
+
+/**
+ * @summary Verify a login OTP and start a web session
+ */
+
+
+
+export const LoginVerifyOtpBody = zod.object({
+  "email": zod.string().email(),
+  "otp": zod.string().min(1),
+  "rememberDevice": zod.boolean().optional().describe('When not false (default true), set a 30-day trusted-device cookie (mc_td) so the next login on this browser skips OTP.')
+})
+
+export const LoginVerifyOtpResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "name": zod.string().nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
+  "parentUserId": zod.number().nullish(),
+  "profilePhotoUrl": zod.string().nullish(),
+  "companyName": zod.string().nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
+})
+
+
+/**
+ * @summary Resend the login OTP
+ */
+export const LoginResendOtpBody = zod.object({
+  "email": zod.string().email()
+})
+
+export const LoginResendOtpResponse = zod.object({
+  "ok": zod.boolean(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List the current user's active trusted devices
+ */
+export const ListTrustedDevicesResponse = zod.object({
+  "devices": zod.array(zod.object({
+  "id": zod.number(),
+  "label": zod.string().nullish(),
+  "lastUsedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "expiresAt": zod.coerce.date().optional()
+}))
+})
+
+
+/**
+ * @summary Revoke one of the current user's trusted devices
+ */
+export const RevokeTrustedDeviceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RevokeTrustedDeviceResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Save the first-run AI-feeding profile and (re)compose the system prompt
+ */
+export const updateAiProfileBodyAiToneDefault = `profesional`;
+
+export const UpdateAiProfileBody = zod.object({
+  "businessDescription": zod.string().nullish(),
+  "aiTone": zod.enum(['formal', 'santai', 'profesional']).default(updateAiProfileBodyAiToneDefault),
+  "operatingHours": zod.string().nullish()
+})
+
+export const UpdateAiProfileResponse = zod.object({
+  "ok": zod.boolean(),
+  "systemPrompt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Run the tenant's AI on a test message without sending to WhatsApp
+ */
+
+
+
+export const RunAiSandboxBody = zod.object({
+  "message": zod.string().min(1)
+})
+
+export const RunAiSandboxResponse = zod.object({
+  "reply": zod.string()
 })
 
 
@@ -128,9 +257,6 @@ export const DeleteMeResponse = zod.object({
 /**
  * @summary Self-register a new account (email verification required before sign-in)
  */
-export const signupBodyPasswordMin = 8;
-export const signupBodyPasswordMax = 200;
-
 export const signupBodyNameMax = 120;
 
 export const signupBodyCompanyNameMax = 120;
@@ -141,7 +267,6 @@ export const signupBodyMobilePhoneMax = 20;
 
 export const SignupBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(signupBodyPasswordMin).max(signupBodyPasswordMax),
   "name": zod.string().min(1).max(signupBodyNameMax),
   "companyName": zod.string().max(signupBodyCompanyNameMax).nullish(),
   "mobilePhone": zod.string().max(signupBodyMobilePhoneMax).nullish()
@@ -3615,6 +3740,18 @@ export const DeleteAgentParams = zod.object({
 
 export const DeleteAgentResponse = zod.object({
   "success": zod.boolean()
+})
+
+
+/**
+ * @summary Revoke all of a team member's trusted devices (super admin only)
+ */
+export const RevokeAgentDevicesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RevokeAgentDevicesResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 

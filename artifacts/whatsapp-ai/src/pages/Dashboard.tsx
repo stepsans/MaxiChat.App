@@ -30,6 +30,7 @@ import { Link } from "wouter";
 import { cn, formatBytes } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+import { FirstRunWizard } from "@/components/FirstRunWizard";
 
 // Convert a label's hex color into translucent fill/border so the count chip
 // reads as a soft tint with the label color as text — consistent with the
@@ -213,6 +214,10 @@ export default function Dashboard() {
       </div>
 
       <div className="flex-1 p-6 space-y-6">
+        {/* First-run wizard — Connect WA → AI profile → live sandbox.
+            Hides itself once WA is connected AND AI has been tried. */}
+        <FirstRunWizard />
+
         {/* Onboarding checklist — hides itself at 100% health */}
         <OnboardingChecklist />
 

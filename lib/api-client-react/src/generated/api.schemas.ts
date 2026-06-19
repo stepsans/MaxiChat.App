@@ -2351,11 +2351,6 @@ export interface AssignChatInput {
 export interface SignupInput {
   email: string;
   /**
-     * @minLength 8
-     * @maxLength 200
-     */
-  password: string;
-  /**
      * @minLength 1
      * @maxLength 120
      */
@@ -3406,12 +3401,101 @@ export interface MobileLoginInput {
      * @nullable
      */
   deviceLabel?: string | null;
+  /** When not false (default true), issue a 30-day trusted-device token returned as `trustedDeviceToken` so the next login can skip OTP. */
+  rememberDevice?: boolean;
 }
 
 export interface MobileSession {
   /** Opaque bearer token. Send as `Authorization: Bearer <token>`. */
   token: string;
   user: AuthUser;
+  /**
+     * 30-day trusted-device token (present when rememberDevice was not false). Store in SecureStore and replay as `X-Trusted-Device` on the next POST /auth/otp/request to skip OTP.
+     * @nullable
+     */
+  trustedDeviceToken?: string | null;
+}
+
+export interface RequestOtpInput {
+  email: string;
+}
+
+export interface VerifyOtpInput {
+  email: string;
+  /** @minLength 1 */
+  otp: string;
+  /** When not false (default true), set a 30-day trusted-device cookie (mc_td) so the next login on this browser skips OTP. */
+  rememberDevice?: boolean;
+}
+
+export interface RequestOtpResponse {
+  /** True when a valid trusted device let the user skip OTP and sign in immediately. When true, `user` (and `token` for mobile) is present. When false, an OTP was sent and `expiresAt` is present. */
+  trusted: boolean;
+  ok?: boolean;
+  /** @nullable */
+  expiresAt?: string | null;
+  user?: AuthUser | null;
+  /**
+     * Mobile bearer token, present only on a mobile trusted-device fast-path.
+     * @nullable
+     */
+  token?: string | null;
+  /**
+     * Rotated mobile trusted-device token on a fast-path login.
+     * @nullable
+     */
+  trustedDeviceToken?: string | null;
+}
+
+export interface ResendOtpResponse {
+  ok: boolean;
+  expiresAt: string;
+}
+
+export interface TrustedDevice {
+  id: number;
+  /** @nullable */
+  label?: string | null;
+  /** @nullable */
+  lastUsedAt?: string | null;
+  createdAt?: string;
+  expiresAt?: string;
+}
+
+export interface TrustedDeviceList {
+  devices: TrustedDevice[];
+}
+
+export type AiProfileInputAiTone = typeof AiProfileInputAiTone[keyof typeof AiProfileInputAiTone];
+
+
+export const AiProfileInputAiTone = {
+  formal: 'formal',
+  santai: 'santai',
+  profesional: 'profesional',
+} as const;
+
+export interface AiProfileInput {
+  /** @nullable */
+  businessDescription?: string | null;
+  aiTone?: AiProfileInputAiTone;
+  /** @nullable */
+  operatingHours?: string | null;
+}
+
+export interface AiProfileResponse {
+  ok: boolean;
+  /** @nullable */
+  systemPrompt?: string | null;
+}
+
+export interface AiSandboxInput {
+  /** @minLength 1 */
+  message: string;
+}
+
+export interface AiSandboxResponse {
+  reply: string;
 }
 
 /**

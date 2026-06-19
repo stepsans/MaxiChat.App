@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import path from "node:path";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import cookieParser from "cookie-parser";
 import type { RequestHandler } from "express";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -54,6 +55,8 @@ app.use(
 );
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+// Parse cookies so the trusted-device cookie (mc_td) is readable in auth routes.
+app.use(cookieParser());
 
 const SESSION_SECRET = process.env["SESSION_SECRET"];
 if (!SESSION_SECRET) {

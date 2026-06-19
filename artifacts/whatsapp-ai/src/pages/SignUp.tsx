@@ -1,46 +1,9 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useSignup } from "@workspace/api-client-react";
-import {
-  Loader2,
-  Mail,
-  Lock,
-  User,
-  Building2,
-  Phone,
-  Eye,
-  EyeOff,
-  Check,
-  X,
-} from "lucide-react";
+import { Loader2, Mail, User, Building2, Phone } from "lucide-react";
 import AuthShell from "@/components/auth/AuthShell";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
-
-interface PasswordChecks {
-  length: boolean;
-  upper: boolean;
-  digit: boolean;
-  symbol: boolean;
-}
-
-function scorePassword(p: string): { score: number; checks: PasswordChecks } {
-  const checks: PasswordChecks = {
-    length: p.length >= 8,
-    upper: /[A-Z]/.test(p),
-    digit: /[0-9]/.test(p),
-    symbol: /[^A-Za-z0-9]/.test(p),
-  };
-  const score = Object.values(checks).filter(Boolean).length;
-  return { score, checks };
-}
-
-const STRENGTH_META = [
-  { label: "", color: "" },
-  { label: "Sangat lemah", color: "bg-red-500" },
-  { label: "Lemah", color: "bg-orange-500" },
-  { label: "Cukup", color: "bg-yellow-500" },
-  { label: "Kuat", color: "bg-emerald-500" },
-];
 
 export default function SignUp() {
   const [, navigate] = useLocation();
@@ -48,14 +11,8 @@ export default function SignUp() {
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [mobilePhone, setMobilePhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const { score, checks } = useMemo(() => scorePassword(password), [password]);
-  const meta = STRENGTH_META[score];
-  const isStrong = score === 4;
 
   const signupMut = useSignup({
     mutation: {
@@ -71,7 +28,9 @@ export default function SignUp() {
           err?.data?.error ||
             err?.data?.message ||
             (err?.status === 409
-              ? "Email sudah terdaftar"
+              ? err?.data?.reason === "trial_already_used"
+                ? "Email sudah pernah trial."
+                : "Email sudah terdaftar. Silakan login."
               : err?.status === 429
                 ? "Terlalu banyak percobaan, coba lagi nanti."
                 : "Pendaftaran gagal")
@@ -83,12 +42,6 @@ export default function SignUp() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!isStrong) {
-      setError(
-        "Password harus minimal 8 karakter dan mengandung huruf besar, angka, dan simbol."
-      );
-      return;
-    }
     if (!agreed) {
       setError("Harap setujui Syarat & Ketentuan untuk melanjutkan.");
       return;
@@ -99,7 +52,6 @@ export default function SignUp() {
         companyName: companyName.trim() || null,
         email: email.trim().toLowerCase(),
         mobilePhone: mobilePhone.trim() || null,
-        password,
       },
     });
   }
@@ -167,65 +119,10 @@ export default function SignUp() {
           autoComplete="tel"
         />
 
-        <label className="block">
-          <span className="text-xs font-semibold text-slate-700">Password</span>
-          <div className="relative mt-1.5">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type={showPassword ? "text" : "password"}
-              required
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              data-testid="signup-password"
-              placeholder="Min. 8 karakter"
-              className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              tabIndex={-1}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          {password && (
-            <div className="mt-2 space-y-2" data-testid="password-strength">
-              <div className="flex gap-1">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className={`h-1.5 flex-1 rounded-full transition ${
-                      i <= score ? meta.color : "bg-slate-200"
-                    }`}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Kekuatan password</span>
-                <span
-                  className={`font-semibold ${
-                    score >= 4
-                      ? "text-emerald-600"
-                      : score >= 3
-                        ? "text-yellow-600"
-                        : "text-red-600"
-                  }`}
-                >
-                  {meta.label}
-                </span>
-              </div>
-              <ul className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-600">
-                <Rule ok={checks.length} text="Min. 8 karakter" />
-                <Rule ok={checks.upper} text="Huruf besar (A-Z)" />
-                <Rule ok={checks.digit} text="Angka (0-9)" />
-                <Rule ok={checks.symbol} text="Simbol (!@#…)" />
-              </ul>
-            </div>
-          )}
-        </label>
+        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          Tidak perlu password. Setelah daftar, kami kirim <strong>link verifikasi</strong> ke
+          email kamu untuk mengaktifkan akun.
+        </p>
 
         <label className="flex items-start gap-2 text-xs text-slate-600">
           <input
@@ -312,18 +209,5 @@ function Field(props: {
         />
       </div>
     </label>
-  );
-}
-
-function Rule({ ok, text }: { ok: boolean; text: string }) {
-  return (
-    <li className={`flex items-center gap-1 ${ok ? "text-emerald-600" : ""}`}>
-      {ok ? (
-        <Check className="w-3 h-3" />
-      ) : (
-        <X className="w-3 h-3 text-slate-400" />
-      )}
-      {text}
-    </li>
   );
 }

@@ -1,25 +1,25 @@
 import { useState, useEffect } from "react";
 
-type Step = "email" | "otp" | "signup_form";
+type Step = "email" | "otp";
 
 export default function LoginPage() {
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  const [name, setName] = useState("");
-  const [companyName, setCompanyName] = useState("");
-  const [isSignup, setIsSignup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const [resendCount, setResendCount] = useState(0);
   const [countdown, setCountdown] = useState(0);
+  const [rememberDevice, setRememberDevice] = useState(true);
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    if (p.get("verified") === "1" && p.get("email")) {
-      setEmail(p.get("email")!);
+    if (p.get("email")) setEmail(p.get("email")!);
+    if (p.get("verified") === "1") {
+      setNotice("Email terverifikasi. Masukkan email untuk login.");
     }
   }, []);
 
@@ -36,19 +36,34 @@ export default function LoginPage() {
       credentials: "include",
       body: JSON.stringify(body),
     });
-    return { ok: r.ok, data: await r.json() };
+    return { ok: r.ok, status: r.status, data: await r.json() };
   };
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setNotice("");
     try {
-      const { ok, data } = await post("/api/auth/otp/request", {
-        email,
-        purpose: isSignup ? "signup" : "login",
-      });
-      if (!ok) { setError(data.error || "Gagal mengirim OTP."); return; }
+      const { ok, data } = await post("/api/auth/otp/request", { email });
+      if (!ok) {
+        // Unregistered → steer to signup.
+        if (data?.reason === "email_not_registered") {
+          window.location.href = `/signup?email=${encodeURIComponent(email)}`;
+          return;
+        }
+        // Pending account → a fresh verification link was just emailed.
+        if (data?.reason === "email_not_verified") {
+          setNotice(
+            "Email belum diverifikasi. Kami kirim ulang link verifikasi — cek inbox (dan folder spam)."
+          );
+          return;
+        }
+        setError(data.error || "Gagal mengirim OTP.");
+        return;
+      }
+      // Trusted device → session already created, skip OTP entirely.
+      if (data.trusted) { window.location.href = "/"; return; }
       setExpiresAt(data.expiresAt);
       setDevOtp(data.devOtp ?? null);
       setCountdown(60);
@@ -61,28 +76,8 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const { ok, data } = await post("/api/auth/otp/verify", {
-        email,
-        otp,
-        purpose: isSignup ? "signup" : "login",
-      });
+      const { ok, data } = await post("/api/auth/otp/verify", { email, otp, rememberDevice });
       if (!ok) { setError(data.error || "OTP tidak valid."); return; }
-      if (isSignup && data.otpVerified) { setStep("signup_form"); return; }
-      window.location.href = "/";
-    } catch { setError("Terjadi kesalahan."); } finally { setLoading(false); }
-  }
-
-  async function handleSignupSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const { ok, data } = await post("/api/auth/trial", {
-        email,
-        name,
-        companyName: companyName || null,
-      });
-      if (!ok) { setError(data.error || "Gagal membuat akun."); return; }
       window.location.href = "/";
     } catch { setError("Terjadi kesalahan."); } finally { setLoading(false); }
   }
@@ -92,10 +87,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const { ok, data } = await post("/api/auth/otp/resend", {
-        email,
-        purpose: isSignup ? "signup" : "login",
-      });
+      const { ok, data } = await post("/api/auth/otp/resend", { email });
       if (!ok) { setError(data.error || "Gagal."); return; }
       setResendCount((c) => c + 1);
       setExpiresAt(data.expiresAt);
@@ -115,6 +107,12 @@ export default function LoginPage() {
         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
       </svg>
       {error}
+    </div>
+  ) : null;
+
+  const noticeBox = notice ? (
+    <div className="bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3 text-orange-700 text-sm">
+      {notice}
     </div>
   ) : null;
 
@@ -140,21 +138,15 @@ export default function LoginPage() {
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">MaxiChat</h1>
-            <p className="text-gray-500 text-sm mt-1.5">
-              {step === "signup_form"
-                ? "Lengkapi profil Anda"
-                : isSignup
-                ? "Mulai trial gratis 7 hari"
-                : "Selamat datang kembali"}
-            </p>
+            <p className="text-gray-500 text-sm mt-1.5">Selamat datang kembali</p>
           </div>
 
           {/* Step indicator */}
           {step !== "email" && (
             <div className="flex items-center justify-center gap-2 mb-6">
-              {(["email", "otp", ...(isSignup ? ["signup_form"] : [])] as Step[]).map((s, i) => (
+              {(["email", "otp"] as Step[]).map((s) => (
                 <div key={s} className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full transition-all duration-300 ${s === step ? "w-6 bg-orange-500" : (["email", "otp"].indexOf(s) < ["email", "otp", "signup_form"].indexOf(step)) ? "bg-orange-400" : "bg-gray-200"}`} />
+                  <div className={`w-2 h-2 rounded-full transition-all duration-300 ${s === step ? "w-6 bg-orange-500" : (["email", "otp"].indexOf(s) < ["email", "otp"].indexOf(step)) ? "bg-orange-400" : "bg-gray-200"}`} />
                 </div>
               ))}
             </div>
@@ -183,6 +175,7 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
+              {noticeBox}
               {errBox}
               <button type="submit" disabled={loading} className={btnCls}>
                 {loading ? (
@@ -196,29 +189,13 @@ export default function LoginPage() {
                 ) : "Kirim Kode OTP"}
               </button>
               <div className="text-center text-sm text-gray-500 pt-1">
-                {isSignup ? (
-                  <>
-                    Sudah punya akun?{" "}
-                    <button
-                      type="button"
-                      onClick={() => { setIsSignup(false); setError(""); }}
-                      className="text-orange-600 font-semibold hover:text-orange-700"
-                    >
-                      Masuk
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    Belum punya akun?{" "}
-                    <button
-                      type="button"
-                      onClick={() => { setIsSignup(true); setError(""); }}
-                      className="text-orange-600 font-semibold hover:text-orange-700"
-                    >
-                      Trial Gratis
-                    </button>
-                  </>
-                )}
+                Belum punya akun?{" "}
+                <a
+                  href="/signup"
+                  className="text-orange-600 font-semibold hover:text-orange-700"
+                >
+                  Trial Gratis
+                </a>
               </div>
             </form>
           )}
@@ -264,6 +241,15 @@ export default function LoginPage() {
                 />
               </div>
               {errBox}
+              <label className="flex items-center gap-2 text-sm text-gray-600 select-none cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  className="w-4 h-4 rounded border-orange-300 text-orange-600 focus:ring-orange-400"
+                />
+                Ingat perangkat ini (30 hari) — lewati OTP di login berikutnya
+              </label>
               <button type="submit" disabled={loading || otp.length !== 6} className={btnCls}>
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -295,63 +281,6 @@ export default function LoginPage() {
                   {countdown > 0 ? `Kirim ulang (${countdown}s)` : "Kirim ulang OTP"}
                 </button>
               </div>
-            </form>
-          )}
-
-          {step === "signup_form" && (
-            <form onSubmit={handleSignupSubmit} className="space-y-4">
-              <div className="bg-green-50 border border-green-200 rounded-2xl p-3 flex items-center gap-2">
-                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shrink-0">
-                  <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <p className="text-sm text-green-700">
-                  Email terverifikasi: <strong>{email}</strong>
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Nama Lengkap
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  placeholder="Budi Santoso"
-                  className={inputCls}
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Nama Perusahaan{" "}
-                  <span className="text-gray-400 font-normal">(opsional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="PT Maju Bersama"
-                  className={inputCls}
-                />
-              </div>
-              {errBox}
-              <button type="submit" disabled={loading || !name.trim()} className={btnCls}>
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Membuat akun...
-                  </span>
-                ) : "Mulai Trial 7 Hari Gratis"}
-              </button>
-              <p className="text-xs text-center text-gray-400">
-                Tidak perlu kartu kredit · Batalkan kapan saja
-              </p>
             </form>
           )}
         </div>

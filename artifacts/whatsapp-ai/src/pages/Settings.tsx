@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetWhatsappBio,
   useUpdateWhatsappBio,
@@ -47,7 +47,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { formatBytes } from "@/lib/utils";
-import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Tag, Bell, BellOff, Volume2, Database, AlertTriangle } from "lucide-react";
+import { Loader2, User, Zap, Plus, Trash2, Pencil, X, Check, Download, Upload, Palette, Sun, Moon, Monitor, Tag, Bell, BellOff, Volume2, Database, AlertTriangle, ShieldCheck, Smartphone } from "lucide-react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useNotificationSound } from "@/hooks/use-notification-sound";
 import { NOTIFICATION_SOUND_OPTIONS } from "@/lib/notification-sounds";
@@ -82,10 +82,92 @@ export default function Settings() {
         </div>
         <ShortcutsCard />
         <LabelsCard />
+        <TrustedDevicesCard />
         <RetentionCard />
         <DangerZoneCard />
       </div>
     </div>
+  );
+}
+
+// Per-user trusted devices (skip-OTP "remember me"). Not super-admin-gated —
+// every user manages their own. Revoking one forces a fresh OTP on that device.
+interface TrustedDeviceRow {
+  id: number;
+  label: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+function TrustedDevicesCard() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery<{ devices: TrustedDeviceRow[] }>({
+    queryKey: ["trusted-devices"],
+    queryFn: () =>
+      fetch("/api/auth/devices", { credentials: "include" }).then((r) => r.json()),
+  });
+  const [revoking, setRevoking] = useState<number | null>(null);
+
+  async function revoke(id: number) {
+    setRevoking(id);
+    try {
+      await fetch(`/api/auth/devices/${id}/revoke`, { method: "POST", credentials: "include" });
+      qc.invalidateQueries({ queryKey: ["trusted-devices"] });
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  const devices = data?.devices ?? [];
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4" /> Perangkat Tepercaya
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Perangkat yang bisa login tanpa OTP (30 hari). Keluarkan perangkat yang tidak kamu kenali.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <Skeleton className="h-9 w-full" />
+        ) : devices.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Belum ada perangkat tepercaya.</p>
+        ) : (
+          devices.map((d) => (
+            <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+              <div className="min-w-0">
+                <div className="text-sm font-medium flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="truncate">{d.label || "Perangkat"}</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {d.lastUsedAt
+                    ? `Terakhir dipakai ${new Date(d.lastUsedAt).toLocaleDateString("id-ID")}`
+                    : `Ditambahkan ${new Date(d.createdAt).toLocaleDateString("id-ID")}`}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => revoke(d.id)}
+                disabled={revoking === d.id}
+                className="text-destructive flex-shrink-0"
+              >
+                {revoking === d.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                <span className="ml-1">Keluarkan</span>
+              </Button>
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -70,6 +70,8 @@ import type {
   AiPipelineEntry,
   AiPipelineEntryList,
   AiPipelineGenerateFollowupResponse,
+  AiProfileInput,
+  AiProfileResponse,
   AiProviderConfig,
   AiProviderInput,
   AiProviderTestInput,
@@ -80,6 +82,8 @@ import type {
   AiReviewGenerateColumnsResult,
   AiReviewGroup,
   AiReviewRunResult,
+  AiSandboxInput,
+  AiSandboxResponse,
   AiUsageSummary,
   AnalyticsSummary,
   AnalyticsV2Summary,
@@ -247,6 +251,9 @@ import type {
   ReportScheduleInput,
   ReportScheduleLog,
   ReportScheduleToggleInput,
+  RequestOtpInput,
+  RequestOtpResponse,
+  ResendOtpResponse,
   ResendVerificationInput,
   ResendVerificationResult,
   ResetFlowCooldown200,
@@ -303,6 +310,7 @@ import type {
   TenantResetResult,
   TextShortcut,
   TextShortcutInput,
+  TrustedDeviceList,
   UpdateAddonInput,
   UpdateAgentInput,
   UpdateAiPipelineEntryBody,
@@ -325,6 +333,7 @@ import type {
   UserChannelAccessDetail,
   UserPermissionDetail,
   VerifyEmailInput,
+  VerifyOtpInput,
   WalletSummary,
   WhatsappBio,
   WhatsappBioInput,
@@ -485,6 +494,508 @@ export const useMobileLogin = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getMobileLoginMutationOptions(options));
+    }
+
+export const getLoginRequestOtpUrl = () => {
+
+
+
+
+  return `/api/auth/otp/request`
+}
+
+/**
+ * @summary Request a login OTP by email, or fast-path login via a trusted device
+ */
+export const loginRequestOtp = async (requestOtpInput: RequestOtpInput, options?: RequestInit): Promise<RequestOtpResponse> => {
+
+  return customFetch<RequestOtpResponse>(getLoginRequestOtpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      requestOtpInput,)
+  }
+);}
+
+
+
+
+export const getLoginRequestOtpMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginRequestOtp>>, TError,{data: BodyType<RequestOtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginRequestOtp>>, TError,{data: BodyType<RequestOtpInput>}, TContext> => {
+
+const mutationKey = ['loginRequestOtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginRequestOtp>>, {data: BodyType<RequestOtpInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginRequestOtp(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginRequestOtpMutationResult = NonNullable<Awaited<ReturnType<typeof loginRequestOtp>>>
+    export type LoginRequestOtpMutationBody = BodyType<RequestOtpInput>
+    export type LoginRequestOtpMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Request a login OTP by email, or fast-path login via a trusted device
+ */
+export const useLoginRequestOtp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginRequestOtp>>, TError,{data: BodyType<RequestOtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginRequestOtp>>,
+        TError,
+        {data: BodyType<RequestOtpInput>},
+        TContext
+      > => {
+      return useMutation(getLoginRequestOtpMutationOptions(options));
+    }
+
+export const getLoginVerifyOtpUrl = () => {
+
+
+
+
+  return `/api/auth/otp/verify`
+}
+
+/**
+ * @summary Verify a login OTP and start a web session
+ */
+export const loginVerifyOtp = async (verifyOtpInput: VerifyOtpInput, options?: RequestInit): Promise<AuthUser> => {
+
+  return customFetch<AuthUser>(getLoginVerifyOtpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      verifyOtpInput,)
+  }
+);}
+
+
+
+
+export const getLoginVerifyOtpMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginVerifyOtp>>, TError,{data: BodyType<VerifyOtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginVerifyOtp>>, TError,{data: BodyType<VerifyOtpInput>}, TContext> => {
+
+const mutationKey = ['loginVerifyOtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginVerifyOtp>>, {data: BodyType<VerifyOtpInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginVerifyOtp(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginVerifyOtpMutationResult = NonNullable<Awaited<ReturnType<typeof loginVerifyOtp>>>
+    export type LoginVerifyOtpMutationBody = BodyType<VerifyOtpInput>
+    export type LoginVerifyOtpMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Verify a login OTP and start a web session
+ */
+export const useLoginVerifyOtp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginVerifyOtp>>, TError,{data: BodyType<VerifyOtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginVerifyOtp>>,
+        TError,
+        {data: BodyType<VerifyOtpInput>},
+        TContext
+      > => {
+      return useMutation(getLoginVerifyOtpMutationOptions(options));
+    }
+
+export const getLoginResendOtpUrl = () => {
+
+
+
+
+  return `/api/auth/otp/resend`
+}
+
+/**
+ * @summary Resend the login OTP
+ */
+export const loginResendOtp = async (requestOtpInput: RequestOtpInput, options?: RequestInit): Promise<ResendOtpResponse> => {
+
+  return customFetch<ResendOtpResponse>(getLoginResendOtpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      requestOtpInput,)
+  }
+);}
+
+
+
+
+export const getLoginResendOtpMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginResendOtp>>, TError,{data: BodyType<RequestOtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginResendOtp>>, TError,{data: BodyType<RequestOtpInput>}, TContext> => {
+
+const mutationKey = ['loginResendOtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginResendOtp>>, {data: BodyType<RequestOtpInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginResendOtp(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginResendOtpMutationResult = NonNullable<Awaited<ReturnType<typeof loginResendOtp>>>
+    export type LoginResendOtpMutationBody = BodyType<RequestOtpInput>
+    export type LoginResendOtpMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Resend the login OTP
+ */
+export const useLoginResendOtp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginResendOtp>>, TError,{data: BodyType<RequestOtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginResendOtp>>,
+        TError,
+        {data: BodyType<RequestOtpInput>},
+        TContext
+      > => {
+      return useMutation(getLoginResendOtpMutationOptions(options));
+    }
+
+export const getListTrustedDevicesUrl = () => {
+
+
+
+
+  return `/api/auth/devices`
+}
+
+/**
+ * @summary List the current user's active trusted devices
+ */
+export const listTrustedDevices = async ( options?: RequestInit): Promise<TrustedDeviceList> => {
+
+  return customFetch<TrustedDeviceList>(getListTrustedDevicesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTrustedDevicesQueryKey = () => {
+    return [
+    `/api/auth/devices`
+    ] as const;
+    }
+
+
+export const getListTrustedDevicesQueryOptions = <TData = Awaited<ReturnType<typeof listTrustedDevices>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTrustedDevices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTrustedDevicesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTrustedDevices>>> = ({ signal }) => listTrustedDevices({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTrustedDevices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTrustedDevicesQueryResult = NonNullable<Awaited<ReturnType<typeof listTrustedDevices>>>
+export type ListTrustedDevicesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the current user's active trusted devices
+ */
+
+export function useListTrustedDevices<TData = Awaited<ReturnType<typeof listTrustedDevices>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTrustedDevices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTrustedDevicesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRevokeTrustedDeviceUrl = (id: number,) => {
+
+
+
+
+  return `/api/auth/devices/${id}/revoke`
+}
+
+/**
+ * @summary Revoke one of the current user's trusted devices
+ */
+export const revokeTrustedDevice = async (id: number, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getRevokeTrustedDeviceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRevokeTrustedDeviceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeTrustedDevice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeTrustedDevice>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['revokeTrustedDevice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeTrustedDevice>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  revokeTrustedDevice(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeTrustedDeviceMutationResult = NonNullable<Awaited<ReturnType<typeof revokeTrustedDevice>>>
+
+    export type RevokeTrustedDeviceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Revoke one of the current user's trusted devices
+ */
+export const useRevokeTrustedDevice = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeTrustedDevice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeTrustedDevice>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRevokeTrustedDeviceMutationOptions(options));
+    }
+
+export const getUpdateAiProfileUrl = () => {
+
+
+
+
+  return `/api/onboarding/ai-profile`
+}
+
+/**
+ * @summary Save the first-run AI-feeding profile and (re)compose the system prompt
+ */
+export const updateAiProfile = async (aiProfileInput: AiProfileInput, options?: RequestInit): Promise<AiProfileResponse> => {
+
+  return customFetch<AiProfileResponse>(getUpdateAiProfileUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiProfileInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAiProfileMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAiProfile>>, TError,{data: BodyType<AiProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAiProfile>>, TError,{data: BodyType<AiProfileInput>}, TContext> => {
+
+const mutationKey = ['updateAiProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAiProfile>>, {data: BodyType<AiProfileInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAiProfile(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAiProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateAiProfile>>>
+    export type UpdateAiProfileMutationBody = BodyType<AiProfileInput>
+    export type UpdateAiProfileMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save the first-run AI-feeding profile and (re)compose the system prompt
+ */
+export const useUpdateAiProfile = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAiProfile>>, TError,{data: BodyType<AiProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAiProfile>>,
+        TError,
+        {data: BodyType<AiProfileInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAiProfileMutationOptions(options));
+    }
+
+export const getRunAiSandboxUrl = () => {
+
+
+
+
+  return `/api/onboarding/ai-sandbox`
+}
+
+/**
+ * @summary Run the tenant's AI on a test message without sending to WhatsApp
+ */
+export const runAiSandbox = async (aiSandboxInput: AiSandboxInput, options?: RequestInit): Promise<AiSandboxResponse> => {
+
+  return customFetch<AiSandboxResponse>(getRunAiSandboxUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiSandboxInput,)
+  }
+);}
+
+
+
+
+export const getRunAiSandboxMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAiSandbox>>, TError,{data: BodyType<AiSandboxInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runAiSandbox>>, TError,{data: BodyType<AiSandboxInput>}, TContext> => {
+
+const mutationKey = ['runAiSandbox'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runAiSandbox>>, {data: BodyType<AiSandboxInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  runAiSandbox(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunAiSandboxMutationResult = NonNullable<Awaited<ReturnType<typeof runAiSandbox>>>
+    export type RunAiSandboxMutationBody = BodyType<AiSandboxInput>
+    export type RunAiSandboxMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Run the tenant's AI on a test message without sending to WhatsApp
+ */
+export const useRunAiSandbox = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runAiSandbox>>, TError,{data: BodyType<AiSandboxInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runAiSandbox>>,
+        TError,
+        {data: BodyType<AiSandboxInput>},
+        TContext
+      > => {
+      return useMutation(getRunAiSandboxMutationOptions(options));
     }
 
 export const getRegisterPushTokenUrl = () => {
@@ -11720,6 +12231,76 @@ export const useDeleteAgent = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteAgentMutationOptions(options));
+    }
+
+export const getRevokeAgentDevicesUrl = (id: number,) => {
+
+
+
+
+  return `/api/agents/${id}/revoke-devices`
+}
+
+/**
+ * @summary Revoke all of a team member's trusted devices (super admin only)
+ */
+export const revokeAgentDevices = async (id: number, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getRevokeAgentDevicesUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRevokeAgentDevicesMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeAgentDevices>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeAgentDevices>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['revokeAgentDevices'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeAgentDevices>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  revokeAgentDevices(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeAgentDevicesMutationResult = NonNullable<Awaited<ReturnType<typeof revokeAgentDevices>>>
+
+    export type RevokeAgentDevicesMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Revoke all of a team member's trusted devices (super admin only)
+ */
+export const useRevokeAgentDevices = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeAgentDevices>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeAgentDevices>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRevokeAgentDevicesMutationOptions(options));
     }
 
 export const getGetProductSyncConfigUrl = () => {

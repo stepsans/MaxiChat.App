@@ -4,14 +4,17 @@ import {
   setAuthTokenGetter,
   setChannelIdGetter,
   setUnauthorizedHandler,
+  type AuthUser,
 } from "@workspace/api-client-react";
 
 export const API_BASE = `https://${process.env.EXPO_PUBLIC_API_DOMAIN}`;
 
 const TOKEN_KEY = "maxichat_token";
+const TRUSTED_KEY = "maxichat_trusted_device";
 
 let currentToken: string | null = null;
 let currentChannelId: string | null = null;
+let currentTrustedToken: string | null = null;
 
 // Callback fired when an in-session request returns 401 (token expired/revoked).
 // AuthContext registers it to reset React auth state and bounce to login.
@@ -70,6 +73,28 @@ export async function persistToken(token: string | null): Promise<void> {
     else await SecureStore.deleteItemAsync(TOKEN_KEY);
   } catch {
     // best-effort; in-memory token still works for this session
+  }
+}
+
+// Trusted-device token (skip-OTP "remember me"). Stored separately from the
+// session token; replayed as the X-Trusted-Device header on the next login.
+export async function loadTrustedToken(): Promise<string | null> {
+  try {
+    const t = await SecureStore.getItemAsync(TRUSTED_KEY);
+    currentTrustedToken = t;
+    return t;
+  } catch {
+    return null;
+  }
+}
+
+export async function persistTrustedToken(token: string | null): Promise<void> {
+  currentTrustedToken = token;
+  try {
+    if (token) await SecureStore.setItemAsync(TRUSTED_KEY, token);
+    else await SecureStore.deleteItemAsync(TRUSTED_KEY);
+  } catch {
+    // best-effort
   }
 }
 
@@ -136,14 +161,60 @@ async function postJson<T = unknown>(
   }
 }
 
+export type MobileSessionResult = {
+  token: string;
+  user: AuthUser;
+  trustedDeviceToken?: string;
+};
+
+export type LoginOtpResult = {
+  // Trusted-device fast-path: when true the backend already returned a session.
+  trusted?: boolean;
+  token?: string;
+  user?: AuthUser;
+  trustedDeviceToken?: string;
+  // Normal OTP path.
+  ok?: boolean;
+  expiresAt?: string;
+  devOtp?: string;
+};
+
 /**
- * Request a login OTP be emailed (via the backend's Resend integration) to the
- * given address. `devOtp` is only returned by the backend outside production.
+ * Request a login OTP. Replays a stored trusted-device token via the
+ * X-Trusted-Device header; if the backend accepts it, the response carries a
+ * ready session ({ trusted:true, token, user, trustedDeviceToken }) and the
+ * OTP step is skipped. `devOtp` is only returned outside production.
  */
-export async function requestLoginOtp(
+export async function requestLoginOtp(email: string): Promise<LoginOtpResult> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (currentTrustedToken) headers["x-trusted-device"] = currentTrustedToken;
+  const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email }),
+  });
+  const data = (await res.json().catch(() => ({}))) as LoginOtpResult & { error?: string };
+  if (!res.ok && !data.trusted) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+/**
+ * Verify the OTP and establish a mobile session, opting into trusted-device so
+ * the next login on this device can skip OTP. Raw fetch (not the generated
+ * mobileLogin) because the response carries an extra trustedDeviceToken.
+ */
+export async function mobileLoginWithDevice(
   email: string,
-): Promise<{ ok?: boolean; expiresAt?: string; devOtp?: string }> {
-  return postJson("/api/auth/otp/request", { email, purpose: "login" });
+  otp: string,
+): Promise<MobileSessionResult> {
+  return postJson("/api/auth/mobile-login", {
+    email,
+    otp,
+    rememberDevice: true,
+    deviceLabel: "Mobile App",
+  });
 }
 
 /** Re-send the login OTP (separate rate limit on the backend). */

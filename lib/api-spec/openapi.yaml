@@ -91,6 +91,189 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/otp/request:
+    post:
+      operationId: loginRequestOtp
+      tags: [auth]
+      summary: Request a login OTP by email, or fast-path login via a trusted device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestOtpInput"
+      responses:
+        "200":
+          description: OTP sent, or trusted-device fast-path login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestOtpResponse"
+        "403":
+          description: Account disabled, or email not yet verified (link re-sent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Email not registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/otp/verify:
+    post:
+      operationId: loginVerifyOtp
+      tags: [auth]
+      summary: Verify a login OTP and start a web session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Account not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/otp/resend:
+    post:
+      operationId: loginResendOtp
+      tags: [auth]
+      summary: Resend the login OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestOtpInput"
+      responses:
+        "200":
+          description: OTP resent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendOtpResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/devices:
+    get:
+      operationId: listTrustedDevices
+      tags: [auth]
+      summary: List the current user's active trusted devices
+      responses:
+        "200":
+          description: Active trusted devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustedDeviceList"
+
+  /auth/devices/{id}/revoke:
+    post:
+      operationId: revokeTrustedDevice
+      tags: [auth]
+      summary: Revoke one of the current user's trusted devices
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Revoked (ok=false if the device was not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/ai-profile:
+    put:
+      operationId: updateAiProfile
+      tags: [onboarding]
+      summary: Save the first-run AI-feeding profile and (re)compose the system prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiProfileInput"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProfileResponse"
+        "403":
+          description: Not a super admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/ai-sandbox:
+    post:
+      operationId: runAiSandbox
+      tags: [onboarding]
+      summary: Run the tenant's AI on a test message without sending to WhatsApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiSandboxInput"
+      responses:
+        "200":
+          description: AI reply (not sent anywhere)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiSandboxResponse"
+        "400":
+          description: Missing message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not a super admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /push/register:
     post:
       operationId: registerPushToken
@@ -3608,6 +3791,30 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SuccessResponse" }
+
+  /agents/{id}/revoke-devices:
+    post:
+      operationId: revokeAgentDevices
+      tags: [agents]
+      summary: Revoke all of a team member's trusted devices (super admin only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "403":
+          description: Not a super admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Team member not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /products/sync-config:
     get:
@@ -10277,15 +10484,11 @@ components:
 
     SignupInput:
       type: object
-      required: [email, password, name]
+      required: [email, name]
       properties:
         email:
           type: string
           format: email
-        password:
-          type: string
-          minLength: 8
-          maxLength: 200
         name:
           type: string
           minLength: 1
@@ -11662,6 +11865,11 @@ components:
         deviceLabel:
           type: ["string", "null"]
           description: "Optional human label for the device (e.g. 'iPhone 15')."
+        rememberDevice:
+          type: boolean
+          description: >-
+            When not false (default true), issue a 30-day trusted-device token
+            returned as `trustedDeviceToken` so the next login can skip OTP.
 
     MobileSession:
       type: object
@@ -11672,6 +11880,135 @@ components:
           description: "Opaque bearer token. Send as `Authorization: Bearer <token>`."
         user:
           $ref: "#/components/schemas/AuthUser"
+        trustedDeviceToken:
+          type: ["string", "null"]
+          description: >-
+            30-day trusted-device token (present when rememberDevice was not
+            false). Store in SecureStore and replay as `X-Trusted-Device` on the
+            next POST /auth/otp/request to skip OTP.
+
+    RequestOtpInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    VerifyOtpInput:
+      type: object
+      required: [email, otp]
+      properties:
+        email:
+          type: string
+          format: email
+        otp:
+          type: string
+          minLength: 1
+        rememberDevice:
+          type: boolean
+          description: >-
+            When not false (default true), set a 30-day trusted-device cookie
+            (mc_td) so the next login on this browser skips OTP.
+
+    RequestOtpResponse:
+      type: object
+      required: [trusted]
+      properties:
+        trusted:
+          type: boolean
+          description: >-
+            True when a valid trusted device let the user skip OTP and sign in
+            immediately. When true, `user` (and `token` for mobile) is present.
+            When false, an OTP was sent and `expiresAt` is present.
+        ok:
+          type: boolean
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+        token:
+          type: ["string", "null"]
+          description: "Mobile bearer token, present only on a mobile trusted-device fast-path."
+        trustedDeviceToken:
+          type: ["string", "null"]
+          description: "Rotated mobile trusted-device token on a fast-path login."
+
+    ResendOtpResponse:
+      type: object
+      required: [ok, expiresAt]
+      properties:
+        ok:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+
+    TrustedDevice:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+        label:
+          type: ["string", "null"]
+        lastUsedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    TrustedDeviceList:
+      type: object
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrustedDevice"
+
+    AiProfileInput:
+      type: object
+      properties:
+        businessDescription:
+          type: ["string", "null"]
+        aiTone:
+          type: string
+          enum: [formal, santai, profesional]
+          default: profesional
+        operatingHours:
+          type: ["string", "null"]
+
+    AiProfileResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        systemPrompt:
+          type: ["string", "null"]
+
+    AiSandboxInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+
+    AiSandboxResponse:
+      type: object
+      required: [reply]
+      properties:
+        reply:
+          type: string
 
     PushRegisterInput:
       type: object

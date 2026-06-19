@@ -8,7 +8,6 @@ import React, {
 } from "react";
 import { Platform } from "react-native";
 import {
-  mobileLogin,
   logout as apiLogout,
   getMe,
   registerPushToken,
@@ -18,10 +17,14 @@ import {
 
 import {
   loadStoredToken,
+  loadTrustedToken,
   persistToken,
+  persistTrustedToken,
+  mobileLoginWithDevice,
   setMemToken,
   setMemChannelId,
   setUnauthorizedCallback,
+  type MobileSessionResult,
 } from "@/lib/api";
 import { registerForPushNotificationsAsync } from "@/lib/push";
 
@@ -31,6 +34,8 @@ type AuthContextValue = {
   isLoading: boolean;
   /** Verify the emailed OTP and establish a mobile session. */
   signIn: (email: string, otp: string) => Promise<void>;
+  /** Apply a ready session from the trusted-device fast-path (no OTP). */
+  completeTrustedLogin: (session: MobileSessionResult) => Promise<void>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -46,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
+      await loadTrustedToken(); // make the trusted-device token available to login
       const stored = await loadStoredToken();
       if (!stored) {
         if (active) setIsLoading(false);
@@ -96,13 +102,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user]);
 
-  const signIn = useCallback(async (email: string, otp: string) => {
-    const session = await mobileLogin({ email, otp });
+  // Persist a session (token + optional trusted-device token) and set state.
+  const establishSession = useCallback(async (session: MobileSessionResult) => {
     await persistToken(session.token);
     setMemToken(session.token);
+    if (session.trustedDeviceToken) await persistTrustedToken(session.trustedDeviceToken);
     setToken(session.token);
     setUser(session.user);
   }, []);
+
+  const signIn = useCallback(async (email: string, otp: string) => {
+    const session = await mobileLoginWithDevice(email, otp);
+    await establishSession(session);
+  }, [establishSession]);
+
+  const completeTrustedLogin = useCallback(async (session: MobileSessionResult) => {
+    await establishSession(session);
+  }, [establishSession]);
 
   // Reset auth state when the API client reports a mid-session 401 (the token
   // was already cleared in lib/api). The `!!token` route guard then bounces to
@@ -128,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore — clear local state regardless
     }
     await persistToken(null);
+    await persistTrustedToken(null); // explicit logout forgets the device
     setMemToken(null);
     setMemChannelId(null);
     setToken(null);
@@ -144,8 +161,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, token, isLoading, signIn, signOut, refreshUser }),
-    [user, token, isLoading, signIn, signOut, refreshUser],
+    () => ({ user, token, isLoading, signIn, completeTrustedLogin, signOut, refreshUser }),
+    [user, token, isLoading, signIn, completeTrustedLogin, signOut, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

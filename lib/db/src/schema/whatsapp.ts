@@ -466,6 +466,13 @@ export const tenantSettingsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     systemPrompt: text("system_prompt").notNull(),
+    // First-run "AI-feeding" profile. Composed into system_prompt unless the
+    // owner has hand-edited the raw prompt (systemPromptCustomized).
+    businessDescription: text("business_description"),
+    aiTone: text("ai_tone").notNull().default("profesional"), // 'formal'|'santai'|'profesional'
+    operatingHours: text("operating_hours"),
+    // Once true, stop auto-composing system_prompt from the fields above.
+    systemPromptCustomized: boolean("system_prompt_customized").notNull().default(false),
     replyDelayMin: integer("reply_delay_min").notNull().default(1),
     replyDelayMax: integer("reply_delay_max").notNull().default(3),
     fallbackMessage: text("fallback_message").notNull(),
