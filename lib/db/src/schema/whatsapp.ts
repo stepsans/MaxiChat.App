@@ -173,6 +173,9 @@ export const contactLeadStatusTable = pgTable(
     phoneNumber: text("phone_number").notNull(),
     // "unknown" (belum di-set) | "lead" | "not_lead".
     leadStatus: text("lead_status").notNull().default("unknown"),
+    // Who last classified: 'manual' (user) | 'ai' (AI Pipeline). AI never
+    // overrides a 'manual' value — manual always wins.
+    leadClassifiedBy: text("lead_classified_by").notNull().default("manual"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -522,13 +522,14 @@ async function setContactLeadStatus(
 ): Promise<void> {
   await db
     .insert(contactLeadStatusTable)
-    .values({ ownerUserId, phoneNumber, leadStatus })
+    .values({ ownerUserId, phoneNumber, leadStatus, leadClassifiedBy: "manual" })
     .onConflictDoUpdate({
       target: [
         contactLeadStatusTable.ownerUserId,
         contactLeadStatusTable.phoneNumber,
       ],
-      set: { leadStatus, updatedAt: new Date() },
+      // A manual edit always wins and re-stamps the row as 'manual'.
+      set: { leadStatus, leadClassifiedBy: "manual", updatedAt: new Date() },
     });
 }
 

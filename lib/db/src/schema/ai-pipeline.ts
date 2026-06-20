@@ -35,6 +35,10 @@ export const aiPipelinesTable = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     // Minimum score to enter the pipeline (0-100).
     scoreThreshold: integer("score_threshold").notNull().default(70),
+    // Minimum score to auto-create an opportunity (must be >= scoreThreshold).
+    opportunityThreshold: integer("opportunity_threshold").notNull().default(80),
+    // When true, crossing opportunityThreshold auto-creates an opportunity.
+    autoCreateOpportunity: boolean("auto_create_opportunity").notNull().default(false),
     autoFollowupEnabled: boolean("auto_followup_enabled").notNull().default(false),
     // Array of hours (e.g. ["24h", "48h", "72h"]).
     followupIntervals: jsonb("followup_intervals")
@@ -46,6 +50,9 @@ export const aiPipelinesTable = pgTable(
       .$type<string[]>()
       .notNull()
       .default(["12:00", "23:59"]),
+    // IANA timezone the cutoffTimes wall-clock is interpreted in. Cut-off
+    // scheduling converts these HH:MM values to UTC instants via this zone.
+    timezone: text("timezone").notNull().default("Asia/Jakarta"),
     // Pipeline Health risk thresholds — mirrored from sales_assistant_settings
     // but scoped per pipeline so each can have independent sensitivity.
     staleDaysThreshold: integer("stale_days_threshold").notNull().default(14),
@@ -151,6 +158,26 @@ export const aiPipelineAnalysesTable = pgTable(
     recommendation: text("recommendation"),
     scoreReason: text("score_reason"),
     aiNotes: text("ai_notes"),
+    // Follow-up anchors (§3.5): the unresolved thing the customer last raised /
+    // their objection, and why the chat stalled. NULL when none — never
+    // fabricated. Read by the follow-up generator so the message references the
+    // specific point left hanging instead of just a product label.
+    lastOpenPoint: text("last_open_point"),
+    stalledReason: text("stalled_reason"),
+    // Source chat (set when known) so the analysis links back to the thread.
+    chatId: integer("chat_id"),
+    // Lead classification from the AI: 'lead' | 'not_lead' | 'unclear'.
+    leadClassification: text("lead_classification").notNull().default("unclear"),
+    leadClassificationReason: text("lead_classification_reason"),
+    // Who is selling: 'tenant_is_seller' | 'tenant_is_buyer' | 'unclear'.
+    // 'tenant_is_buyer' = reverse role (contact is a supplier/vendor) → skipped.
+    conversationRole: text("conversation_role").notNull().default("unclear"),
+    // True when this analysis was skipped (reverse role / manual not_lead) and
+    // never entered the pipeline. skipReason explains why.
+    skipped: boolean("skipped").notNull().default(false),
+    skipReason: text("skip_reason"),
+    // Opportunity auto-created from this analysis, if any.
+    opportunityId: integer("opportunity_id"),
     // Hash of the main conversation topic for context-change detection.
     contextHash: text("context_hash"),
     enteredPipeline: boolean("entered_pipeline").notNull().default(false),

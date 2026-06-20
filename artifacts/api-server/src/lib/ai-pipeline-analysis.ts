@@ -17,6 +17,13 @@ import { recordAiUsage } from "./ai-usage";
 import { createHash } from "crypto";
 import { scheduleCutoffLogs } from "./ai-pipeline-scheduler";
 import { scheduleFollowups } from "./ai-pipeline-followup";
+import { detectConversationRoleDbFree } from "./ai-pipeline-prefilter";
+import { getTzParts, zonedWallClockToUtc } from "./ai-pipeline-time";
+import {
+  getContactLeadStatus,
+  setContactLeadStatusByAi,
+} from "./contact-lead-status";
+import { createOpportunityFromAi } from "./ai-pipeline-opportunity";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,6 +45,15 @@ interface AiAnalysisResult {
   recommendation: string;
   scoreReason: string;
   aiNotes: string;
+  lastOpenPoint: string | null;
+  stalledReason: string | null;
+  // Lead/role classification (§B.9 LANGKAH 0/1).
+  conversationRole: "tenant_is_seller" | "tenant_is_buyer" | "unclear";
+  leadClassification: "lead" | "not_lead" | "unclear";
+  leadClassificationReason: string | null;
+  // True when the AI says this should not enter the pipeline (reverse role).
+  skipped: boolean;
+  skipReason: string | null;
   contextHash: string;
   rawAnalysis: Record<string, unknown>;
 }
@@ -48,8 +64,23 @@ interface AiAnalysisResult {
 // the call site never breaks, regardless of what the tenant writes. The 6
 // dimensions + ranges stay fixed so `scoreThreshold` keeps a consistent meaning
 // across pipelines even when the scoring *emphasis* is customized.
+// LANGKAH 0/1 — tentukan role percakapan & klasifikasi lead SEBELUM skor.
+// Ditempel ke setiap prompt (default & custom) sehingga klasifikasi konsisten
+// apa pun persona scoring tenant.
+const CLASSIFICATION_INSTRUCTION = `LANGKAH 0 — TENTUKAN ROLE PERCAKAPAN (WAJIB PERTAMA):
+- AGENT/Bisnis (outbound) = pesan dari tenant kita. CUSTOMER/Pelanggan (inbound) = dari kontak.
+- tenant_is_seller (NORMAL): AGENT menawarkan/menjelaskan produk; CUSTOMER tanya harga/minat beli.
+- tenant_is_buyer (TERBALIK): KONTAK menawarkan produk/layanan MEREKA dan AGENT yang memesan/membeli (mis. hotel konfirmasi reservasi AGENT, supplier kasih penawaran ke AGENT). Bila terbaca terbalik → set conversation_role="tenant_is_buyer", lead_classification="not_lead", skip_pipeline=true, skip_reason singkat, score=0.
+
+LANGKAH 1 — KLASIFIKASI LEAD (hanya bila tenant_is_seller):
+- "lead": kontak menanyakan/berminat produk-layanan yang selaras dengan bisnis tenant.
+- "not_lead": topik tidak terkait bisnis tenant / personal / rekanan non-komersial.
+- "unclear": sinyal belum cukup.
+
+`;
+
 function buildOutputContract(): string {
-  return `Beri skor berdasarkan 6 dimensi:
+  return `${CLASSIFICATION_INSTRUCTION}Beri skor berdasarkan 6 dimensi:
 1. buying_signal (0-30): Seberapa kuat sinyal pembelian (tanya harga, stok, minta penawaran, dll)
 2. urgency (0-20): Tingkat urgensi (butuh segera, ada deadline, dll)
 3. engagement (0-20): Seberapa aktif dan responsif dalam percakapan
@@ -61,7 +92,12 @@ Total skor = jumlah semua dimensi (0-100).
 
 Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
 {
-  "score": <integer 0-100>,
+  "conversation_role": "tenant_is_seller" | "tenant_is_buyer" | "unclear",
+  "lead_classification": "lead" | "not_lead" | "unclear",
+  "lead_classification_reason": "<1 kalimat singkat, atau null>",
+  "skip_pipeline": <true bila tenant_is_buyer, selain itu false>,
+  "skip_reason": "<alasan bila skip_pipeline=true, atau null>",
+  "score": <integer 0-100, 0 bila skip_pipeline=true>,
   "scoreBreakdown": {
     "buying_signal": <integer 0-30>,
     "urgency": <integer 0-20>,
@@ -76,6 +112,8 @@ Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
   "recommendation": "<rekomendasi tindak lanjut, 1-2 kalimat>",
   "scoreReason": "<alasan skor dalam 1-2 kalimat>",
   "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
+  "lastOpenPoint": "<hal terakhir yang menggantung / pertanyaan customer yang belum tuntas dijawab / keberatan yang dia sampaikan. null kalau tidak ada yang jelas — JANGAN mengarang>",
+  "stalledReason": "<alasan percakapan berhenti, sependek mungkin. null kalau tidak jelas>",
   "contextHash": "<3-5 kata kunci topik utama percakapan, dipisah koma>"
 }`;
 }
@@ -113,7 +151,7 @@ Platform: ${channelType ?? "WhatsApp"}
 TRANSKIP PERCAKAPAN:
 ${transcript}
 
-Beri skor berdasarkan 6 dimensi:
+${CLASSIFICATION_INSTRUCTION}Beri skor berdasarkan 6 dimensi:
 1. buying_signal (0-30): Seberapa kuat sinyal pembelian (tanya harga, stok, minta penawaran, dll)
 2. urgency (0-20): Tingkat urgensi (butuh segera, ada deadline, dll)
 3. engagement (0-20): Seberapa aktif dan responsif dalam percakapan
@@ -125,7 +163,12 @@ Total skor = jumlah semua dimensi (0-100).
 
 Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
 {
-  "score": <integer 0-100>,
+  "conversation_role": "tenant_is_seller" | "tenant_is_buyer" | "unclear",
+  "lead_classification": "lead" | "not_lead" | "unclear",
+  "lead_classification_reason": "<1 kalimat singkat, atau null>",
+  "skip_pipeline": <true bila tenant_is_buyer, selain itu false>,
+  "skip_reason": "<alasan bila skip_pipeline=true, atau null>",
+  "score": <integer 0-100, 0 bila skip_pipeline=true>,
   "scoreBreakdown": {
     "buying_signal": <integer 0-30>,
     "urgency": <integer 0-20>,
@@ -140,6 +183,8 @@ Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
   "recommendation": "<rekomendasi tindak lanjut, 1-2 kalimat>",
   "scoreReason": "<alasan skor dalam 1-2 kalimat>",
   "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
+  "lastOpenPoint": "<hal terakhir yang menggantung / pertanyaan customer yang belum tuntas dijawab / keberatan yang dia sampaikan. null kalau tidak ada yang jelas — JANGAN mengarang>",
+  "stalledReason": "<alasan percakapan berhenti, sependek mungkin. null kalau tidak jelas>",
   "contextHash": "<3-5 kata kunci topik utama percakapan, dipisah koma>"
 }`;
 }
@@ -180,7 +225,11 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
 
     // Compute the window: from the previous cutoff time (or midnight) to this cutoff time.
     const windowEnd = log.scheduledTime;
-    const windowStart = computeWindowStart(pipeline.cutoffTimes as string[], windowEnd);
+    const windowStart = computeWindowStart(
+      pipeline.cutoffTimes as string[],
+      windowEnd,
+      pipeline.timezone
+    );
 
     // Load all channels for this pipeline.
     const pipelineChannels = await db
@@ -292,6 +341,22 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
         if (!result) continue;
         contactsProcessed++;
 
+        // Record the prior score so the analysis row carries its delta — the
+        // entry drawer renders previousScore → score as a trend. Most recent
+        // analysis for the same contact + channel within this pipeline.
+        const [prior] = await db
+          .select({ score: aiPipelineAnalysesTable.score })
+          .from(aiPipelineAnalysesTable)
+          .where(
+            and(
+              eq(aiPipelineAnalysesTable.pipelineId, pipeline.id),
+              eq(aiPipelineAnalysesTable.contactPhone, chat.phoneNumber),
+              eq(aiPipelineAnalysesTable.channelId, chat.channelId)
+            )
+          )
+          .orderBy(desc(aiPipelineAnalysesTable.createdAt))
+          .limit(1);
+
         // Persist analysis record.
         const [analysis] = await db.insert(aiPipelineAnalysesTable).values({
           pipelineId: pipeline.id,
@@ -300,10 +365,12 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           contactName: chat.contactName,
           channelId: chat.channelId,
           channelType: channelTypeMap.get(chat.channelId) ?? null,
+          chatId: chat.id,
           cutoffDatetime: windowEnd,
           cutoffWindowStart: windowStart,
           cutoffWindowEnd: windowEnd,
           score: result.score,
+          previousScore: prior?.score ?? null,
           scoreBreakdown: result.scoreBreakdown,
           status: result.status,
           estimatedValue: result.estimatedValue || null,
@@ -311,10 +378,35 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           recommendation: result.recommendation || null,
           scoreReason: result.scoreReason || null,
           aiNotes: result.aiNotes || null,
+          lastOpenPoint: result.lastOpenPoint,
+          stalledReason: result.stalledReason,
+          conversationRole: result.conversationRole,
+          leadClassification: result.leadClassification,
+          leadClassificationReason: result.leadClassificationReason,
+          skipped: result.skipped,
+          skipReason: result.skipReason,
           contextHash: result.contextHash || null,
           enteredPipeline: false,
           rawAnalysis: result.rawAnalysis,
         }).returning();
+
+        // Propagate the AI's lead classification to the contact-level status
+        // (never overrides a manual classification). 'unclear' leaves it alone.
+        if (result.leadClassification === "lead" || result.leadClassification === "not_lead") {
+          try {
+            await setContactLeadStatusByAi(
+              pipeline.ownerUserId,
+              chat.phoneNumber,
+              result.leadClassification
+            );
+          } catch (err) {
+            console.error("[ai-pipeline] lead status update failed:", err);
+          }
+        }
+
+        // GUARD — skipped analyses (reverse role / not_lead) never enter the
+        // pipeline and never auto-create opportunities.
+        if (result.skipped) continue;
 
         // Apply pipeline entry rules (3 cases).
         const entryResult = await applyPipelineEntryRules({
@@ -325,6 +417,19 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
 
         if (entryResult.entered) {
           contactsEnteredPipeline++;
+        }
+
+        // Auto-create opportunity when enabled and score crosses the threshold.
+        if (
+          pipeline.autoCreateOpportunity &&
+          entryResult.entered &&
+          result.score >= pipeline.opportunityThreshold
+        ) {
+          try {
+            await createOpportunityFromAi({ analysis, pipeline });
+          } catch (err) {
+            console.error("[ai-pipeline] opportunity auto-create failed:", err);
+          }
         }
 
         // Schedule follow-ups if enabled.
@@ -365,7 +470,8 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
     await scheduleCutoffLogs(
       pipeline.id,
       pipeline.ownerUserId,
-      pipeline.cutoffTimes as string[]
+      pipeline.cutoffTimes as string[],
+      pipeline.timezone
     );
   } catch (err) {
     await db.update(aiPipelineCutoffLogsTable)
@@ -397,6 +503,14 @@ async function analyzeChat(opts: {
 }): Promise<AiAnalysisResult | null> {
   const { chat, windowStart, windowEnd, channelType, customPrompt, client, model, provider, ownerUserId } = opts;
 
+  // GUARD 1 — user manually marked this contact not_lead → skip entirely, no AI,
+  // no analysis row (manual classification always wins). Returns null so the
+  // caller simply moves on.
+  const manualStatus = await getContactLeadStatus(ownerUserId, chat.phoneNumber);
+  if (manualStatus?.leadStatus === "not_lead" && manualStatus.leadClassifiedBy === "manual") {
+    return null;
+  }
+
   // Load messages in the window.
   const messages = await db
     .select({
@@ -419,6 +533,16 @@ async function analyzeChat(opts: {
 
   if (messages.length === 0) return null;
 
+  // GUARD 2 — db-free pre-filter: reverse-role conversation (contact is the
+  // seller, tenant is the buyer) → skip without spending AI tokens, but DO
+  // record a skipped analysis row for auditability.
+  if (detectConversationRoleDbFree(messages) === "tenant_is_buyer") {
+    return buildSkippedResult(
+      "tenant_is_buyer",
+      "Pre-filter: kontak adalah supplier/vendor (tenant sebagai pembeli)"
+    );
+  }
+
   // Build transcript.
   const transcript = messages
     .map((m) => {
@@ -435,13 +559,35 @@ async function analyzeChat(opts: {
     ? buildCustomPrompt(customPrompt, transcript, chat.contactName, channelType)
     : buildAnalysisPrompt(transcript, chat.contactName, channelType);
 
-  // Call AI.
-  const completion = await (client.chat.completions.create as Function)({
-    model,
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: 1500,
-    temperature: 0.1,
-  }) as { choices: Array<{ message: { content: string }; finish_reason: string }>; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+  // Call AI. Retry up to 3 times with exponential backoff (§B.14) — transient
+  // provider errors (rate limits, 5xx, dropped connections) shouldn't drop a
+  // chat from the cut-off batch.
+  type Completion = {
+    choices: Array<{ message: { content: string }; finish_reason: string }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  let completion: Completion | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      completion = (await (client.chat.completions.create as Function)({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1500,
+        temperature: 0.1,
+      })) as Completion;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+  if (!completion) {
+    console.error("[ai-pipeline] AI call failed after 3 attempts:", lastErr);
+    return null;
+  }
 
   const content = completion.choices?.[0]?.message?.content ?? "";
 
@@ -476,7 +622,27 @@ async function analyzeChat(opts: {
     barrier_adjustment: clampSigned(bd.barrier_adjustment, -5, 5),
   };
   const computedScore = Object.values(breakdown).reduce((a, b) => a + b, 0);
-  const score = Math.min(100, Math.max(0, typeof parsed.score === "number" ? parsed.score : computedScore));
+
+  // Lead/role classification (§B.9). A reverse role or explicit skip_pipeline
+  // forces skipped=true and score 0 — it must never enter the pipeline.
+  const conversationRole = parseEnum(parsed.conversation_role,
+    ["tenant_is_seller", "tenant_is_buyer", "unclear"], "unclear");
+  const leadClassification = parseEnum(parsed.lead_classification,
+    ["lead", "not_lead", "unclear"], "unclear");
+  const skipped =
+    parsed.skip_pipeline === true ||
+    conversationRole === "tenant_is_buyer" ||
+    leadClassification === "not_lead";
+  const skipReason = skipped
+    ? (parseNullableText(parsed.skip_reason)
+        ?? (conversationRole === "tenant_is_buyer"
+          ? "Kontak adalah supplier/vendor — tenant berposisi sebagai pembeli"
+          : "Diklasifikasi bukan lead"))
+    : null;
+
+  const score = skipped
+    ? 0
+    : Math.min(100, Math.max(0, typeof parsed.score === "number" ? parsed.score : computedScore));
 
   const contextHashRaw = typeof parsed.contextHash === "string" ? parsed.contextHash : "";
   const contextHash = createHash("md5")
@@ -493,9 +659,63 @@ async function analyzeChat(opts: {
     recommendation: typeof parsed.recommendation === "string" ? parsed.recommendation : "",
     scoreReason: typeof parsed.scoreReason === "string" ? parsed.scoreReason : "",
     aiNotes: typeof parsed.aiNotes === "string" ? parsed.aiNotes : "",
+    lastOpenPoint: parseNullableText(parsed.lastOpenPoint),
+    stalledReason: parseNullableText(parsed.stalledReason),
+    conversationRole,
+    leadClassification,
+    leadClassificationReason: parseNullableText(parsed.lead_classification_reason),
+    skipped,
+    skipReason,
     contextHash,
     rawAnalysis: parsed,
   };
+}
+
+// Build a zero-score skipped analysis result (no AI call) for reverse-role /
+// not-lead conversations. Inserted for auditability; never enters the pipeline.
+function buildSkippedResult(
+  conversationRole: AiAnalysisResult["conversationRole"],
+  skipReason: string
+): AiAnalysisResult {
+  return {
+    score: 0,
+    scoreBreakdown: {
+      buying_signal: 0, urgency: 0, engagement: 0,
+      commitment: 0, product_fit: 0, barrier_adjustment: 0,
+    },
+    status: "Tidak relevan",
+    estimatedValue: 0,
+    productInterest: "",
+    recommendation: "",
+    scoreReason: "",
+    aiNotes: "",
+    lastOpenPoint: null,
+    stalledReason: null,
+    conversationRole,
+    leadClassification: "not_lead",
+    leadClassificationReason: skipReason,
+    skipped: true,
+    skipReason,
+    contextHash: "",
+    rawAnalysis: { prefilter: true, conversationRole, skipReason },
+  };
+}
+
+// Coerce an unknown into one of the allowed enum strings, with a fallback.
+function parseEnum<T extends string>(v: unknown, allowed: T[], fallback: T): T {
+  return typeof v === "string" && (allowed as string[]).includes(v)
+    ? (v as T)
+    : fallback;
+}
+
+// Parse an optional analysis text field. The model is told to return null when
+// there is nothing concrete; we also treat empty / literal "null" as absent so a
+// fabricated-but-blank value never becomes a follow-up anchor.
+function parseNullableText(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (!t || t.toLowerCase() === "null") return null;
+  return t;
 }
 
 // ─── Pipeline entry rules ──────────────────────────────────────────────────────
@@ -603,24 +823,23 @@ async function applyPipelineEntryRules(opts: {
 
 // ─── Window computation ────────────────────────────────────────────────────────
 
-function computeWindowStart(cutoffTimes: string[], windowEnd: Date): Date {
+function computeWindowStart(cutoffTimes: string[], windowEnd: Date, timeZone: string): Date {
   const sorted = [...cutoffTimes].sort();
-  const endTime = `${String(windowEnd.getUTCHours()).padStart(2, "0")}:${String(windowEnd.getUTCMinutes()).padStart(2, "0")}`;
+  // windowEnd is a UTC instant; match it against the cutoff strings by its
+  // wall-clock value in the pipeline's timezone.
+  const end = getTzParts(windowEnd, timeZone);
+  const endTime = `${String(end.hour).padStart(2, "0")}:${String(end.minute).padStart(2, "0")}`;
 
   // Find which index this cutoff corresponds to.
   const idx = sorted.findIndex((t) => t === endTime);
   if (idx === 0 || idx === -1) {
-    // First cutoff of the day → window starts at midnight.
-    const start = new Date(windowEnd);
-    start.setUTCHours(0, 0, 0, 0);
-    return start;
+    // First cutoff of the day → window starts at tz midnight that day.
+    return zonedWallClockToUtc(end.year, end.month, end.day, 0, 0, timeZone);
   }
-  // Previous cutoff + 1 minute.
+  // Previous cutoff + 1 minute (minute 60 normalizes to the next hour).
   const prevTime = sorted[idx - 1]!;
   const [ph, pm] = prevTime.split(":").map(Number);
-  const start = new Date(windowEnd);
-  start.setUTCHours(ph, pm + 1, 0, 0);
-  return start;
+  return zonedWallClockToUtc(end.year, end.month, end.day, ph ?? 0, (pm ?? 0) + 1, timeZone);
 }
 
 // ─── Utility clamps ────────────────────────────────────────────────────────────

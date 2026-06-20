@@ -4410,6 +4410,14 @@ export interface AiPipelineCreate {
      * @maximum 100
      */
   scoreThreshold?: number;
+  /**
+     * Minimum score to auto-create an opportunity. Should be >= scoreThreshold.
+     * @minimum 0
+     * @maximum 100
+     */
+  opportunityThreshold?: number;
+  /** When true, crossing opportunityThreshold auto-creates an opportunity. */
+  autoCreateOpportunity?: boolean;
   autoFollowupEnabled?: boolean;
   followupIntervals?: string[];
   cutoffTimes?: string[];
@@ -4444,6 +4452,8 @@ export interface AiPipeline {
   description?: string | null;
   isActive: boolean;
   scoreThreshold: number;
+  opportunityThreshold?: number;
+  autoCreateOpportunity?: boolean;
   autoFollowupEnabled: boolean;
   followupIntervals: string[];
   cutoffTimes: string[];
@@ -4474,6 +4484,30 @@ export type AiPipelineAnalysisScoreBreakdown = {
   barrier_adjustment?: number;
 } | null;
 
+/**
+ * AI lead classification for this conversation.
+ */
+export type AiPipelineAnalysisLeadClassification = typeof AiPipelineAnalysisLeadClassification[keyof typeof AiPipelineAnalysisLeadClassification];
+
+
+export const AiPipelineAnalysisLeadClassification = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+  unclear: 'unclear',
+} as const;
+
+/**
+ * Who is selling. tenant_is_buyer = reverse role (contact is supplier).
+ */
+export type AiPipelineAnalysisConversationRole = typeof AiPipelineAnalysisConversationRole[keyof typeof AiPipelineAnalysisConversationRole];
+
+
+export const AiPipelineAnalysisConversationRole = {
+  tenant_is_seller: 'tenant_is_seller',
+  tenant_is_buyer: 'tenant_is_buyer',
+  unclear: 'unclear',
+} as const;
+
 export interface AiPipelineAnalysis {
   id: number;
   pipelineId: number;
@@ -4493,6 +4527,16 @@ export interface AiPipelineAnalysis {
   recommendation?: string | null;
   scoreReason?: string | null;
   aiNotes?: string | null;
+  /** AI lead classification for this conversation. */
+  leadClassification?: AiPipelineAnalysisLeadClassification;
+  leadClassificationReason?: string | null;
+  /** Who is selling. tenant_is_buyer = reverse role (contact is supplier). */
+  conversationRole?: AiPipelineAnalysisConversationRole;
+  /** True when skipped (reverse role / not_lead) and never entered the pipeline. */
+  skipped?: boolean;
+  skipReason?: string | null;
+  opportunityId?: number | null;
+  chatId?: number | null;
   enteredPipeline: boolean;
   pipelineEntryId?: number | null;
   createdAt: string;

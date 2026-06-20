@@ -5,6 +5,7 @@ import { NextActionBox } from "./NextActionBox";
 import { AiInsightCard } from "./AiInsightCard";
 import { AnomalyList } from "./AnomalyList";
 import { KbRecommendations } from "./KbRecommendations";
+import { EscalationTopics } from "./EscalationTopics";
 import type { PeriodKey } from "./format";
 
 type InsightPeriod = "today" | "7d" | "30d";
@@ -54,6 +55,8 @@ export function AiAnalysisTab({ period, from, to, channel }: { period: PeriodKey
           Insight AI, deteksi anomali & rekomendasi KB di bawah dihitung untuk semua channel (bukan channel terpilih).
         </p>
       )}
+
+      <EscalationTopics topics={data?.topEscalationTopics} loading={isLoading} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <AiInsightCard period={insightPeriod} />

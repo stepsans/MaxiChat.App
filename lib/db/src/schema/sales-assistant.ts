@@ -157,6 +157,12 @@ export const opportunitiesTable = pgTable(
     scoreReason: text("score_reason"),
     aiNotes: text("ai_notes"),
     recommendation: text("recommendation"),
+    // Follow-up anchors (§3.5): the unresolved thing the customer last raised /
+    // their objection, and why the chat stalled. NULL when none — never
+    // fabricated. The primary context a follow-up references so it reads as a
+    // continuation, not a template.
+    lastOpenPoint: text("last_open_point"),
+    stalledReason: text("stalled_reason"),
     // Message IDs that were in the analysis window — used to link back to the
     // specific messages in the chat view ("Buka Chat" scrolls to these).
     analyzedMessageIds: jsonb("analyzed_message_ids")

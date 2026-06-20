@@ -3,6 +3,7 @@ import {
   db,
   aiPipelineEntriesTable,
   aiPipelineFollowupLogsTable,
+  aiPipelineAnalysesTable,
   aiPipelinesTable,
   chatMessagesTable,
   chatsTable,
@@ -11,7 +12,7 @@ import {
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
 import { getOrCreateTenantSettings } from "./settings-store";
-import { AI_HARD_GUARDRAILS } from "./ai-guardrails";
+import { buildFollowupSystemPrompt } from "./followup-prompt";
 
 // ─── Schedule follow-up for a newly entered pipeline entry ────────────────────
 
@@ -200,32 +201,28 @@ export async function generateFollowupMessage(
         .join("\n");
     }
 
-    // 3-lapis (lib/ai-guardrails.ts): the follow-up no longer defines its own
-    // persona — it INHERITS the tenant persona from AI Studio (Lapis A), so changing
-    // the address term / tone there updates follow-ups too. Lapis B is the per-FU
-    // task instruction; Lapis C is the locked guardrail, always last.
+    // The conversation anchor (lastOpenPoint/stalledReason) + analysis notes live
+    // on the analysis row this entry was created from — fetched here so the
+    // follow-up can reference the specific thing the customer left hanging.
+    const analysis = await db.query.aiPipelineAnalysesTable.findFirst({
+      where: eq(aiPipelineAnalysesTable.id, entry.analysisId),
+    });
+
+    // 3-lapis (lib/followup-prompt.ts): persona (Lapis A) + follow-up task with
+    // conversation anchor (Lapis B) + locked guardrails (Lapis C). Identical
+    // assembly to the sales-assistant follow-up generator so the two never diverge.
     const tenant = await getOrCreateTenantSettings(pipeline.ownerUserId);
-
     const followupNumber = entry.followupCount + 1;
-    // Lapis B — task context only (persona lives in Lapis A; do not redefine style).
-    const TONE_BY_FU: Record<number, string> = {
-      1: "santai, sekadar menyambung konteks obrolan sebelumnya tanpa menagih",
-      2: "helpful — beri nilai/info yang berguna, bukan sekadar menanyakan jadi atau tidak",
-      3: "tulus; ini pesan terakhir, tutup dengan ramah dan biarkan pintu tetap terbuka",
-    };
-    const toneInstruction = TONE_BY_FU[followupNumber] ?? TONE_BY_FU[1];
 
-    const instruksiFollowup = `TUGAS SAAT INI: kamu sedang menulis SATU pesan follow-up WhatsApp untuk customer yang sebelumnya ngobrol tapi belum lanjut. Tetap pakai gaya & panggilan yang sama seperti yang sudah ditetapkan di atas (jangan berubah jadi formal).
-
-KONTEKS:
-- Ini follow-up nomor ${followupNumber} dari maksimal 3.
-- Arah pesan: ${toneInstruction}
-- Minat produk dari analisa sebelumnya: ${entry.productInterest ?? "tidak diketahui"}
-- Nama customer (kalau ada): ${entry.contactName ?? "-"}
-
-Pakai nama customer kalau tersedia. Sambungkan ke konteks obrolan sebelumnya — jangan seperti baru kenal. Balas pakai bahasa yang sama dengan percakapan sebelumnya. Output HANYA teks pesan yang akan dikirim: tanpa penjelasan, tanpa JSON, tanpa preamble.`;
-
-    const systemPrompt = `${tenant.systemPrompt}\n\n${instruksiFollowup}\n\n${AI_HARD_GUARDRAILS}`;
+    const systemPrompt = buildFollowupSystemPrompt(tenant.systemPrompt, {
+      followupNumber,
+      lastOpenPoint: analysis?.lastOpenPoint,
+      stalledReason: analysis?.stalledReason,
+      productInterest: entry.productInterest,
+      aiNotes: analysis?.aiNotes,
+      contactName: entry.contactName,
+      recentMessages: recentContext,
+    });
 
     const completion = await (client.chat.completions.create as Function)({
       model,
@@ -233,9 +230,7 @@ Pakai nama customer kalau tersedia. Sambungkan ke konteks obrolan sebelumnya —
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: recentContext
-            ? `Konteks percakapan terakhir:\n${recentContext}`
-            : "(Belum ada percakapan sebelumnya — tulis pembuka follow-up yang hangat dan menyambung.)",
+          content: "Tulis pesan follow-up sekarang sesuai instruksi di atas. Keluarkan hanya isi pesannya.",
         },
       ],
       max_tokens: 300,

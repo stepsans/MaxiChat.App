@@ -3556,6 +3556,17 @@ async function startBaileys(userId: number, channelId: number) {
               ),
             );
           }
+          // Notify the AI Pipeline of this inbound reply. An active pipeline
+          // entry for this contact pauses follow-ups, and an explicit opt-out
+          // ("stop", "jangan", …) hard-stops it. Fire-and-forget.
+          void import("../lib/ai-pipeline-followup").then(
+            ({ handleInboundMessageStopSignal }) =>
+              handleInboundMessageStopSignal(
+                chat.phoneNumber,
+                channelId,
+                parsed.messageContent,
+              ).catch(() => {}),
+          );
           // Auto-reply is the only place where a stale epoch genuinely
           // matters (we shouldn't reply on behalf of a disconnected
           // socket). Persistence above is safe even after a reconnect.

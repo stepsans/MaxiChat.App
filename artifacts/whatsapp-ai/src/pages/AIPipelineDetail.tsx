@@ -176,6 +176,20 @@ function scoreBadge(val: number) {
   return <Badge className="bg-green-100 text-green-700 border-green-200">{val} Panas</Badge>;
 }
 
+// Lead classification badge (AI). null/unclear → neutral.
+function leadBadge(classification: string | null | undefined) {
+  if (classification === "lead") return <Badge className="bg-green-100 text-green-700 border-green-200">Lead</Badge>;
+  if (classification === "not_lead") return <Badge className="bg-red-100 text-red-700 border-red-200">Not Lead</Badge>;
+  return <Badge className="bg-slate-100 text-slate-600 border-slate-200">Unclear</Badge>;
+}
+
+// Conversation role badge (AI). 'unclear' renders nothing.
+function conversationRoleBadge(role: string | null | undefined) {
+  if (role === "tenant_is_seller") return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Tenant Penjual</Badge>;
+  if (role === "tenant_is_buyer") return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Tenant Pembeli</Badge>;
+  return null;
+}
+
 function avatarColor(name: string): string {
   const palette = ["#6366f1", "#8b5cf6", "#ec4899", "#14b8a6", "#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#f97316", "#0ea5e9"];
   let h = 0;
@@ -255,6 +269,53 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
       <div className="min-w-0">
         <p className="text-2xl font-bold">{value}</p>
         <p className="text-xs text-muted-foreground leading-tight">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+// Live countdown to the next pending cut-off, derived from the dashboard's
+// cutoffTimeline. Renders nothing when no future cut-off is scheduled.
+function NextCutoffCountdown({
+  timeline,
+}: {
+  timeline: { scheduledTime?: string; status?: string }[];
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const nextAt = useMemo(() => {
+    const future = timeline
+      .filter((c) => c.status === "pending" && c.scheduledTime)
+      .map((c) => new Date(c.scheduledTime!).getTime())
+      .filter((t) => t > now)
+      .sort((a, b) => a - b);
+    return future[0] ?? null;
+  }, [timeline, now]);
+
+  if (nextAt == null) return null;
+
+  const diff = Math.max(0, nextAt - now);
+  const totalSec = Math.floor(diff / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return (
+    <div className="rounded-xl border bg-card p-4 flex items-center justify-between gap-3">
+      <div>
+        <p className="text-xs text-muted-foreground mb-0.5">Cut-off berikutnya</p>
+        <p className="text-sm font-medium">{formatDate(new Date(nextAt).toISOString())}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-xs text-muted-foreground mb-0.5">Hitung mundur</p>
+        <p className="font-mono text-lg font-semibold tabular-nums">
+          {h > 0 ? `${pad(h)}:` : ""}{pad(m)}:{pad(s)}
+        </p>
       </div>
     </div>
   );
@@ -505,6 +566,9 @@ function DashboardTab({ pipelineId }: { pipelineId: number }) {
         )}
       </div>
 
+      {/* ── Countdown Cut-off Berikutnya ── */}
+      <NextCutoffCountdown timeline={stats.cutoffTimeline} />
+
       {/* ── Timeline Jadwal Analisa ── */}
       {stats.cutoffTimeline.length > 0 && (
         <div className="rounded-xl border bg-card p-4 space-y-3">
@@ -569,6 +633,22 @@ function AnalysisDrawer({ analysis, onClose }: { analysis: AiPipelineAnalysis | 
             </div>
             {scoreBadge(analysis.score)}
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {leadBadge(analysis.leadClassification)}
+            {conversationRoleBadge(analysis.conversationRole)}
+          </div>
+          {analysis.skipped && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <span className="font-semibold">Dilewati dari pipeline.</span>{" "}
+              {analysis.skipReason ?? analysis.leadClassificationReason ?? "Bukan lead / role percakapan terbalik."}
+            </div>
+          )}
+          {!analysis.skipped && analysis.leadClassificationReason && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase">Alasan Klasifikasi Lead</p>
+              <p className="text-sm">{analysis.leadClassificationReason}</p>
+            </div>
+          )}
           {breakdown && (
             <div className="space-y-3 rounded-xl border p-4">
               <h4 className="text-sm font-semibold">Breakdown Skor</h4>
@@ -666,6 +746,41 @@ function AnalysesTab({ pipelineId }: { pipelineId: number }) {
     { id: "dingin", label: "Dingin (≤40)", color: "#EF4444" },
   ];
 
+  // Export the currently-filtered analyses to CSV (client-side, no extra fetch).
+  function exportCsv() {
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const headers = [
+      "Nama", "Telepon", "Skor", "Status", "Lead", "Role",
+      "Minat Produk", "Estimasi Nilai", "Rekomendasi", "Masuk Pipeline", "Cutoff",
+    ];
+    const lines = filtered.map((a) =>
+      [
+        a.contactName ?? "",
+        a.contactPhone,
+        a.score,
+        a.status ?? "",
+        a.leadClassification ?? "",
+        a.conversationRole ?? "",
+        a.productInterest ?? "",
+        a.estimatedValue ?? "",
+        a.recommendation ?? "",
+        a.enteredPipeline ? "ya" : "tidak",
+        a.cutoffDatetime ?? "",
+      ].map(esc).join(",")
+    );
+    const csv = [headers.join(","), ...lines].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `analisa-pipeline-${pipelineId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-4">
 
@@ -762,6 +877,16 @@ function AnalysesTab({ pipelineId }: { pipelineId: number }) {
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border border-border bg-background text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export CSV
+        </button>
       </div>
 
       {isLoading ? (

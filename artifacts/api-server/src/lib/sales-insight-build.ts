@@ -78,6 +78,10 @@ export interface OpportunityCandidate {
   scoreReason: string | null;
   aiNotes: string | null;
   recommendation: string | null;
+  // Follow-up anchors (§3.5): the unresolved point / objection the customer
+  // last raised, and why the chat stalled. null when none — never fabricated.
+  lastOpenPoint: string | null;
+  stalledReason: string | null;
   keyQuotes: KeyQuotes;
 }
 
@@ -92,6 +96,8 @@ export interface SalesInsightAnalysis {
   scoreReason: string | null;
   aiNotes: string | null;
   recommendation: string | null;
+  lastOpenPoint: string | null;
+  stalledReason: string | null;
 }
 
 // ---- System prompt ----------------------------------------------------------
@@ -143,6 +149,8 @@ FORMAT JSON WAJIB:
       "score_reason": "<sinyal positif dan negatif di balik skor>",
       "ai_notes": "<ringkasan kebutuhan customer untuk topik ini>",
       "recommendation": "<saran tindakan berikutnya untuk sales>",
+      "last_open_point": "<hal terakhir yang menggantung / pertanyaan customer yang belum tuntas dijawab / keberatan yang dia sampaikan. null kalau tidak ada yang jelas — JANGAN mengarang>",
+      "stalled_reason": "<alasan percakapan berhenti, sependek mungkin. null kalau tidak jelas>",
       "key_quotes": {
         "positive": ["<sinyal positif 1>", "..."],
         "negative": ["<keberatan 1>"],
@@ -220,8 +228,18 @@ function parseCandidate(raw: unknown): OpportunityCandidate | null {
     scoreReason: toStr(o.score_reason),
     aiNotes: toStr(o.ai_notes),
     recommendation: toStr(o.recommendation),
+    lastOpenPoint: toAnchorText(o.last_open_point),
+    stalledReason: toAnchorText(o.stalled_reason),
     keyQuotes: parseKeyQuotes(o.key_quotes),
   };
+}
+
+// Like toStr but also drops a literal "null" string, so a model that emits
+// "null" (instead of JSON null) never becomes a fabricated follow-up anchor.
+function toAnchorText(v: unknown): string | null {
+  const s = toStr(v);
+  if (!s || s.toLowerCase() === "null") return null;
+  return s;
 }
 
 // Defensively parse the model output into a validated analysis. Returns null
@@ -266,5 +284,7 @@ export function parseInsight(content: string): SalesInsightAnalysis | null {
     scoreReason: top?.scoreReason ?? null,
     aiNotes: top?.aiNotes ?? null,
     recommendation: top?.recommendation ?? null,
+    lastOpenPoint: top?.lastOpenPoint ?? null,
+    stalledReason: top?.stalledReason ?? null,
   };
 }

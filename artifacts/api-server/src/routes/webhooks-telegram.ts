@@ -156,6 +156,15 @@ async function processUpdate(
 
   if (insertedRows.length === 0) return; // duplicate, skip AI
 
+  // Notify the AI Pipeline of this inbound reply. An active pipeline entry for
+  // this contact pauses follow-ups; an explicit opt-out hard-stops it.
+  void import("../lib/ai-pipeline-followup").then(
+    ({ handleInboundMessageStopSignal }) =>
+      handleInboundMessageStopSignal(chat.phoneNumber, channelId, parsed.text).catch(
+        () => {},
+      ),
+  );
+
   // AI Sales Assistant: debounced, non-blocking lead analysis for new inbound
   // customer messages. The queue gates on the owner's Enterprise entitlement.
   enqueueChatDetection(chat.id);

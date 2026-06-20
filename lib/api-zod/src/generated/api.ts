@@ -6388,6 +6388,8 @@ export const ListAiPipelinesResponseItem = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6420,6 +6422,11 @@ export const createAiPipelineBodyScoreThresholdDefault = 70;
 export const createAiPipelineBodyScoreThresholdMin = 0;
 export const createAiPipelineBodyScoreThresholdMax = 100;
 
+export const createAiPipelineBodyOpportunityThresholdDefault = 80;
+export const createAiPipelineBodyOpportunityThresholdMin = 0;
+export const createAiPipelineBodyOpportunityThresholdMax = 100;
+
+export const createAiPipelineBodyAutoCreateOpportunityDefault = false;
 export const createAiPipelineBodyAutoFollowupEnabledDefault = false;
 export const createAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
 export const createAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
@@ -6436,6 +6443,8 @@ export const CreateAiPipelineBody = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean().default(createAiPipelineBodyIsActiveDefault),
   "scoreThreshold": zod.number().min(createAiPipelineBodyScoreThresholdMin).max(createAiPipelineBodyScoreThresholdMax).default(createAiPipelineBodyScoreThresholdDefault),
+  "opportunityThreshold": zod.number().min(createAiPipelineBodyOpportunityThresholdMin).max(createAiPipelineBodyOpportunityThresholdMax).default(createAiPipelineBodyOpportunityThresholdDefault).describe('Minimum score to auto-create an opportunity. Should be >= scoreThreshold.'),
+  "autoCreateOpportunity": zod.boolean().default(createAiPipelineBodyAutoCreateOpportunityDefault).describe('When true, crossing opportunityThreshold auto-creates an opportunity.'),
   "autoFollowupEnabled": zod.boolean().default(createAiPipelineBodyAutoFollowupEnabledDefault),
   "followupIntervals": zod.array(zod.string()).default(createAiPipelineBodyFollowupIntervalsDefault),
   "cutoffTimes": zod.array(zod.string()).default(createAiPipelineBodyCutoffTimesDefault),
@@ -6467,6 +6476,8 @@ export const GetAiPipelineResponse = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6502,6 +6513,11 @@ export const updateAiPipelineBodyScoreThresholdDefault = 70;
 export const updateAiPipelineBodyScoreThresholdMin = 0;
 export const updateAiPipelineBodyScoreThresholdMax = 100;
 
+export const updateAiPipelineBodyOpportunityThresholdDefault = 80;
+export const updateAiPipelineBodyOpportunityThresholdMin = 0;
+export const updateAiPipelineBodyOpportunityThresholdMax = 100;
+
+export const updateAiPipelineBodyAutoCreateOpportunityDefault = false;
 export const updateAiPipelineBodyAutoFollowupEnabledDefault = false;
 export const updateAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
 export const updateAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
@@ -6518,6 +6534,8 @@ export const UpdateAiPipelineBody = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean().default(updateAiPipelineBodyIsActiveDefault),
   "scoreThreshold": zod.number().min(updateAiPipelineBodyScoreThresholdMin).max(updateAiPipelineBodyScoreThresholdMax).default(updateAiPipelineBodyScoreThresholdDefault),
+  "opportunityThreshold": zod.number().min(updateAiPipelineBodyOpportunityThresholdMin).max(updateAiPipelineBodyOpportunityThresholdMax).default(updateAiPipelineBodyOpportunityThresholdDefault).describe('Minimum score to auto-create an opportunity. Should be >= scoreThreshold.'),
+  "autoCreateOpportunity": zod.boolean().default(updateAiPipelineBodyAutoCreateOpportunityDefault).describe('When true, crossing opportunityThreshold auto-creates an opportunity.'),
   "autoFollowupEnabled": zod.boolean().default(updateAiPipelineBodyAutoFollowupEnabledDefault),
   "followupIntervals": zod.array(zod.string()).default(updateAiPipelineBodyFollowupIntervalsDefault),
   "cutoffTimes": zod.array(zod.string()).default(updateAiPipelineBodyCutoffTimesDefault),
@@ -6541,6 +6559,8 @@ export const UpdateAiPipelineResponse = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6588,6 +6608,8 @@ export const ToggleAiPipelineResponse = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6679,6 +6701,13 @@ export const ListAiPipelineAnalysesResponse = zod.object({
   "recommendation": zod.string().nullish(),
   "scoreReason": zod.string().nullish(),
   "aiNotes": zod.string().nullish(),
+  "leadClassification": zod.enum(['lead', 'not_lead', 'unclear']).optional().describe('AI lead classification for this conversation.'),
+  "leadClassificationReason": zod.string().nullish(),
+  "conversationRole": zod.enum(['tenant_is_seller', 'tenant_is_buyer', 'unclear']).optional().describe('Who is selling. tenant_is_buyer = reverse role (contact is supplier).'),
+  "skipped": zod.boolean().optional().describe('True when skipped (reverse role \/ not_lead) and never entered the pipeline.'),
+  "skipReason": zod.string().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "chatId": zod.number().nullish(),
   "enteredPipeline": zod.boolean(),
   "pipelineEntryId": zod.number().nullish(),
   "createdAt": zod.coerce.date()
@@ -6723,6 +6752,13 @@ export const GetAiPipelineAnalysisResponse = zod.object({
   "recommendation": zod.string().nullish(),
   "scoreReason": zod.string().nullish(),
   "aiNotes": zod.string().nullish(),
+  "leadClassification": zod.enum(['lead', 'not_lead', 'unclear']).optional().describe('AI lead classification for this conversation.'),
+  "leadClassificationReason": zod.string().nullish(),
+  "conversationRole": zod.enum(['tenant_is_seller', 'tenant_is_buyer', 'unclear']).optional().describe('Who is selling. tenant_is_buyer = reverse role (contact is supplier).'),
+  "skipped": zod.boolean().optional().describe('True when skipped (reverse role \/ not_lead) and never entered the pipeline.'),
+  "skipReason": zod.string().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "chatId": zod.number().nullish(),
   "enteredPipeline": zod.boolean(),
   "pipelineEntryId": zod.number().nullish(),
   "createdAt": zod.coerce.date()
@@ -7001,6 +7037,13 @@ export const GetAiPipelineDashboardStatsResponse = zod.object({
   "recommendation": zod.string().nullish(),
   "scoreReason": zod.string().nullish(),
   "aiNotes": zod.string().nullish(),
+  "leadClassification": zod.enum(['lead', 'not_lead', 'unclear']).optional().describe('AI lead classification for this conversation.'),
+  "leadClassificationReason": zod.string().nullish(),
+  "conversationRole": zod.enum(['tenant_is_seller', 'tenant_is_buyer', 'unclear']).optional().describe('Who is selling. tenant_is_buyer = reverse role (contact is supplier).'),
+  "skipped": zod.boolean().optional().describe('True when skipped (reverse role \/ not_lead) and never entered the pipeline.'),
+  "skipReason": zod.string().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "chatId": zod.number().nullish(),
   "enteredPipeline": zod.boolean(),
   "pipelineEntryId": zod.number().nullish(),
   "createdAt": zod.coerce.date()

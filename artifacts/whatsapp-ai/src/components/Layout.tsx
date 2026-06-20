@@ -94,7 +94,7 @@ const navGroups: NavGroup[] = [
         href: "/ai-pipeline",
         label: "AI Pipeline",
         icon: BrainCircuit,
-        menu: "opportunities",
+        menu: "ai_pipeline",
         requiresAiSalesAssistant: true,
       },
       { href: "/usage", label: "Pemakaian Token", icon: Cpu, menu: "usage" },

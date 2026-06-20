@@ -78,6 +78,8 @@ async function buildPipelineResponse(pipeline: typeof aiPipelinesTable.$inferSel
     description: pipeline.description,
     isActive: pipeline.isActive,
     scoreThreshold: pipeline.scoreThreshold,
+    opportunityThreshold: pipeline.opportunityThreshold,
+    autoCreateOpportunity: pipeline.autoCreateOpportunity,
     autoFollowupEnabled: pipeline.autoFollowupEnabled,
     followupIntervals: pipeline.followupIntervals,
     cutoffTimes: pipeline.cutoffTimes,
@@ -238,6 +240,7 @@ router.post("/", async (req: Request, res: Response) => {
 
   const {
     name, description, isActive, scoreThreshold,
+    opportunityThreshold, autoCreateOpportunity,
     autoFollowupEnabled, followupIntervals, cutoffTimes,
     channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
     customPrompt, directionFilter,
@@ -251,6 +254,8 @@ router.post("/", async (req: Request, res: Response) => {
       description: description ?? null,
       isActive: isActive ?? true,
       scoreThreshold: scoreThreshold ?? 70,
+      opportunityThreshold: opportunityThreshold ?? 80,
+      autoCreateOpportunity: autoCreateOpportunity ?? false,
       autoFollowupEnabled: autoFollowupEnabled ?? false,
       followupIntervals: followupIntervals ?? ["24h", "48h", "72h"],
       cutoffTimes: cutoffTimes ?? ["12:00", "23:59"],
@@ -275,7 +280,7 @@ router.post("/", async (req: Request, res: Response) => {
   await upsertChannelsAndLabels(pipeline.id, channelIds ?? [], excludeLabelIds ?? []);
 
   // Schedule cutoff logs for the next 7 days
-  await scheduleCutoffLogs(pipeline.id, ownerUserId, pipeline.cutoffTimes as string[]);
+  await scheduleCutoffLogs(pipeline.id, ownerUserId, pipeline.cutoffTimes as string[], pipeline.timezone);
 
   const result = await buildPipelineResponse(pipeline);
   res.status(201).json(result);
@@ -316,6 +321,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 
   const {
     name, description, isActive, scoreThreshold,
+    opportunityThreshold, autoCreateOpportunity,
     autoFollowupEnabled, followupIntervals, cutoffTimes,
     channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
     customPrompt, directionFilter,
@@ -331,6 +337,8 @@ router.put("/:id", async (req: Request, res: Response) => {
       description: description ?? null,
       isActive: isActive ?? pipeline.isActive,
       scoreThreshold: scoreThreshold ?? pipeline.scoreThreshold,
+      opportunityThreshold: opportunityThreshold ?? pipeline.opportunityThreshold,
+      autoCreateOpportunity: autoCreateOpportunity ?? pipeline.autoCreateOpportunity,
       autoFollowupEnabled: autoFollowupEnabled ?? pipeline.autoFollowupEnabled,
       followupIntervals: followupIntervals ?? pipeline.followupIntervals,
       cutoffTimes: cutoffTimes ?? pipeline.cutoffTimes,
@@ -370,7 +378,7 @@ router.put("/:id", async (req: Request, res: Response) => {
         )
       );
     if (updated.isActive) {
-      await scheduleCutoffLogs(id, ownerUserId, updated.cutoffTimes as string[]);
+      await scheduleCutoffLogs(id, ownerUserId, updated.cutoffTimes as string[], updated.timezone);
     }
   }
 
@@ -571,6 +579,13 @@ function serializeAnalysis(a: typeof aiPipelineAnalysesTable.$inferSelect) {
     recommendation: a.recommendation,
     scoreReason: a.scoreReason,
     aiNotes: a.aiNotes,
+    leadClassification: a.leadClassification,
+    leadClassificationReason: a.leadClassificationReason,
+    conversationRole: a.conversationRole,
+    skipped: a.skipped,
+    skipReason: a.skipReason,
+    opportunityId: a.opportunityId,
+    chatId: a.chatId,
     enteredPipeline: a.enteredPipeline,
     pipelineEntryId: a.pipelineEntryId,
     createdAt: a.createdAt.toISOString(),

@@ -12797,6 +12797,16 @@ components:
           minimum: 0
           maximum: 100
           default: 70
+        opportunityThreshold:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 80
+          description: Minimum score to auto-create an opportunity. Should be >= scoreThreshold.
+        autoCreateOpportunity:
+          type: boolean
+          default: false
+          description: When true, crossing opportunityThreshold auto-creates an opportunity.
         autoFollowupEnabled:
           type: boolean
           default: false
@@ -12854,6 +12864,10 @@ components:
           type: boolean
         scoreThreshold:
           type: integer
+        opportunityThreshold:
+          type: integer
+        autoCreateOpportunity:
+          type: boolean
         autoFollowupEnabled:
           type: boolean
         followupIntervals:
@@ -12969,6 +12983,29 @@ components:
           nullable: true
         aiNotes:
           type: string
+          nullable: true
+        leadClassification:
+          type: string
+          enum: [lead, not_lead, unclear]
+          description: AI lead classification for this conversation.
+        leadClassificationReason:
+          type: string
+          nullable: true
+        conversationRole:
+          type: string
+          enum: [tenant_is_seller, tenant_is_buyer, unclear]
+          description: Who is selling. tenant_is_buyer = reverse role (contact is supplier).
+        skipped:
+          type: boolean
+          description: True when skipped (reverse role / not_lead) and never entered the pipeline.
+        skipReason:
+          type: string
+          nullable: true
+        opportunityId:
+          type: integer
+          nullable: true
+        chatId:
+          type: integer
           nullable: true
         enteredPipeline:
           type: boolean
