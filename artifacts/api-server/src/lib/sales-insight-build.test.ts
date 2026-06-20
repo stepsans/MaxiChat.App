@@ -91,7 +91,10 @@ describe("buildAnalysisSystemPrompt", () => {
     const p = buildAnalysisSystemPrompt("PROD-1 Kemeja 100000");
     assert.match(p, /PROD-1 Kemeja 100000/);
     assert.match(p, /HANYA dengan satu objek JSON/);
-    assert.match(p, /leadScore/);
+    // New multi-opportunity contract: the JSON shape is an `opportunities`
+    // array whose items carry a snake_case `lead_score`.
+    assert.match(p, /opportunities/);
+    assert.match(p, /lead_score/);
   });
   it("falls back when catalog empty", () => {
     const p = buildAnalysisSystemPrompt("");
@@ -103,25 +106,52 @@ describe("parseInsight", () => {
   it("parses a clean JSON object", () => {
     const a = parseInsight(
       JSON.stringify({
-        leadScore: 85,
-        intentCategory: "hot",
-        productInterest: ["PROD-1", "Kemeja"],
-        estimatedValueIdr: 1500000,
-        scoreReason: "Tanya harga dan stok",
-        aiNotes: "Mau beli 10pcs",
-        recommendation: "Kirim penawaran",
+        opportunities: [
+          {
+            intent_key: "prod-1-purchase",
+            intent_type: "purchase",
+            pipeline_type: "sales",
+            lead_score: 85,
+            intent_category: "hot",
+            products: ["PROD-1", "Kemeja"],
+            estimated_value_idr: 1500000,
+            score_reason: "Tanya harga dan stok",
+            ai_notes: "Mau beli 10pcs",
+            recommendation: "Kirim penawaran",
+          },
+        ],
       })
     );
     assert.ok(a);
+    assert.equal(a!.opportunities.length, 1);
+    // Top-level fields aggregate from the highest-scored opportunity.
     assert.equal(a!.leadScore, 85);
     assert.equal(a!.intentCategory, "hot");
     assert.deepEqual(a!.productInterest, ["PROD-1", "Kemeja"]);
     assert.equal(a!.estimatedValueIdr, 1500000);
   });
 
+  it("aggregates top-level fields from the highest-scored opportunity", () => {
+    const a = parseInsight(
+      JSON.stringify({
+        opportunities: [
+          { intent_key: "a", lead_score: 40, products: ["A"], intent_category: "warm" },
+          { intent_key: "b", lead_score: 90, products: ["B", "A"], intent_category: "hot", estimated_value_idr: 2000000 },
+        ],
+      })
+    );
+    assert.ok(a);
+    assert.equal(a!.opportunities.length, 2);
+    assert.equal(a!.leadScore, 90);
+    assert.equal(a!.intentCategory, "hot");
+    assert.equal(a!.estimatedValueIdr, 2000000);
+    // productInterest is the de-duplicated union across all opportunities.
+    assert.deepEqual(a!.productInterest, ["A", "B"]);
+  });
+
   it("extracts JSON wrapped in prose / code fences", () => {
     const a = parseInsight(
-      'Berikut hasilnya:\n```json\n{"leadScore": 42, "estimatedValueIdr": 200000}\n```\nselesai'
+      'Berikut hasilnya:\n```json\n{"opportunities":[{"intent_key":"x","lead_score":42,"estimated_value_idr":200000}]}\n```\nselesai'
     );
     assert.ok(a);
     assert.equal(a!.leadScore, 42);
@@ -129,7 +159,9 @@ describe("parseInsight", () => {
   });
 
   it("clamps score and floors money from the model", () => {
-    const a = parseInsight('{"leadScore": 150, "estimatedValueIdr": 999.9}');
+    const a = parseInsight(
+      '{"opportunities":[{"intent_key":"x","lead_score":150,"estimated_value_idr":999.9}]}'
+    );
     assert.ok(a);
     assert.equal(a!.leadScore, 100);
     assert.equal(a!.estimatedValueIdr, 999);
@@ -138,6 +170,7 @@ describe("parseInsight", () => {
   it("defaults missing fields safely", () => {
     const a = parseInsight("{}");
     assert.ok(a);
+    assert.deepEqual(a!.opportunities, []);
     assert.equal(a!.leadScore, 0);
     assert.equal(a!.intentCategory, null);
     assert.deepEqual(a!.productInterest, []);
@@ -145,8 +178,20 @@ describe("parseInsight", () => {
     assert.equal(a!.recommendation, null);
   });
 
-  it("drops non-string entries from productInterest", () => {
-    const a = parseInsight('{"productInterest": ["A", 5, null, "B", ""]}');
+  it("drops candidates without an intent_key", () => {
+    // intent_key is required — a candidate missing it is discarded entirely.
+    const a = parseInsight(
+      '{"opportunities":[{"lead_score":80,"products":["A"]},{"intent_key":"keep","lead_score":50}]}'
+    );
+    assert.ok(a);
+    assert.equal(a!.opportunities.length, 1);
+    assert.equal(a!.opportunities[0]!.intentKey, "keep");
+  });
+
+  it("drops non-string entries from a candidate's products", () => {
+    const a = parseInsight(
+      '{"opportunities":[{"intent_key":"x","products":["A", 5, null, "B", ""]}]}'
+    );
     assert.deepEqual(a!.productInterest, ["A", "B"]);
   });
 
