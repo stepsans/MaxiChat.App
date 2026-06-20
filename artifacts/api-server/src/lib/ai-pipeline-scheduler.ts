@@ -41,6 +41,20 @@ export async function scheduleCutoffLogs(
     }
   }
 
+  // Prune FUTURE pending rows whose wall-clock time is no longer a configured
+  // cutoff. Without this, editing cutoffTimes (or an older buggy schedule) leaves
+  // stale pending rows that still fire at the wrong hour. Only future + pending,
+  // so completed/running history and already-due rows are untouched.
+  if (cutoffTimes.length > 0) {
+    await db.delete(aiPipelineCutoffLogsTable).where(sql`
+      ${aiPipelineCutoffLogsTable.pipelineId} = ${pipelineId}
+      AND ${aiPipelineCutoffLogsTable.status} = 'pending'
+      AND ${aiPipelineCutoffLogsTable.scheduledTime} > NOW()
+      AND to_char(${aiPipelineCutoffLogsTable.scheduledTime} AT TIME ZONE ${timeZone}, 'HH24:MI')
+          NOT IN (${sql.join(cutoffTimes.map((t) => sql`${t}`), sql`, `)})
+    `);
+  }
+
   if (rows.length > 0) {
     // Dedupe on (pipeline_id, scheduled_time) — this path runs at the end of
     // every analysis run, so without an explicit conflict target it would keep

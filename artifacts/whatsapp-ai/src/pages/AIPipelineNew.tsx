@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PROMPT_TEMPLATES } from "@/lib/pipeline-prompt-templates";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -197,31 +198,6 @@ const DEFAULT_FORM: FormData = {
   autoFollowupEnabled: false,
   followupIntervals: ["24h", "48h", "72h"],
 };
-
-// ─── Prompt templates ─────────────────────────────────────────────────────────
-
-const PROMPT_TEMPLATES = [
-  {
-    label: "Sales Umum",
-    value: `Kamu adalah AI analis sales yang bertugas menilai percakapan WhatsApp dengan calon pembeli. Evaluasi tingkat ketertarikan, urgensi pembelian, dan peluang konversi berdasarkan sinyal dalam percakapan. Berikan skor 0-100 dan rekomendasi tindak lanjut yang spesifik.`,
-  },
-  {
-    label: "Properti",
-    value: `Kamu adalah AI analis properti yang menganalisa percakapan calon pembeli/penyewa. Perhatikan budget, lokasi yang diinginkan, timeline keputusan, dan sinyal serius seperti pertanyaan spesifik tentang spesifikasi, harga final, atau kunjungan survei. Berikan skor 0-100.`,
-  },
-  {
-    label: "Keuangan/Asuransi",
-    value: `Kamu adalah AI analis produk keuangan dan asuransi. Analisa percakapan untuk mendeteksi kebutuhan finansial, toleransi risiko, kemampuan bayar premi, dan urgensi perlindungan. Identifikasi apakah calon klien dalam tahap eksplorasi atau siap membeli. Berikan skor 0-100.`,
-  },
-  {
-    label: "E-commerce",
-    value: `Kamu adalah AI analis e-commerce yang mengevaluasi percakapan calon pembeli toko online. Perhatikan pertanyaan tentang stok, harga, diskon, pengiriman, dan tanda-tanda akan checkout. Bedakan antara browser biasa dan pembeli serius. Berikan skor 0-100.`,
-  },
-  {
-    label: "Jasa/Service",
-    value: `Kamu adalah AI analis bisnis jasa yang menganalisa percakapan calon klien. Identifikasi kebutuhan spesifik, anggaran, timeline proyek, dan level keputusan (pengambil keputusan vs. penanya biasa). Perhatikan sinyal seperti pertanyaan harga detail atau permintaan proposal. Berikan skor 0-100.`,
-  },
-];
 
 const FOLLOWUP_PRESETS = [
   { label: "24 jam", value: "24h" },

@@ -60,6 +60,11 @@ import type {
   AdminUpdateUserInput,
   AdminUser,
   AiInsightResponse,
+  AiMemoryChatHistory,
+  AiMemoryChatInput,
+  AiMemoryChatReply,
+  AiMemoryDeleteResult,
+  AiMemoryList,
   AiPerformance,
   AiPipeline,
   AiPipelineAnalysis,
@@ -185,6 +190,9 @@ import type {
   KnowledgeType,
   KnowledgeTypeInput,
   KnowledgeUpdate,
+  LeadReviewAnswerInput,
+  LeadReviewAnswerResult,
+  LeadReviewList,
   LinkPreview,
   ListAcrAchievementsParams,
   ListAcrAlertsParams,
@@ -6295,6 +6303,526 @@ export const useBulkUpdateChats = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getBulkUpdateChatsMutationOptions(options));
+    }
+
+export const getListLeadReviewsUrl = () => {
+
+
+
+
+  return `/api/lead-reviews`
+}
+
+/**
+ * Returns the open "Review Lead" queue — questions raised when the AI Pipeline was uncertain (borderline score / unclear role) or its verdict conflicted with a manual label. Answering them teaches the AI.
+
+ * @summary List pending lead clarification requests for the tenant
+ */
+export const listLeadReviews = async ( options?: RequestInit): Promise<LeadReviewList> => {
+
+  return customFetch<LeadReviewList>(getListLeadReviewsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLeadReviewsQueryKey = () => {
+    return [
+    `/api/lead-reviews`
+    ] as const;
+    }
+
+
+export const getListLeadReviewsQueryOptions = <TData = Awaited<ReturnType<typeof listLeadReviews>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeadReviews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLeadReviewsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLeadReviews>>> = ({ signal }) => listLeadReviews({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLeadReviews>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLeadReviewsQueryResult = NonNullable<Awaited<ReturnType<typeof listLeadReviews>>>
+export type ListLeadReviewsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List pending lead clarification requests for the tenant
+ */
+
+export function useListLeadReviews<TData = Awaited<ReturnType<typeof listLeadReviews>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeadReviews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLeadReviewsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAnswerLeadReviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/lead-reviews/${id}/answer`
+}
+
+/**
+ * Records the tenant's final decision: sets the contact's manual lead status, stores the answer as a learning signal, and closes the request.
+
+ * @summary Answer a lead clarification request
+ */
+export const answerLeadReview = async (id: number,
+    leadReviewAnswerInput: LeadReviewAnswerInput, options?: RequestInit): Promise<LeadReviewAnswerResult> => {
+
+  return customFetch<LeadReviewAnswerResult>(getAnswerLeadReviewUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      leadReviewAnswerInput,)
+  }
+);}
+
+
+
+
+export const getAnswerLeadReviewMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof answerLeadReview>>, TError,{id: number;data: BodyType<LeadReviewAnswerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof answerLeadReview>>, TError,{id: number;data: BodyType<LeadReviewAnswerInput>}, TContext> => {
+
+const mutationKey = ['answerLeadReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof answerLeadReview>>, {id: number;data: BodyType<LeadReviewAnswerInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  answerLeadReview(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnswerLeadReviewMutationResult = NonNullable<Awaited<ReturnType<typeof answerLeadReview>>>
+    export type AnswerLeadReviewMutationBody = BodyType<LeadReviewAnswerInput>
+    export type AnswerLeadReviewMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Answer a lead clarification request
+ */
+export const useAnswerLeadReview = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof answerLeadReview>>, TError,{id: number;data: BodyType<LeadReviewAnswerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof answerLeadReview>>,
+        TError,
+        {id: number;data: BodyType<LeadReviewAnswerInput>},
+        TContext
+      > => {
+      return useMutation(getAnswerLeadReviewMutationOptions(options));
+    }
+
+export const getDismissLeadReviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/lead-reviews/${id}/dismiss`
+}
+
+/**
+ * @summary Dismiss a lead clarification request without deciding
+ */
+export const dismissLeadReview = async (id: number, options?: RequestInit): Promise<LeadReviewAnswerResult> => {
+
+  return customFetch<LeadReviewAnswerResult>(getDismissLeadReviewUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDismissLeadReviewMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissLeadReview>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissLeadReview>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['dismissLeadReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissLeadReview>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissLeadReview(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissLeadReviewMutationResult = NonNullable<Awaited<ReturnType<typeof dismissLeadReview>>>
+
+    export type DismissLeadReviewMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Dismiss a lead clarification request without deciding
+ */
+export const useDismissLeadReview = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissLeadReview>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dismissLeadReview>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDismissLeadReviewMutationOptions(options));
+    }
+
+export const getGetAiMemoryChatUrl = () => {
+
+
+
+
+  return `/api/ai-memory/chat`
+}
+
+/**
+ * @summary Get the tenant's teach-the-AI chat history
+ */
+export const getAiMemoryChat = async ( options?: RequestInit): Promise<AiMemoryChatHistory> => {
+
+  return customFetch<AiMemoryChatHistory>(getGetAiMemoryChatUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAiMemoryChatQueryKey = () => {
+    return [
+    `/api/ai-memory/chat`
+    ] as const;
+    }
+
+
+export const getGetAiMemoryChatQueryOptions = <TData = Awaited<ReturnType<typeof getAiMemoryChat>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiMemoryChat>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAiMemoryChatQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiMemoryChat>>> = ({ signal }) => getAiMemoryChat({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAiMemoryChat>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAiMemoryChatQueryResult = NonNullable<Awaited<ReturnType<typeof getAiMemoryChat>>>
+export type GetAiMemoryChatQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the tenant's teach-the-AI chat history
+ */
+
+export function useGetAiMemoryChat<TData = Awaited<ReturnType<typeof getAiMemoryChat>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiMemoryChat>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAiMemoryChatQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSendAiMemoryChatUrl = () => {
+
+
+
+
+  return `/api/ai-memory/chat`
+}
+
+/**
+ * Two-way chat where the tenant teaches the AI how to handle their business. The AI replies and, when the message contains a durable instruction/preference/fact, saves it as a per-tenant memory that feeds the AI Pipeline analysis.
+
+ * @summary Send a teaching message; the AI replies and may save a memory
+ */
+export const sendAiMemoryChat = async (aiMemoryChatInput: AiMemoryChatInput, options?: RequestInit): Promise<AiMemoryChatReply> => {
+
+  return customFetch<AiMemoryChatReply>(getSendAiMemoryChatUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiMemoryChatInput,)
+  }
+);}
+
+
+
+
+export const getSendAiMemoryChatMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAiMemoryChat>>, TError,{data: BodyType<AiMemoryChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendAiMemoryChat>>, TError,{data: BodyType<AiMemoryChatInput>}, TContext> => {
+
+const mutationKey = ['sendAiMemoryChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAiMemoryChat>>, {data: BodyType<AiMemoryChatInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendAiMemoryChat(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendAiMemoryChatMutationResult = NonNullable<Awaited<ReturnType<typeof sendAiMemoryChat>>>
+    export type SendAiMemoryChatMutationBody = BodyType<AiMemoryChatInput>
+    export type SendAiMemoryChatMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send a teaching message; the AI replies and may save a memory
+ */
+export const useSendAiMemoryChat = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendAiMemoryChat>>, TError,{data: BodyType<AiMemoryChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendAiMemoryChat>>,
+        TError,
+        {data: BodyType<AiMemoryChatInput>},
+        TContext
+      > => {
+      return useMutation(getSendAiMemoryChatMutationOptions(options));
+    }
+
+export const getListAiMemoriesUrl = () => {
+
+
+
+
+  return `/api/ai-memory`
+}
+
+/**
+ * @summary List the tenant's saved AI memories
+ */
+export const listAiMemories = async ( options?: RequestInit): Promise<AiMemoryList> => {
+
+  return customFetch<AiMemoryList>(getListAiMemoriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAiMemoriesQueryKey = () => {
+    return [
+    `/api/ai-memory`
+    ] as const;
+    }
+
+
+export const getListAiMemoriesQueryOptions = <TData = Awaited<ReturnType<typeof listAiMemories>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiMemories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAiMemoriesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAiMemories>>> = ({ signal }) => listAiMemories({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAiMemories>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAiMemoriesQueryResult = NonNullable<Awaited<ReturnType<typeof listAiMemories>>>
+export type ListAiMemoriesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the tenant's saved AI memories
+ */
+
+export function useListAiMemories<TData = Awaited<ReturnType<typeof listAiMemories>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiMemories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAiMemoriesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDeleteAiMemoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-memory/${id}`
+}
+
+/**
+ * @summary Forget a saved AI memory
+ */
+export const deleteAiMemory = async (id: number, options?: RequestInit): Promise<AiMemoryDeleteResult> => {
+
+  return customFetch<AiMemoryDeleteResult>(getDeleteAiMemoryUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAiMemoryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAiMemory>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAiMemory>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAiMemory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAiMemory>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAiMemory(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAiMemoryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAiMemory>>>
+
+    export type DeleteAiMemoryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Forget a saved AI memory
+ */
+export const useDeleteAiMemory = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAiMemory>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAiMemory>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAiMemoryMutationOptions(options));
     }
 
 export const getOpenChatByPhoneUrl = () => {

@@ -2026,6 +2026,157 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /lead-reviews:
+    get:
+      operationId: listLeadReviews
+      tags: [lead-reviews]
+      summary: List pending lead clarification requests for the tenant
+      description: >
+        Returns the open "Review Lead" queue — questions raised when the AI
+        Pipeline was uncertain (borderline score / unclear role) or its verdict
+        conflicted with a manual label. Answering them teaches the AI.
+      responses:
+        "200":
+          description: Pending review requests (plus the total pending count)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadReviewList"
+  /lead-reviews/{id}/answer:
+    post:
+      operationId: answerLeadReview
+      tags: [lead-reviews]
+      summary: Answer a lead clarification request
+      description: >
+        Records the tenant's final decision: sets the contact's manual lead
+        status, stores the answer as a learning signal, and closes the request.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadReviewAnswerInput"
+      responses:
+        "200":
+          description: Answer recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadReviewAnswerResult"
+        "404":
+          description: Request not found or not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /lead-reviews/{id}/dismiss:
+    post:
+      operationId: dismissLeadReview
+      tags: [lead-reviews]
+      summary: Dismiss a lead clarification request without deciding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadReviewAnswerResult"
+        "404":
+          description: Request not found or not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-memory/chat:
+    get:
+      operationId: getAiMemoryChat
+      tags: [ai-memory]
+      summary: Get the tenant's teach-the-AI chat history
+      responses:
+        "200":
+          description: Chat history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryChatHistory"
+    post:
+      operationId: sendAiMemoryChat
+      tags: [ai-memory]
+      summary: Send a teaching message; the AI replies and may save a memory
+      description: >
+        Two-way chat where the tenant teaches the AI how to handle their
+        business. The AI replies and, when the message contains a durable
+        instruction/preference/fact, saves it as a per-tenant memory that feeds
+        the AI Pipeline analysis.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiMemoryChatInput"
+      responses:
+        "200":
+          description: AI reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryChatReply"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai-memory:
+    get:
+      operationId: listAiMemories
+      tags: [ai-memory]
+      summary: List the tenant's saved AI memories
+      responses:
+        "200":
+          description: Saved memories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryList"
+  /ai-memory/{id}:
+    delete:
+      operationId: deleteAiMemory
+      tags: [ai-memory]
+      summary: Forget a saved AI memory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Memory forgotten
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryDeleteResult"
+        "404":
+          description: Memory not found or not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/open-by-phone:
     post:
       operationId: openChatByPhone
@@ -9782,6 +9933,12 @@ components:
         customerCode:
           type: ["string", "null"]
           description: Customer code (kode customer), entered manually in the chat Info tab.
+        leadStatusReason:
+          type: ["string", "null"]
+          description: Short rationale for a manual leadStatus change; recorded as a training signal so the AI Pipeline learns this tenant's lead/not-lead definition.
+        leadStatusReasonCode:
+          type: ["string", "null"]
+          description: Optional coarse category for the leadStatus change (e.g. wrong_role, just_asking, serious_buyer).
 
     MuteChatInput:
       type: object
@@ -9851,6 +10008,9 @@ components:
         addLabelId:
           type: integer
           description: Id of a customer label to attach to every selected chat's contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.
+        leadStatusReason:
+          type: ["string", "null"]
+          description: Short rationale applied to every leadStatus change in this bulk action; recorded as a learning signal for the AI Pipeline.
 
     BulkChatUpdateResult:
       type: object
@@ -9859,6 +10019,151 @@ components:
         updated:
           type: integer
           description: Number of chats actually updated (in-scope rows only).
+
+    LeadReviewRequest:
+      type: object
+      required: [id, contactPhone, trigger, question, status, createdAt]
+      properties:
+        id:
+          type: integer
+        contactPhone:
+          type: string
+        contactName:
+          type: ["string", "null"]
+        chatId:
+          type: ["integer", "null"]
+        channelId:
+          type: ["integer", "null"]
+        trigger:
+          type: string
+          enum: [uncertain, conflict]
+          description: Why the AI asked — borderline/unclear (uncertain) or it contradicted a manual label (conflict).
+        question:
+          type: string
+        aiSuggestedStatus:
+          type: ["string", "null"]
+          enum: [lead, not_lead, null]
+          description: The AI's best guess so the tenant can confirm in one tap.
+        aiScore:
+          type: ["integer", "null"]
+        aiConversationRole:
+          type: ["string", "null"]
+        contextSummary:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, answered, dismissed]
+        createdAt:
+          type: string
+          format: date-time
+
+    LeadReviewList:
+      type: object
+      required: [items, pendingCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeadReviewRequest"
+        pendingCount:
+          type: integer
+          description: Total pending requests (drives the nav badge).
+
+    LeadReviewAnswerInput:
+      type: object
+      required: [leadStatus]
+      properties:
+        leadStatus:
+          type: string
+          enum: [lead, not_lead]
+          description: The tenant's final decision; written as the contact's manual lead status.
+        reason:
+          type: ["string", "null"]
+          description: Short rationale; recorded as a learning signal.
+        reasonCode:
+          type: ["string", "null"]
+          description: Optional coarse category for the decision.
+
+    LeadReviewAnswerResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        pendingCount:
+          type: integer
+          description: Remaining pending requests after this action.
+
+    AiMemoryChatMessage:
+      type: object
+      required: [id, role, content, createdAt]
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    AiMemoryChatHistory:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiMemoryChatMessage"
+
+    AiMemoryChatInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    AiMemoryChatReply:
+      type: object
+      required: [reply]
+      properties:
+        reply:
+          type: string
+        memory:
+          type: ["string", "null"]
+          description: The durable instruction saved this turn, or null if nothing was saved.
+
+    AiMemory:
+      type: object
+      required: [id, content, createdAt]
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    AiMemoryList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiMemory"
+
+    AiMemoryDeleteResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
 
     CustomerLabel:
       type: object

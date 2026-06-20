@@ -1660,6 +1660,16 @@ export interface ChatUpdate {
      * @nullable
      */
   customerCode?: string | null;
+  /**
+     * Short rationale for a manual leadStatus change; recorded as a training signal so the AI Pipeline learns this tenant's lead/not-lead definition.
+     * @nullable
+     */
+  leadStatusReason?: string | null;
+  /**
+     * Optional coarse category for the leadStatus change (e.g. wrong_role, just_asking, serious_buyer).
+     * @nullable
+     */
+  leadStatusReasonCode?: string | null;
 }
 
 export interface MuteChatInput {
@@ -1739,11 +1749,163 @@ export interface BulkChatUpdateInput {
   status?: BulkChatUpdateInputStatus;
   /** Id of a customer label to attach to every selected chat's contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected. */
   addLabelId?: number;
+  /**
+     * Short rationale applied to every leadStatus change in this bulk action; recorded as a learning signal for the AI Pipeline.
+     * @nullable
+     */
+  leadStatusReason?: string | null;
 }
 
 export interface BulkChatUpdateResult {
   /** Number of chats actually updated (in-scope rows only). */
   updated: number;
+}
+
+/**
+ * Why the AI asked — borderline/unclear (uncertain) or it contradicted a manual label (conflict).
+ */
+export type LeadReviewRequestTrigger = typeof LeadReviewRequestTrigger[keyof typeof LeadReviewRequestTrigger];
+
+
+export const LeadReviewRequestTrigger = {
+  uncertain: 'uncertain',
+  conflict: 'conflict',
+} as const;
+
+/**
+ * The AI's best guess so the tenant can confirm in one tap.
+ * @nullable
+ */
+export type LeadReviewRequestAiSuggestedStatus = typeof LeadReviewRequestAiSuggestedStatus[keyof typeof LeadReviewRequestAiSuggestedStatus] | null;
+
+
+export const LeadReviewRequestAiSuggestedStatus = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
+export type LeadReviewRequestStatus = typeof LeadReviewRequestStatus[keyof typeof LeadReviewRequestStatus];
+
+
+export const LeadReviewRequestStatus = {
+  pending: 'pending',
+  answered: 'answered',
+  dismissed: 'dismissed',
+} as const;
+
+export interface LeadReviewRequest {
+  id: number;
+  contactPhone: string;
+  /** @nullable */
+  contactName?: string | null;
+  /** @nullable */
+  chatId?: number | null;
+  /** @nullable */
+  channelId?: number | null;
+  /** Why the AI asked — borderline/unclear (uncertain) or it contradicted a manual label (conflict). */
+  trigger: LeadReviewRequestTrigger;
+  question: string;
+  /**
+     * The AI's best guess so the tenant can confirm in one tap.
+     * @nullable
+     */
+  aiSuggestedStatus?: LeadReviewRequestAiSuggestedStatus;
+  /** @nullable */
+  aiScore?: number | null;
+  /** @nullable */
+  aiConversationRole?: string | null;
+  /** @nullable */
+  contextSummary?: string | null;
+  status: LeadReviewRequestStatus;
+  createdAt: string;
+}
+
+export interface LeadReviewList {
+  items: LeadReviewRequest[];
+  /** Total pending requests (drives the nav badge). */
+  pendingCount: number;
+}
+
+/**
+ * The tenant's final decision; written as the contact's manual lead status.
+ */
+export type LeadReviewAnswerInputLeadStatus = typeof LeadReviewAnswerInputLeadStatus[keyof typeof LeadReviewAnswerInputLeadStatus];
+
+
+export const LeadReviewAnswerInputLeadStatus = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
+export interface LeadReviewAnswerInput {
+  /** The tenant's final decision; written as the contact's manual lead status. */
+  leadStatus: LeadReviewAnswerInputLeadStatus;
+  /**
+     * Short rationale; recorded as a learning signal.
+     * @nullable
+     */
+  reason?: string | null;
+  /**
+     * Optional coarse category for the decision.
+     * @nullable
+     */
+  reasonCode?: string | null;
+}
+
+export interface LeadReviewAnswerResult {
+  ok: boolean;
+  /** Remaining pending requests after this action. */
+  pendingCount?: number;
+}
+
+export type AiMemoryChatMessageRole = typeof AiMemoryChatMessageRole[keyof typeof AiMemoryChatMessageRole];
+
+
+export const AiMemoryChatMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface AiMemoryChatMessage {
+  id: number;
+  role: AiMemoryChatMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface AiMemoryChatHistory {
+  messages: AiMemoryChatMessage[];
+}
+
+export interface AiMemoryChatInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  message: string;
+}
+
+export interface AiMemoryChatReply {
+  reply: string;
+  /**
+     * The durable instruction saved this turn, or null if nothing was saved.
+     * @nullable
+     */
+  memory?: string | null;
+}
+
+export interface AiMemory {
+  id: number;
+  content: string;
+  createdAt: string;
+}
+
+export interface AiMemoryList {
+  items: AiMemory[];
+}
+
+export interface AiMemoryDeleteResult {
+  ok: boolean;
 }
 
 export interface CreateCustomerLabelInput {

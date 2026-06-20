@@ -23,7 +23,7 @@ import {
   CreateAiPipelineBody,
 } from "@workspace/api-zod";
 import { scheduleCutoffLogs } from "../lib/ai-pipeline-scheduler";
-import { generateFollowupMessage } from "../lib/ai-pipeline-followup";
+import { generateFollowupMessage, scheduleFollowups } from "../lib/ai-pipeline-followup";
 import { resolveAiClient } from "../lib/ai-provider";
 
 const router = Router();
@@ -844,11 +844,47 @@ router.patch("/:id/entries/:eid", async (req: Request, res: Response) => {
   const { status } = req.body as { status?: string };
   if (!status) { res.status(400).json({ error: "status required" }); return; }
 
+  // Moving an entry OUT of "do_not_followup" (or any active stage while the stop
+  // flag is set) must also clear the flag — otherwise the follow-up poller keeps
+  // skipping it and follow-up never resumes despite the stage change.
+  const ACTIVE_STATUSES = ["new", "in_progress", "followup_sent", "replied"];
+  const resuming = entry.doNotFollowup && ACTIVE_STATUSES.includes(status);
+
+  const patch: Partial<typeof aiPipelineEntriesTable.$inferInsert> = {
+    status,
+    updatedAt: new Date(),
+  };
+  if (status === "do_not_followup") {
+    patch.doNotFollowup = true;
+  } else if (resuming) {
+    patch.doNotFollowup = false;
+    patch.doNotFollowupReason = null;
+    patch.doNotFollowupAt = null;
+  }
+
   const [updated] = await db
     .update(aiPipelineEntriesTable)
-    .set({ status, updatedAt: new Date() })
+    .set(patch)
     .where(eq(aiPipelineEntriesTable.id, eid))
     .returning();
+
+  // Re-arm the next follow-up when resuming a sendable stage (the poller only
+  // sends for 'new'/'followup_sent'), if auto-followup is on and not maxed out.
+  if (
+    resuming &&
+    (status === "new" || status === "followup_sent") &&
+    pipeline.autoFollowupEnabled &&
+    updated.followupCount < 3 &&
+    !updated.nextFollowupAt
+  ) {
+    await scheduleFollowups({
+      entryId: eid,
+      pipelineId: id,
+      ownerUserId,
+      followupIntervals: (pipeline.followupIntervals as string[] | null) ?? ["24h", "48h", "72h"],
+      currentFollowupCount: updated.followupCount,
+    });
+  }
 
   res.json(await serializeEntry(updated, true));
 });

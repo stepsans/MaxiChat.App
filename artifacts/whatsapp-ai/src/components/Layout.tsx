@@ -20,6 +20,7 @@ import {
   CircleDashed,
   BrainCircuit,
   Kanban,
+  GraduationCap,
   LogOut,
   Camera,
   Cpu,
@@ -43,6 +44,7 @@ import {
   type AuthUser,
 } from "@workspace/api-client-react";
 
+import { useListLeadReviews, getListLeadReviewsQueryKey } from "@workspace/api-client-react";
 import { usePermissions, type PermissionMenu } from "@/hooks/use-permissions";
 import { useBillingStatus } from "@/hooks/use-billing-status";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
@@ -97,6 +99,7 @@ const navGroups: NavGroup[] = [
         menu: "ai_pipeline",
         requiresAiSalesAssistant: true,
       },
+      { href: "/learning-inbox", label: "Learning Inbox", icon: GraduationCap, menu: "chats" },
       { href: "/usage", label: "Pemakaian Token", icon: Cpu, menu: "usage" },
     ],
   },
@@ -236,6 +239,16 @@ export default function Layout({
 }) {
   const [location] = useLocation();
   const totalUnread = useUnreadCount();
+  // Pending "Review Lead" questions drive the nav badge. Light polling keeps it
+  // fresh after a cutoff run without a websocket.
+  const { data: leadReviewData } = useListLeadReviews({
+    query: {
+      queryKey: getListLeadReviewsQueryKey(),
+      refetchInterval: 60_000,
+      staleTime: 30_000,
+    },
+  });
+  const reviewPending = leadReviewData?.pendingCount ?? 0;
   useChatNotificationSound();
   const queryClient = useQueryClient();
   const { menus: permMenus } = usePermissions();
@@ -363,7 +376,12 @@ export default function Layout({
               const isActive =
                 href === "/" ? location === "/" : location.startsWith(href);
               const isChats = href === "/chats";
-              const showBadge = isChats && totalUnread > 0;
+              const badgeCount = isChats
+                ? totalUnread
+                : href === "/learning-inbox"
+                  ? reviewPending
+                  : 0;
+              const showBadge = badgeCount > 0;
               const link = (
                 <Link
                   key={href}
@@ -390,12 +408,12 @@ export default function Layout({
                           : "bg-primary text-white"
                       )}
                     >
-                      {totalUnread > 99 ? "99+" : totalUnread}
+                      {badgeCount > 99 ? "99+" : badgeCount}
                     </span>
                   )}
                   {showBadge && collapsed && (
                     <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-white text-[9px] font-bold leading-none flex items-center justify-center">
-                      {totalUnread > 9 ? "9+" : totalUnread}
+                      {badgeCount > 9 ? "9+" : badgeCount}
                     </span>
                   )}
                 </Link>

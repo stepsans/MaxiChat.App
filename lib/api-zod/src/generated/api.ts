@@ -1752,11 +1752,127 @@ export const BulkUpdateChatsBody = zod.object({
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification to apply to all selected chats.'),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']).optional().describe('Auto-routing tag to apply to all selected chats.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']).optional(),
-  "addLabelId": zod.number().optional().describe('Id of a customer label to attach to every selected chat\'s contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.')
+  "addLabelId": zod.number().optional().describe('Id of a customer label to attach to every selected chat\'s contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.'),
+  "leadStatusReason": zod.string().nullish().describe('Short rationale applied to every leadStatus change in this bulk action; recorded as a learning signal for the AI Pipeline.')
 })
 
 export const BulkUpdateChatsResponse = zod.object({
   "updated": zod.number().describe('Number of chats actually updated (in-scope rows only).')
+})
+
+
+/**
+ * Returns the open "Review Lead" queue — questions raised when the AI Pipeline was uncertain (borderline score / unclear role) or its verdict conflicted with a manual label. Answering them teaches the AI.
+
+ * @summary List pending lead clarification requests for the tenant
+ */
+export const ListLeadReviewsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "chatId": zod.number().nullish(),
+  "channelId": zod.number().nullish(),
+  "trigger": zod.enum(['uncertain', 'conflict']).describe('Why the AI asked — borderline\/unclear (uncertain) or it contradicted a manual label (conflict).'),
+  "question": zod.string(),
+  "aiSuggestedStatus": zod.union([zod.literal('lead'),zod.literal('not_lead'),zod.literal(null)]).nullish().describe('The AI\'s best guess so the tenant can confirm in one tap.'),
+  "aiScore": zod.number().nullish(),
+  "aiConversationRole": zod.string().nullish(),
+  "contextSummary": zod.string().nullish(),
+  "status": zod.enum(['pending', 'answered', 'dismissed']),
+  "createdAt": zod.coerce.date()
+})),
+  "pendingCount": zod.number().describe('Total pending requests (drives the nav badge).')
+})
+
+
+/**
+ * Records the tenant's final decision: sets the contact's manual lead status, stores the answer as a learning signal, and closes the request.
+
+ * @summary Answer a lead clarification request
+ */
+export const AnswerLeadReviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AnswerLeadReviewBody = zod.object({
+  "leadStatus": zod.enum(['lead', 'not_lead']).describe('The tenant\'s final decision; written as the contact\'s manual lead status.'),
+  "reason": zod.string().nullish().describe('Short rationale; recorded as a learning signal.'),
+  "reasonCode": zod.string().nullish().describe('Optional coarse category for the decision.')
+})
+
+export const AnswerLeadReviewResponse = zod.object({
+  "ok": zod.boolean(),
+  "pendingCount": zod.number().optional().describe('Remaining pending requests after this action.')
+})
+
+
+/**
+ * @summary Dismiss a lead clarification request without deciding
+ */
+export const DismissLeadReviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DismissLeadReviewResponse = zod.object({
+  "ok": zod.boolean(),
+  "pendingCount": zod.number().optional().describe('Remaining pending requests after this action.')
+})
+
+
+/**
+ * @summary Get the tenant's teach-the-AI chat history
+ */
+export const GetAiMemoryChatResponse = zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Two-way chat where the tenant teaches the AI how to handle their business. The AI replies and, when the message contains a durable instruction/preference/fact, saves it as a per-tenant memory that feeds the AI Pipeline analysis.
+
+ * @summary Send a teaching message; the AI replies and may save a memory
+ */
+export const sendAiMemoryChatBodyMessageMax = 2000;
+
+
+
+export const SendAiMemoryChatBody = zod.object({
+  "message": zod.string().min(1).max(sendAiMemoryChatBodyMessageMax)
+})
+
+export const SendAiMemoryChatResponse = zod.object({
+  "reply": zod.string(),
+  "memory": zod.string().nullish().describe('The durable instruction saved this turn, or null if nothing was saved.')
+})
+
+
+/**
+ * @summary List the tenant's saved AI memories
+ */
+export const ListAiMemoriesResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Forget a saved AI memory
+ */
+export const DeleteAiMemoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAiMemoryResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 
@@ -1922,7 +2038,9 @@ export const UpdateChatBody = zod.object({
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag.'),
   "nickname": zod.string().nullish().describe('Editable display name for the contact (overrides contactName in the header).'),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
-  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.')
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
+  "leadStatusReason": zod.string().nullish().describe('Short rationale for a manual leadStatus change; recorded as a training signal so the AI Pipeline learns this tenant\'s lead\/not-lead definition.'),
+  "leadStatusReasonCode": zod.string().nullish().describe('Optional coarse category for the leadStatus change (e.g. wrong_role, just_asking, serious_buyer).')
 })
 
 export const UpdateChatResponse = zod.object({

@@ -11,13 +11,17 @@ import {
   chatMessagesTable,
   contactLabelsTable,
   channelsTable,
+  leadFeedbackTable,
+  leadReviewRequestsTable,
+  tenantAiMemoriesTable,
 } from "@workspace/db";
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
 import { createHash } from "crypto";
 import { scheduleCutoffLogs } from "./ai-pipeline-scheduler";
 import { scheduleFollowups } from "./ai-pipeline-followup";
-import { detectConversationRoleDbFree } from "./ai-pipeline-prefilter";
+import { detectConversationRoleDbFree, detectIrrelevantDbFree, shouldSkipAsLearnedReverseRole } from "./ai-pipeline-prefilter";
+import { decideReviewTrigger, buildLessonsBlock } from "./lead-learning";
 import { getTzParts, zonedWallClockToUtc } from "./ai-pipeline-time";
 import {
   getContactLeadStatus,
@@ -69,8 +73,9 @@ interface AiAnalysisResult {
 // apa pun persona scoring tenant.
 const CLASSIFICATION_INSTRUCTION = `LANGKAH 0 — TENTUKAN ROLE PERCAKAPAN (WAJIB PERTAMA):
 - AGENT/Bisnis (outbound) = pesan dari tenant kita. CUSTOMER/Pelanggan (inbound) = dari kontak.
-- tenant_is_seller (NORMAL): AGENT menawarkan/menjelaskan produk; CUSTOMER tanya harga/minat beli.
-- tenant_is_buyer (TERBALIK): KONTAK menawarkan produk/layanan MEREKA dan AGENT yang memesan/membeli (mis. hotel konfirmasi reservasi AGENT, supplier kasih penawaran ke AGENT). Bila terbaca terbalik → set conversation_role="tenant_is_buyer", lead_classification="not_lead", skip_pipeline=true, skip_reason singkat, score=0.
+- CARA MENENTUKAN SIAPA PENJUAL: pihak PENJUAL adalah yang MENERIMA pesanan & menagih — yang berkata "mau pesan apa?", menyebut "totalnya sekian", menyatakan cara/nomor pembayaran ("pembayaran hanya bisa tunai/transfer", "transfer ke rekening"), menanyakan "atas nama siapa", atau mengumumkan "pesanan sudah bisa diambil". Pihak PEMBELI adalah yang MENYAMPAIKAN pesanan & membayar — "saya pesan X", "bisa pesan?", "ok transfer".
+- tenant_is_seller (NORMAL): AGENT (outbound) yang menerima pesanan/menagih/menyebut total; CUSTOMER (inbound) yang memesan & membayar.
+- tenant_is_buyer (TERBALIK): KONTAK (inbound) yang menerima pesanan/menagih/menyebut total/menyatakan cara bayar/announce barang siap diambil, dan AGENT (outbound) yang memesan & membayar. Contoh: hotel konfirmasi reservasi AGENT, supplier kasih penawaran ke AGENT, ATAU warung/resto/toko (mis. martabak, kopi, makanan) tempat AGENT yang memesan. PENTING: jangan menilai aktivitas AGENT yang sedang MEMESAN sebagai "sinyal beli dari kontak". Bila terbaca terbalik → set conversation_role="tenant_is_buyer", lead_classification="not_lead", skip_pipeline=true, skip_reason singkat, score=0.
 
 LANGKAH 1 — KLASIFIKASI LEAD (hanya bila tenant_is_seller):
 - "lead": kontak menanyakan/berminat produk-layanan yang selaras dengan bisnis tenant.
@@ -125,7 +130,8 @@ function buildCustomPrompt(
   customPrompt: string,
   transcript: string,
   contactName: string | null,
-  channelType: string | null
+  channelType: string | null,
+  lessonsBlock: string
 ): string {
   return `${customPrompt.trim()}
 
@@ -135,13 +141,14 @@ Platform: ${channelType ?? "WhatsApp"}
 TRANSKIP PERCAKAPAN:
 ${transcript}
 
-${buildOutputContract()}`;
+${lessonsBlock}${buildOutputContract()}`;
 }
 
 function buildAnalysisPrompt(
   transcript: string,
   contactName: string | null,
-  channelType: string | null
+  channelType: string | null,
+  lessonsBlock: string
 ): string {
   return `Kamu adalah AI analis penjualan untuk bisnis Indonesia. Analisa percakapan WhatsApp/Telegram berikut dan beri skor prospek secara objektif.
 
@@ -151,7 +158,7 @@ Platform: ${channelType ?? "WhatsApp"}
 TRANSKIP PERCAKAPAN:
 ${transcript}
 
-${CLASSIFICATION_INSTRUCTION}Beri skor berdasarkan 6 dimensi:
+${lessonsBlock}${CLASSIFICATION_INSTRUCTION}Beri skor berdasarkan 6 dimensi:
 1. buying_signal (0-30): Seberapa kuat sinyal pembelian (tanya harga, stok, minta penawaran, dll)
 2. urgency (0-20): Tingkat urgensi (butuh segera, ada deadline, dll)
 3. engagement (0-20): Seberapa aktif dan responsif dalam percakapan
@@ -255,6 +262,7 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
 
     // Resolve AI client once.
     const { client, model, provider, ownerUserId } = await resolveAiClient(pipeline.ownerUserId);
+
 
     // Find all chats in these channels that have had messages in the window.
     // When directionFilter is on, a chat only qualifies if it received an
@@ -390,19 +398,43 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           rawAnalysis: result.rawAnalysis,
         }).returning();
 
-        // Propagate the AI's lead classification to the contact-level status
-        // (never overrides a manual classification). 'unclear' leaves it alone.
-        if (result.leadClassification === "lead" || result.leadClassification === "not_lead") {
+        // Propagate the AI verdict to the contact-level status (never overrides a
+        // manual classification — setContactLeadStatusByAi guards that).
+        //  - skipped (reverse-role OR not_lead)        → not_lead. We key on
+        //    `skipped` rather than `leadClassification` because the model often
+        //    leaves lead_classification="unclear" while still flagging the chat
+        //    as reverse-role/skip; an "unknown" contact must still become
+        //    not_lead in that case.
+        //  - a clear "lead"                            → lead.
+        //  - genuinely unclear & not skipped           → leave the status alone.
+        const propagatedStatus = result.skipped
+          ? "not_lead"
+          : result.leadClassification === "lead"
+            ? "lead"
+            : null;
+        if (propagatedStatus) {
           try {
             await setContactLeadStatusByAi(
               pipeline.ownerUserId,
               chat.phoneNumber,
-              result.leadClassification
+              propagatedStatus
             );
           } catch (err) {
             console.error("[ai-pipeline] lead status update failed:", err);
           }
         }
+
+        // Ask the tenant when the AI is uncertain or conflicts with a manual
+        // label. Runs even for skipped results (a skip can conflict with a
+        // human 'lead'). The answer becomes a lesson the next run learns from.
+        await maybeCreateReviewRequest({
+          ownerUserId: pipeline.ownerUserId,
+          chat,
+          analysisId: analysis.id,
+          scoreThreshold: pipeline.scoreThreshold,
+          result,
+          manual: await getContactLeadStatus(pipeline.ownerUserId, chat.phoneNumber),
+        });
 
         // GUARD — skipped analyses (reverse role / not_lead) never enter the
         // pipeline and never auto-create opportunities.
@@ -511,6 +543,20 @@ async function analyzeChat(opts: {
     return null;
   }
 
+  // GUARD 1.5 — sticky reverse-role memory ("tambah lama tambah pintar"): once
+  // any prior run concluded this contact is the seller / tenant the buyer, that
+  // verdict is learned. Skip with zero AI tokens (still records a skipped row so
+  // the memory stays fresh and auditable). A manual 'lead' override forces a
+  // fresh analysis. Keyed on (owner, phone) so it follows the contact across
+  // every channel — same key as the contact lead-status store.
+  const priorRole = await getPriorConversationRole(ownerUserId, chat.phoneNumber);
+  if (shouldSkipAsLearnedReverseRole(priorRole, manualStatus)) {
+    return buildSkippedResult(
+      "tenant_is_buyer",
+      "Memori: kontak sudah dikenali sebagai penjual/vendor (tenant sebagai pembeli)"
+    );
+  }
+
   // Load messages in the window.
   const messages = await db
     .select({
@@ -543,6 +589,15 @@ async function analyzeChat(opts: {
     );
   }
 
+  // GUARD 2b — db-free pre-filter: business-irrelevant topic (job seeker / spam
+  // / academic research) → skip, mark not_lead, no AI tokens.
+  if (detectIrrelevantDbFree(messages)) {
+    return buildSkippedResult(
+      "unclear",
+      "Pre-filter: percakapan tidak relevan (pelamar kerja / spam / riset)"
+    );
+  }
+
   // Build transcript.
   const transcript = messages
     .map((m) => {
@@ -552,12 +607,21 @@ async function analyzeChat(opts: {
     })
     .join("\n");
 
+  // Tenant-taught memories (Learning Inbox chat) + few-shot lessons distilled
+  // from past manual corrections — both make the model converge on this
+  // tenant's definition over time ("tambah lama tambah pintar").
+  const [memoryBlock, lessonsBlock] = await Promise.all([
+    getTenantMemoryBlock(ownerUserId),
+    getRecentLessonsBlock(ownerUserId),
+  ]);
+  const teachingBlock = `${memoryBlock}${lessonsBlock}`;
+
   // A tenant-supplied custom prompt overrides the default scoring persona; the
   // system still appends the transcript + fixed JSON contract so output parses.
   // Empty/blank custom prompt → fall back to the hardcoded default (no change).
   const prompt = customPrompt && customPrompt.trim().length > 0
-    ? buildCustomPrompt(customPrompt, transcript, chat.contactName, channelType)
-    : buildAnalysisPrompt(transcript, chat.contactName, channelType);
+    ? buildCustomPrompt(customPrompt, transcript, chat.contactName, channelType, teachingBlock)
+    : buildAnalysisPrompt(transcript, chat.contactName, channelType, teachingBlock);
 
   // Call AI. Retry up to 3 times with exponential backoff (§B.14) — transient
   // provider errors (rate limits, 5xx, dropped connections) shouldn't drop a
@@ -669,6 +733,136 @@ async function analyzeChat(opts: {
     contextHash,
     rawAnalysis: parsed,
   };
+}
+
+// Latest conversation_role this owner+contact was ever analyzed as (across all
+// channels). Feeds the sticky reverse-role memory in GUARD 1.5. Returns null
+// when the contact has never been analyzed before.
+async function getPriorConversationRole(
+  ownerUserId: number,
+  contactPhone: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ conversationRole: aiPipelineAnalysesTable.conversationRole })
+    .from(aiPipelineAnalysesTable)
+    .where(
+      and(
+        eq(aiPipelineAnalysesTable.ownerUserId, ownerUserId),
+        eq(aiPipelineAnalysesTable.contactPhone, contactPhone)
+      )
+    )
+    .orderBy(desc(aiPipelineAnalysesTable.createdAt))
+    .limit(1);
+  return row?.conversationRole ?? null;
+}
+
+// Per-tenant memories the owner taught via the Learning Inbox "Ajari AI" chat.
+// Injected into every analysis prompt so the model follows this tenant's
+// instructions/preferences. Empty string when there's nothing yet.
+const MEMORY_LOOKBACK = 50;
+async function getTenantMemoryBlock(ownerUserId: number): Promise<string> {
+  try {
+    const rows = await db
+      .select({ content: tenantAiMemoriesTable.content })
+      .from(tenantAiMemoriesTable)
+      .where(
+        and(
+          eq(tenantAiMemoriesTable.ownerUserId, ownerUserId),
+          eq(tenantAiMemoriesTable.archived, false)
+        )
+      )
+      .orderBy(desc(tenantAiMemoriesTable.createdAt))
+      .limit(MEMORY_LOOKBACK);
+    if (rows.length === 0) return "";
+    return `INSTRUKSI & PREFERENSI TENANT (diajarkan langsung oleh tenant — PATUHI ini saat menentukan conversation_role, lead_classification, dan skor):
+${rows.map((r) => `- ${r.content}`).join("\n")}
+
+`;
+  } catch (err) {
+    console.error("[ai-pipeline] tenant memory fetch failed:", err);
+    return "";
+  }
+}
+
+// Distil this owner's recent manual corrections into a compact prompt block.
+const LESSONS_LOOKBACK = 25;
+async function getRecentLessonsBlock(ownerUserId: number): Promise<string> {
+  try {
+    const rows = await db
+      .select({
+        fromStatus: leadFeedbackTable.fromStatus,
+        toStatus: leadFeedbackTable.toStatus,
+        reason: leadFeedbackTable.reason,
+        contextSummary: leadFeedbackTable.contextSummary,
+        aiConversationRole: leadFeedbackTable.aiConversationRole,
+      })
+      .from(leadFeedbackTable)
+      .where(eq(leadFeedbackTable.ownerUserId, ownerUserId))
+      .orderBy(desc(leadFeedbackTable.createdAt))
+      .limit(LESSONS_LOOKBACK);
+    return buildLessonsBlock(rows);
+  } catch (err) {
+    console.error("[ai-pipeline] lessons fetch failed:", err);
+    return "";
+  }
+}
+
+// Open a clarification request for the tenant when the AI is uncertain or its
+// verdict conflicts with a manual label. Idempotent: the partial unique index
+// (one 'pending' per owner+contact) plus a pre-check keep the queue from
+// filling with duplicates.
+async function maybeCreateReviewRequest(opts: {
+  ownerUserId: number;
+  chat: { id: number; phoneNumber: string; contactName: string; channelId: number };
+  analysisId: number;
+  scoreThreshold: number;
+  result: AiAnalysisResult;
+  manual: { leadStatus: string; leadClassifiedBy: string } | null;
+}): Promise<void> {
+  const { ownerUserId, chat, analysisId, scoreThreshold, result, manual } = opts;
+  const decision = decideReviewTrigger({
+    contactName: chat.contactName,
+    score: result.score,
+    scoreThreshold,
+    conversationRole: result.conversationRole,
+    skipped: result.skipped,
+    leadClassification: result.leadClassification,
+    manual,
+  });
+  if (!decision.needsReview) return;
+
+  try {
+    const [existing] = await db
+      .select({ id: leadReviewRequestsTable.id })
+      .from(leadReviewRequestsTable)
+      .where(
+        and(
+          eq(leadReviewRequestsTable.ownerUserId, ownerUserId),
+          eq(leadReviewRequestsTable.contactPhone, chat.phoneNumber),
+          eq(leadReviewRequestsTable.status, "pending")
+        )
+      )
+      .limit(1);
+    if (existing) return;
+
+    await db.insert(leadReviewRequestsTable).values({
+      ownerUserId,
+      contactPhone: chat.phoneNumber,
+      contactName: chat.contactName,
+      chatId: chat.id,
+      channelId: chat.channelId,
+      analysisId,
+      trigger: decision.trigger!,
+      question: decision.question ?? "Lead atau bukan?",
+      aiSuggestedStatus: decision.aiSuggestedStatus,
+      aiScore: result.score,
+      aiConversationRole: result.conversationRole,
+      contextSummary: result.productInterest || result.scoreReason || null,
+    });
+  } catch (err) {
+    // Unique-violation race (another worker opened the same request) is benign.
+    console.error("[ai-pipeline] review request create skipped:", err);
+  }
 }
 
 // Build a zero-score skipped analysis result (no AI call) for reverse-role /

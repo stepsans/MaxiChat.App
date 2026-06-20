@@ -29,6 +29,7 @@ import { buildQuotationPdf, type QuotationItem } from "../lib/quotation-pdf";
 import { eq, desc, and, sql, inArray, ilike } from "drizzle-orm";
 import { withTag, resolveAgentTag } from "../lib/sender-tag.js";
 import { requireSuperAdmin } from "../lib/team-permissions";
+import { recordLeadCorrection } from "../lib/lead-feedback";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import { saveTenantMedia } from "../lib/tenant-storage";
@@ -513,25 +514,9 @@ async function fetchLeadStatusForChats(
   return map;
 }
 
-// Upsert the contact-level lead status for an owner+phone. Applies to every
-// channel's chat with the same number at once (reads resolve from here).
-async function setContactLeadStatus(
-  ownerUserId: number,
-  phoneNumber: string,
-  leadStatus: string
-): Promise<void> {
-  await db
-    .insert(contactLeadStatusTable)
-    .values({ ownerUserId, phoneNumber, leadStatus, leadClassifiedBy: "manual" })
-    .onConflictDoUpdate({
-      target: [
-        contactLeadStatusTable.ownerUserId,
-        contactLeadStatusTable.phoneNumber,
-      ],
-      // A manual edit always wins and re-stamps the row as 'manual'.
-      set: { leadStatus, leadClassifiedBy: "manual", updatedAt: new Date() },
-    });
-}
+// Manual lead-status writes now go through recordLeadCorrection (../lib/
+// lead-feedback), which upserts contact_lead_status AND records the change as a
+// learning signal + closes any pending review request. See [[lead-learning]].
 
 router.get("/", async (req, res): Promise<void> => {
   try {
@@ -1849,7 +1834,7 @@ router.post("/bulk-update", async (req, res): Promise<void> => {
     }
     // leadStatus is contact-level (stored per owner+phone, not on the chat row),
     // so pull it out of the generic chat-column update and apply it separately.
-    const { chatIds, addLabelId, leadStatus, ...fields } = parsed.data;
+    const { chatIds, addLabelId, leadStatus, leadStatusReason, ...fields } = parsed.data;
     // zod.number() accepts decimals — re-validate ids at the boundary.
     if (!chatIds.every((id) => Number.isInteger(id) && id > 0)) {
       res.status(400).json({ error: "Invalid chat id" });
@@ -1944,7 +1929,14 @@ router.post("/bulk-update", async (req, res): Promise<void> => {
         .where(az.where);
       const phones = Array.from(new Set(rows.map((r) => r.phoneNumber)));
       for (const phoneNumber of phones) {
-        await setContactLeadStatus(ownerUserId, phoneNumber, leadStatus);
+        await recordLeadCorrection({
+          ownerUserId,
+          phoneNumber,
+          toStatus: leadStatus,
+          reason: leadStatusReason ?? null,
+          source: "bulk_edit",
+          answeredByUserId: ownerUserId,
+        });
       }
       updatedCount = Math.max(updatedCount, rows.length);
     }
@@ -1974,7 +1966,7 @@ router.patch("/:id", async (req, res): Promise<void> => {
     // leadStatus is contact-level (per owner+phone) so it never writes the chat
     // row — split it out and upsert it separately so it stays consistent across
     // every channel's chat for this number.
-    const { leadStatus, ...chatFields } = bodyParsed.data;
+    const { leadStatus, leadStatusReason, leadStatusReasonCode, ...chatFields } = bodyParsed.data;
 
     let updated = existing;
     if (Object.keys(chatFields).length > 0) {
@@ -1992,7 +1984,18 @@ router.patch("/:id", async (req, res): Promise<void> => {
     if (leadStatus !== undefined) {
       const ownerUserId = await requireOwnerUserId(req, res);
       if (ownerUserId == null) return;
-      await setContactLeadStatus(ownerUserId, existing.phoneNumber, leadStatus);
+      await recordLeadCorrection({
+        ownerUserId,
+        phoneNumber: existing.phoneNumber,
+        contactName: existing.contactName,
+        toStatus: leadStatus,
+        reason: leadStatusReason ?? null,
+        reasonCode: leadStatusReasonCode ?? null,
+        source: "manual_edit",
+        chatId: existing.id,
+        channelId: existing.channelId,
+        answeredByUserId: ownerUserId,
+      });
     }
 
     const [labelMap, leadMap] = await Promise.all([
