@@ -426,7 +426,7 @@ function AiProviderCard() {
               </Badge>
             ) : (
               <Badge variant="outline" className="text-[10px]">
-                Replit AI (default)
+                AI bawaan (default)
               </Badge>
             )}
           </div>
@@ -435,7 +435,7 @@ function AiProviderCard() {
               ? `Balasan AI memakai API key ${providerLabel} Anda sendiri${
                   cfg?.model ? ` (model ${cfg.model})` : ""
                 }. Tagihan langsung ke provider.`
-              : "Balasan AI memakai layanan bawaan Replit — tanpa konfigurasi, tanpa API key. Pilih provider sendiri untuk pakai API key Anda."}
+              : "Balasan AI memakai layanan bawaan — tanpa konfigurasi, tanpa API key. Pilih provider sendiri untuk pakai API key Anda."}
           </p>
         </div>
       </div>
@@ -557,7 +557,7 @@ function AiProviderDialog({
             >
               <RadioGroupItem value="replit" id="ai-mode-replit" className="mt-0.5" />
               <div>
-                <div className="text-sm font-medium">Replit AI (default)</div>
+                <div className="text-sm font-medium">AI bawaan (default)</div>
                 <div className="text-xs text-muted-foreground">
                   Layanan bawaan, tanpa konfigurasi atau API key. Direkomendasikan.
                 </div>

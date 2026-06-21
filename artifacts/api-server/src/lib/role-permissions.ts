@@ -27,6 +27,9 @@ export const PERMISSION_MENUS = [
   // AI Sales Assistant (Enterprise-only). Full CRUD; agents are scoped to
   // their own assigned opportunities by the route layer, not this matrix.
   "opportunities",
+  // AI Pipeline (Enterprise-only): automated cut-off analysis + auto-followup.
+  // Controls sidebar visibility of the AI Pipeline menu.
+  "ai_pipeline",
   // WorkBoard: multi-board task management with invite & permission system.
   "workboard",
   // AI Chat Report: AI-driven CS performance reports. create = run a report
@@ -85,6 +88,8 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // AI Sales Assistant: supervisors get full configurable access by default
     // (manage every opportunity in the tenant). Owner may dial this back.
     opportunities: allow(true, true, true, true),
+    // AI Pipeline: supervisors may manage pipelines by default.
+    ai_pipeline: allow(true, true, true, true),
     // WorkBoard: supervisors get full access by default.
     workboard: allow(true, true, true, true),
     // AI Chat Report: supervisors may view their team's reports and run new
@@ -115,6 +120,8 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     // opportunities (enforced by opportunityScopeWhere in the route layer). No
     // create (deals are auto-detected) and no delete.
     opportunities: allow(true, false, true, false),
+    // AI Pipeline: agents may view but not configure pipelines by default.
+    ai_pipeline: allow(true, false, false, false),
     // WorkBoard: agents can view and create tasks (but not delete boards).
     workboard: allow(true, true, true, false),
     // AI Chat Report: agents may only view their OWN scores (self-scope is

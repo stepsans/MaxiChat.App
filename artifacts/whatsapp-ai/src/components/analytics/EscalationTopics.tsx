@@ -1,11 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { EscalationTopic } from "@workspace/api-client-react";
-import { cn } from "@/lib/utils";
 
-function barColor(rate: number): string {
+// Escalation-rate color zones: red >50% / amber 20-50% / green <20%.
+function rateColor(rate: number): string {
   if (rate > 50) return "bg-red-500";
-  if (rate >= 20) return "bg-amber-500";
+  if (rate >= 20) return "bg-amber-400";
   return "bg-green-500";
 }
 
@@ -16,7 +16,9 @@ export function EscalationTopics({
   topics: EscalationTopic[] | undefined;
   loading?: boolean;
 }) {
-  const max = Math.max(1, ...(topics ?? []).map((t) => t.count));
+  // Show the top 5 by escalation rate.
+  const rows = (topics ?? []).slice(0, 5);
+  const maxCount = rows.reduce((m, t) => Math.max(m, t.count), 0) || 1;
 
   return (
     <Card>
@@ -28,29 +30,34 @@ export function EscalationTopics({
           <>
             <Skeleton className="h-6 w-full" />
             <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-6 w-2/3" />
+            <Skeleton className="h-6 w-full" />
           </>
-        ) : (topics ?? []).length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Belum ada eskalasi yang bisa dikelompokkan pada periode ini.
+        ) : rows.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            Belum ada topik eskalasi pada periode ini.
           </p>
         ) : (
-          topics!.map((t) => (
-            <div key={t.topic}>
-              <div className="mb-1 flex justify-between text-xs">
-                <span className="font-medium capitalize">{t.topic}</span>
-                <span className="text-muted-foreground">
-                  {t.count} · {t.escalationRate}%
-                </span>
+          rows.map((t) => {
+            const pct = Math.round((t.count / maxCount) * 100);
+            return (
+              <div key={t.topic}>
+                <div className="mb-1 flex justify-between gap-2 text-xs">
+                  <span className="truncate" title={t.topic}>
+                    {t.topic}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {t.count} chat · {t.escalationRate}% eskalasi
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={`h-full rounded-full ${rateColor(t.escalationRate)}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn("h-full rounded-full", barColor(t.escalationRate))}
-                  style={{ width: `${Math.round((t.count / max) * 100)}%` }}
-                />
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>

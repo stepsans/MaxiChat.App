@@ -36,6 +36,14 @@ import type {
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -130,6 +138,8 @@ interface Props {
     customerCode?: string | null;
     tag?: string;
     leadStatus?: string;
+    leadStatusReason?: string | null;
+    leadStatusReasonCode?: string | null;
     status?: string;
   }) => void;
   onTakeover: (checked: boolean) => void;
@@ -1961,6 +1971,10 @@ export function ChatInfoSidebar({
   const [name, setName] = useState(chat.nickname ?? "");
   const [company, setCompany] = useState(chat.company ?? "");
   const [customerCode, setCustomerCode] = useState(chat.customerCode ?? "");
+  // Manual lead-status change asks for a short reason — the answer trains the AI.
+  const [leadPending, setLeadPending] = useState<string | null>(null);
+  const [leadReasonCode, setLeadReasonCode] = useState<string | null>(null);
+  const [leadReasonText, setLeadReasonText] = useState("");
   useEffect(() => {
     setName(chat.nickname ?? "");
   }, [chat.id, chat.nickname]);
@@ -2204,7 +2218,17 @@ export function ChatInfoSidebar({
               </Label>
               <Select
                 value={chat.leadStatus ?? "unknown"}
-                onValueChange={(val) => onUpdate({ leadStatus: val })}
+                onValueChange={(val) => {
+                  if (val === (chat.leadStatus ?? "unknown")) return;
+                  // "unknown" needs no rationale; lead/not_lead ask for a reason.
+                  if (val === "unknown") {
+                    onUpdate({ leadStatus: val });
+                    return;
+                  }
+                  setLeadReasonCode(null);
+                  setLeadReasonText("");
+                  setLeadPending(val);
+                }}
               >
                 <SelectTrigger
                   data-testid="select-chat-lead"
@@ -2219,6 +2243,82 @@ export function ChatInfoSidebar({
                 </SelectContent>
               </Select>
             </div>
+
+            <Dialog open={leadPending !== null} onOpenChange={(o) => { if (!o) setLeadPending(null); }}>
+              <DialogContent className="sm:max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>
+                    Tandai sebagai {leadPending === "not_lead" ? "Not Lead" : "Lead"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Kenapa? Alasanmu dipelajari AI supaya makin pintar membedakan
+                    lead vs bukan lead.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {(leadPending === "not_lead"
+                      ? [
+                          { code: "wrong_role", label: "Saya yang beli (vendor)" },
+                          { code: "just_asking", label: "Cuma basa-basi" },
+                          { code: "spam_personal", label: "Spam/personal" },
+                        ]
+                      : [
+                          { code: "serious_buyer", label: "Serius mau beli" },
+                          { code: "asked_price", label: "Tanya harga/produk" },
+                          { code: "repeat_customer", label: "Pelanggan lama" },
+                        ]
+                    ).map((c) => (
+                      <Button
+                        key={c.code}
+                        type="button"
+                        size="sm"
+                        variant={leadReasonCode === c.code ? "secondary" : "outline"}
+                        className="h-7 text-xs"
+                        onClick={() => setLeadReasonCode(c.code)}
+                      >
+                        {c.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <Input
+                    placeholder="Alasan lain (opsional)"
+                    value={leadReasonText}
+                    onChange={(e) => setLeadReasonText(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="ghost" onClick={() => setLeadPending(null)}>
+                    Batal
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const chips: Record<string, string> = {
+                        wrong_role: "Saya yang beli (vendor)",
+                        just_asking: "Cuma basa-basi",
+                        spam_personal: "Spam/personal",
+                        serious_buyer: "Serius mau beli",
+                        asked_price: "Tanya harga/produk",
+                        repeat_customer: "Pelanggan lama",
+                      };
+                      const reason =
+                        leadReasonText.trim() ||
+                        (leadReasonCode ? chips[leadReasonCode] : null);
+                      onUpdate({
+                        leadStatus: leadPending!,
+                        leadStatusReason: reason,
+                        leadStatusReasonCode: leadReasonCode,
+                      });
+                      setLeadPending(null);
+                    }}
+                  >
+                    Simpan
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">

@@ -9,6 +9,7 @@ import { and, eq, gt, sql } from "drizzle-orm";
 import { db, reportAiCacheTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
+import { getAllowedChannelIds } from "../lib/user-channel-access";
 import { requirePermission } from "../lib/role-permissions";
 import {
   resolvePeriod,
@@ -36,15 +37,44 @@ function periodFromQuery(req: Request): { period: PeriodKey; from?: string; to?:
   return { period, from: req.query.from as string | undefined, to: req.query.to as string | undefined };
 }
 
+// Resolve the channel scope for the current viewer. Returns the list of channel
+// ids the analytics must be restricted to:
+//   • a specific `?channel=` (only if the viewer is allowed to see it — else 403)
+//   • otherwise every channel the viewer may access (super_admin = all the
+//     owner's channels; supervisor/agent = their user_channel_access set).
+// Returns null when a response has already been sent (auth / forbidden), so the
+// caller must bail. The list is ANDed against the owner predicate downstream;
+// an empty list (e.g. an agent with no channel grants) yields zero rows.
+async function channelScope(req: Request, res: Response): Promise<number[] | null> {
+  const uid = getSessionUserId(req);
+  if (uid == null) {
+    res.status(401).json({ error: "Not signed in" });
+    return null;
+  }
+  const allowed = await getAllowedChannelIds(uid);
+  const raw = req.query.channel;
+  if (raw != null && raw !== "" && raw !== "all") {
+    const sel = Number(raw);
+    if (!Number.isInteger(sel) || !allowed.has(sel)) {
+      res.status(403).json({ error: "Channel tidak diizinkan" });
+      return null;
+    }
+    return [sel];
+  }
+  return Array.from(allowed);
+}
+
 const view = requirePermission("analytics", "view");
 
 router.get("/v2/summary", view, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await owner(req, res);
     if (ownerUserId == null) return;
+    const channelIds = await channelScope(req, res);
+    if (channelIds == null) return;
     const { period, from, to } = periodFromQuery(req);
     const p = resolvePeriod(period, from, to);
-    res.json(await computeSummary(ownerUserId, p));
+    res.json(await computeSummary(ownerUserId, p, channelIds));
   } catch (err) {
     logger.error({ err }, "analytics v2 summary failed");
     res.status(500).json({ error: "Gagal memuat ringkasan" });
@@ -55,9 +85,11 @@ router.get("/v2/ai-performance", view, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await owner(req, res);
     if (ownerUserId == null) return;
+    const channelIds = await channelScope(req, res);
+    if (channelIds == null) return;
     const { period, from, to } = periodFromQuery(req);
     const p = resolvePeriod(period, from, to);
-    res.json(await computeAiPerformance(ownerUserId, p));
+    res.json(await computeAiPerformance(ownerUserId, p, channelIds));
   } catch (err) {
     logger.error({ err }, "analytics v2 ai-performance failed");
     res.status(500).json({ error: "Gagal memuat performa AI" });
@@ -68,6 +100,8 @@ router.get("/v2/chat-history", view, async (req, res): Promise<void> => {
   try {
     const ownerUserId = await owner(req, res);
     if (ownerUserId == null) return;
+    const channelIds = await channelScope(req, res);
+    if (channelIds == null) return;
     const { period, from, to } = periodFromQuery(req);
     const p = resolvePeriod(period, from, to);
 
@@ -75,16 +109,22 @@ router.get("/v2/chat-history", view, async (req, res): Promise<void> => {
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
     const offset = (page - 1) * limit;
 
-    const channel = req.query.channel ? Number(req.query.channel) : null;
     const handledBy = (req.query.handledBy as string) || "all";
     const status = (req.query.status as string) || "all";
     const search = ((req.query.search as string) || "").trim();
 
+    // Restrict to the viewer's channel scope (a single ?channel= or their full
+    // allowed set). An empty set → IN () is invalid, so emit FALSE (no rows).
+    const channelCond =
+      channelIds.length === 0
+        ? sql`FALSE`
+        : sql`c.channel_id IN (${sql.join(channelIds.map((id) => sql`${id}`), sql`, `)})`;
+
     const conds = [
       sql`ch.user_id = ${ownerUserId}`,
+      channelCond,
       sql`EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.chat_id = c.id AND cm.created_at >= ${p.start.toISOString()} AND cm.created_at < ${p.end.toISOString()})`,
     ];
-    if (channel) conds.push(sql`c.channel_id = ${channel}`);
     if (search) {
       const like = `%${search}%`;
       conds.push(sql`(c.contact_name ILIKE ${like} OR c.phone_number ILIKE ${like} OR c.last_message ILIKE ${like})`);

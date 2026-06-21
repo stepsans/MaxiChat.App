@@ -1365,6 +1365,13 @@ export interface Chat {
   unreadCount: number;
   /** @nullable */
   profilePicUrl: string | null;
+  /**
+     * ISO timestamp until which notifications are muted; null = not muted.
+     * @nullable
+     */
+  mutedUntil?: string | null;
+  /** Whether the contact is currently blocked on WhatsApp. */
+  isBlocked?: boolean;
   createdAt: string;
   /** @nullable */
   assignedUserId: number | null;
@@ -1503,6 +1510,20 @@ export const ChatWithMessagesLeadStatus = {
   not_lead: 'not_lead',
 } as const;
 
+/**
+ * Best-effort live presence from WhatsApp, populated after the chat is opened (the server subscribes on first fetch and reads it on the next poll). Null when unknown / not yet received.
+
+ * @nullable
+ */
+export type ChatWithMessagesPresence = {
+  status?: 'available' | 'unavailable' | 'composing' | 'recording';
+  /**
+     * Unix epoch seconds of the contact's last-seen, when shared.
+     * @nullable
+     */
+  lastSeen?: number | null;
+} | null | null;
+
 export interface ChatWithMessages {
   id: number;
   /** The channel this chat belongs to. Used to scope channel-restricted resources (e.g. shortcuts) to the active chat. */
@@ -1539,6 +1560,19 @@ export interface ChatWithMessages {
   unreadCount: number;
   /** @nullable */
   profilePicUrl: string | null;
+  /**
+     * ISO timestamp until which notifications are muted; null = not muted.
+     * @nullable
+     */
+  mutedUntil?: string | null;
+  /** Whether the contact is currently blocked on WhatsApp. */
+  isBlocked?: boolean;
+  /**
+     * Best-effort live presence from WhatsApp, populated after the chat is opened (the server subscribes on first fetch and reads it on the next poll). Null when unknown / not yet received.
+
+     * @nullable
+     */
+  presence?: ChatWithMessagesPresence;
   createdAt: string;
   /** @nullable */
   assignedUserId: number | null;
@@ -1626,6 +1660,45 @@ export interface ChatUpdate {
      * @nullable
      */
   customerCode?: string | null;
+  /**
+     * Short rationale for a manual leadStatus change; recorded as a training signal so the AI Pipeline learns this tenant's lead/not-lead definition.
+     * @nullable
+     */
+  leadStatusReason?: string | null;
+  /**
+     * Optional coarse category for the leadStatus change (e.g. wrong_role, just_asking, serious_buyer).
+     * @nullable
+     */
+  leadStatusReasonCode?: string | null;
+}
+
+export interface MuteChatInput {
+  /**
+     * ISO timestamp until which the chat is muted; null to unmute.
+     * @nullable
+     */
+  mutedUntil: string | null;
+}
+
+export interface BlockChatInput {
+  /** True to block the contact on WhatsApp, false to unblock. */
+  blocked: boolean;
+}
+
+export interface SendLocationInput {
+  latitude: number;
+  longitude: number;
+  /** Optional place name shown with the pin. */
+  name?: string;
+  /** Optional address line shown with the pin. */
+  address?: string;
+}
+
+export interface SendContactInput {
+  /** Display name of the contact being shared. */
+  name: string;
+  /** Phone number of the contact (digits / +; server normalises into the vCard). */
+  phoneNumber: string;
 }
 
 /**
@@ -1676,11 +1749,163 @@ export interface BulkChatUpdateInput {
   status?: BulkChatUpdateInputStatus;
   /** Id of a customer label to attach to every selected chat's contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected. */
   addLabelId?: number;
+  /**
+     * Short rationale applied to every leadStatus change in this bulk action; recorded as a learning signal for the AI Pipeline.
+     * @nullable
+     */
+  leadStatusReason?: string | null;
 }
 
 export interface BulkChatUpdateResult {
   /** Number of chats actually updated (in-scope rows only). */
   updated: number;
+}
+
+/**
+ * Why the AI asked — borderline/unclear (uncertain) or it contradicted a manual label (conflict).
+ */
+export type LeadReviewRequestTrigger = typeof LeadReviewRequestTrigger[keyof typeof LeadReviewRequestTrigger];
+
+
+export const LeadReviewRequestTrigger = {
+  uncertain: 'uncertain',
+  conflict: 'conflict',
+} as const;
+
+/**
+ * The AI's best guess so the tenant can confirm in one tap.
+ * @nullable
+ */
+export type LeadReviewRequestAiSuggestedStatus = typeof LeadReviewRequestAiSuggestedStatus[keyof typeof LeadReviewRequestAiSuggestedStatus] | null;
+
+
+export const LeadReviewRequestAiSuggestedStatus = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
+export type LeadReviewRequestStatus = typeof LeadReviewRequestStatus[keyof typeof LeadReviewRequestStatus];
+
+
+export const LeadReviewRequestStatus = {
+  pending: 'pending',
+  answered: 'answered',
+  dismissed: 'dismissed',
+} as const;
+
+export interface LeadReviewRequest {
+  id: number;
+  contactPhone: string;
+  /** @nullable */
+  contactName?: string | null;
+  /** @nullable */
+  chatId?: number | null;
+  /** @nullable */
+  channelId?: number | null;
+  /** Why the AI asked — borderline/unclear (uncertain) or it contradicted a manual label (conflict). */
+  trigger: LeadReviewRequestTrigger;
+  question: string;
+  /**
+     * The AI's best guess so the tenant can confirm in one tap.
+     * @nullable
+     */
+  aiSuggestedStatus?: LeadReviewRequestAiSuggestedStatus;
+  /** @nullable */
+  aiScore?: number | null;
+  /** @nullable */
+  aiConversationRole?: string | null;
+  /** @nullable */
+  contextSummary?: string | null;
+  status: LeadReviewRequestStatus;
+  createdAt: string;
+}
+
+export interface LeadReviewList {
+  items: LeadReviewRequest[];
+  /** Total pending requests (drives the nav badge). */
+  pendingCount: number;
+}
+
+/**
+ * The tenant's final decision; written as the contact's manual lead status.
+ */
+export type LeadReviewAnswerInputLeadStatus = typeof LeadReviewAnswerInputLeadStatus[keyof typeof LeadReviewAnswerInputLeadStatus];
+
+
+export const LeadReviewAnswerInputLeadStatus = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+} as const;
+
+export interface LeadReviewAnswerInput {
+  /** The tenant's final decision; written as the contact's manual lead status. */
+  leadStatus: LeadReviewAnswerInputLeadStatus;
+  /**
+     * Short rationale; recorded as a learning signal.
+     * @nullable
+     */
+  reason?: string | null;
+  /**
+     * Optional coarse category for the decision.
+     * @nullable
+     */
+  reasonCode?: string | null;
+}
+
+export interface LeadReviewAnswerResult {
+  ok: boolean;
+  /** Remaining pending requests after this action. */
+  pendingCount?: number;
+}
+
+export type AiMemoryChatMessageRole = typeof AiMemoryChatMessageRole[keyof typeof AiMemoryChatMessageRole];
+
+
+export const AiMemoryChatMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface AiMemoryChatMessage {
+  id: number;
+  role: AiMemoryChatMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface AiMemoryChatHistory {
+  messages: AiMemoryChatMessage[];
+}
+
+export interface AiMemoryChatInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  message: string;
+}
+
+export interface AiMemoryChatReply {
+  reply: string;
+  /**
+     * The durable instruction saved this turn, or null if nothing was saved.
+     * @nullable
+     */
+  memory?: string | null;
+}
+
+export interface AiMemory {
+  id: number;
+  content: string;
+  createdAt: string;
+}
+
+export interface AiMemoryList {
+  items: AiMemory[];
+}
+
+export interface AiMemoryDeleteResult {
+  ok: boolean;
 }
 
 export interface CreateCustomerLabelInput {
@@ -1772,6 +1997,18 @@ export const SettingsFlowCooldownMinutes = {
   NUMBER_120: 120,
 } as const;
 
+/**
+ * Provenance of the current systemPrompt; 'manual' means the wizard must confirm before overwriting.
+ */
+export type SettingsAiPromptSource = typeof SettingsAiPromptSource[keyof typeof SettingsAiPromptSource];
+
+
+export const SettingsAiPromptSource = {
+  default: 'default',
+  wizard: 'wizard',
+  manual: 'manual',
+} as const;
+
 export interface Settings {
   id: number;
   systemPrompt: string;
@@ -1782,6 +2019,12 @@ export interface Settings {
   /** Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups. */
   flowCooldownMinutes: SettingsFlowCooldownMinutes;
   updatedAt: string;
+  /** Provenance of the current systemPrompt; 'manual' means the wizard must confirm before overwriting. */
+  aiPromptSource: SettingsAiPromptSource;
+  /** True when a single-step 'restore previous version' is available. */
+  hasPreviousPrompt: boolean;
+  /** Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt. */
+  hardGuardrails: string;
 }
 
 export type GeneralSettingsUpdateFlowCooldownMinutes = typeof GeneralSettingsUpdateFlowCooldownMinutes[keyof typeof GeneralSettingsUpdateFlowCooldownMinutes];
@@ -1872,6 +2115,11 @@ export interface Product {
   name: string;
   /** @nullable */
   category: string | null;
+  /**
+     * Free-text product description (deskripsi). Public/customer-safe.
+     * @nullable
+     */
+  description: string | null;
   /** Harga Pricelist — public price shown to customers */
   price: number;
   /**
@@ -1936,6 +2184,8 @@ export interface ProductInput {
   name: string;
   /** @nullable */
   category?: string | null;
+  /** @nullable */
+  description?: string | null;
   /** @minimum 0 */
   price: number;
   /**
@@ -2280,11 +2530,6 @@ export interface AssignChatInput {
 
 export interface SignupInput {
   email: string;
-  /**
-     * @minLength 8
-     * @maxLength 200
-     */
-  password: string;
   /**
      * @minLength 1
      * @maxLength 120
@@ -3326,19 +3571,111 @@ export interface LoginInput {
 
 export interface MobileLoginInput {
   email: string;
-  /** @minLength 1 */
-  password: string;
+  /**
+     * One-time code emailed to the user via POST /auth/otp/request (purpose=login).
+     * @minLength 1
+     */
+  otp: string;
   /**
      * Optional human label for the device (e.g. 'iPhone 15').
      * @nullable
      */
   deviceLabel?: string | null;
+  /** When not false (default true), issue a 30-day trusted-device token returned as `trustedDeviceToken` so the next login can skip OTP. */
+  rememberDevice?: boolean;
 }
 
 export interface MobileSession {
   /** Opaque bearer token. Send as `Authorization: Bearer <token>`. */
   token: string;
   user: AuthUser;
+  /**
+     * 30-day trusted-device token (present when rememberDevice was not false). Store in SecureStore and replay as `X-Trusted-Device` on the next POST /auth/otp/request to skip OTP.
+     * @nullable
+     */
+  trustedDeviceToken?: string | null;
+}
+
+export interface RequestOtpInput {
+  email: string;
+}
+
+export interface VerifyOtpInput {
+  email: string;
+  /** @minLength 1 */
+  otp: string;
+  /** When not false (default true), set a 30-day trusted-device cookie (mc_td) so the next login on this browser skips OTP. */
+  rememberDevice?: boolean;
+}
+
+export interface RequestOtpResponse {
+  /** True when a valid trusted device let the user skip OTP and sign in immediately. When true, `user` (and `token` for mobile) is present. When false, an OTP was sent and `expiresAt` is present. */
+  trusted: boolean;
+  ok?: boolean;
+  /** @nullable */
+  expiresAt?: string | null;
+  user?: AuthUser | null;
+  /**
+     * Mobile bearer token, present only on a mobile trusted-device fast-path.
+     * @nullable
+     */
+  token?: string | null;
+  /**
+     * Rotated mobile trusted-device token on a fast-path login.
+     * @nullable
+     */
+  trustedDeviceToken?: string | null;
+}
+
+export interface ResendOtpResponse {
+  ok: boolean;
+  expiresAt: string;
+}
+
+export interface TrustedDevice {
+  id: number;
+  /** @nullable */
+  label?: string | null;
+  /** @nullable */
+  lastUsedAt?: string | null;
+  createdAt?: string;
+  expiresAt?: string;
+}
+
+export interface TrustedDeviceList {
+  devices: TrustedDevice[];
+}
+
+export type AiProfileInputAiTone = typeof AiProfileInputAiTone[keyof typeof AiProfileInputAiTone];
+
+
+export const AiProfileInputAiTone = {
+  formal: 'formal',
+  santai: 'santai',
+  profesional: 'profesional',
+} as const;
+
+export interface AiProfileInput {
+  /** @nullable */
+  businessDescription?: string | null;
+  aiTone?: AiProfileInputAiTone;
+  /** @nullable */
+  operatingHours?: string | null;
+}
+
+export interface AiProfileResponse {
+  ok: boolean;
+  /** @nullable */
+  systemPrompt?: string | null;
+}
+
+export interface AiSandboxInput {
+  /** @minLength 1 */
+  message: string;
+}
+
+export interface AiSandboxResponse {
+  reply: string;
 }
 
 /**
@@ -4235,6 +4572,14 @@ export interface AiPipelineCreate {
      * @maximum 100
      */
   scoreThreshold?: number;
+  /**
+     * Minimum score to auto-create an opportunity. Should be >= scoreThreshold.
+     * @minimum 0
+     * @maximum 100
+     */
+  opportunityThreshold?: number;
+  /** When true, crossing opportunityThreshold auto-creates an opportunity. */
+  autoCreateOpportunity?: boolean;
   autoFollowupEnabled?: boolean;
   followupIntervals?: string[];
   cutoffTimes?: string[];
@@ -4269,6 +4614,8 @@ export interface AiPipeline {
   description?: string | null;
   isActive: boolean;
   scoreThreshold: number;
+  opportunityThreshold?: number;
+  autoCreateOpportunity?: boolean;
   autoFollowupEnabled: boolean;
   followupIntervals: string[];
   cutoffTimes: string[];
@@ -4299,6 +4646,30 @@ export type AiPipelineAnalysisScoreBreakdown = {
   barrier_adjustment?: number;
 } | null;
 
+/**
+ * AI lead classification for this conversation.
+ */
+export type AiPipelineAnalysisLeadClassification = typeof AiPipelineAnalysisLeadClassification[keyof typeof AiPipelineAnalysisLeadClassification];
+
+
+export const AiPipelineAnalysisLeadClassification = {
+  lead: 'lead',
+  not_lead: 'not_lead',
+  unclear: 'unclear',
+} as const;
+
+/**
+ * Who is selling. tenant_is_buyer = reverse role (contact is supplier).
+ */
+export type AiPipelineAnalysisConversationRole = typeof AiPipelineAnalysisConversationRole[keyof typeof AiPipelineAnalysisConversationRole];
+
+
+export const AiPipelineAnalysisConversationRole = {
+  tenant_is_seller: 'tenant_is_seller',
+  tenant_is_buyer: 'tenant_is_buyer',
+  unclear: 'unclear',
+} as const;
+
 export interface AiPipelineAnalysis {
   id: number;
   pipelineId: number;
@@ -4318,6 +4689,16 @@ export interface AiPipelineAnalysis {
   recommendation?: string | null;
   scoreReason?: string | null;
   aiNotes?: string | null;
+  /** AI lead classification for this conversation. */
+  leadClassification?: AiPipelineAnalysisLeadClassification;
+  leadClassificationReason?: string | null;
+  /** Who is selling. tenant_is_buyer = reverse role (contact is supplier). */
+  conversationRole?: AiPipelineAnalysisConversationRole;
+  /** True when skipped (reverse role / not_lead) and never entered the pipeline. */
+  skipped?: boolean;
+  skipReason?: string | null;
+  opportunityId?: number | null;
+  chatId?: number | null;
   enteredPipeline: boolean;
   pipelineEntryId?: number | null;
   createdAt: string;
@@ -4328,6 +4709,10 @@ export interface AiPipelineAnalysisList {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface AiPipelineGenerateFollowupResponse {
+  message: string;
 }
 
 export interface AiPipelineFollowupLog {
@@ -4364,6 +4749,8 @@ export interface AiPipelineEntry {
   nextFollowupAt?: string | null;
   doNotFollowup?: boolean;
   doNotFollowupReason?: string | null;
+  cooled?: boolean;
+  cooledAt?: string | null;
   scoreHistory?: AiPipelineEntryScoreHistoryItem[];
   followupLogs?: AiPipelineFollowupLog[];
   enteredAt: string;
@@ -5076,6 +5463,8 @@ export interface AiInsightResponse {
   fromCache: boolean;
   /** Set when generation failed; content is empty. */
   error?: string | null;
+  /** Friendly label of the AI engine that produced this insight (e.g. "Gemini · gemini-2.5-flash"). Null on error. Lets the owner compare which centralized engine generated each analysis. */
+  engine?: string | null;
   /** Shape depends on type. narrative => {criticalIssue, opportunity, positive, totalChatsAnalyzed}. anomaly => {anomalies: [...]}. kb_recommendations => {recommendations: [...]}. */
   content: AiInsightResponseContent;
 }
@@ -5721,6 +6110,10 @@ export type GetAnalyticsV2SummaryParams = {
 period?: GetAnalyticsV2SummaryPeriod;
 from?: string;
 to?: string;
+/**
+ * Restrict to a single channel id. Omit for all channels the viewer can access.
+ */
+channel?: number;
 };
 
 export type GetAnalyticsV2SummaryPeriod = typeof GetAnalyticsV2SummaryPeriod[keyof typeof GetAnalyticsV2SummaryPeriod];
@@ -5737,6 +6130,10 @@ export type GetAiPerformanceParams = {
 period?: GetAiPerformancePeriod;
 from?: string;
 to?: string;
+/**
+ * Restrict to a single channel id. Omit for all channels the viewer can access.
+ */
+channel?: number;
 };
 
 export type GetAiPerformancePeriod = typeof GetAiPerformancePeriod[keyof typeof GetAiPerformancePeriod];

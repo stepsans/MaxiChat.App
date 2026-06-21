@@ -2,6 +2,7 @@ import { db } from "@workspace/db";
 import { settingsTable, tenantSettingsTable, channelsTable } from "@workspace/db";
 import { asc, eq } from "drizzle-orm";
 import type { ChannelRow } from "./channel-context";
+import { AI_HARD_GUARDRAILS } from "./ai-guardrails";
 
 export const DEFAULT_SYSTEM_PROMPT = `Kamu adalah customer service profesional yang ramah, cepat, dan membantu closing.
 
@@ -127,6 +128,14 @@ export interface MergedSettings {
   fallbackMessage: string;
   flowCooldownMinutes: number;
   updatedAt: string;
+  // Persona-unification surface for AI Studio:
+  // 'default' | 'wizard' | 'manual' — provenance of the current systemPrompt.
+  aiPromptSource: string;
+  // True when a single-step "restore previous version" is available.
+  hasPreviousPrompt: boolean;
+  // The locked Lapis C guardrails (read-only), shown so the owner knows they are
+  // always active even though they aren't part of the editable systemPrompt.
+  hardGuardrails: string;
 }
 
 export async function getMergedSettings(
@@ -150,5 +159,8 @@ export async function getMergedSettings(
     fallbackMessage: tenant.fallbackMessage,
     flowCooldownMinutes: tenant.flowCooldownMinutes,
     updatedAt: updatedAt.toISOString(),
+    aiPromptSource: tenant.aiPromptSource,
+    hasPreviousPrompt: !!tenant.systemPromptPrevious,
+    hardGuardrails: AI_HARD_GUARDRAILS,
   };
 }

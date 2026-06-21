@@ -28,7 +28,10 @@ import {
   useDeleteAiPipeline,
   useListChannels,
   useListCustomerLabels,
+  useOpenChatByPhone,
+  useGenerateFollowupAiPipelineEntry,
   getGetAiPipelineQueryKey,
+  getListChatsQueryKey,
   getGetAiPipelineEntryQueryKey,
   getGetAiPipelineAnalysisQueryKey,
   getListAiPipelinesQueryKey,
@@ -65,6 +68,7 @@ import {
   Save,
   Check,
   GripVertical,
+  Snowflake,
   LayoutGrid,
   BarChart3,
   Settings2,
@@ -133,6 +137,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { PROMPT_TEMPLATES } from "@/lib/pipeline-prompt-templates";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -170,6 +175,20 @@ function scoreBadge(val: number) {
   if (val <= 60) return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">{val} Hangat</Badge>;
   if (val <= 79) return <Badge className="bg-blue-100 text-blue-700 border-blue-200">{val} Potensial</Badge>;
   return <Badge className="bg-green-100 text-green-700 border-green-200">{val} Panas</Badge>;
+}
+
+// Lead classification badge (AI). null/unclear → neutral.
+function leadBadge(classification: string | null | undefined) {
+  if (classification === "lead") return <Badge className="bg-green-100 text-green-700 border-green-200">Lead</Badge>;
+  if (classification === "not_lead") return <Badge className="bg-red-100 text-red-700 border-red-200">Not Lead</Badge>;
+  return <Badge className="bg-slate-100 text-slate-600 border-slate-200">Unclear</Badge>;
+}
+
+// Conversation role badge (AI). 'unclear' renders nothing.
+function conversationRoleBadge(role: string | null | undefined) {
+  if (role === "tenant_is_seller") return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Tenant Penjual</Badge>;
+  if (role === "tenant_is_buyer") return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Tenant Pembeli</Badge>;
+  return null;
 }
 
 function avatarColor(name: string): string {
@@ -251,6 +270,53 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
       <div className="min-w-0">
         <p className="text-2xl font-bold">{value}</p>
         <p className="text-xs text-muted-foreground leading-tight">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+// Live countdown to the next pending cut-off, derived from the dashboard's
+// cutoffTimeline. Renders nothing when no future cut-off is scheduled.
+function NextCutoffCountdown({
+  timeline,
+}: {
+  timeline: { scheduledTime?: string; status?: string }[];
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const nextAt = useMemo(() => {
+    const future = timeline
+      .filter((c) => c.status === "pending" && c.scheduledTime)
+      .map((c) => new Date(c.scheduledTime!).getTime())
+      .filter((t) => t > now)
+      .sort((a, b) => a - b);
+    return future[0] ?? null;
+  }, [timeline, now]);
+
+  if (nextAt == null) return null;
+
+  const diff = Math.max(0, nextAt - now);
+  const totalSec = Math.floor(diff / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return (
+    <div className="rounded-xl border bg-card p-4 flex items-center justify-between gap-3">
+      <div>
+        <p className="text-xs text-muted-foreground mb-0.5">Cut-off berikutnya</p>
+        <p className="text-sm font-medium">{formatDate(new Date(nextAt).toISOString())}</p>
+      </div>
+      <div className="text-right">
+        <p className="text-xs text-muted-foreground mb-0.5">Hitung mundur</p>
+        <p className="font-mono text-lg font-semibold tabular-nums">
+          {h > 0 ? `${pad(h)}:` : ""}{pad(m)}:{pad(s)}
+        </p>
       </div>
     </div>
   );
@@ -501,6 +567,9 @@ function DashboardTab({ pipelineId }: { pipelineId: number }) {
         )}
       </div>
 
+      {/* ── Countdown Cut-off Berikutnya ── */}
+      <NextCutoffCountdown timeline={stats.cutoffTimeline} />
+
       {/* ── Timeline Jadwal Analisa ── */}
       {stats.cutoffTimeline.length > 0 && (
         <div className="rounded-xl border bg-card p-4 space-y-3">
@@ -565,6 +634,22 @@ function AnalysisDrawer({ analysis, onClose }: { analysis: AiPipelineAnalysis | 
             </div>
             {scoreBadge(analysis.score)}
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {leadBadge(analysis.leadClassification)}
+            {conversationRoleBadge(analysis.conversationRole)}
+          </div>
+          {analysis.skipped && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <span className="font-semibold">Dilewati dari pipeline.</span>{" "}
+              {analysis.skipReason ?? analysis.leadClassificationReason ?? "Bukan lead / role percakapan terbalik."}
+            </div>
+          )}
+          {!analysis.skipped && analysis.leadClassificationReason && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase">Alasan Klasifikasi Lead</p>
+              <p className="text-sm">{analysis.leadClassificationReason}</p>
+            </div>
+          )}
           {breakdown && (
             <div className="space-y-3 rounded-xl border p-4">
               <h4 className="text-sm font-semibold">Breakdown Skor</h4>
@@ -662,6 +747,41 @@ function AnalysesTab({ pipelineId }: { pipelineId: number }) {
     { id: "dingin", label: "Dingin (≤40)", color: "#EF4444" },
   ];
 
+  // Export the currently-filtered analyses to CSV (client-side, no extra fetch).
+  function exportCsv() {
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const headers = [
+      "Nama", "Telepon", "Skor", "Status", "Lead", "Role",
+      "Minat Produk", "Estimasi Nilai", "Rekomendasi", "Masuk Pipeline", "Cutoff",
+    ];
+    const lines = filtered.map((a) =>
+      [
+        a.contactName ?? "",
+        a.contactPhone,
+        a.score,
+        a.status ?? "",
+        a.leadClassification ?? "",
+        a.conversationRole ?? "",
+        a.productInterest ?? "",
+        a.estimatedValue ?? "",
+        a.recommendation ?? "",
+        a.enteredPipeline ? "ya" : "tidak",
+        a.cutoffDatetime ?? "",
+      ].map(esc).join(",")
+    );
+    const csv = [headers.join(","), ...lines].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `analisa-pipeline-${pipelineId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-4">
 
@@ -758,6 +878,16 @@ function AnalysesTab({ pipelineId }: { pipelineId: number }) {
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border border-border bg-background text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export CSV
+        </button>
       </div>
 
       {isLoading ? (
@@ -865,10 +995,58 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
   });
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  // Draft message to drop into the chat composer once the chat opens. Stashed
+  // in a ref (not closed over) so the single mutation's onSuccess knows which
+  // button fired it: the header/Detail icons open the chat empty, while
+  // "Kirim via WhatsApp" carries the follow-up template.
+  const pendingDraft = useRef("");
+  const openChat = useOpenChatByPhone({
+    mutation: {
+      onSuccess: (result) => {
+        qc.invalidateQueries({ queryKey: getListChatsQueryKey() });
+        const draft = pendingDraft.current;
+        pendingDraft.current = "";
+        onClose();
+        navigate(
+          `/chats/${result.chatId}${draft ? `?text=${encodeURIComponent(draft)}` : ""}`
+        );
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal membuka chat",
+          description:
+            err instanceof Error ? err.message : "Periksa koneksi WhatsApp Anda.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
 
   const [tab, setTab] = useState<EntryModalTab>("detail");
   const [template, setTemplate] = useState("");
   const templateInit = useRef(false);
+
+  // Ask the AI to draft a follow-up grounded in this contact's conversation,
+  // then drop it into the composer for review. Mark templateInit so the
+  // "seed from last AI message" effect can't clobber the fresh draft.
+  const generateFollowup = useGenerateFollowupAiPipelineEntry({
+    mutation: {
+      onSuccess: (res) => {
+        templateInit.current = true;
+        setTemplate(res.message);
+        toast({ title: "Pesan follow-up dibuat AI." });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal membuat pesan",
+          description: err instanceof Error ? err.message : "Coba lagi sebentar.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
   const [editingStatus, setEditingStatus] = useState(false);
 
   const { mutate: doNotFollowup, isPending: blocking } = useDoNotFollowupAiPipelineEntry({
@@ -906,10 +1084,14 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
 
   const displayName = entry.contactName ?? entry.contactPhone;
   const bgColor = avatarColor(displayName);
-  const waPhone = entry.contactPhone.replace(/[^0-9]/g, "").replace(/^0/, "62");
-  const waLink = template.trim()
-    ? `https://wa.me/${waPhone}?text=${encodeURIComponent(template.trim())}`
-    : `https://wa.me/${waPhone}`;
+  // Open this contact's conversation inside MaxiChat (resolving/creating the
+  // chat by phone) instead of bouncing out to the WhatsApp app. An optional
+  // draft is prefilled into the composer via the chat route's ?text= param.
+  function openCustomerChat(draft?: string) {
+    if (openChat.isPending) return;
+    pendingDraft.current = draft?.trim() ?? "";
+    openChat.mutate({ data: { phoneNumber: entry!.contactPhone } });
+  }
 
   const scoreChartData = (entry.scoreHistory ?? []).map((h) => ({
     label: h.cutoffWindow ?? (h.date ? new Date(h.date).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }) : ""),
@@ -953,10 +1135,10 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                 <button type="button" onClick={copyPhone} className="text-muted-foreground hover:text-foreground" title="Salin nomor">
                   <Copy className="w-3 h-3" />
                 </button>
-                <a href={`https://wa.me/${waPhone}`} target="_blank" rel="noopener noreferrer"
-                  className="text-green-600 hover:text-green-700" title="Buka WhatsApp">
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                <button type="button" onClick={() => openCustomerChat()} disabled={openChat.isPending}
+                  className="text-green-600 hover:text-green-700 disabled:opacity-50" title="Buka chat di MaxiChat">
+                  <MessageSquare className="w-3 h-3" />
+                </button>
               </div>
               {entry.channelType ? (
                 <div className="flex items-center gap-1 mt-0.5">
@@ -967,6 +1149,12 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
             </div>
             <div className="flex flex-col items-end gap-1.5 shrink-0">
               {scoreBadge(entry.currentScore)}
+              {entry.cooled && (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300">
+                  <Snowflake className="w-3 h-3" />
+                  Mendingin
+                </span>
+              )}
               {colInfo ? (
                 <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium"
                   style={{ color: colInfo.color, borderColor: colInfo.color + "40", background: colInfo.color + "15" }}>
@@ -1077,14 +1265,15 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                     >
                       <Copy className="w-3.5 h-3.5" />
                     </button>
-                    <a
-                      href={`https://wa.me/${entry.contactPhone.replace(/[^0-9]/g, "").replace(/^0/, "62")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-green-600 hover:text-green-700"
+                    <button
+                      type="button"
+                      onClick={() => openCustomerChat()}
+                      disabled={openChat.isPending}
+                      className="text-green-600 hover:text-green-700 disabled:opacity-50"
+                      title="Buka chat di MaxiChat"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                      <MessageSquare className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   {entry.channelType ? (
                     <div className="flex items-center gap-2">
@@ -1502,12 +1691,28 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-medium">Pesan WhatsApp</p>
-                    {aiTemplate && template !== aiTemplate ? (
-                      <button type="button" className="text-[10px] text-primary hover:underline"
-                        onClick={() => setTemplate(aiTemplate)}>
-                        Reset ke pesan AI terakhir
+                    <div className="flex items-center gap-2">
+                      {aiTemplate && template !== aiTemplate ? (
+                        <button type="button" className="text-[10px] text-primary hover:underline"
+                          onClick={() => setTemplate(aiTemplate)}>
+                          Reset ke pesan AI terakhir
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => generateFollowup.mutate({ id: pipelineId, eid: entry.id })}
+                        disabled={generateFollowup.isPending}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline disabled:opacity-50"
+                        title="Buatkan pesan follow-up dengan AI sesuai percakapan"
+                      >
+                        {generateFollowup.isPending ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3 h-3" />
+                        )}
+                        {generateFollowup.isPending ? "Membuat…" : "Buat dengan AI"}
                       </button>
-                    ) : null}
+                    </div>
                   </div>
                   <Textarea value={template} onChange={(e) => setTemplate(e.target.value)}
                     placeholder="Tulis pesan follow up manual, atau gunakan pesan AI terakhir di bawah…"
@@ -1521,11 +1726,11 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                 </div>
 
                 {/* WA send button */}
-                <a href={waLink} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 rounded-md text-sm font-medium h-9 px-4 bg-green-600 hover:bg-green-700 text-white transition-colors w-full">
-                  <Smartphone className="w-4 h-4" />
-                  Kirim via WhatsApp
-                </a>
+                <button type="button" onClick={() => openCustomerChat(template)} disabled={openChat.isPending}
+                  className="flex items-center justify-center gap-2 rounded-md text-sm font-medium h-9 px-4 bg-green-600 hover:bg-green-700 text-white transition-colors w-full disabled:opacity-60">
+                  <Send className="w-4 h-4" />
+                  {openChat.isPending ? "Membuka chat…" : "Kirim via WhatsApp"}
+                </button>
 
                 {/* Follow-up log */}
                 {logs.length === 0 ? (
@@ -1698,6 +1903,12 @@ function EntryCard({
               <span className="text-[10px] font-semibold text-rose-600 flex items-center gap-0.5">
                 <Clock className="w-3 h-3" />
                 Terlambat
+              </span>
+            )}
+            {entry.cooled && (
+              <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-sky-100 text-sky-700 border border-sky-200 dark:bg-sky-950/40 dark:text-sky-300">
+                <Snowflake className="w-3 h-3" />
+                Mendingin
               </span>
             )}
           </div>
@@ -1923,14 +2134,6 @@ const FOLLOWUP_PRESETS = [
   { label: "48 jam", value: "48h" },
   { label: "72 jam", value: "72h" },
   { label: "7 hari", value: "168h" },
-];
-
-const PROMPT_TEMPLATES = [
-  { label: "Sales Umum", value: `Kamu adalah AI analis sales yang bertugas menilai percakapan WhatsApp dengan calon pembeli. Evaluasi tingkat ketertarikan, urgensi pembelian, dan peluang konversi berdasarkan sinyal dalam percakapan. Berikan skor 0-100 dan rekomendasi tindak lanjut yang spesifik.` },
-  { label: "Properti", value: `Kamu adalah AI analis properti yang menganalisa percakapan calon pembeli/penyewa. Perhatikan budget, lokasi yang diinginkan, timeline keputusan, dan sinyal serius seperti pertanyaan spesifik tentang spesifikasi, harga final, atau kunjungan survei. Berikan skor 0-100.` },
-  { label: "Keuangan/Asuransi", value: `Kamu adalah AI analis produk keuangan dan asuransi. Analisa percakapan untuk mendeteksi kebutuhan finansial, toleransi risiko, kemampuan bayar premi, dan urgensi perlindungan. Identifikasi apakah calon klien dalam tahap eksplorasi atau siap membeli. Berikan skor 0-100.` },
-  { label: "E-commerce", value: `Kamu adalah AI analis e-commerce yang mengevaluasi percakapan calon pembeli toko online. Perhatikan pertanyaan tentang stok, harga, diskon, pengiriman, dan tanda-tanda akan checkout. Bedakan antara browser biasa dan pembeli serius. Berikan skor 0-100.` },
-  { label: "Jasa/Service", value: `Kamu adalah AI analis bisnis jasa yang menganalisa percakapan calon klien. Identifikasi kebutuhan spesifik, anggaran, timeline proyek, dan level keputusan (pengambil keputusan vs. penanya biasa). Perhatikan sinyal seperti pertanyaan harga detail atau permintaan proposal. Berikan skor 0-100.` },
 ];
 
 function computeWindows(times: string[]): Array<{ time: string; window: string }> {

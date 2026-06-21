@@ -23,6 +23,7 @@ import {
   CreateAiPipelineBody,
 } from "@workspace/api-zod";
 import { scheduleCutoffLogs } from "../lib/ai-pipeline-scheduler";
+import { generateFollowupMessage, scheduleFollowups } from "../lib/ai-pipeline-followup";
 import { resolveAiClient } from "../lib/ai-provider";
 
 const router = Router();
@@ -77,6 +78,8 @@ async function buildPipelineResponse(pipeline: typeof aiPipelinesTable.$inferSel
     description: pipeline.description,
     isActive: pipeline.isActive,
     scoreThreshold: pipeline.scoreThreshold,
+    opportunityThreshold: pipeline.opportunityThreshold,
+    autoCreateOpportunity: pipeline.autoCreateOpportunity,
     autoFollowupEnabled: pipeline.autoFollowupEnabled,
     followupIntervals: pipeline.followupIntervals,
     cutoffTimes: pipeline.cutoffTimes,
@@ -237,6 +240,7 @@ router.post("/", async (req: Request, res: Response) => {
 
   const {
     name, description, isActive, scoreThreshold,
+    opportunityThreshold, autoCreateOpportunity,
     autoFollowupEnabled, followupIntervals, cutoffTimes,
     channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
     customPrompt, directionFilter,
@@ -250,6 +254,8 @@ router.post("/", async (req: Request, res: Response) => {
       description: description ?? null,
       isActive: isActive ?? true,
       scoreThreshold: scoreThreshold ?? 70,
+      opportunityThreshold: opportunityThreshold ?? 80,
+      autoCreateOpportunity: autoCreateOpportunity ?? false,
       autoFollowupEnabled: autoFollowupEnabled ?? false,
       followupIntervals: followupIntervals ?? ["24h", "48h", "72h"],
       cutoffTimes: cutoffTimes ?? ["12:00", "23:59"],
@@ -274,7 +280,7 @@ router.post("/", async (req: Request, res: Response) => {
   await upsertChannelsAndLabels(pipeline.id, channelIds ?? [], excludeLabelIds ?? []);
 
   // Schedule cutoff logs for the next 7 days
-  await scheduleCutoffLogs(pipeline.id, ownerUserId, pipeline.cutoffTimes as string[]);
+  await scheduleCutoffLogs(pipeline.id, ownerUserId, pipeline.cutoffTimes as string[], pipeline.timezone);
 
   const result = await buildPipelineResponse(pipeline);
   res.status(201).json(result);
@@ -315,6 +321,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 
   const {
     name, description, isActive, scoreThreshold,
+    opportunityThreshold, autoCreateOpportunity,
     autoFollowupEnabled, followupIntervals, cutoffTimes,
     channelIds, excludeLabelIds, staleDaysThreshold, highValueThresholdIdr,
     customPrompt, directionFilter,
@@ -330,6 +337,8 @@ router.put("/:id", async (req: Request, res: Response) => {
       description: description ?? null,
       isActive: isActive ?? pipeline.isActive,
       scoreThreshold: scoreThreshold ?? pipeline.scoreThreshold,
+      opportunityThreshold: opportunityThreshold ?? pipeline.opportunityThreshold,
+      autoCreateOpportunity: autoCreateOpportunity ?? pipeline.autoCreateOpportunity,
       autoFollowupEnabled: autoFollowupEnabled ?? pipeline.autoFollowupEnabled,
       followupIntervals: followupIntervals ?? pipeline.followupIntervals,
       cutoffTimes: cutoffTimes ?? pipeline.cutoffTimes,
@@ -369,7 +378,7 @@ router.put("/:id", async (req: Request, res: Response) => {
         )
       );
     if (updated.isActive) {
-      await scheduleCutoffLogs(id, ownerUserId, updated.cutoffTimes as string[]);
+      await scheduleCutoffLogs(id, ownerUserId, updated.cutoffTimes as string[], updated.timezone);
     }
   }
 
@@ -570,6 +579,13 @@ function serializeAnalysis(a: typeof aiPipelineAnalysesTable.$inferSelect) {
     recommendation: a.recommendation,
     scoreReason: a.scoreReason,
     aiNotes: a.aiNotes,
+    leadClassification: a.leadClassification,
+    leadClassificationReason: a.leadClassificationReason,
+    conversationRole: a.conversationRole,
+    skipped: a.skipped,
+    skipReason: a.skipReason,
+    opportunityId: a.opportunityId,
+    chatId: a.chatId,
     enteredPipeline: a.enteredPipeline,
     pipelineEntryId: a.pipelineEntryId,
     createdAt: a.createdAt.toISOString(),
@@ -695,6 +711,8 @@ async function serializeEntry(e: typeof aiPipelineEntriesTable.$inferSelect, wit
     nextFollowupAt: e.nextFollowupAt?.toISOString() ?? null,
     doNotFollowup: e.doNotFollowup,
     doNotFollowupReason: e.doNotFollowupReason,
+    cooled: e.cooled,
+    cooledAt: e.cooledAt?.toISOString() ?? null,
     scoreHistory: e.scoreHistory,
     enteredAt: e.enteredAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
@@ -826,11 +844,47 @@ router.patch("/:id/entries/:eid", async (req: Request, res: Response) => {
   const { status } = req.body as { status?: string };
   if (!status) { res.status(400).json({ error: "status required" }); return; }
 
+  // Moving an entry OUT of "do_not_followup" (or any active stage while the stop
+  // flag is set) must also clear the flag — otherwise the follow-up poller keeps
+  // skipping it and follow-up never resumes despite the stage change.
+  const ACTIVE_STATUSES = ["new", "in_progress", "followup_sent", "replied"];
+  const resuming = entry.doNotFollowup && ACTIVE_STATUSES.includes(status);
+
+  const patch: Partial<typeof aiPipelineEntriesTable.$inferInsert> = {
+    status,
+    updatedAt: new Date(),
+  };
+  if (status === "do_not_followup") {
+    patch.doNotFollowup = true;
+  } else if (resuming) {
+    patch.doNotFollowup = false;
+    patch.doNotFollowupReason = null;
+    patch.doNotFollowupAt = null;
+  }
+
   const [updated] = await db
     .update(aiPipelineEntriesTable)
-    .set({ status, updatedAt: new Date() })
+    .set(patch)
     .where(eq(aiPipelineEntriesTable.id, eid))
     .returning();
+
+  // Re-arm the next follow-up when resuming a sendable stage (the poller only
+  // sends for 'new'/'followup_sent'), if auto-followup is on and not maxed out.
+  if (
+    resuming &&
+    (status === "new" || status === "followup_sent") &&
+    pipeline.autoFollowupEnabled &&
+    updated.followupCount < 3 &&
+    !updated.nextFollowupAt
+  ) {
+    await scheduleFollowups({
+      entryId: eid,
+      pipelineId: id,
+      ownerUserId,
+      followupIntervals: (pipeline.followupIntervals as string[] | null) ?? ["24h", "48h", "72h"],
+      currentFollowupCount: updated.followupCount,
+    });
+  }
 
   res.json(await serializeEntry(updated, true));
 });
@@ -867,6 +921,31 @@ router.post("/:id/entries/:eid/do-not-followup", async (req: Request, res: Respo
     .returning();
 
   res.json(await serializeEntry(updated, true));
+});
+
+// Generate (but do NOT send) an AI follow-up message for this entry, grounded
+// in the contact's recent conversation. The UI drops the result into the
+// follow-up composer for the operator to review/edit before sending.
+router.post("/:id/entries/:eid/generate-followup", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  const eid = parseInt(String(req.params.eid), 10);
+  if (isNaN(id) || isNaN(eid)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const entry = await db.query.aiPipelineEntriesTable.findFirst({
+    where: and(eq(aiPipelineEntriesTable.id, eid), eq(aiPipelineEntriesTable.pipelineId, id))
+  });
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+
+  const message = await generateFollowupMessage(entry, pipeline);
+  if (!message) { res.status(502).json({ error: "Gagal membuat pesan follow-up. Coba lagi." }); return; }
+
+  res.json({ message });
 });
 
 // ─── Prompt versions ─────────────────────────────────────────────────────────

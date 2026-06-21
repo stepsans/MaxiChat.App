@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useState } from "react";
 import {
@@ -55,6 +56,7 @@ function timeAgo(iso: string): string {
 export default function StatusScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { activeChannelId } = useChannel();
 
@@ -162,9 +164,19 @@ export default function StatusScreen() {
           { paddingTop: insets.top + 8, backgroundColor: colors.header },
         ]}
       >
-        <Text style={[styles.headerTitle, { color: colors.headerForeground }]}>
-          Status
-        </Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+            style={styles.backBtn}
+            hitSlop={8}
+            accessibilityLabel="Kembali"
+          >
+            <Feather name="chevron-left" size={26} color={colors.headerForeground} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.headerForeground }]}>
+            Status
+          </Text>
+        </View>
         <ChannelSwitcher />
       </View>
 
@@ -427,6 +439,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 4 },
+  backBtn: { padding: 2, marginLeft: -6 },
   headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 48 },
   emptyText: { fontFamily: "Inter_400Regular", fontSize: 15 },

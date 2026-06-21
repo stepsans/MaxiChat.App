@@ -3,14 +3,26 @@ import {
   setBaseUrl,
   setAuthTokenGetter,
   setChannelIdGetter,
+  setUnauthorizedHandler,
+  type AuthUser,
 } from "@workspace/api-client-react";
 
 export const API_BASE = `https://${process.env.EXPO_PUBLIC_API_DOMAIN}`;
 
 const TOKEN_KEY = "maxichat_token";
+const TRUSTED_KEY = "maxichat_trusted_device";
 
 let currentToken: string | null = null;
 let currentChannelId: string | null = null;
+let currentTrustedToken: string | null = null;
+
+// Callback fired when an in-session request returns 401 (token expired/revoked).
+// AuthContext registers it to reset React auth state and bounce to login.
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedCallback(cb: (() => void) | null): void {
+  onUnauthorized = cb;
+}
 
 /**
  * Wire the generated API client to this app's auth + channel state. Called once
@@ -21,6 +33,15 @@ export function configureApiClient(): void {
   setBaseUrl(API_BASE);
   setAuthTokenGetter(() => currentToken);
   setChannelIdGetter(() => currentChannelId);
+  // Mid-session 401 → clear the dead token and let AuthContext route to login.
+  // Pre-auth 401s (e.g. a wrong OTP at login, when no token is held yet) are
+  // ignored so they surface as a normal login error instead of a "logout".
+  setUnauthorizedHandler(() => {
+    if (!currentToken) return;
+    void persistToken(null);
+    currentChannelId = null;
+    onUnauthorized?.();
+  });
 }
 
 export function setMemToken(token: string | null): void {
@@ -52,6 +73,28 @@ export async function persistToken(token: string | null): Promise<void> {
     else await SecureStore.deleteItemAsync(TOKEN_KEY);
   } catch {
     // best-effort; in-memory token still works for this session
+  }
+}
+
+// Trusted-device token (skip-OTP "remember me"). Stored separately from the
+// session token; replayed as the X-Trusted-Device header on the next login.
+export async function loadTrustedToken(): Promise<string | null> {
+  try {
+    const t = await SecureStore.getItemAsync(TRUSTED_KEY);
+    currentTrustedToken = t;
+    return t;
+  } catch {
+    return null;
+  }
+}
+
+export async function persistTrustedToken(token: string | null): Promise<void> {
+  currentTrustedToken = token;
+  try {
+    if (token) await SecureStore.setItemAsync(TRUSTED_KEY, token);
+    else await SecureStore.deleteItemAsync(TRUSTED_KEY);
+  } catch {
+    // best-effort
   }
 }
 
@@ -87,6 +130,100 @@ async function rawUpload<T = unknown>(
   }
 }
 
+/**
+ * POST a JSON body to a public (no-auth) endpoint and return the parsed JSON.
+ * Used for the OTP login endpoints, which aren't in the OpenAPI spec (the web
+ * dashboard calls them the same way).
+ */
+async function postJson<T = unknown>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      msg = (j && (j.error || j.detail || j.message)) || msg;
+    } catch {
+      // ignore parse failure
+    }
+    throw new Error(msg);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return undefined as T;
+  }
+}
+
+export type MobileSessionResult = {
+  token: string;
+  user: AuthUser;
+  trustedDeviceToken?: string;
+};
+
+export type LoginOtpResult = {
+  // Trusted-device fast-path: when true the backend already returned a session.
+  trusted?: boolean;
+  token?: string;
+  user?: AuthUser;
+  trustedDeviceToken?: string;
+  // Normal OTP path.
+  ok?: boolean;
+  expiresAt?: string;
+  devOtp?: string;
+};
+
+/**
+ * Request a login OTP. Replays a stored trusted-device token via the
+ * X-Trusted-Device header; if the backend accepts it, the response carries a
+ * ready session ({ trusted:true, token, user, trustedDeviceToken }) and the
+ * OTP step is skipped. `devOtp` is only returned outside production.
+ */
+export async function requestLoginOtp(email: string): Promise<LoginOtpResult> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (currentTrustedToken) headers["x-trusted-device"] = currentTrustedToken;
+  const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ email }),
+  });
+  const data = (await res.json().catch(() => ({}))) as LoginOtpResult & { error?: string };
+  if (!res.ok && !data.trusted) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+/**
+ * Verify the OTP and establish a mobile session, opting into trusted-device so
+ * the next login on this device can skip OTP. Raw fetch (not the generated
+ * mobileLogin) because the response carries an extra trustedDeviceToken.
+ */
+export async function mobileLoginWithDevice(
+  email: string,
+  otp: string,
+): Promise<MobileSessionResult> {
+  return postJson("/api/auth/mobile-login", {
+    email,
+    otp,
+    rememberDevice: true,
+    deviceLabel: "Mobile App",
+  });
+}
+
+/** Re-send the login OTP (separate rate limit on the backend). */
+export async function resendLoginOtp(
+  email: string,
+): Promise<{ ok?: boolean; expiresAt?: string; devOtp?: string }> {
+  return postJson("/api/auth/otp/resend", { email, purpose: "login" });
+}
+
 /** Send a media message into a chat. Not in OpenAPI (binary multipart). */
 export async function uploadChatMedia(
   chatId: number,
@@ -97,6 +234,38 @@ export async function uploadChatMedia(
   // React Native FormData accepts the {uri,name,type} shape.
   fd.append("file", file as unknown as Blob);
   if (caption) fd.append("caption", caption);
+  await rawUpload(`/api/chats/${chatId}/media`, fd);
+}
+
+/**
+ * Send an album (multiple photos/videos) into a chat in a single request. The
+ * backend transmits the items as an ordered sequence over the chat's channel,
+ * with a small inter-message delay. The caption (if any) rides on the first
+ * item. Not in OpenAPI (binary multipart).
+ */
+export async function uploadChatAlbum(
+  chatId: number,
+  files: UploadFile[],
+  caption: string,
+): Promise<void> {
+  const fd = new FormData();
+  for (const file of files) fd.append("files", file as unknown as Blob);
+  if (caption) fd.append("caption", caption);
+  await rawUpload(`/api/chats/${chatId}/album`, fd);
+}
+
+/**
+ * Send a recorded voice note into a chat. Same multipart endpoint as
+ * uploadChatMedia but flags `ptt=true` so the backend transmits it as a
+ * WhatsApp push-to-talk voice note (not a regular audio file).
+ */
+export async function uploadVoiceNote(
+  chatId: number,
+  file: UploadFile,
+): Promise<void> {
+  const fd = new FormData();
+  fd.append("file", file as unknown as Blob);
+  fd.append("ptt", "true");
   await rawUpload(`/api/chats/${chatId}/media`, fd);
 }
 

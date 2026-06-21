@@ -91,6 +91,189 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/otp/request:
+    post:
+      operationId: loginRequestOtp
+      tags: [auth]
+      summary: Request a login OTP by email, or fast-path login via a trusted device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestOtpInput"
+      responses:
+        "200":
+          description: OTP sent, or trusted-device fast-path login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestOtpResponse"
+        "403":
+          description: Account disabled, or email not yet verified (link re-sent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Email not registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/otp/verify:
+    post:
+      operationId: loginVerifyOtp
+      tags: [auth]
+      summary: Verify a login OTP and start a web session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Account not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/otp/resend:
+    post:
+      operationId: loginResendOtp
+      tags: [auth]
+      summary: Resend the login OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestOtpInput"
+      responses:
+        "200":
+          description: OTP resent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendOtpResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/devices:
+    get:
+      operationId: listTrustedDevices
+      tags: [auth]
+      summary: List the current user's active trusted devices
+      responses:
+        "200":
+          description: Active trusted devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustedDeviceList"
+
+  /auth/devices/{id}/revoke:
+    post:
+      operationId: revokeTrustedDevice
+      tags: [auth]
+      summary: Revoke one of the current user's trusted devices
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Revoked (ok=false if the device was not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/ai-profile:
+    put:
+      operationId: updateAiProfile
+      tags: [onboarding]
+      summary: Save the first-run AI-feeding profile and (re)compose the system prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiProfileInput"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProfileResponse"
+        "403":
+          description: Not a super admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /onboarding/ai-sandbox:
+    post:
+      operationId: runAiSandbox
+      tags: [onboarding]
+      summary: Run the tenant's AI on a test message without sending to WhatsApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiSandboxInput"
+      responses:
+        "200":
+          description: AI reply (not sent anywhere)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiSandboxResponse"
+        "400":
+          description: Missing message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not a super admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /push/register:
     post:
       operationId: registerPushToken
@@ -1843,6 +2026,157 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /lead-reviews:
+    get:
+      operationId: listLeadReviews
+      tags: [lead-reviews]
+      summary: List pending lead clarification requests for the tenant
+      description: >
+        Returns the open "Review Lead" queue — questions raised when the AI
+        Pipeline was uncertain (borderline score / unclear role) or its verdict
+        conflicted with a manual label. Answering them teaches the AI.
+      responses:
+        "200":
+          description: Pending review requests (plus the total pending count)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadReviewList"
+  /lead-reviews/{id}/answer:
+    post:
+      operationId: answerLeadReview
+      tags: [lead-reviews]
+      summary: Answer a lead clarification request
+      description: >
+        Records the tenant's final decision: sets the contact's manual lead
+        status, stores the answer as a learning signal, and closes the request.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadReviewAnswerInput"
+      responses:
+        "200":
+          description: Answer recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadReviewAnswerResult"
+        "404":
+          description: Request not found or not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /lead-reviews/{id}/dismiss:
+    post:
+      operationId: dismissLeadReview
+      tags: [lead-reviews]
+      summary: Dismiss a lead clarification request without deciding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadReviewAnswerResult"
+        "404":
+          description: Request not found or not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-memory/chat:
+    get:
+      operationId: getAiMemoryChat
+      tags: [ai-memory]
+      summary: Get the tenant's teach-the-AI chat history
+      responses:
+        "200":
+          description: Chat history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryChatHistory"
+    post:
+      operationId: sendAiMemoryChat
+      tags: [ai-memory]
+      summary: Send a teaching message; the AI replies and may save a memory
+      description: >
+        Two-way chat where the tenant teaches the AI how to handle their
+        business. The AI replies and, when the message contains a durable
+        instruction/preference/fact, saves it as a per-tenant memory that feeds
+        the AI Pipeline analysis.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiMemoryChatInput"
+      responses:
+        "200":
+          description: AI reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryChatReply"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai-memory:
+    get:
+      operationId: listAiMemories
+      tags: [ai-memory]
+      summary: List the tenant's saved AI memories
+      responses:
+        "200":
+          description: Saved memories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryList"
+  /ai-memory/{id}:
+    delete:
+      operationId: deleteAiMemory
+      tags: [ai-memory]
+      summary: Forget a saved AI memory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Memory forgotten
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMemoryDeleteResult"
+        "404":
+          description: Memory not found or not owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /chats/open-by-phone:
     post:
       operationId: openChatByPhone
@@ -2259,6 +2593,106 @@ paths:
               schema:
                 $ref: "#/components/schemas/Chat"
 
+  /chats/{id}/mute:
+    put:
+      operationId: muteChat
+      tags: [chats]
+      summary: Mute or unmute a chat's notifications until a timestamp
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MuteChatInput"
+      responses:
+        "200":
+          description: Updated chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+  /chats/{id}/block:
+    put:
+      operationId: blockChat
+      tags: [chats]
+      summary: Block or unblock the chat's contact on WhatsApp
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockChatInput"
+      responses:
+        "200":
+          description: Updated chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chat"
+
+  /chats/{id}/location:
+    post:
+      operationId: sendLocationToChat
+      tags: [chats]
+      summary: Send a geo-location pin to the chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendLocationInput"
+      responses:
+        "200":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+
+  /chats/{id}/contact:
+    post:
+      operationId: sendContactToChat
+      tags: [chats]
+      summary: Send a contact card (vCard) to the chat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendContactInput"
+      responses:
+        "200":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+
   /chats/{id}/labels:
     put:
       operationId: setChatLabels
@@ -2483,6 +2917,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Settings"
+
+  /settings/restore-previous:
+    post:
+      operationId: restorePreviousPrompt
+      tags: [settings]
+      summary: Restore the previous system prompt (single-step undo, super admin only)
+      responses:
+        "200":
+          description: Restored settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          description: No previous version available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /settings/auto-reply:
     put:
@@ -3509,6 +3962,30 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SuccessResponse" }
 
+  /agents/{id}/revoke-devices:
+    post:
+      operationId: revokeAgentDevices
+      tags: [agents]
+      summary: Revoke all of a team member's trusted devices (super admin only)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "403":
+          description: Not a super admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Team member not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /products/sync-config:
     get:
       operationId: getProductSyncConfig
@@ -3956,6 +4433,7 @@ paths:
         - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
         - { name: from, in: query, schema: { type: string } }
         - { name: to, in: query, schema: { type: string } }
+        - { name: channel, in: query, description: "Restrict to a single channel id. Omit for all channels the viewer can access.", schema: { type: integer } }
       responses:
         "200":
           description: Summary
@@ -3973,6 +4451,7 @@ paths:
         - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
         - { name: from, in: query, schema: { type: string } }
         - { name: to, in: query, schema: { type: string } }
+        - { name: channel, in: query, description: "Restrict to a single channel id. Omit for all channels the viewer can access.", schema: { type: integer } }
       responses:
         "200":
           description: AI performance
@@ -6470,6 +6949,48 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/entries/{eid}/generate-followup:
+    post:
+      operationId: generateFollowupAiPipelineEntry
+      tags: [ai-pipeline]
+      summary: Generate (without sending) an AI follow-up message for a pipeline entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Generated follow-up message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineGenerateFollowupResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Generation failed
           content:
             application/json:
               schema:
@@ -9155,6 +9676,12 @@ components:
           type: integer
         profilePicUrl:
           type: ["string", "null"]
+        mutedUntil:
+          type: ["string", "null"]
+          description: ISO timestamp until which notifications are muted; null = not muted.
+        isBlocked:
+          type: boolean
+          description: Whether the contact is currently blocked on WhatsApp.
         createdAt:
           type: string
         assignedUserId:
@@ -9303,6 +9830,25 @@ components:
           type: integer
         profilePicUrl:
           type: ["string", "null"]
+        mutedUntil:
+          type: ["string", "null"]
+          description: ISO timestamp until which notifications are muted; null = not muted.
+        isBlocked:
+          type: boolean
+          description: Whether the contact is currently blocked on WhatsApp.
+        presence:
+          type: ["object", "null"]
+          description: >
+            Best-effort live presence from WhatsApp, populated after the chat is
+            opened (the server subscribes on first fetch and reads it on the next
+            poll). Null when unknown / not yet received.
+          properties:
+            status:
+              type: string
+              enum: [available, unavailable, composing, recording]
+            lastSeen:
+              type: ["integer", "null"]
+              description: Unix epoch seconds of the contact's last-seen, when shared.
         createdAt:
           type: string
         assignedUserId:
@@ -9387,6 +9933,55 @@ components:
         customerCode:
           type: ["string", "null"]
           description: Customer code (kode customer), entered manually in the chat Info tab.
+        leadStatusReason:
+          type: ["string", "null"]
+          description: Short rationale for a manual leadStatus change; recorded as a training signal so the AI Pipeline learns this tenant's lead/not-lead definition.
+        leadStatusReasonCode:
+          type: ["string", "null"]
+          description: Optional coarse category for the leadStatus change (e.g. wrong_role, just_asking, serious_buyer).
+
+    MuteChatInput:
+      type: object
+      required: [mutedUntil]
+      properties:
+        mutedUntil:
+          type: ["string", "null"]
+          format: date-time
+          description: ISO timestamp until which the chat is muted; null to unmute.
+
+    BlockChatInput:
+      type: object
+      required: [blocked]
+      properties:
+        blocked:
+          type: boolean
+          description: True to block the contact on WhatsApp, false to unblock.
+
+    SendLocationInput:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+        name:
+          type: string
+          description: Optional place name shown with the pin.
+        address:
+          type: string
+          description: Optional address line shown with the pin.
+
+    SendContactInput:
+      type: object
+      required: [name, phoneNumber]
+      properties:
+        name:
+          type: string
+          description: Display name of the contact being shared.
+        phoneNumber:
+          type: string
+          description: Phone number of the contact (digits / +; server normalises into the vCard).
 
     BulkChatUpdateInput:
       type: object
@@ -9413,6 +10008,9 @@ components:
         addLabelId:
           type: integer
           description: Id of a customer label to attach to every selected chat's contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.
+        leadStatusReason:
+          type: ["string", "null"]
+          description: Short rationale applied to every leadStatus change in this bulk action; recorded as a learning signal for the AI Pipeline.
 
     BulkChatUpdateResult:
       type: object
@@ -9421,6 +10019,151 @@ components:
         updated:
           type: integer
           description: Number of chats actually updated (in-scope rows only).
+
+    LeadReviewRequest:
+      type: object
+      required: [id, contactPhone, trigger, question, status, createdAt]
+      properties:
+        id:
+          type: integer
+        contactPhone:
+          type: string
+        contactName:
+          type: ["string", "null"]
+        chatId:
+          type: ["integer", "null"]
+        channelId:
+          type: ["integer", "null"]
+        trigger:
+          type: string
+          enum: [uncertain, conflict]
+          description: Why the AI asked — borderline/unclear (uncertain) or it contradicted a manual label (conflict).
+        question:
+          type: string
+        aiSuggestedStatus:
+          type: ["string", "null"]
+          enum: [lead, not_lead, null]
+          description: The AI's best guess so the tenant can confirm in one tap.
+        aiScore:
+          type: ["integer", "null"]
+        aiConversationRole:
+          type: ["string", "null"]
+        contextSummary:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, answered, dismissed]
+        createdAt:
+          type: string
+          format: date-time
+
+    LeadReviewList:
+      type: object
+      required: [items, pendingCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeadReviewRequest"
+        pendingCount:
+          type: integer
+          description: Total pending requests (drives the nav badge).
+
+    LeadReviewAnswerInput:
+      type: object
+      required: [leadStatus]
+      properties:
+        leadStatus:
+          type: string
+          enum: [lead, not_lead]
+          description: The tenant's final decision; written as the contact's manual lead status.
+        reason:
+          type: ["string", "null"]
+          description: Short rationale; recorded as a learning signal.
+        reasonCode:
+          type: ["string", "null"]
+          description: Optional coarse category for the decision.
+
+    LeadReviewAnswerResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        pendingCount:
+          type: integer
+          description: Remaining pending requests after this action.
+
+    AiMemoryChatMessage:
+      type: object
+      required: [id, role, content, createdAt]
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    AiMemoryChatHistory:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiMemoryChatMessage"
+
+    AiMemoryChatInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    AiMemoryChatReply:
+      type: object
+      required: [reply]
+      properties:
+        reply:
+          type: string
+        memory:
+          type: ["string", "null"]
+          description: The durable instruction saved this turn, or null if nothing was saved.
+
+    AiMemory:
+      type: object
+      required: [id, content, createdAt]
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    AiMemoryList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiMemory"
+
+    AiMemoryDeleteResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
 
     CustomerLabel:
       type: object
@@ -9578,7 +10321,7 @@ components:
 
     Settings:
       type: object
-      required: [id, systemPrompt, autoReplyEnabled, replyDelayMin, replyDelayMax, fallbackMessage, flowCooldownMinutes, updatedAt]
+      required: [id, systemPrompt, autoReplyEnabled, replyDelayMin, replyDelayMax, fallbackMessage, flowCooldownMinutes, updatedAt, aiPromptSource, hasPreviousPrompt, hardGuardrails]
       properties:
         id:
           type: integer
@@ -9598,6 +10341,16 @@ components:
           description: "Minutes the chatbot flow's Default trigger stays muted after a flow ends, so AI can handle follow-ups."
         updatedAt:
           type: string
+        aiPromptSource:
+          type: string
+          enum: [default, wizard, manual]
+          description: "Provenance of the current systemPrompt; 'manual' means the wizard must confirm before overwriting."
+        hasPreviousPrompt:
+          type: boolean
+          description: "True when a single-step 'restore previous version' is available."
+        hardGuardrails:
+          type: string
+          description: "Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt."
 
     GeneralSettingsUpdate:
       type: object
@@ -9729,7 +10482,7 @@ components:
 
     Product:
       type: object
-      required: [id, code, name, category, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, stock, stockOnHand, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
+      required: [id, code, name, category, description, price, priceSilver, priceGold, pricePlatinum, priceReseller, priceDistributor, stock, stockOnHand, imageUrl, flyerUrl, productUrl, videoUrls, channelIds, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -9739,6 +10492,9 @@ components:
           type: string
         category:
           type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+          description: "Free-text product description (deskripsi). Public/customer-safe."
         price:
           type: integer
           description: "Harga Pricelist — public price shown to customers"
@@ -9797,6 +10553,8 @@ components:
           type: string
           minLength: 1
         category:
+          type: ["string", "null"]
+        description:
           type: ["string", "null"]
         price:
           type: integer
@@ -10060,15 +10818,11 @@ components:
 
     SignupInput:
       type: object
-      required: [email, password, name]
+      required: [email, name]
       properties:
         email:
           type: string
           format: email
-        password:
-          type: string
-          minLength: 8
-          maxLength: 200
         name:
           type: string
           minLength: 1
@@ -11433,17 +12187,23 @@ components:
 
     MobileLoginInput:
       type: object
-      required: [email, password]
+      required: [email, otp]
       properties:
         email:
           type: string
           format: email
-        password:
+        otp:
           type: string
           minLength: 1
+          description: "One-time code emailed to the user via POST /auth/otp/request (purpose=login)."
         deviceLabel:
           type: ["string", "null"]
           description: "Optional human label for the device (e.g. 'iPhone 15')."
+        rememberDevice:
+          type: boolean
+          description: >-
+            When not false (default true), issue a 30-day trusted-device token
+            returned as `trustedDeviceToken` so the next login can skip OTP.
 
     MobileSession:
       type: object
@@ -11454,6 +12214,135 @@ components:
           description: "Opaque bearer token. Send as `Authorization: Bearer <token>`."
         user:
           $ref: "#/components/schemas/AuthUser"
+        trustedDeviceToken:
+          type: ["string", "null"]
+          description: >-
+            30-day trusted-device token (present when rememberDevice was not
+            false). Store in SecureStore and replay as `X-Trusted-Device` on the
+            next POST /auth/otp/request to skip OTP.
+
+    RequestOtpInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    VerifyOtpInput:
+      type: object
+      required: [email, otp]
+      properties:
+        email:
+          type: string
+          format: email
+        otp:
+          type: string
+          minLength: 1
+        rememberDevice:
+          type: boolean
+          description: >-
+            When not false (default true), set a 30-day trusted-device cookie
+            (mc_td) so the next login on this browser skips OTP.
+
+    RequestOtpResponse:
+      type: object
+      required: [trusted]
+      properties:
+        trusted:
+          type: boolean
+          description: >-
+            True when a valid trusted device let the user skip OTP and sign in
+            immediately. When true, `user` (and `token` for mobile) is present.
+            When false, an OTP was sent and `expiresAt` is present.
+        ok:
+          type: boolean
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+        token:
+          type: ["string", "null"]
+          description: "Mobile bearer token, present only on a mobile trusted-device fast-path."
+        trustedDeviceToken:
+          type: ["string", "null"]
+          description: "Rotated mobile trusted-device token on a fast-path login."
+
+    ResendOtpResponse:
+      type: object
+      required: [ok, expiresAt]
+      properties:
+        ok:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+
+    TrustedDevice:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+        label:
+          type: ["string", "null"]
+        lastUsedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    TrustedDeviceList:
+      type: object
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrustedDevice"
+
+    AiProfileInput:
+      type: object
+      properties:
+        businessDescription:
+          type: ["string", "null"]
+        aiTone:
+          type: string
+          enum: [formal, santai, profesional]
+          default: profesional
+        operatingHours:
+          type: ["string", "null"]
+
+    AiProfileResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        systemPrompt:
+          type: ["string", "null"]
+
+    AiSandboxInput:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+
+    AiSandboxResponse:
+      type: object
+      required: [reply]
+      properties:
+        reply:
+          type: string
 
     PushRegisterInput:
       type: object
@@ -12213,6 +13102,16 @@ components:
           minimum: 0
           maximum: 100
           default: 70
+        opportunityThreshold:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 80
+          description: Minimum score to auto-create an opportunity. Should be >= scoreThreshold.
+        autoCreateOpportunity:
+          type: boolean
+          default: false
+          description: When true, crossing opportunityThreshold auto-creates an opportunity.
         autoFollowupEnabled:
           type: boolean
           default: false
@@ -12270,6 +13169,10 @@ components:
           type: boolean
         scoreThreshold:
           type: integer
+        opportunityThreshold:
+          type: integer
+        autoCreateOpportunity:
+          type: boolean
         autoFollowupEnabled:
           type: boolean
         followupIntervals:
@@ -12386,6 +13289,29 @@ components:
         aiNotes:
           type: string
           nullable: true
+        leadClassification:
+          type: string
+          enum: [lead, not_lead, unclear]
+          description: AI lead classification for this conversation.
+        leadClassificationReason:
+          type: string
+          nullable: true
+        conversationRole:
+          type: string
+          enum: [tenant_is_seller, tenant_is_buyer, unclear]
+          description: Who is selling. tenant_is_buyer = reverse role (contact is supplier).
+        skipped:
+          type: boolean
+          description: True when skipped (reverse role / not_lead) and never entered the pipeline.
+        skipReason:
+          type: string
+          nullable: true
+        opportunityId:
+          type: integer
+          nullable: true
+        chatId:
+          type: integer
+          nullable: true
         enteredPipeline:
           type: boolean
         pipelineEntryId:
@@ -12409,6 +13335,13 @@ components:
           type: integer
         pageSize:
           type: integer
+
+    AiPipelineGenerateFollowupResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
 
     AiPipelineFollowupLog:
       type: object
@@ -12478,6 +13411,12 @@ components:
           type: boolean
         doNotFollowupReason:
           type: string
+          nullable: true
+        cooled:
+          type: boolean
+        cooledAt:
+          type: string
+          format: date-time
           nullable: true
         scoreHistory:
           type: array
@@ -13304,6 +14243,13 @@ components:
         expiresAt: { type: string, format: date-time }
         fromCache: { type: boolean }
         error: { type: string, nullable: true, description: Set when generation failed; content is empty. }
+        engine:
+          type: string
+          nullable: true
+          description: >-
+            Friendly label of the AI engine that produced this insight (e.g.
+            "Gemini · gemini-2.5-flash"). Null on error. Lets the owner compare
+            which centralized engine generated each analysis.
         content:
           type: object
           additionalProperties: true

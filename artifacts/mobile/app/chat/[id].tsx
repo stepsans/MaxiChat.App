@@ -1,7 +1,10 @@
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
+import * as Contacts from "expo-contacts";
+import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useRef, useState } from "react";
 import {
@@ -12,6 +15,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -36,8 +40,14 @@ import {
   useSetChatLabels,
   useSetMessagePin,
   useSetMessageStar,
+  useGetStarredMessages,
+  useMuteChat,
+  useBlockChat,
+  useSendLocationToChat,
+  useSendContactToChat,
   getGetChatQueryKey,
   getGetChatAttachmentsQueryKey,
+  getGetStarredMessagesQueryKey,
   getListChatsQueryKey,
   type Chat,
   type ChatMessage,
@@ -45,16 +55,24 @@ import {
 } from "@workspace/api-client-react";
 
 import { Avatar } from "@/components/Avatar";
+import { ImageLightbox } from "@/components/ImageLightbox";
 import {
   LinkifiedText,
   LinkPreviewCard,
   firstLink,
 } from "@/components/MessageBody";
 import { VoiceNote } from "@/components/VoiceNote";
-import { ChatInfoPanel } from "@/components/chat-info/ChatInfoPanel";
+import { VoiceRecorder, type RecordedVoiceNote } from "@/components/VoiceRecorder";
+import { ChatInfoPanel, type TabKey } from "@/components/chat-info/ChatInfoPanel";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useColors } from "@/hooks/useColors";
-import { resolveMediaUrl, uploadChatMedia } from "@/lib/api";
+import {
+  resolveMediaUrl,
+  uploadChatMedia,
+  uploadChatAlbum,
+  uploadVoiceNote,
+} from "@/lib/api";
 
 const AVATAR_SIZE = 30;
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -64,6 +82,27 @@ function msgTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// Human-readable header presence line from the chat's live presence payload:
+// "online" / "mengetik…" / "merekam suara…" / "terakhir dilihat …".
+function presenceLabel(
+  presence: { status?: string | null; lastSeen?: number | null } | null | undefined,
+): string | null {
+  if (!presence) return null;
+  if (presence.status === "composing") return "mengetik…";
+  if (presence.status === "recording") return "merekam suara…";
+  if (presence.status === "available") return "online";
+  if (presence.lastSeen) {
+    const d = new Date(presence.lastSeen * 1000);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const when = sameDay
+      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString([], { day: "2-digit", month: "2-digit" });
+    return `terakhir dilihat ${when}`;
+  }
+  return null;
 }
 
 // Identity key used to group consecutive messages from the same sender so the
@@ -76,6 +115,8 @@ function senderKey(m: ChatMessage): string {
 
 export default function ConversationScreen() {
   const colors = useColors();
+  const { wallpaper } = useTheme();
+  const chatBg = wallpaper && wallpaper !== "default" ? wallpaper : colors.chatBg;
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -106,6 +147,26 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const [labelModal, setLabelModal] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [infoTab, setInfoTab] = useState<TabKey>("info");
+
+  // WhatsApp-parity chat-room surfaces.
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [starredOpen, setStarredOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: starred, isLoading: starredLoading } = useGetStarredMessages(
+    chatId,
+    {
+      query: {
+        queryKey: getGetStarredMessagesQueryKey(chatId),
+        enabled: Number.isFinite(chatId) && starredOpen,
+      },
+    },
+  );
 
   // Message-action state.
   const [actionTarget, setActionTarget] = useState<ChatMessage | null>(null);
@@ -149,6 +210,14 @@ export default function ConversationScreen() {
   const messages = chat?.messages ?? [];
   const inverted = useMemo(() => [...messages].reverse(), [messages]);
 
+  // In-chat search: filter the (inverted) list by message text when the search
+  // bar is open and has a query.
+  const visibleMessages = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!searchOpen || !q) return inverted;
+    return inverted.filter((m) => (m.content ?? "").toLowerCase().includes(q));
+  }, [inverted, searchOpen, searchQuery]);
+
   // ---- Mutations -----------------------------------------------------------
   const reactMut = useReactMessage();
   const starMut = useSetMessageStar();
@@ -158,6 +227,10 @@ export default function ConversationScreen() {
   const forwardMut = useForwardMessage();
   const editMut = useEditMessage();
   const openByPhoneMut = useOpenChatByPhone();
+  const muteMut = useMuteChat();
+  const blockMut = useBlockChat();
+  const sendLocationMut = useSendLocationToChat();
+  const sendContactMut = useSendContactToChat();
 
   // Chat list for the forward picker, only fetched while the dialog is open.
   const { data: forwardChats } = useListChats(undefined, {
@@ -213,31 +286,221 @@ export default function ConversationScreen() {
     }
   };
 
-  const onAttach = async () => {
+  // Open the right-side info panel focused on a specific tab (used by the
+  // quick chips above the composer: Pesan Cepat / Produk / Order).
+  const openPanel = (t: TabKey) => {
+    setInfoTab(t);
+    setInfoOpen(true);
+  };
+
+  const uploadAssets = async (assets: ImagePicker.ImagePickerAsset[]) => {
+    if (assets.length === 0) return;
+    setSending(true);
+    try {
+      const toFile = (asset: ImagePicker.ImagePickerAsset) => {
+        const isVideo = asset.type === "video";
+        return {
+          uri: asset.uri,
+          name:
+            asset.fileName ||
+            `${isVideo ? "video" : "image"}-${Date.now()}.${isVideo ? "mp4" : "jpg"}`,
+          type: asset.mimeType || (isVideo ? "video/mp4" : "image/jpeg"),
+        };
+      };
+      if (assets.length === 1) {
+        await uploadChatMedia(chatId, toFile(assets[0]), "");
+      } else {
+        // Album: one request; the backend sends the items as a paced sequence.
+        await uploadChatAlbum(chatId, assets.map(toFile), "");
+      }
+      invalidateChat();
+    } catch (e: any) {
+      Alert.alert("Gagal mengirim", e?.message ?? "Coba lagi.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Galeri — multi-select (album) photos & videos.
+  const onPickGallery = async () => {
+    setAttachOpen(false);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
       quality: 0.8,
     });
-    if (res.canceled || !res.assets[0]) return;
-    const asset = res.assets[0];
+    if (res.canceled) return;
+    await uploadAssets(res.assets);
+  };
+
+  // Kamera — capture a single photo.
+  const onPickCamera = async () => {
+    setAttachOpen(false);
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Izin diperlukan", "Beri akses kamera untuk mengambil foto.");
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    if (res.canceled) return;
+    await uploadAssets(res.assets);
+  };
+
+  const onSendVoiceNote = async (file: RecordedVoiceNote) => {
+    setRecording(false);
+    setSending(true);
+    try {
+      await uploadVoiceNote(chatId, file);
+      invalidateChat();
+    } catch (e: any) {
+      Alert.alert("Gagal mengirim pesan suara", e?.message ?? "Coba lagi.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Ekspor Chat — share a plain-text transcript of the loaded conversation.
+  const onExportChat = async () => {
+    setMenuOpen(false);
+    const who = chat?.nickname || chat?.contactName || "Chat";
+    const lines = messages.map((m) => {
+      const sender =
+        m.direction === "outbound" ? user?.name || "Saya" : m.senderName || who;
+      const stamp = new Date(m.createdAt).toLocaleString();
+      const bodyText = m.content || "[media]";
+      return `[${stamp}] ${sender}: ${bodyText}`;
+    });
+    const transcript = `Riwayat chat — ${who}\n\n${lines.join("\n")}`;
+    try {
+      await Share.share({ message: transcript });
+    } catch {
+      // ignore
+    }
+  };
+
+  // Dokumen — pick any file and send through the chat media endpoint.
+  const onPickDocument = async () => {
+    setAttachOpen(false);
+    const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+    if (res.canceled || !res.assets?.[0]) return;
+    const a = res.assets[0];
     setSending(true);
     try {
       await uploadChatMedia(
         chatId,
         {
-          uri: asset.uri,
-          name: asset.fileName || `image-${Date.now()}.jpg`,
-          type: asset.mimeType || "image/jpeg",
+          uri: a.uri,
+          name: a.name || `dokumen-${Date.now()}`,
+          type: a.mimeType || "application/octet-stream",
         },
         "",
       );
       invalidateChat();
-    } catch {
-      // ignore
+    } catch (e: any) {
+      Alert.alert("Gagal mengirim dokumen", e?.message ?? "Coba lagi.");
     } finally {
       setSending(false);
+    }
+  };
+
+  // Lokasi — share the device's current position.
+  const onSendLocation = async () => {
+    setAttachOpen(false);
+    const perm = await Location.requestForegroundPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Izin diperlukan", "Beri akses lokasi untuk membagikan posisi.");
+      return;
+    }
+    setSending(true);
+    try {
+      const pos = await Location.getCurrentPositionAsync({});
+      await sendLocationMut.mutateAsync({
+        id: chatId,
+        data: {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        },
+      });
+      invalidateChat();
+    } catch (e: any) {
+      Alert.alert("Gagal mengirim lokasi", e?.message ?? "Coba lagi.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Kontak — pick a phone contact and send it as a vCard.
+  const onPickContact = async () => {
+    setAttachOpen(false);
+    const perm = await Contacts.requestPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Izin diperlukan", "Beri akses kontak untuk membagikan kontak.");
+      return;
+    }
+    const picked = await Contacts.presentContactPickerAsync();
+    if (!picked) return;
+    const phone = picked.phoneNumbers?.[0]?.number;
+    const name = picked.name || "Kontak";
+    if (!phone) {
+      Alert.alert("Kontak tanpa nomor", "Kontak yang dipilih tidak punya nomor telepon.");
+      return;
+    }
+    setSending(true);
+    try {
+      await sendContactMut.mutateAsync({
+        id: chatId,
+        data: { name, phoneNumber: phone },
+      });
+      invalidateChat();
+    } catch (e: any) {
+      Alert.alert("Gagal mengirim kontak", e?.message ?? "Coba lagi.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Bisukan / bunyikan — toggle a mute that expires in 8 hours.
+  const onToggleMute = async () => {
+    setMenuOpen(false);
+    const muted = !!chat?.mutedUntil && new Date(chat.mutedUntil) > new Date();
+    const until = muted
+      ? null
+      : new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+    try {
+      await muteMut.mutateAsync({ id: chatId, data: { mutedUntil: until } });
+      invalidateChat();
+    } catch (e: any) {
+      Alert.alert("Gagal", e?.message ?? "Coba lagi.");
+    }
+  };
+
+  // Blokir / buka blokir.
+  const onToggleBlock = async () => {
+    setMenuOpen(false);
+    const blocked = !!chat?.isBlocked;
+    const confirmAndRun = () => {
+      blockMut.mutate(
+        { id: chatId, data: { blocked: !blocked } },
+        {
+          onSuccess: invalidateChat,
+          onError: (e: any) => Alert.alert("Gagal", e?.message ?? "Coba lagi."),
+        },
+      );
+    };
+    if (blocked) {
+      confirmAndRun();
+    } else {
+      Alert.alert(
+        "Blokir kontak?",
+        "Kontak ini tidak akan bisa mengirim pesan ke Anda di WhatsApp.",
+        [
+          { text: "Batal", style: "cancel" },
+          { text: "Blokir", style: "destructive", onPress: confirmAndRun },
+        ],
+      );
     }
   };
 
@@ -610,7 +873,7 @@ export default function ConversationScreen() {
     !!target && target.direction === "inbound" && !!target.senderPhoneDigits;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.chatBg }]}>
+    <View style={[styles.container, { backgroundColor: chatBg }]}>
       {/* Header */}
       <View
         style={[
@@ -635,29 +898,77 @@ export default function ConversationScreen() {
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
               <Feather name="arrow-left" size={24} color={colors.headerForeground} />
             </TouchableOpacity>
-            <Avatar name={chat?.contactName || "?"} uri={chat?.profilePicUrl} size={38} />
-            <View style={{ flex: 1 }}>
+            <TouchableOpacity
+              onPress={() => chat?.profilePicUrl && setPhotoOpen(true)}
+              disabled={!chat?.profilePicUrl}
+              activeOpacity={0.8}
+            >
+              <Avatar name={chat?.contactName || "?"} uri={chat?.profilePicUrl} size={38} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={0.7}
+              onPress={() => {
+                setInfoTab("info");
+                setInfoOpen(true);
+              }}
+            >
               <Text
                 style={[styles.headerName, { color: colors.headerForeground }]}
                 numberOfLines={1}
               >
                 {chat?.nickname || chat?.contactName || "Memuat..."}
               </Text>
-              {chat?.phoneNumber ? (
+              {presenceLabel(chat?.presence) ? (
+                <Text style={styles.headerSub} numberOfLines={1}>
+                  {presenceLabel(chat?.presence)}
+                </Text>
+              ) : chat?.phoneNumber ? (
                 <Text style={styles.headerSub} numberOfLines={1}>
                   {chat.phoneNumber}
                 </Text>
               ) : null}
-            </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setSearchOpen((v) => !v);
+                setSearchQuery("");
+              }}
+              style={styles.backBtn}
+            >
+              <Feather name="search" size={20} color={colors.headerForeground} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setLabelModal(true)} style={styles.backBtn}>
               <Feather name="tag" size={20} color={colors.headerForeground} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setInfoOpen(true)} style={styles.backBtn}>
-              <Feather name="info" size={20} color={colors.headerForeground} />
+            <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.backBtn}>
+              <Feather name="more-vertical" size={20} color={colors.headerForeground} />
             </TouchableOpacity>
           </>
         )}
       </View>
+
+      {/* In-chat search */}
+      {searchOpen ? (
+        <View style={[styles.searchBar, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <View style={[styles.searchBox, { backgroundColor: colors.secondary }]}>
+            <Feather name="search" size={18} color={colors.mutedForeground} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.foreground }]}
+              placeholder="Cari di chat ini"
+              placeholderTextColor={colors.mutedForeground}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery("")} hitSlop={8}>
+                <Feather name="x" size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
 
       {/* Label chips */}
       {chat && chat.labels.length > 0 ? (
@@ -688,11 +999,20 @@ export default function ConversationScreen() {
         ) : (
           <FlatList
             ref={listRef}
-            data={inverted}
+            data={visibleMessages}
             inverted
             keyExtractor={(m) => String(m.id)}
             renderItem={renderMessage}
             contentContainerStyle={styles.messages}
+            ListEmptyComponent={
+              searchOpen && searchQuery.trim() ? (
+                <View style={[styles.center, { transform: [{ scaleY: -1 }] }]}>
+                  <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                    Tidak ada pesan yang cocok.
+                  </Text>
+                </View>
+              ) : null
+            }
           />
         )}
 
@@ -726,6 +1046,33 @@ export default function ConversationScreen() {
           </View>
         ) : null}
 
+        {/* Quick chips — open the info panel at the relevant tab */}
+        {!editTarget && !recording ? (
+          <View style={[styles.quickRow, { backgroundColor: colors.background }]}>
+            <TouchableOpacity
+              style={[styles.quickChip, { backgroundColor: colors.secondary }]}
+              onPress={() => openPanel("shortcut")}
+            >
+              <Feather name="zap" size={13} color={colors.primary} />
+              <Text style={[styles.quickText, { color: colors.foreground }]}>Pesan Cepat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickChip, { backgroundColor: colors.secondary }]}
+              onPress={() => openPanel("produk")}
+            >
+              <Feather name="box" size={13} color={colors.primary} />
+              <Text style={[styles.quickText, { color: colors.foreground }]}>Kirim Produk</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quickChip, { backgroundColor: colors.secondary }]}
+              onPress={() => openPanel("order")}
+            >
+              <Feather name="shopping-cart" size={13} color={colors.primary} />
+              <Text style={[styles.quickText, { color: colors.foreground }]}>Buat Order</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* Composer */}
         <View
           style={[
@@ -737,36 +1084,53 @@ export default function ConversationScreen() {
             },
           ]}
         >
-          {!editTarget ? (
-            <TouchableOpacity onPress={onAttach} style={styles.attachBtn}>
-              <Feather name="paperclip" size={22} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          ) : null}
-          <TextInput
-            style={[
-              styles.input,
-              { backgroundColor: colors.secondary, color: colors.foreground },
-            ]}
-            placeholder={editTarget ? "Edit pesan" : "Ketik pesan"}
-            placeholderTextColor={colors.mutedForeground}
-            value={text}
-            onChangeText={setText}
-            multiline
-          />
-          <TouchableOpacity
-            onPress={onSend}
-            disabled={!text.trim() || sending}
-            style={[
-              styles.sendBtn,
-              { backgroundColor: text.trim() && !sending ? colors.primary : colors.muted },
-            ]}
-          >
-            {sending ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Feather name={editTarget ? "check" : "send"} size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
+          {recording ? (
+            <VoiceRecorder onSend={onSendVoiceNote} onCancel={() => setRecording(false)} />
+          ) : (
+            <>
+              {!editTarget ? (
+                <TouchableOpacity onPress={() => setAttachOpen(true)} style={styles.attachBtn}>
+                  <Feather name="plus-circle" size={24} color={colors.mutedForeground} />
+                </TouchableOpacity>
+              ) : null}
+              <TextInput
+                style={[
+                  styles.input,
+                  { backgroundColor: colors.secondary, color: colors.foreground },
+                ]}
+                placeholder={editTarget ? "Edit pesan" : "Ketik pesan"}
+                placeholderTextColor={colors.mutedForeground}
+                value={text}
+                onChangeText={setText}
+                multiline
+              />
+              {!editTarget && !text.trim() ? (
+                <TouchableOpacity
+                  onPress={() => setRecording(true)}
+                  disabled={sending}
+                  style={[styles.sendBtn, { backgroundColor: colors.primary }]}
+                  accessibilityLabel="Rekam pesan suara"
+                >
+                  <Feather name="mic" size={20} color="#fff" />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={onSend}
+                  disabled={!text.trim() || sending}
+                  style={[
+                    styles.sendBtn,
+                    { backgroundColor: text.trim() && !sending ? colors.primary : colors.muted },
+                  ]}
+                >
+                  {sending ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Feather name={editTarget ? "check" : "send"} size={20} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
 
@@ -925,13 +1289,190 @@ export default function ConversationScreen() {
         </Pressable>
       </Modal>
 
+      {/* Attachment sheet (＋) */}
+      <Modal
+        visible={attachOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAttachOpen(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setAttachOpen(false)}>
+          <Pressable
+            style={[
+              styles.attachSheet,
+              { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 },
+            ]}
+          >
+            <View style={styles.attachGrid}>
+              <AttachOption icon="image" label="Galeri" color="#2F6DF0" onPress={onPickGallery} />
+              <AttachOption icon="camera" label="Kamera" color="#E0503A" onPress={onPickCamera} />
+              <AttachOption icon="file-text" label="Dokumen" color="#7C3AED" onPress={onPickDocument} />
+              <AttachOption icon="map-pin" label="Lokasi" color="#1F9D6B" onPress={onSendLocation} />
+              <AttachOption icon="user" label="Kontak" color="#E8941F" onPress={onPickContact} />
+              <AttachOption
+                icon="box"
+                label="Produk"
+                color={colors.primary}
+                onPress={() => {
+                  setAttachOpen(false);
+                  openPanel("produk");
+                }}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Overflow (⋮) menu */}
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setMenuOpen(false)}>
+          <Pressable style={[styles.menuSheet, { backgroundColor: colors.card }]}>
+            <ActionRow
+              icon="user"
+              label="Lihat Foto Profil"
+              color={colors.foreground}
+              onPress={() => {
+                setMenuOpen(false);
+                if (chat?.profilePicUrl) setPhotoOpen(true);
+                else Alert.alert("Tidak ada foto profil.");
+              }}
+            />
+            <ActionRow
+              icon="search"
+              label="Cari di Chat"
+              color={colors.foreground}
+              onPress={() => {
+                setMenuOpen(false);
+                setSearchOpen(true);
+                setSearchQuery("");
+              }}
+            />
+            <ActionRow
+              icon="star"
+              label="Pesan Berbintang"
+              color={colors.foreground}
+              onPress={() => {
+                setMenuOpen(false);
+                setStarredOpen(true);
+              }}
+            />
+            <ActionRow
+              icon="share-2"
+              label="Ekspor Chat"
+              color={colors.foreground}
+              onPress={onExportChat}
+            />
+            <ActionRow
+              icon={
+                chat?.mutedUntil && new Date(chat.mutedUntil) > new Date()
+                  ? "bell"
+                  : "bell-off"
+              }
+              label={
+                chat?.mutedUntil && new Date(chat.mutedUntil) > new Date()
+                  ? "Bunyikan"
+                  : "Bisukan"
+              }
+              color={colors.foreground}
+              onPress={onToggleMute}
+            />
+            {!chat?.phoneNumber?.endsWith("@g.us") ? (
+              <ActionRow
+                icon="slash"
+                label={chat?.isBlocked ? "Buka Blokir" : "Blokir Kontak"}
+                color={colors.destructive}
+                onPress={onToggleBlock}
+              />
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Starred messages */}
+      <Modal
+        visible={starredOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setStarredOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setStarredOpen(false)}>
+          <Pressable style={[styles.modalSheet, { backgroundColor: colors.card, maxHeight: "75%" }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              Pesan Berbintang
+            </Text>
+            {starredLoading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />
+            ) : (starred?.messages ?? []).length === 0 ? (
+              <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+                Belum ada pesan berbintang.
+              </Text>
+            ) : (
+              <FlatList
+                data={starred?.messages ?? []}
+                keyExtractor={(m) => String(m.id)}
+                renderItem={({ item }) => (
+                  <View style={[styles.starredRow, { borderBottomColor: colors.border }]}>
+                    <Feather name="star" size={14} color={colors.warning} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.starredMeta, { color: colors.mutedForeground }]}>
+                        {item.direction === "outbound"
+                          ? user?.name || "Saya"
+                          : item.senderName || chat?.contactName || "Kontak"}{" "}
+                        · {msgTime(item.createdAt)}
+                      </Text>
+                      <Text style={[styles.starredText, { color: colors.foreground }]} numberOfLines={4}>
+                        {item.content || "[media]"}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              />
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <ImageLightbox
+        uri={photoOpen ? resolveMediaUrl(chat?.profilePicUrl) : null}
+        title={chat?.nickname || chat?.contactName}
+        onClose={() => setPhotoOpen(false)}
+      />
+
       <ChatInfoPanel
         visible={infoOpen}
         onClose={() => setInfoOpen(false)}
         chatId={chatId}
         chat={chat}
+        initialTab={infoTab}
       />
     </View>
+  );
+}
+
+function AttachOption({
+  icon,
+  label,
+  color,
+  onPress,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  color: string;
+  onPress: () => void;
+}) {
+  const colors = useColors();
+  return (
+    <TouchableOpacity style={styles.attachOption} onPress={onPress}>
+      <View style={[styles.attachIcon, { backgroundColor: color + "22" }]}>
+        <Feather name={icon} size={24} color={color} />
+      </View>
+      <Text style={[styles.attachLabel, { color: colors.foreground }]}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -1125,4 +1666,78 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   fwdSubmitText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#fff" },
+  emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, textAlign: "center" },
+  searchBar: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    height: 40,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+  },
+  searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, padding: 0 },
+  quickRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+  },
+  quickChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  quickText: { fontFamily: "Inter_500Medium", fontSize: 12 },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+  attachSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  attachGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: 24,
+    rowGap: 18,
+    paddingBottom: 4,
+  },
+  attachOption: { alignItems: "center", gap: 8, width: 64 },
+  attachIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachLabel: { fontFamily: "Inter_500Medium", fontSize: 13 },
+  menuSheet: {
+    position: "absolute",
+    top: 70,
+    right: 12,
+    borderRadius: 14,
+    paddingVertical: 6,
+    minWidth: 220,
+    overflow: "hidden",
+  },
+  starredRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  starredMeta: { fontFamily: "Inter_500Medium", fontSize: 12, marginBottom: 3 },
+  starredText: { fontFamily: "Inter_400Regular", fontSize: 14 },
 });

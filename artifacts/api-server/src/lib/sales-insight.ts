@@ -139,6 +139,8 @@ export async function analyzeAndPersistChat(
     scoreReason: c.scoreReason,
     aiNotes: c.aiNotes,
     recommendation: c.recommendation,
+    lastOpenPoint: c.lastOpenPoint,
+    stalledReason: c.stalledReason,
   }));
 
   // Upsert the per-chat insight (aggregate / sidebar view).

@@ -23,6 +23,8 @@ import {
   ChevronDown,
   Circle,
   TrendingUp,
+  Power,
+  KeyRound,
 } from "lucide-react";
 
 type EngineName = "deepseek" | "gemini" | "openai" | "anthropic";
@@ -207,7 +209,12 @@ function EngineBlock({
 
   const testMut = useAdminTestPlatformAiEngine({
     mutation: {
-      onSuccess: (res: any) => setTest(res),
+      onSuccess: (res: any) => {
+        setTest(res);
+        // A passing test flips the engine to healthy server-side — refetch so
+        // the health badge updates without waiting for live traffic.
+        if (res?.ok) qc.invalidateQueries({ queryKey: getAdminGetPlatformAiQueryKey() });
+      },
       onError: (err: any) => setTest({ ok: false, message: err?.data?.error ?? "Gagal menghubungi mesin" }),
     },
   });
@@ -284,7 +291,19 @@ function EngineBlock({
           <input className={inputCls} value={model} placeholder={hint.model} onChange={(e) => setModel(e.target.value)} />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">API Key</label>
+          <div className="flex items-center justify-between gap-2 min-h-[16px]">
+            <label className="text-xs text-muted-foreground">API Key</label>
+            {hasApiKeyHint &&
+              (apiKey.trim() ? (
+                <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                  <KeyRound className="w-3 h-3" /> akan diganti
+                </span>
+              ) : (
+                <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Key tersimpan
+                </span>
+              ))}
+          </div>
           <input
             type="password"
             className={inputCls}
@@ -292,6 +311,9 @@ function EngineBlock({
             placeholder={hasApiKeyHint ? `Tersimpan: ${engine.apiKeyMask ?? "••••"} — kosongkan untuk pertahankan` : hint.keyHint}
             onChange={(e) => setApiKey(e.target.value)}
           />
+          {hasApiKeyHint && !apiKey.trim() && (
+            <p className="text-[10px] text-muted-foreground mt-1">Kosongkan untuk mempertahankan key yang tersimpan.</p>
+          )}
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Kredit / 1k token</label>
@@ -405,7 +427,6 @@ export default function MesinAi() {
     }
     updateGlobal.mutate({
       data: {
-        isActive,
         autoFailover,
         autoFailback,
         unhealthyMinutes: minutes,
@@ -414,6 +435,15 @@ export default function MesinAi() {
         bothFailedRetry,
       } as any,
     });
+  }
+
+  // Master on/off switch — persists `isActive` instantly (partial update), no
+  // need to press "Simpan konfigurasi". This is the main gate: while OFF, every
+  // tenant stays on the legacy managed AI path and the platform engines are unused.
+  function onToggleActive(next: boolean) {
+    setIsActive(next);
+    setGlobalError(null);
+    updateGlobal.mutate({ data: { isActive: next } as any });
   }
 
   // Move an engine up/down by swapping with its neighbour, then persist the order.
@@ -446,18 +476,54 @@ export default function MesinAi() {
         </div>
       ) : (
         <>
-          {/* Global config */}
-          <form onSubmit={onSaveGlobal} className="space-y-4">
-            <label className="flex items-center justify-between gap-4 border border-border rounded-md bg-card px-4 py-3">
+          {/* Master on/off switch — saves instantly on toggle. */}
+          <div
+            className={`flex items-center justify-between gap-4 border rounded-md px-4 py-4 transition-colors ${
+              isActive ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-card"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <Power className={`w-5 h-5 mt-0.5 ${isActive ? "text-emerald-400" : "text-muted-foreground"}`} />
               <div>
-                <div className="text-sm font-medium">Aktifkan mesin platform</div>
-                <div className="text-[11px] text-muted-foreground">
-                  Saat aktif, semua tenant memakai mesin ini dengan failover berprioritas.
+                <div className="text-sm font-medium flex items-center gap-2">
+                  Mesin AI Platform
+                  <span
+                    className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${
+                      isActive ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {isActive ? "AKTIF" : "NONAKTIF"}
+                  </span>
+                  {updateGlobal.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  {isActive
+                    ? "Semua tenant memakai mesin Anda dengan failover berprioritas."
+                    : "Tenant memakai jalur AI lama (managed/default) — mesin Anda belum dipakai."}
                 </div>
               </div>
-              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4" />
-            </label>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isActive}
+              aria-label="Aktifkan mesin platform"
+              disabled={updateGlobal.isPending}
+              onClick={() => onToggleActive(!isActive)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                isActive ? "bg-emerald-500" : "bg-muted-foreground/30"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  isActive ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
 
+          {/* Global config */}
+          <form onSubmit={onSaveGlobal} className="space-y-4">
             <div className="border border-border rounded-md bg-card px-4 py-3 grid grid-cols-2 gap-3">
               <label className="flex items-center justify-between gap-2 text-sm">
                 Auto-failover

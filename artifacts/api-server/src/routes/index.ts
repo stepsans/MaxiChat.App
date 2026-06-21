@@ -3,6 +3,8 @@ import healthRouter from "./health";
 import authRouter from "./auth";
 import whatsappRouter from "./whatsapp";
 import chatsRouter from "./chats";
+import leadReviewsRouter from "./lead-reviews";
+import aiMemoryRouter from "./ai-memory";
 import groupsRouter from "./groups";
 import knowledgeRouter from "./knowledge";
 import knowledgeTypesRouter from "./knowledge-types";
@@ -90,6 +92,8 @@ router.use(enforceSubscription);
 
 router.use("/whatsapp", whatsappRouter);
 router.use("/chats", chatsRouter);
+router.use("/lead-reviews", leadReviewsRouter);
+router.use("/ai-memory", aiMemoryRouter);
 router.use("/groups", groupsRouter);
 router.use("/knowledge-types", knowledgeTypesRouter);
 // knowledge-sync mounted BEFORE knowledgeRouter so explicit /sync-* paths

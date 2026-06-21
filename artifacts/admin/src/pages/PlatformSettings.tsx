@@ -354,7 +354,7 @@ export default function PlatformSettings() {
               placeholder="owner@maxichat.app"
               className={inp}
             />
-            <p className="text-xs text-muted-foreground mt-1.5">Email ini login dengan OTP tetap (161712). Pastikan diisi sebelum logout.</p>
+            <p className="text-xs text-muted-foreground mt-1.5">Email owner platform. Login memakai OTP yang dikirim via email seperti user biasa.</p>
           </div>
           <div>
             <label className={lbl}><Globe className="w-3 h-3 inline mr-1" />URL Aplikasi (Base URL)</label>

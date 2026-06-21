@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "MaxiChat Mobile",
-    "slug": "mobile",
+    "name": "MaxiChat App",
+    "slug": "maxichatapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "maxichatapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,9 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.maxichatapp.app"
     },
-    "android": {},
+    "android": {
+      "package": "com.maxichatapp.app"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -30,7 +33,31 @@
       "expo-font",
       "expo-web-browser",
       "expo-secure-store",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Izinkan MaxiChat merekam pesan suara."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Izinkan MaxiChat mengakses galeri untuk mengirim foto.",
+          "cameraPermission": "Izinkan MaxiChat menggunakan kamera untuk mengirim foto."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Izinkan MaxiChat mengirim lokasi Anda saat ini ke chat."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Izinkan MaxiChat memilih kontak untuk dibagikan ke chat."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

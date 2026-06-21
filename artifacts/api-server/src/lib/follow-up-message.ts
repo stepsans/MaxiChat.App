@@ -2,13 +2,12 @@ import { desc, eq } from "drizzle-orm";
 import {
   db,
   chatMessagesTable,
-  productsTable,
   type OpportunityRow,
 } from "@workspace/db";
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
 import { getOrCreateTenantSettings } from "./settings-store";
-import { buildProductCatalogText } from "./product-catalog";
+import { buildFollowupSystemPrompt } from "./followup-prompt";
 import { logger } from "./logger";
 
 // ===========================================================================
@@ -34,19 +33,6 @@ export interface GeneratedFollowUp {
 // How many trailing messages to feed the model as conversation context.
 const HISTORY_LIMIT = 10;
 
-// Per-touch tone guidance. The further into the sequence, the lighter the
-// touch — touch 3 explicitly offers to back off so we never come across as
-// pushy (and respects the customer's silence).
-function sequenceTone(sequence: number): string {
-  if (sequence <= 1) {
-    return "Ini follow-up PERTAMA. Singkat, ramah, ingatkan kembali pada minat/produk yang sempat dibahas, lalu tanyakan apakah masih berminat atau ada yang bisa dibantu.";
-  }
-  if (sequence === 2) {
-    return "Ini follow-up KEDUA. Tetap sopan dan ringan, tawarkan bantuan konkret (info harga/stok/pengiriman) tanpa terkesan memaksa.";
-  }
-  return "Ini follow-up KETIGA dan TERAKHIR. Sangat sopan, beri ruang: sampaikan bahwa kami tetap siap membantu kapan pun, dan persilakan menghubungi kembali bila sewaktu-waktu dibutuhkan.";
-}
-
 // Draft a follow-up message for one opportunity. `ownerUserId` is the tenant
 // owner (usage attribution + tenant-wide AI settings); `userId` is the channel
 // owner used to resolve the BYOK client (resolveAiClient resolves to the same
@@ -59,18 +45,9 @@ export async function generateFollowUpMessage(opts: {
   try {
     const ownerUserId = opportunity.ownerUserId;
 
-    // Tenant-wide brand voice / persona, reused so the follow-up sounds like
-    // the same business the customer was already talking to.
+    // Tenant-wide brand voice / persona (Lapis A), reused so the follow-up
+    // sounds like the same business the customer was already talking to.
     const tenant = await getOrCreateTenantSettings(ownerUserId);
-
-    // Live product catalog (owner-scoped, internal tier prices/stock excluded)
-    // so any product reference uses current names/prices.
-    const products = await db
-      .select()
-      .from(productsTable)
-      .where(eq(productsTable.userId, ownerUserId))
-      .orderBy(productsTable.id);
-    const productCatalog = buildProductCatalogText(products);
 
     // Recent conversation, oldest → newest, so the model can match the thread.
     const recentMessages = (
@@ -82,38 +59,28 @@ export async function generateFollowUpMessage(opts: {
         .limit(HISTORY_LIMIT)
     ).reverse();
 
-    const history = recentMessages.map((m) => ({
-      role:
-        m.direction === "outbound" ? ("assistant" as const) : ("user" as const),
-      content: m.content,
-    }));
+    const recentText = recentMessages
+      .map(
+        (m) =>
+          `${m.direction === "outbound" ? "Bisnis" : "Pelanggan"}: ${(m.content ?? "").trim() || "[pesan media]"}`
+      )
+      .join("\n");
 
-    const productInterest =
-      opportunity.productInterest.length > 0
-        ? opportunity.productInterest.join(", ")
-        : "(belum spesifik)";
-
-    const systemPrompt = `${tenant.systemPrompt}
-
---- TUGAS: FOLLOW-UP PROAKTIF ---
-Kamu menulis SATU pesan follow-up WhatsApp untuk customer yang belum membalas. JANGAN menjawab pertanyaan baru — ini inisiatif kita untuk menghidupkan kembali percakapan yang menggantung.
-${sequenceTone(sequence)}
-
-ATURAN:
-- Bahasa Indonesia, gaya percakapan WhatsApp, hangat dan personal. Sapa dengan nama jika tersedia.
-- SANGAT SINGKAT (maksimal 2–3 kalimat). Jangan bertele-tele.
-- Hanya rujuk produk/harga dari KATALOG PRODUK di bawah. Jangan mengarang harga, kode, stok, atau janji.
-- Akhiri dengan satu pertanyaan/ajakan ringan agar customer mudah membalas.
-- Jangan menyertakan tanda kurung instruksi, placeholder, atau tanda tangan. Keluarkan HANYA isi pesan siap kirim.
-
-KONTEKS DEAL:
-- Nama customer: ${opportunity.contactName?.trim() || "(tidak diketahui)"}
-- Minat produk: ${productInterest}
-- Catatan: ${opportunity.aiNotes?.trim() || "(tidak ada)"}
-
---- KATALOG PRODUK ---
-${productCatalog || "Belum ada produk di katalog."}
---- END KATALOG PRODUK ---`;
+    // 3-lapis (lib/followup-prompt.ts): persona (Lapis A) + follow-up task with
+    // conversation anchor (Lapis B) + locked guardrails (Lapis C). Identical
+    // assembly to the ai-pipeline follow-up generator so the two never diverge.
+    const systemPrompt = buildFollowupSystemPrompt(tenant.systemPrompt, {
+      followupNumber: sequence,
+      lastOpenPoint: opportunity.lastOpenPoint,
+      stalledReason: opportunity.stalledReason,
+      productInterest:
+        opportunity.productInterest.length > 0
+          ? opportunity.productInterest.join(", ")
+          : null,
+      aiNotes: opportunity.aiNotes,
+      contactName: opportunity.contactName,
+      recentMessages: recentText,
+    });
 
     const { client, model, provider, ownerUserId: resolvedOwner } =
       await resolveAiClient(ownerUserId);
@@ -122,11 +89,10 @@ ${productCatalog || "Belum ada produk di katalog."}
       model,
       messages: [
         { role: "system", content: systemPrompt },
-        ...history,
         {
           role: "user",
           content:
-            "Tulis pesan follow-up sekarang sesuai aturan di atas. Keluarkan hanya isi pesannya.",
+            "Tulis pesan follow-up sekarang sesuai instruksi di atas. Keluarkan hanya isi pesannya.",
         },
       ],
       max_tokens: 400,

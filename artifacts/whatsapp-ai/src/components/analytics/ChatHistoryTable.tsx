@@ -1,11 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import {
   useGetAnalyticsChatHistory,
   getGetAnalyticsChatHistoryQueryKey,
   getAnalyticsChatHistory,
-  useListChannels,
-  getListChannelsQueryKey,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,30 +31,32 @@ const HANDLED_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
 };
 const STATUS_LABEL: Record<string, string> = { done: "Selesai", in_progress: "Dalam proses", unreplied: "Belum dibalas" };
 
-export function ChatHistoryTable({ period, from, to }: { period: PeriodKey; from?: string; to?: string }) {
+export function ChatHistoryTable({ period, from, to, channel }: { period: PeriodKey; from?: string; to?: string; channel?: number }) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   // Seed filters from the URL once (a KPI-card click deep-links here, e.g.
-  // ?tab=history&hStatus=unreplied). Read at mount only.
+  // ?tab=history&hStatus=unreplied). Read at mount only. The channel scope is
+  // owned by the page header (ChannelFilter), not this table.
   const initial = new URLSearchParams(useSearch());
   const [searchInput, setSearchInput] = useState(initial.get("hSearch") ?? "");
   const [search, setSearch] = useState(initial.get("hSearch") ?? "");
-  const [channel, setChannel] = useState(initial.get("hChannel") ?? "all");
   const [handledBy, setHandledBy] = useState(initial.get("hHandled") ?? "all");
   const [status, setStatus] = useState(initial.get("hStatus") ?? "all");
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
   const limit = 50;
 
-  const { data: channels } = useListChannels({
-    query: { queryKey: getListChannelsQueryKey() },
-  });
+  // The channel scope lives in the page header; reset paging when it changes so
+  // we never land on an out-of-range page for a narrower result set.
+  useEffect(() => {
+    setPage(1);
+  }, [channel]);
 
   const params = {
     period,
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
-    ...(channel !== "all" ? { channel } : {}),
+    ...(channel != null ? { channel: String(channel) } : {}),
     ...(handledBy !== "all" ? { handledBy: handledBy as "ai" | "agent" | "escalated" } : {}),
     ...(status !== "all" ? { status: status as "done" | "in_progress" | "unreplied" } : {}),
     ...(search ? { search } : {}),
@@ -137,19 +137,6 @@ export function ChatHistoryTable({ period, from, to }: { period: PeriodKey; from
             className="pl-8"
           />
         </div>
-        <Select value={channel} onValueChange={(v) => resetPageThen(() => setChannel(v))}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Channel" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua channel</SelectItem>
-            {(channels ?? []).map((c) => (
-              <SelectItem key={c.id} value={String(c.id)}>
-                {c.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select value={handledBy} onValueChange={(v) => resetPageThen(() => setHandledBy(v))}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Ditangani" />
@@ -208,7 +195,7 @@ export function ChatHistoryTable({ period, from, to }: { period: PeriodKey; from
                 <TableRow>
                   <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
                     Tidak ada chat yang cocok.
-                    {(search || channel !== "all" || handledBy !== "all" || status !== "all") && (
+                    {(search || handledBy !== "all" || status !== "all") && (
                       <Button
                         variant="link"
                         size="sm"
@@ -216,7 +203,6 @@ export function ChatHistoryTable({ period, from, to }: { period: PeriodKey; from
                           resetPageThen(() => {
                             setSearch("");
                             setSearchInput("");
-                            setChannel("all");
                             setHandledBy("all");
                             setStatus("all");
                           })

@@ -10,6 +10,7 @@ import {
   platformSettingsTable,
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
+import { revokeAllTrustedDevices } from "../lib/trusted-device";
 import { invalidateEmailCache } from "../lib/email";
 import { computeBillingPeriod } from "../lib/billing-period";
 import {
@@ -205,6 +206,12 @@ router.patch("/users/:id", async (req, res): Promise<void> => {
       return;
     }
     const { updated, ownerPhone } = result;
+    // Disabling an account revokes its trusted devices, so re-enabling forces
+    // a fresh OTP login.
+    if (updated.status === "disabled") {
+      try { await revokeAllTrustedDevices(updated.id); }
+      catch (err) { req.log.error({ err }, "Failed to revoke trusted devices on disable"); }
+    }
     res.json({
       id: updated.id,
       email: updated.email,

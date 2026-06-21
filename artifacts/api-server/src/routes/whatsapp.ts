@@ -43,6 +43,7 @@ import { saveTenantMedia } from "../lib/tenant-storage";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { isOwnerReadOnly } from "../lib/billing";
 import { buildProductCatalogText } from "../lib/product-catalog";
+import { AI_HARD_GUARDRAILS } from "../lib/ai-guardrails";
 import { enqueueChatDetection } from "../lib/sales-detection";
 import {
   resolveActiveChannel,
@@ -114,6 +115,88 @@ interface ChannelCtx {
 const MAX_RECONNECT_RETRIES = 10;
 
 const channelCtxs = new Map<number, ChannelCtx>();
+
+// ───────────────────────────────────────────────────────────────────────────
+// Live presence (online / typing / last-seen)
+//
+// Baileys only emits presence.update for a jid AFTER we presenceSubscribe to it,
+// and only while the socket is open. We keep the latest presence per
+// (channel, jid) in memory and let the chat detail endpoint subscribe on open +
+// read it on the next poll. Best-effort and transient — never persisted.
+// ───────────────────────────────────────────────────────────────────────────
+
+export type ChatPresenceStatus =
+  | "available"
+  | "unavailable"
+  | "composing"
+  | "recording";
+
+type StoredPresence = {
+  status: ChatPresenceStatus;
+  lastSeen: number | null;
+  at: number;
+};
+
+const presenceStore = new Map<string, StoredPresence>();
+const presenceKey = (channelId: number, jid: string) => `${channelId}:${jid}`;
+
+// "online"/typing states go stale fast — if we haven't heard an update in 45s
+// treat the contact as offline so a sticky "online" doesn't linger forever.
+const PRESENCE_FRESH_MS = 45_000;
+
+export function getChatPresence(
+  channelId: number,
+  jid: string,
+): { status: ChatPresenceStatus; lastSeen: number | null } | null {
+  const p = presenceStore.get(presenceKey(channelId, jid));
+  if (!p) return null;
+  if (p.status !== "unavailable" && Date.now() - p.at > PRESENCE_FRESH_MS) {
+    return { status: "unavailable", lastSeen: p.lastSeen };
+  }
+  return { status: p.status, lastSeen: p.lastSeen };
+}
+
+export async function subscribeChatPresence(
+  channelId: number,
+  jid: string,
+): Promise<void> {
+  const sock = getSockForChannel(channelId);
+  if (!sock) return;
+  try {
+    await sock.presenceSubscribe(jid);
+  } catch {
+    // best-effort; socket may have dropped between check and call
+  }
+}
+
+// Fold a raw Baileys presence.update payload into the per-channel store.
+function recordPresenceUpdate(
+  channelId: number,
+  id: string,
+  presences: Record<string, { lastKnownPresence?: string; lastSeen?: number }> | undefined,
+): void {
+  if (!presences) return;
+  // For a DM the participant key is the contact's own jid; fall back to the
+  // first entry for safety.
+  const entry = presences[id] ?? Object.values(presences)[0];
+  if (!entry) return;
+  const lk = entry.lastKnownPresence;
+  const status: ChatPresenceStatus =
+    lk === "composing"
+      ? "composing"
+      : lk === "recording"
+        ? "recording"
+        : lk === "available"
+          ? "available"
+          : "unavailable";
+  const prev = presenceStore.get(presenceKey(channelId, id));
+  presenceStore.set(presenceKey(channelId, id), {
+    status,
+    lastSeen:
+      typeof entry.lastSeen === "number" ? entry.lastSeen : prev?.lastSeen ?? null,
+    at: Date.now(),
+  });
+}
 
 function getCtxByChannel(channelId: number, userId: number): ChannelCtx {
   let c = channelCtxs.get(channelId);
@@ -258,6 +341,7 @@ export async function disconnectChannelRuntime(
       ctx.sock.ev.removeAllListeners("connection.update");
       ctx.sock.ev.removeAllListeners("contacts.upsert");
       ctx.sock.ev.removeAllListeners("contacts.update");
+      ctx.sock.ev.removeAllListeners("presence.update");
       ctx.sock.ev.removeAllListeners("chats.upsert");
       ctx.sock.ev.removeAllListeners("chats.update");
     } catch {}
@@ -549,6 +633,7 @@ export async function sendMediaToJid(
   caption?: string,
   filename?: string,
   channelId?: number,
+  ptt?: boolean,
 ): Promise<string | null> {
   // Send from the chat's OWN channel when a channelId is supplied, so a
   // multi-channel tenant doesn't leak a media message out of the primary
@@ -578,7 +663,7 @@ export async function sendMediaToJid(
     sent = await sock.sendMessage(jid, {
       audio: buffer,
       mimetype: mimeType,
-      ptt: false,
+      ptt: ptt ?? false,
     });
   } else {
     sent = await sock.sendMessage(jid, {
@@ -995,6 +1080,35 @@ export async function sendContactToJid(
   return sent?.key?.id ?? null;
 }
 
+// Send a geo-location pin to a chat over its OWN channel (mirrors
+// sendContactToJid). Returns the WhatsApp message id, or throws if the
+// channel socket isn't connected.
+export async function sendLocationToJid(
+  userId: number,
+  jid: string,
+  latitude: number,
+  longitude: number,
+  name: string | undefined,
+  address: string | undefined,
+  channelId?: number,
+): Promise<string | null> {
+  const sock =
+    channelId != null
+      ? getSockForChannel(channelId)
+      : ((await getPrimaryCtxForUser(await resolveOwnerUserId(userId)))?.sock ??
+        null);
+  if (!sock) throw new Error("WhatsApp is not connected");
+  const sent = await sock.sendMessage(jid, {
+    location: {
+      degreesLatitude: latitude,
+      degreesLongitude: longitude,
+      ...(name ? { name } : {}),
+      ...(address ? { address } : {}),
+    },
+  });
+  return sent?.key?.id ?? null;
+}
+
 // Extracts pin/archive metadata from a Baileys chat object.
 function extractChatListMeta(c: Record<string, unknown>): {
   pinnedAt?: Date | null;
@@ -1301,6 +1415,11 @@ export async function generateAiReply(
         m.direction === "outbound" ? stripTrailingTag(m.content) : m.content,
     }));
 
+    // 3-lapis (lihat lib/ai-guardrails.ts): LAPIS A persona (tenant.systemPrompt)
+    // → LAPIS B konteks tugas (instruksi node Flow + panduan katalog auto-reply +
+    // data katalog/KB) → LAPIS C guardrail terkunci (AI_HARD_GUARDRAILS), SELALU
+    // paling akhir agar aturan keras selalu menang. Persona di sini berasal dari
+    // sumber yang sama (AI Studio) dengan Flow AI dan follow-up.
     const extraInstruction = (aiInstructionOverride ?? "").trim();
     const systemPrompt = `${tenant.systemPrompt}${
       extraInstruction
@@ -1312,12 +1431,9 @@ ${extraInstruction}
         : ""
     }
 
-ATURAN MUTLAK:
-- HANYA gunakan informasi dari KATALOG PRODUK dan KNOWLEDGE BASE di bawah sebagai sumber kebenaran tentang produk, kategori, harga, dan layanan toko.
-- KATALOG PRODUK adalah daftar harga resmi terkini. Saat customer menyebut nama atau kode produk (sebagian pun), cari di KATALOG PRODUK lalu jawab harga sesuai data tersebut. Jangan mengarang harga atau kode.
+PANDUAN KATALOG (auto-reply):
 - Saat customer menanyakan produk dalam suatu kategori, tampilkan SEMUA produk yang relevan di kategori itu beserta harganya — JANGAN membatasi hanya beberapa item. Jika jumlahnya sangat banyak (lebih dari 20), sebutkan dulu total jumlah produk, tampilkan sebagian, lalu tawarkan untuk mengirim daftar lengkap atau bantu menyaring berdasarkan kebutuhan/budget.
 - Jika riwayat percakapan menyebut produk, kategori bisnis, atau bidang usaha yang TIDAK ADA di katalog/knowledge base saat ini, abaikan sepenuhnya dan jangan ulang. Data bisa berubah — anggap riwayat lama yang tidak konsisten dengan data saat ini sudah tidak berlaku.
-- Jika pertanyaan customer berada di luar katalog dan knowledge base, jawab dengan sopan bahwa admin akan membantu. Jangan menebak atau mengarang.
 
 --- KATALOG PRODUK ---
 ${productCatalog || "Belum ada produk di katalog."}
@@ -1325,7 +1441,9 @@ ${productCatalog || "Belum ada produk di katalog."}
 
 --- KNOWLEDGE BASE ---
 ${knowledgeContext || "Tidak ada knowledge base yang tersedia."}
---- END KNOWLEDGE BASE ---`;
+--- END KNOWLEDGE BASE ---
+
+${AI_HARD_GUARDRAILS}`;
 
     // Resolve the tenant's AI client + model. Defaults to the managed Replit
     // integration (gpt-4o-mini) when the tenant hasn't opted into BYOK.
@@ -3438,6 +3556,17 @@ async function startBaileys(userId: number, channelId: number) {
               ),
             );
           }
+          // Notify the AI Pipeline of this inbound reply. An active pipeline
+          // entry for this contact pauses follow-ups, and an explicit opt-out
+          // ("stop", "jangan", …) hard-stops it. Fire-and-forget.
+          void import("../lib/ai-pipeline-followup").then(
+            ({ handleInboundMessageStopSignal }) =>
+              handleInboundMessageStopSignal(
+                chat.phoneNumber,
+                channelId,
+                parsed.messageContent,
+              ).catch(() => {}),
+          );
           // Auto-reply is the only place where a stale epoch genuinely
           // matters (we shouldn't reply on behalf of a disconnected
           // socket). Persistence above is safe even after a reconnect.
@@ -3710,6 +3839,17 @@ async function startBaileys(userId: number, channelId: number) {
     };
     sock.ev.on("contacts.upsert", handleContacts);
     sock.ev.on("contacts.update", handleContacts);
+
+    // Live presence for chats the operator currently has open (subscribed via
+    // the chat detail endpoint). Transient + best-effort; never persisted.
+    sock.ev.on("presence.update", ({ id, presences }) => {
+      if (myEpoch !== ctx.epoch) return;
+      try {
+        recordPresenceUpdate(channelId, id, presences as any);
+      } catch {
+        // ignore malformed payloads
+      }
+    });
 
     const handleChatMeta = async (
       updates: Array<{ id?: string } & Record<string, unknown>>,
@@ -4166,6 +4306,7 @@ router.post("/disconnect", async (req, res): Promise<void> => {
         ctx.sock.ev.removeAllListeners("connection.update");
         ctx.sock.ev.removeAllListeners("contacts.upsert");
         ctx.sock.ev.removeAllListeners("contacts.update");
+        ctx.sock.ev.removeAllListeners("presence.update");
         ctx.sock.ev.removeAllListeners("chats.upsert");
         ctx.sock.ev.removeAllListeners("chats.update");
       } catch {}

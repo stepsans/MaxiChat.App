@@ -3,6 +3,7 @@ import {
   db,
   aiPipelineEntriesTable,
   aiPipelineFollowupLogsTable,
+  aiPipelineAnalysesTable,
   aiPipelinesTable,
   chatMessagesTable,
   chatsTable,
@@ -10,6 +11,8 @@ import {
 } from "@workspace/db";
 import { resolveAiClient } from "./ai-provider";
 import { recordAiUsage } from "./ai-usage";
+import { getOrCreateTenantSettings } from "./settings-store";
+import { buildFollowupSystemPrompt } from "./followup-prompt";
 
 // ─── Schedule follow-up for a newly entered pipeline entry ────────────────────
 
@@ -165,7 +168,7 @@ async function sendFollowup(entryId: number): Promise<void> {
 
 // ─── AI follow-up generation ───────────────────────────────────────────────────
 
-async function generateFollowupMessage(
+export async function generateFollowupMessage(
   entry: typeof aiPipelineEntriesTable.$inferSelect,
   pipeline: typeof aiPipelinesTable.$inferSelect
 ): Promise<string | null> {
@@ -198,26 +201,38 @@ async function generateFollowupMessage(
         .join("\n");
     }
 
-    const prompt = `Kamu adalah agen penjualan yang ramah dan profesional. Tulis pesan follow-up WhatsApp untuk prospek ini.
+    // The conversation anchor (lastOpenPoint/stalledReason) + analysis notes live
+    // on the analysis row this entry was created from — fetched here so the
+    // follow-up can reference the specific thing the customer left hanging.
+    const analysis = await db.query.aiPipelineAnalysesTable.findFirst({
+      where: eq(aiPipelineAnalysesTable.id, entry.analysisId),
+    });
 
-Nama kontak: ${entry.contactName ?? "Pelanggan"}
-Produk diminati: ${entry.productInterest ?? "tidak diketahui"}
-Follow-up ke-${entry.followupCount + 1} dari 3
+    // 3-lapis (lib/followup-prompt.ts): persona (Lapis A) + follow-up task with
+    // conversation anchor (Lapis B) + locked guardrails (Lapis C). Identical
+    // assembly to the sales-assistant follow-up generator so the two never diverge.
+    const tenant = await getOrCreateTenantSettings(pipeline.ownerUserId);
+    const followupNumber = entry.followupCount + 1;
 
-${recentContext ? `Konteks percakapan terakhir:\n${recentContext}\n` : ""}
-
-Tulis pesan follow-up yang:
-- Singkat (2-4 kalimat)
-- Natural dan ramah, tidak terlalu formal
-- Relevan dengan konteks percakapan
-- Tidak memaksa
-- Dalam bahasa Indonesia
-
-Balas HANYA dengan teks pesan follow-up (tanpa penjelasan tambahan).`;
+    const systemPrompt = buildFollowupSystemPrompt(tenant.systemPrompt, {
+      followupNumber,
+      lastOpenPoint: analysis?.lastOpenPoint,
+      stalledReason: analysis?.stalledReason,
+      productInterest: entry.productInterest,
+      aiNotes: analysis?.aiNotes,
+      contactName: entry.contactName,
+      recentMessages: recentContext,
+    });
 
     const completion = await (client.chat.completions.create as Function)({
       model,
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: "Tulis pesan follow-up sekarang sesuai instruksi di atas. Keluarkan hanya isi pesannya.",
+        },
+      ],
       max_tokens: 300,
       temperature: 0.7,
     }) as { choices: Array<{ message: { content: string } }>; usage?: Record<string, number> };

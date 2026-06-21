@@ -41,3 +41,5 @@ export * from "./workboard";
 export * from "./acr";
 export * from "./report-schedules";
 export * from "./platform-ai";
+export * from "./trusted-device";
+export * from "./lead-learning";

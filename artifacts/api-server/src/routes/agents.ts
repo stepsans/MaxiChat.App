@@ -6,6 +6,7 @@ import { z } from "zod/v4";
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { db, usersTable, plansTable } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
+import { revokeAllTrustedDevices } from "../lib/trusted-device";
 import { refreshChecklist } from "../lib/onboarding";
 import { touchHeartbeat } from "../lib/round-robin";
 import { isInfinityOwner } from "../lib/infinity-owner";
@@ -370,9 +371,36 @@ router.patch("/:id", async (req, res): Promise<void> => {
       .set(patch)
       .where(eq(usersTable.id, targetId))
       .returning();
+    // Disabling a team member revokes their trusted devices (re-enable → OTP).
+    if (updated.status === "disabled") {
+      try { await revokeAllTrustedDevices(updated.id); }
+      catch (err) { req.log.error({ err }, "Failed to revoke trusted devices on disable"); }
+    }
     res.json(serialize(updated));
   } catch (err) {
     req.log.error({ err }, "Update agent failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /agents/:id/revoke-devices — owner forces a team member to re-OTP by
+// revoking all their trusted devices. Scoped to the owner's own members.
+router.post("/:id/revoke-devices", async (req, res): Promise<void> => {
+  const userId = getSessionUserId(req)!;
+  try {
+    const owner = await resolveOwner(userId);
+    if (!owner || owner.teamRole !== "super_admin") {
+      res.status(403).json({ error: "Hanya super admin yang dapat melakukan ini" }); return;
+    }
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId <= 0) { res.status(400).json({ error: "Id tidak valid" }); return; }
+    const [member] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, targetId), eq(usersTable.parentUserId, owner.ownerId))).limit(1);
+    if (!member) { res.status(404).json({ error: "Anggota tim tidak ditemukan." }); return; }
+    await revokeAllTrustedDevices(targetId);
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "POST /agents/:id/revoke-devices failed");
     res.status(500).json({ error: "Internal server error" });
   }
 });

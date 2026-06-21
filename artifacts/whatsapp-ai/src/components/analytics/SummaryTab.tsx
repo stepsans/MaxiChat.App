@@ -7,9 +7,9 @@ import { ChannelDistributionChart } from "./ChannelDistributionChart";
 import { SatisfactionBars } from "./SatisfactionBars";
 import { formatDurationSeconds, type PeriodKey } from "./format";
 
-export function SummaryTab({ period, from, to }: { period: PeriodKey; from?: string; to?: string }) {
+export function SummaryTab({ period, from, to, channel }: { period: PeriodKey; from?: string; to?: string; channel?: number }) {
   const [, navigate] = useLocation();
-  const params = { period, ...(from ? { from } : {}), ...(to ? { to } : {}) };
+  const params = { period, ...(from ? { from } : {}), ...(to ? { to } : {}), ...(channel != null ? { channel } : {}) };
   const { data, isLoading } = useGetAnalyticsV2Summary(params, {
     query: { queryKey: getGetAnalyticsV2SummaryQueryKey(params) },
   });

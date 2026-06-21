@@ -8,6 +8,8 @@ export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
+export type UnauthorizedHandler = () => void;
+
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
@@ -18,6 +20,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
 let _channelIdGetter: ChannelIdGetter | null = null;
+let _unauthorizedHandler: UnauthorizedHandler | null = null;
 
 export type ChannelIdGetter = () =>
   | Promise<string | number | null>
@@ -64,6 +67,19 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Register a handler invoked whenever a request comes back `401 Unauthorized`.
+ * Lets a token-based client (Expo) react to an expired/revoked session in the
+ * middle of a session — e.g. clear the stored token and route back to login —
+ * instead of only discovering it on the next launch.
+ *
+ * NOTE: For web/cookie apps this is normally left unset; the AuthGate's
+ * `/auth/me` polling already handles logout there. Pass `null` to clear.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  _unauthorizedHandler = handler;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -401,6 +417,16 @@ export async function customFetch<T = unknown>(
   });
 
   if (!response.ok) {
+    // Surface an expired/revoked session to a registered handler (Expo) so it
+    // can clear the token and route to login mid-session. Fire-and-forget;
+    // never let a handler error mask the real API error below.
+    if (response.status === 401 && _unauthorizedHandler) {
+      try {
+        _unauthorizedHandler();
+      } catch {
+        /* ignore */
+      }
+    }
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);
   }

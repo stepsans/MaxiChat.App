@@ -42,8 +42,9 @@ export const LoginResponse = zod.object({
 
 export const MobileLoginBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(1),
-  "deviceLabel": zod.string().nullish().describe('Optional human label for the device (e.g. \'iPhone 15\').')
+  "otp": zod.string().min(1).describe('One-time code emailed to the user via POST \/auth\/otp\/request (purpose=login).'),
+  "deviceLabel": zod.string().nullish().describe('Optional human label for the device (e.g. \'iPhone 15\').'),
+  "rememberDevice": zod.boolean().optional().describe('When not false (default true), issue a 30-day trusted-device token returned as `trustedDeviceToken` so the next login can skip OTP.')
 })
 
 export const MobileLoginResponse = zod.object({
@@ -60,7 +61,135 @@ export const MobileLoginResponse = zod.object({
   "profilePhotoUrl": zod.string().nullish(),
   "companyName": zod.string().nullish(),
   "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
+}),
+  "trustedDeviceToken": zod.string().nullish().describe('30-day trusted-device token (present when rememberDevice was not false). Store in SecureStore and replay as `X-Trusted-Device` on the next POST \/auth\/otp\/request to skip OTP.')
 })
+
+
+/**
+ * @summary Request a login OTP by email, or fast-path login via a trusted device
+ */
+export const LoginRequestOtpBody = zod.object({
+  "email": zod.string().email()
+})
+
+export const LoginRequestOtpResponse = zod.object({
+  "trusted": zod.boolean().describe('True when a valid trusted device let the user skip OTP and sign in immediately. When true, `user` (and `token` for mobile) is present. When false, an OTP was sent and `expiresAt` is present.'),
+  "ok": zod.boolean().optional(),
+  "expiresAt": zod.coerce.date().nullish(),
+  "user": zod.union([zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "name": zod.string().nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
+  "parentUserId": zod.number().nullish(),
+  "profilePhotoUrl": zod.string().nullish(),
+  "companyName": zod.string().nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
+}),zod.null()]).optional(),
+  "token": zod.string().nullish().describe('Mobile bearer token, present only on a mobile trusted-device fast-path.'),
+  "trustedDeviceToken": zod.string().nullish().describe('Rotated mobile trusted-device token on a fast-path login.')
+})
+
+
+/**
+ * @summary Verify a login OTP and start a web session
+ */
+
+
+
+export const LoginVerifyOtpBody = zod.object({
+  "email": zod.string().email(),
+  "otp": zod.string().min(1),
+  "rememberDevice": zod.boolean().optional().describe('When not false (default true), set a 30-day trusted-device cookie (mc_td) so the next login on this browser skips OTP.')
+})
+
+export const LoginVerifyOtpResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.string().email(),
+  "role": zod.enum(['user', 'admin']),
+  "status": zod.enum(['pending', 'active', 'disabled']),
+  "teamRole": zod.enum(['super_admin', 'supervisor', 'agent']),
+  "name": zod.string().nullish(),
+  "plan": zod.union([zod.literal('basic'),zod.literal('pro'),zod.literal('business'),zod.literal('enterprise'),zod.literal(null)]).nullish(),
+  "parentUserId": zod.number().nullish(),
+  "profilePhotoUrl": zod.string().nullish(),
+  "companyName": zod.string().nullish(),
+  "hasAiSalesAssistant": zod.boolean().optional().describe('Whether the tenant\'s plan includes the Enterprise AI Sales Assistant (entitlement resolved against the owner). Gates the conversation AI Sales Insight sidebar.')
+})
+
+
+/**
+ * @summary Resend the login OTP
+ */
+export const LoginResendOtpBody = zod.object({
+  "email": zod.string().email()
+})
+
+export const LoginResendOtpResponse = zod.object({
+  "ok": zod.boolean(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List the current user's active trusted devices
+ */
+export const ListTrustedDevicesResponse = zod.object({
+  "devices": zod.array(zod.object({
+  "id": zod.number(),
+  "label": zod.string().nullish(),
+  "lastUsedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "expiresAt": zod.coerce.date().optional()
+}))
+})
+
+
+/**
+ * @summary Revoke one of the current user's trusted devices
+ */
+export const RevokeTrustedDeviceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RevokeTrustedDeviceResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Save the first-run AI-feeding profile and (re)compose the system prompt
+ */
+export const updateAiProfileBodyAiToneDefault = `profesional`;
+
+export const UpdateAiProfileBody = zod.object({
+  "businessDescription": zod.string().nullish(),
+  "aiTone": zod.enum(['formal', 'santai', 'profesional']).default(updateAiProfileBodyAiToneDefault),
+  "operatingHours": zod.string().nullish()
+})
+
+export const UpdateAiProfileResponse = zod.object({
+  "ok": zod.boolean(),
+  "systemPrompt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Run the tenant's AI on a test message without sending to WhatsApp
+ */
+
+
+
+export const RunAiSandboxBody = zod.object({
+  "message": zod.string().min(1)
+})
+
+export const RunAiSandboxResponse = zod.object({
+  "reply": zod.string()
 })
 
 
@@ -128,9 +257,6 @@ export const DeleteMeResponse = zod.object({
 /**
  * @summary Self-register a new account (email verification required before sign-in)
  */
-export const signupBodyPasswordMin = 8;
-export const signupBodyPasswordMax = 200;
-
 export const signupBodyNameMax = 120;
 
 export const signupBodyCompanyNameMax = 120;
@@ -141,7 +267,6 @@ export const signupBodyMobilePhoneMax = 20;
 
 export const SignupBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(signupBodyPasswordMin).max(signupBodyPasswordMax),
   "name": zod.string().min(1).max(signupBodyNameMax),
   "companyName": zod.string().max(signupBodyCompanyNameMax).nullish(),
   "mobilePhone": zod.string().max(signupBodyMobilePhoneMax).nullish()
@@ -1591,6 +1716,8 @@ export const ListChatsResponseItem = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
 })
@@ -1625,11 +1752,127 @@ export const BulkUpdateChatsBody = zod.object({
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification to apply to all selected chats.'),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']).optional().describe('Auto-routing tag to apply to all selected chats.'),
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']).optional(),
-  "addLabelId": zod.number().optional().describe('Id of a customer label to attach to every selected chat\'s contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.')
+  "addLabelId": zod.number().optional().describe('Id of a customer label to attach to every selected chat\'s contact, on top of existing labels. Labels are contact-level, so the label follows the phone number across channels. Ids not owned by the caller are rejected.'),
+  "leadStatusReason": zod.string().nullish().describe('Short rationale applied to every leadStatus change in this bulk action; recorded as a learning signal for the AI Pipeline.')
 })
 
 export const BulkUpdateChatsResponse = zod.object({
   "updated": zod.number().describe('Number of chats actually updated (in-scope rows only).')
+})
+
+
+/**
+ * Returns the open "Review Lead" queue — questions raised when the AI Pipeline was uncertain (borderline score / unclear role) or its verdict conflicted with a manual label. Answering them teaches the AI.
+
+ * @summary List pending lead clarification requests for the tenant
+ */
+export const ListLeadReviewsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "chatId": zod.number().nullish(),
+  "channelId": zod.number().nullish(),
+  "trigger": zod.enum(['uncertain', 'conflict']).describe('Why the AI asked — borderline\/unclear (uncertain) or it contradicted a manual label (conflict).'),
+  "question": zod.string(),
+  "aiSuggestedStatus": zod.union([zod.literal('lead'),zod.literal('not_lead'),zod.literal(null)]).nullish().describe('The AI\'s best guess so the tenant can confirm in one tap.'),
+  "aiScore": zod.number().nullish(),
+  "aiConversationRole": zod.string().nullish(),
+  "contextSummary": zod.string().nullish(),
+  "status": zod.enum(['pending', 'answered', 'dismissed']),
+  "createdAt": zod.coerce.date()
+})),
+  "pendingCount": zod.number().describe('Total pending requests (drives the nav badge).')
+})
+
+
+/**
+ * Records the tenant's final decision: sets the contact's manual lead status, stores the answer as a learning signal, and closes the request.
+
+ * @summary Answer a lead clarification request
+ */
+export const AnswerLeadReviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AnswerLeadReviewBody = zod.object({
+  "leadStatus": zod.enum(['lead', 'not_lead']).describe('The tenant\'s final decision; written as the contact\'s manual lead status.'),
+  "reason": zod.string().nullish().describe('Short rationale; recorded as a learning signal.'),
+  "reasonCode": zod.string().nullish().describe('Optional coarse category for the decision.')
+})
+
+export const AnswerLeadReviewResponse = zod.object({
+  "ok": zod.boolean(),
+  "pendingCount": zod.number().optional().describe('Remaining pending requests after this action.')
+})
+
+
+/**
+ * @summary Dismiss a lead clarification request without deciding
+ */
+export const DismissLeadReviewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DismissLeadReviewResponse = zod.object({
+  "ok": zod.boolean(),
+  "pendingCount": zod.number().optional().describe('Remaining pending requests after this action.')
+})
+
+
+/**
+ * @summary Get the tenant's teach-the-AI chat history
+ */
+export const GetAiMemoryChatResponse = zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.number(),
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Two-way chat where the tenant teaches the AI how to handle their business. The AI replies and, when the message contains a durable instruction/preference/fact, saves it as a per-tenant memory that feeds the AI Pipeline analysis.
+
+ * @summary Send a teaching message; the AI replies and may save a memory
+ */
+export const sendAiMemoryChatBodyMessageMax = 2000;
+
+
+
+export const SendAiMemoryChatBody = zod.object({
+  "message": zod.string().min(1).max(sendAiMemoryChatBodyMessageMax)
+})
+
+export const SendAiMemoryChatResponse = zod.object({
+  "reply": zod.string(),
+  "memory": zod.string().nullish().describe('The durable instruction saved this turn, or null if nothing was saved.')
+})
+
+
+/**
+ * @summary List the tenant's saved AI memories
+ */
+export const ListAiMemoriesResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Forget a saved AI memory
+ */
+export const DeleteAiMemoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAiMemoryResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 
@@ -1744,6 +1987,12 @@ export const GetChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
+  "presence": zod.object({
+  "status": zod.enum(['available', 'unavailable', 'composing', 'recording']).optional(),
+  "lastSeen": zod.number().nullish().describe('Unix epoch seconds of the contact\'s last-seen, when shared.')
+}).nullish().describe('Best-effort live presence from WhatsApp, populated after the chat is opened (the server subscribes on first fetch and reads it on the next poll). Null when unknown \/ not yet received.\n'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable(),
   "messages": zod.array(zod.object({
@@ -1789,7 +2038,9 @@ export const UpdateChatBody = zod.object({
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag.'),
   "nickname": zod.string().nullish().describe('Editable display name for the contact (overrides contactName in the header).'),
   "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
-  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.')
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
+  "leadStatusReason": zod.string().nullish().describe('Short rationale for a manual leadStatus change; recorded as a training signal so the AI Pipeline learns this tenant\'s lead\/not-lead definition.'),
+  "leadStatusReasonCode": zod.string().nullish().describe('Optional coarse category for the leadStatus change (e.g. wrong_role, just_asking, serious_buyer).')
 })
 
 export const UpdateChatResponse = zod.object({
@@ -1817,6 +2068,8 @@ export const UpdateChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
 })
@@ -2048,6 +2301,8 @@ export const AssignChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
 })
@@ -2089,8 +2344,178 @@ export const TakeoverChatResponse = zod.object({
   "isLid": zod.boolean(),
   "unreadCount": zod.number(),
   "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
   "createdAt": zod.string(),
   "assignedUserId": zod.number().nullable()
+})
+
+
+/**
+ * @summary Mute or unmute a chat's notifications until a timestamp
+ */
+export const MuteChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const MuteChatBody = zod.object({
+  "mutedUntil": zod.coerce.date().nullable().describe('ISO timestamp until which the chat is muted; null to unmute.')
+})
+
+export const MuteChatResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
+  "phoneNumber": zod.string(),
+  "contactName": zod.string(),
+  "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
+  "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
+  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "isHumanTakeover": zod.boolean(),
+  "lastMessage": zod.string().nullable(),
+  "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
+  "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
+})
+
+
+/**
+ * @summary Block or unblock the chat's contact on WhatsApp
+ */
+export const BlockChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const BlockChatBody = zod.object({
+  "blocked": zod.boolean().describe('True to block the contact on WhatsApp, false to unblock.')
+})
+
+export const BlockChatResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number().nullable().describe('Owning channel id. Nullable only during the channel-id backfill transition; new chats always have one. Use this to render the channel badge in the \'All channels\' aggregate view.'),
+  "phoneNumber": zod.string(),
+  "contactName": zod.string(),
+  "nickname": zod.string().nullable(),
+  "company": zod.string().nullish().describe('Free-text company\/organisation the contact belongs to.'),
+  "customerCode": zod.string().nullish().describe('Customer code (kode customer), entered manually in the chat Info tab.'),
+  "labels": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color (e.g. \"#ef4444\") used for the chip background.'),
+  "createdAt": zod.string()
+})).describe('Customer labels currently attached to this chat.'),
+  "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
+  "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
+  "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "isHumanTakeover": zod.boolean(),
+  "lastMessage": zod.string().nullable(),
+  "lastMessageAt": zod.string().nullable(),
+  "pinnedAt": zod.string().nullable(),
+  "isArchived": zod.boolean(),
+  "isLid": zod.boolean(),
+  "unreadCount": zod.number(),
+  "profilePicUrl": zod.string().nullable(),
+  "mutedUntil": zod.string().nullish().describe('ISO timestamp until which notifications are muted; null = not muted.'),
+  "isBlocked": zod.boolean().optional().describe('Whether the contact is currently blocked on WhatsApp.'),
+  "createdAt": zod.string(),
+  "assignedUserId": zod.number().nullable()
+})
+
+
+/**
+ * @summary Send a geo-location pin to the chat
+ */
+export const SendLocationToChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendLocationToChatBody = zod.object({
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "name": zod.string().optional().describe('Optional place name shown with the pin.'),
+  "address": zod.string().optional().describe('Optional address line shown with the pin.')
+})
+
+export const SendLocationToChatResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "status": zod.union([zod.literal('sent'),zod.literal('delivered'),zod.literal('read'),zod.literal(null)]).nullish().describe('Outbound delivery\/read state mirroring WhatsApp\'s ticks (\"sent\"=single, \"delivered\"=double grey, \"read\"=double blue). Null for inbound messages and outbound messages whose status hasn\'t been observed yet (treated as \"sent\" by the UI).'),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
+})
+
+
+/**
+ * @summary Send a contact card (vCard) to the chat
+ */
+export const SendContactToChatParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendContactToChatBody = zod.object({
+  "name": zod.string().describe('Display name of the contact being shared.'),
+  "phoneNumber": zod.string().describe('Phone number of the contact (digits \/ +; server normalises into the vCard).')
+})
+
+export const SendContactToChatResponse = zod.object({
+  "id": zod.number(),
+  "chatId": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "content": zod.string(),
+  "isAiGenerated": zod.boolean(),
+  "status": zod.union([zod.literal('sent'),zod.literal('delivered'),zod.literal('read'),zod.literal(null)]).nullish().describe('Outbound delivery\/read state mirroring WhatsApp\'s ticks (\"sent\"=single, \"delivered\"=double grey, \"read\"=double blue). Null for inbound messages and outbound messages whose status hasn\'t been observed yet (treated as \"sent\" by the UI).'),
+  "createdAt": zod.string(),
+  "senderName": zod.string().nullish().describe('pushName of the participant who sent this message; only populated for inbound group messages.'),
+  "senderPhoneDigits": zod.string().nullish().describe('Digits portion of the sender JID (real phone or LID). Used to dedupe per-sender headers and to resolve @mentions.'),
+  "mentionedPhoneDigits": zod.array(zod.string()).optional().describe('Digits of every JID mentioned in this message body, in the order they appear. Empty\/omitted when no mentions.'),
+  "isStarred": zod.boolean().optional().describe('MaxiChat-internal star flag (not synced from the phone).'),
+  "isForwarded": zod.boolean().optional().describe('Whether this message was forwarded (inbound detected from the channel, or outbound forwarded via MaxiChat).'),
+  "forwardingScore": zod.number().optional().describe('WhatsApp forward count. >=1 shows \"Diteruskan\", >=4 shows \"Diteruskan berkali-kali\". Telegram forwards are 0.'),
+  "quotedMessageId": zod.number().nullish().describe('Our local chat_messages id this message replies to, when the quoted message exists in MaxiChat (lets the UI scroll to it).'),
+  "quotedContent": zod.string().nullish().describe('Snapshot of the quoted message\'s text\/preview, rendered in the grey reply bar.'),
+  "quotedSender": zod.string().nullish().describe('Display name of who was quoted (sender of the replied-to message).'),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "fromMe": zod.boolean().optional().describe('True when the reaction is the operator\'s own (sent from MaxiChat \/ the connected account).'),
+  "senderName": zod.string().nullish(),
+  "senderPhoneDigits": zod.string().nullish()
+})).optional().describe('Emoji reactions on this message. Empty\/omitted when none.'),
+  "pinnedAt": zod.string().nullish().describe('When this message was pinned (MaxiChat-internal). Null when not pinned.'),
+  "editedAt": zod.string().nullish().describe('When this message\'s text was last edited via MaxiChat. Null when never edited.')
 })
 
 
@@ -2242,7 +2667,10 @@ export const GetSettingsResponse = zod.object({
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
   "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
 })
 
 
@@ -2265,7 +2693,28 @@ export const UpdateGeneralSettingsResponse = zod.object({
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
   "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
+})
+
+
+/**
+ * @summary Restore the previous system prompt (single-step undo, super admin only)
+ */
+export const RestorePreviousPromptResponse = zod.object({
+  "id": zod.number(),
+  "systemPrompt": zod.string(),
+  "autoReplyEnabled": zod.boolean(),
+  "replyDelayMin": zod.number(),
+  "replyDelayMax": zod.number(),
+  "fallbackMessage": zod.string(),
+  "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
 })
 
 
@@ -2284,7 +2733,10 @@ export const UpdateAutoReplyResponse = zod.object({
   "replyDelayMax": zod.number(),
   "fallbackMessage": zod.string(),
   "flowCooldownMinutes": zod.union([zod.literal(5),zod.literal(15),zod.literal(30),zod.literal(60),zod.literal(120)]).describe('Minutes the chatbot flow\'s Default trigger stays muted after a flow ends, so AI can handle follow-ups.'),
-  "updatedAt": zod.string()
+  "updatedAt": zod.string(),
+  "aiPromptSource": zod.enum(['default', 'wizard', 'manual']).describe('Provenance of the current systemPrompt; \'manual\' means the wizard must confirm before overwriting.'),
+  "hasPreviousPrompt": zod.boolean().describe('True when a single-step \'restore previous version\' is available.'),
+  "hardGuardrails": zod.string().describe('Read-only Lapis C guardrails always appended at runtime to every AI path. Not part of the editable systemPrompt.')
 })
 
 
@@ -2735,6 +3187,7 @@ export const ListProductsResponseItem = zod.object({
   "code": zod.string(),
   "name": zod.string(),
   "category": zod.string().nullable(),
+  "description": zod.string().nullable().describe('Free-text product description (deskripsi). Public\/customer-safe.'),
   "price": zod.number().describe('Harga Pricelist — public price shown to customers'),
   "priceSilver": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceGold": zod.number().nullable().describe('Internal only — never sent to customers'),
@@ -2783,6 +3236,7 @@ export const CreateProductBody = zod.object({
   "code": zod.string().min(1),
   "name": zod.string().min(1),
   "category": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "price": zod.number().min(createProductBodyPriceMin),
   "priceSilver": zod.number().min(createProductBodyPriceSilverMin).nullish(),
   "priceGold": zod.number().min(createProductBodyPriceGoldMin).nullish(),
@@ -2831,6 +3285,7 @@ export const UpdateProductBody = zod.object({
   "code": zod.string().min(1),
   "name": zod.string().min(1),
   "category": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "price": zod.number().min(updateProductBodyPriceMin),
   "priceSilver": zod.number().min(updateProductBodyPriceSilverMin).nullish(),
   "priceGold": zod.number().min(updateProductBodyPriceGoldMin).nullish(),
@@ -2854,6 +3309,7 @@ export const UpdateProductResponse = zod.object({
   "code": zod.string(),
   "name": zod.string(),
   "category": zod.string().nullable(),
+  "description": zod.string().nullable().describe('Free-text product description (deskripsi). Public\/customer-safe.'),
   "price": zod.number().describe('Harga Pricelist — public price shown to customers'),
   "priceSilver": zod.number().nullable().describe('Internal only — never sent to customers'),
   "priceGold": zod.number().nullable().describe('Internal only — never sent to customers'),
@@ -3429,6 +3885,18 @@ export const DeleteAgentParams = zod.object({
 
 export const DeleteAgentResponse = zod.object({
   "success": zod.boolean()
+})
+
+
+/**
+ * @summary Revoke all of a team member's trusted devices (super admin only)
+ */
+export const RevokeAgentDevicesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RevokeAgentDevicesResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 
@@ -4029,7 +4497,8 @@ export const GetStorageUsageResponse = zod.object({
 export const GetAnalyticsV2SummaryQueryParams = zod.object({
   "period": zod.enum(['today', '7d', '30d', 'custom']).optional(),
   "from": zod.coerce.string().optional(),
-  "to": zod.coerce.string().optional()
+  "to": zod.coerce.string().optional(),
+  "channel": zod.coerce.number().optional().describe('Restrict to a single channel id. Omit for all channels the viewer can access.')
 })
 
 export const GetAnalyticsV2SummaryResponse = zod.object({
@@ -4063,7 +4532,8 @@ export const GetAnalyticsV2SummaryResponse = zod.object({
 export const GetAiPerformanceQueryParams = zod.object({
   "period": zod.enum(['today', '7d', '30d', 'custom']).optional(),
   "from": zod.coerce.string().optional(),
-  "to": zod.coerce.string().optional()
+  "to": zod.coerce.string().optional(),
+  "channel": zod.coerce.number().optional().describe('Restrict to a single channel id. Omit for all channels the viewer can access.')
 })
 
 export const GetAiPerformanceResponse = zod.object({
@@ -4135,6 +4605,7 @@ export const GetAiInsightsResponse = zod.object({
   "expiresAt": zod.coerce.date(),
   "fromCache": zod.boolean(),
   "error": zod.string().nullish().describe('Set when generation failed; content is empty.'),
+  "engine": zod.string().nullish().describe('Friendly label of the AI engine that produced this insight (e.g. \"Gemini · gemini-2.5-flash\"). Null on error. Lets the owner compare which centralized engine generated each analysis.'),
   "content": zod.record(zod.string(), zod.unknown()).describe('Shape depends on type. narrative => {criticalIssue, opportunity, positive, totalChatsAnalyzed}. anomaly => {anomalies: [...]}. kb_recommendations => {recommendations: [...]}.')
 })
 
@@ -6035,6 +6506,8 @@ export const ListAiPipelinesResponseItem = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6067,6 +6540,11 @@ export const createAiPipelineBodyScoreThresholdDefault = 70;
 export const createAiPipelineBodyScoreThresholdMin = 0;
 export const createAiPipelineBodyScoreThresholdMax = 100;
 
+export const createAiPipelineBodyOpportunityThresholdDefault = 80;
+export const createAiPipelineBodyOpportunityThresholdMin = 0;
+export const createAiPipelineBodyOpportunityThresholdMax = 100;
+
+export const createAiPipelineBodyAutoCreateOpportunityDefault = false;
 export const createAiPipelineBodyAutoFollowupEnabledDefault = false;
 export const createAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
 export const createAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
@@ -6083,6 +6561,8 @@ export const CreateAiPipelineBody = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean().default(createAiPipelineBodyIsActiveDefault),
   "scoreThreshold": zod.number().min(createAiPipelineBodyScoreThresholdMin).max(createAiPipelineBodyScoreThresholdMax).default(createAiPipelineBodyScoreThresholdDefault),
+  "opportunityThreshold": zod.number().min(createAiPipelineBodyOpportunityThresholdMin).max(createAiPipelineBodyOpportunityThresholdMax).default(createAiPipelineBodyOpportunityThresholdDefault).describe('Minimum score to auto-create an opportunity. Should be >= scoreThreshold.'),
+  "autoCreateOpportunity": zod.boolean().default(createAiPipelineBodyAutoCreateOpportunityDefault).describe('When true, crossing opportunityThreshold auto-creates an opportunity.'),
   "autoFollowupEnabled": zod.boolean().default(createAiPipelineBodyAutoFollowupEnabledDefault),
   "followupIntervals": zod.array(zod.string()).default(createAiPipelineBodyFollowupIntervalsDefault),
   "cutoffTimes": zod.array(zod.string()).default(createAiPipelineBodyCutoffTimesDefault),
@@ -6114,6 +6594,8 @@ export const GetAiPipelineResponse = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6149,6 +6631,11 @@ export const updateAiPipelineBodyScoreThresholdDefault = 70;
 export const updateAiPipelineBodyScoreThresholdMin = 0;
 export const updateAiPipelineBodyScoreThresholdMax = 100;
 
+export const updateAiPipelineBodyOpportunityThresholdDefault = 80;
+export const updateAiPipelineBodyOpportunityThresholdMin = 0;
+export const updateAiPipelineBodyOpportunityThresholdMax = 100;
+
+export const updateAiPipelineBodyAutoCreateOpportunityDefault = false;
 export const updateAiPipelineBodyAutoFollowupEnabledDefault = false;
 export const updateAiPipelineBodyFollowupIntervalsDefault = [`24h`, `48h`, `72h`];
 export const updateAiPipelineBodyCutoffTimesDefault = [`12:00`, `23:59`];
@@ -6165,6 +6652,8 @@ export const UpdateAiPipelineBody = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean().default(updateAiPipelineBodyIsActiveDefault),
   "scoreThreshold": zod.number().min(updateAiPipelineBodyScoreThresholdMin).max(updateAiPipelineBodyScoreThresholdMax).default(updateAiPipelineBodyScoreThresholdDefault),
+  "opportunityThreshold": zod.number().min(updateAiPipelineBodyOpportunityThresholdMin).max(updateAiPipelineBodyOpportunityThresholdMax).default(updateAiPipelineBodyOpportunityThresholdDefault).describe('Minimum score to auto-create an opportunity. Should be >= scoreThreshold.'),
+  "autoCreateOpportunity": zod.boolean().default(updateAiPipelineBodyAutoCreateOpportunityDefault).describe('When true, crossing opportunityThreshold auto-creates an opportunity.'),
   "autoFollowupEnabled": zod.boolean().default(updateAiPipelineBodyAutoFollowupEnabledDefault),
   "followupIntervals": zod.array(zod.string()).default(updateAiPipelineBodyFollowupIntervalsDefault),
   "cutoffTimes": zod.array(zod.string()).default(updateAiPipelineBodyCutoffTimesDefault),
@@ -6188,6 +6677,8 @@ export const UpdateAiPipelineResponse = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6235,6 +6726,8 @@ export const ToggleAiPipelineResponse = zod.object({
   "description": zod.string().nullish(),
   "isActive": zod.boolean(),
   "scoreThreshold": zod.number(),
+  "opportunityThreshold": zod.number().optional(),
+  "autoCreateOpportunity": zod.boolean().optional(),
   "autoFollowupEnabled": zod.boolean(),
   "followupIntervals": zod.array(zod.string()),
   "cutoffTimes": zod.array(zod.string()),
@@ -6326,6 +6819,13 @@ export const ListAiPipelineAnalysesResponse = zod.object({
   "recommendation": zod.string().nullish(),
   "scoreReason": zod.string().nullish(),
   "aiNotes": zod.string().nullish(),
+  "leadClassification": zod.enum(['lead', 'not_lead', 'unclear']).optional().describe('AI lead classification for this conversation.'),
+  "leadClassificationReason": zod.string().nullish(),
+  "conversationRole": zod.enum(['tenant_is_seller', 'tenant_is_buyer', 'unclear']).optional().describe('Who is selling. tenant_is_buyer = reverse role (contact is supplier).'),
+  "skipped": zod.boolean().optional().describe('True when skipped (reverse role \/ not_lead) and never entered the pipeline.'),
+  "skipReason": zod.string().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "chatId": zod.number().nullish(),
   "enteredPipeline": zod.boolean(),
   "pipelineEntryId": zod.number().nullish(),
   "createdAt": zod.coerce.date()
@@ -6370,6 +6870,13 @@ export const GetAiPipelineAnalysisResponse = zod.object({
   "recommendation": zod.string().nullish(),
   "scoreReason": zod.string().nullish(),
   "aiNotes": zod.string().nullish(),
+  "leadClassification": zod.enum(['lead', 'not_lead', 'unclear']).optional().describe('AI lead classification for this conversation.'),
+  "leadClassificationReason": zod.string().nullish(),
+  "conversationRole": zod.enum(['tenant_is_seller', 'tenant_is_buyer', 'unclear']).optional().describe('Who is selling. tenant_is_buyer = reverse role (contact is supplier).'),
+  "skipped": zod.boolean().optional().describe('True when skipped (reverse role \/ not_lead) and never entered the pipeline.'),
+  "skipReason": zod.string().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "chatId": zod.number().nullish(),
   "enteredPipeline": zod.boolean(),
   "pipelineEntryId": zod.number().nullish(),
   "createdAt": zod.coerce.date()
@@ -6416,6 +6923,8 @@ export const ListAiPipelineEntriesResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),
@@ -6465,6 +6974,8 @@ export const GetAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),
@@ -6514,6 +7025,8 @@ export const UpdateAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),
@@ -6563,6 +7076,8 @@ export const DoNotFollowupAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
   "score": zod.number().optional(),
   "date": zod.string().optional(),
@@ -6580,6 +7095,19 @@ export const DoNotFollowupAiPipelineEntryResponse = zod.object({
 })).optional(),
   "enteredAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Generate (without sending) an AI follow-up message for a pipeline entry
+ */
+export const GenerateFollowupAiPipelineEntryParams = zod.object({
+  "id": zod.coerce.number(),
+  "eid": zod.coerce.number()
+})
+
+export const GenerateFollowupAiPipelineEntryResponse = zod.object({
+  "message": zod.string()
 })
 
 
@@ -6627,6 +7155,13 @@ export const GetAiPipelineDashboardStatsResponse = zod.object({
   "recommendation": zod.string().nullish(),
   "scoreReason": zod.string().nullish(),
   "aiNotes": zod.string().nullish(),
+  "leadClassification": zod.enum(['lead', 'not_lead', 'unclear']).optional().describe('AI lead classification for this conversation.'),
+  "leadClassificationReason": zod.string().nullish(),
+  "conversationRole": zod.enum(['tenant_is_seller', 'tenant_is_buyer', 'unclear']).optional().describe('Who is selling. tenant_is_buyer = reverse role (contact is supplier).'),
+  "skipped": zod.boolean().optional().describe('True when skipped (reverse role \/ not_lead) and never entered the pipeline.'),
+  "skipReason": zod.string().nullish(),
+  "opportunityId": zod.number().nullish(),
+  "chatId": zod.number().nullish(),
   "enteredPipeline": zod.boolean(),
   "pipelineEntryId": zod.number().nullish(),
   "createdAt": zod.coerce.date()

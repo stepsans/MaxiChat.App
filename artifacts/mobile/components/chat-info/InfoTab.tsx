@@ -17,6 +17,8 @@ import {
   useSetChatLabels,
   useTakeoverChat,
   useUpdateChat,
+  useMuteChat,
+  useBlockChat,
   getGetChatQueryKey,
   getGetCommonGroupsQueryKey,
   type Chat,
@@ -54,6 +56,11 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
   const updateChat = useUpdateChat();
   const takeover = useTakeoverChat();
   const setLabels = useSetChatLabels();
+  const mute = useMuteChat();
+  const block = useBlockChat();
+
+  const isMuted = !!chat.mutedUntil && new Date(chat.mutedUntil) > new Date();
+  const isGroup = chat.phoneNumber.endsWith("@g.us");
 
   const [code, setCode] = useState("");
   const [nickname, setNickname] = useState("");
@@ -111,6 +118,27 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
   const toggleTakeover = async (value: boolean) => {
     try {
       await takeover.mutateAsync({ id: chatId, data: { takeover: value } });
+      invalidate();
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleMute = async (value: boolean) => {
+    const mutedUntil = value
+      ? new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
+      : null;
+    try {
+      await mute.mutateAsync({ id: chatId, data: { mutedUntil } });
+      invalidate();
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleBlock = async (value: boolean) => {
+    try {
+      await block.mutateAsync({ id: chatId, data: { blocked: value } });
       invalidate();
     } catch {
       // ignore
@@ -203,6 +231,44 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
           trackColor={{ true: colors.primary, false: colors.muted }}
         />
       </View>
+
+      {/* Notifications */}
+      <View style={[styles.row, { marginTop: 18 }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+            Bisukan Notifikasi
+          </Text>
+          <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
+            {isMuted ? "Dibisukan selama 8 jam" : "Notifikasi aktif"}
+          </Text>
+        </View>
+        <Switch
+          value={isMuted}
+          onValueChange={toggleMute}
+          trackColor={{ true: colors.primary, false: colors.muted }}
+        />
+      </View>
+
+      {/* Block (1:1 only) */}
+      {!isGroup ? (
+        <View style={[styles.row, { marginTop: 18 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+              Blokir Kontak
+            </Text>
+            <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
+              {chat.isBlocked
+                ? "Kontak diblokir di WhatsApp"
+                : "Kontak dapat mengirim pesan"}
+            </Text>
+          </View>
+          <Switch
+            value={!!chat.isBlocked}
+            onValueChange={toggleBlock}
+            trackColor={{ true: colors.destructive, false: colors.muted }}
+          />
+        </View>
+      ) : null}
 
       {/* Status */}
       <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>

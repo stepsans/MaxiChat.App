@@ -5,6 +5,7 @@ import {
   timestamp,
   integer,
   boolean,
+  index,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -20,6 +21,10 @@ import {
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
+  // Canonical form of `email` (lowercase, +alias stripped, Gmail dots removed).
+  // ONLY an anti-abuse trial key — login lookups still use raw `email`. Indexed
+  // via `users_email_canonical_idx` (see table index below). Nullable for legacy rows.
+  emailCanonical: text("email_canonical"),
   passwordHash: text("password_hash"),
   role: text("role").notNull().default("user"),
   status: text("status").notNull().default("pending"),
@@ -97,7 +102,10 @@ export const usersTable = pgTable("users", {
     .defaultNow()
     .notNull(),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
-});
+}, (t) => [
+  // Non-unique index for the anti-abuse trial gate lookup in /auth/signup.
+  index("users_email_canonical_idx").on(t.emailCanonical),
+]);
 
 // One row per outstanding email-verification link. We store a SHA-256
 // hash of the token so a DB leak doesn't expose live links. Rows are

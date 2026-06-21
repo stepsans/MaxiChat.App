@@ -2,16 +2,16 @@ import { useGetAiPerformance, getGetAiPerformanceQueryKey } from "@workspace/api
 import { InfoBar } from "./InfoBar";
 import { KpiCard } from "./KpiCard";
 import { NextActionBox } from "./NextActionBox";
-import { EscalationTopics } from "./EscalationTopics";
 import { AiInsightCard } from "./AiInsightCard";
 import { AnomalyList } from "./AnomalyList";
 import { KbRecommendations } from "./KbRecommendations";
+import { EscalationTopics } from "./EscalationTopics";
 import type { PeriodKey } from "./format";
 
 type InsightPeriod = "today" | "7d" | "30d";
 
-export function AiAnalysisTab({ period, from, to }: { period: PeriodKey; from?: string; to?: string }) {
-  const params = { period, ...(from ? { from } : {}), ...(to ? { to } : {}) };
+export function AiAnalysisTab({ period, from, to, channel }: { period: PeriodKey; from?: string; to?: string; channel?: number }) {
+  const params = { period, ...(from ? { from } : {}), ...(to ? { to } : {}), ...(channel != null ? { channel } : {}) };
   const { data, isLoading } = useGetAiPerformance(params, {
     query: { queryKey: getGetAiPerformanceQueryKey(params) },
   });
@@ -23,7 +23,7 @@ export function AiAnalysisTab({ period, from, to }: { period: PeriodKey; from?: 
     <div className="space-y-4">
       <InfoBar
         dismissKey="ai"
-        text="Menampilkan seberapa efektif AI menangani percakapan — tingkat penyelesaian, topik yang dieskalasi ke agent, dan rekomendasi perbaikan. Ini tentang performa AI dalam melayani customer Anda, bukan tentang AI itu sendiri."
+        text="Menampilkan seberapa efektif AI menangani percakapan — tingkat penyelesaian, eskalasi ke agent, dan rekomendasi perbaikan. Ini tentang performa AI dalam melayani customer Anda, bukan tentang AI itu sendiri."
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -49,6 +49,12 @@ export function AiAnalysisTab({ period, from, to }: { period: PeriodKey; from?: 
           loading={isLoading}
         />
       </div>
+
+      {channel != null && (
+        <p className="text-xs text-muted-foreground">
+          Insight AI, deteksi anomali & rekomendasi KB di bawah dihitung untuk semua channel (bukan channel terpilih).
+        </p>
+      )}
 
       <EscalationTopics topics={data?.topEscalationTopics} loading={isLoading} />
 

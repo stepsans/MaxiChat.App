@@ -22,7 +22,7 @@ import { OrderTab } from "./OrderTab";
 import { ProdukTab } from "./ProdukTab";
 import { ShortcutTab } from "./ShortcutTab";
 
-type TabKey = "info" | "media" | "shortcut" | "produk" | "order";
+export type TabKey = "info" | "media" | "shortcut" | "produk" | "order";
 
 const TABS: {
   key: TabKey;
@@ -41,11 +41,14 @@ export function ChatInfoPanel({
   onClose,
   chatId,
   chat,
+  initialTab,
 }: {
   visible: boolean;
   onClose: () => void;
   chatId: number;
   chat: Chat | undefined;
+  /** Tab to focus when the panel opens; defaults to "info". */
+  initialTab?: TabKey;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -60,7 +63,9 @@ export function ChatInfoPanel({
       duration: 220,
       useNativeDriver: true,
     }).start();
-  }, [visible, panelWidth, tx]);
+    // Focus the requested tab each time the panel is opened.
+    if (visible && initialTab) setTab(initialTab);
+  }, [visible, panelWidth, tx, initialTab]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

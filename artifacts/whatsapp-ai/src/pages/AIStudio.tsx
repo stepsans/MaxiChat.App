@@ -5,6 +5,7 @@ import {
   useGetSettings,
   useUpdateGeneralSettings,
   useUpdateAutoReply,
+  useRestorePreviousPrompt,
   getGetSettingsQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Bot, Clock, MessageSquare, Lock, Sparkles } from "lucide-react";
+import { Loader2, Bot, Clock, MessageSquare, Lock, Sparkles, ShieldCheck, Undo2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -70,6 +71,22 @@ export default function AIStudio() {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
         toast({ title: "Pengaturan AI disimpan." });
+      },
+    },
+  });
+
+  const restorePrev = useRestorePreviousPrompt({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
+        toast({ title: "Versi sebelumnya dikembalikan." });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Gagal mengembalikan versi",
+          description: err instanceof Error ? err.message : "Tidak ada versi sebelumnya.",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -379,13 +396,35 @@ export default function AIStudio() {
             {/* System prompt — selalu lebar penuh (textarea besar) */}
             <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Bot className="w-4 h-4 text-primary" />
-                  AI System Prompt
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Instruksi yang menentukan bagaimana AI berperilaku sebagai customer service
-                </CardDescription>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-primary" />
+                      AI System Prompt
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Instruksi yang menentukan bagaimana AI berperilaku sebagai customer service
+                    </CardDescription>
+                  </div>
+                  {canEditGeneral && settings?.hasPreviousPrompt && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 gap-1.5"
+                      disabled={restorePrev.isPending}
+                      onClick={() => restorePrev.mutate()}
+                      data-testid="button-restore-prompt"
+                    >
+                      {restorePrev.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Undo2 className="w-3.5 h-3.5" />
+                      )}
+                      Kembalikan versi sebelumnya
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <FormField
@@ -409,6 +448,29 @@ export default function AIStudio() {
                 />
               </CardContent>
             </Card>
+
+            {/* Read-only Lapis C — the locked guardrails, always active at runtime. */}
+            {settings?.hardGuardrails && (
+              <Card className="lg:col-span-2 border-primary/20 bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-primary" />
+                    Aturan keamanan bawaan
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      <Lock className="w-3 h-3" /> tidak bisa diubah
+                    </span>
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Aturan ini selalu ditambahkan otomatis ke setiap balasan AI (auto-reply, Flow, follow-up). Kamu tidak perlu menulisnya di prompt — dan tidak bisa menghapusnya.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 font-mono text-[11px] leading-relaxed text-muted-foreground" data-testid="text-hard-guardrails">
+                    {settings.hardGuardrails}
+                  </pre>
+                </CardContent>
+              </Card>
+            )}
           </form>
         </Form>
       </div>

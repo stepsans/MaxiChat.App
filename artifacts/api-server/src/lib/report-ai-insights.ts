@@ -2,7 +2,10 @@ import { db } from "@workspace/db";
 import { reportAiCacheTable, knowledgeTable } from "@workspace/db";
 import { and, eq, gt } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { callClaudeJson, isClaudeConfigured } from "./claude";
+import { resolveAiClient } from "./ai-provider";
+import { recordAiUsage } from "./ai-usage";
+import { readCreditMeta } from "./ai-call-meta";
+import { logger } from "./logger";
 import {
   resolvePeriod,
   computeSummary,
@@ -14,8 +17,105 @@ import {
 // ===========================================================================
 // AI-insight generation for Laporan & Jadwal (spec sections 9.4 + 10).
 // Three insight kinds — narrative, anomaly, kb_recommendations — each cached
-// in report_ai_cache with a TTL; a cache miss regenerates via Claude.
+// in report_ai_cache with a TTL. A cache miss regenerates via the CENTRALIZED
+// AI engine (resolveAiClient → 4-engine priority failover + usage/credit
+// accounting), so insights ride the same engine as the rest of the platform and
+// we can surface WHICH engine served each insight for owner comparison.
 // ===========================================================================
+
+const ENGINE_LABELS: Record<string, string> = {
+  deepseek: "DeepSeek",
+  gemini: "Gemini",
+  openai: "OpenAI",
+  anthropic: "Claude",
+  platform: "Mesin platform",
+  replit: "OpenAI",
+  openrouter: "OpenRouter",
+};
+
+interface InsightCall {
+  data: Record<string, unknown> | null;
+  /** Friendly label of the engine that served this call, e.g. "Gemini · gemini-2.5-flash". */
+  engine: string | null;
+}
+
+// Generate a JSON insight through the centralized AI client. Returns the parsed
+// object plus the serving-engine label. Best-effort: never throws (returns
+// {data: null} on any failure) so a card degrades gracefully.
+async function callInsightJson(
+  ownerUserId: number,
+  system: string,
+  user: string,
+  maxTokens: number,
+): Promise<InsightCall> {
+  let resolved: Awaited<ReturnType<typeof resolveAiClient>>;
+  try {
+    resolved = await resolveAiClient(ownerUserId);
+  } catch (err) {
+    logger.error({ err, ownerUserId }, "insight AI: resolve client failed");
+    return { data: null, engine: null };
+  }
+  const { client, model, provider } = resolved;
+  // Floor the budget: thinking-capable models (e.g. gemini-2.5-flash) spend part
+  // of max_tokens on internal reasoning, so a tight cap can starve / truncate
+  // the JSON body. Give it room; insights are cached so the extra cost is rare.
+  const budget = Math.max(maxTokens, 1500);
+  let lastEngine: string | null = null;
+
+  // Retry: models occasionally emit unparseable / truncated JSON. Note we do NOT
+  // set response_format json_object — Gemini's OpenAI-compat endpoint rejects it
+  // (400, wants 'json_schema'). temperature 0 + retries + a fence-tolerant parser
+  // give reliable JSON across all engines instead.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await client.chat.completions.create({
+        model,
+        max_tokens: budget,
+        temperature: 0,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      });
+      // The failover client tags the SERVING engine on `usage`; fall back to the
+      // resolved provider on the managed/BYOK paths (no meta there).
+      const servedEngine = readCreditMeta(res.usage)?.engine ?? provider;
+      const servedModel = (res as { model?: string }).model || (model === "auto" ? "" : model);
+      // Record usage against the owner (member usage rolls up) — same as every
+      // other AI call site.
+      void recordAiUsage({ ownerUserId, channelId: null, provider, model: servedModel || model, usage: res.usage });
+      const label = ENGINE_LABELS[servedEngine] ?? servedEngine;
+      lastEngine = servedModel ? `${label} · ${servedModel}` : label;
+      const text = res.choices?.[0]?.message?.content;
+      const parsed = extractJson(typeof text === "string" ? text : "");
+      if (parsed) return { data: parsed, engine: lastEngine };
+      logger.warn({ attempt, ownerUserId }, "insight AI: unparseable JSON response");
+    } catch (err) {
+      logger.error({ err, attempt, ownerUserId }, "insight AI call failed");
+    }
+  }
+  return { data: null, engine: lastEngine };
+}
+
+function extractJson(text: string): Record<string, unknown> | null {
+  if (!text) return null;
+  // Strip ``` / ```json code fences a model may wrap the JSON in.
+  const cleaned = text.replace(/```(?:json)?/gi, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  const slice = cleaned.slice(start, end + 1);
+  try {
+    return JSON.parse(slice) as Record<string, unknown>;
+  } catch {
+    // Last resort: drop trailing commas before } or ] which some models emit.
+    try {
+      return JSON.parse(slice.replace(/,(\s*[}\]])/g, "$1")) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+}
 
 export type InsightType = "narrative" | "anomaly" | "kb_recommendations";
 
@@ -45,6 +145,8 @@ export interface InsightResult {
   fromCache: boolean;
   error: string | null;
   content: Record<string, unknown>;
+  /** Friendly label of the AI engine that produced this insight (null on error). */
+  engine: string | null;
 }
 
 function cacheKeyFor(type: InsightType, period: PeriodKey): string {
@@ -80,27 +182,17 @@ export async function getInsight(
         fromCache: true,
         error: null,
         content: cached[0].content as Record<string, unknown>,
+        engine: cached[0].engine ?? null,
       };
     }
   }
 
-  if (!isClaudeConfigured()) {
-    return {
-      type,
-      generatedAt: now.toISOString(),
-      expiresAt: now.toISOString(),
-      fromCache: false,
-      error: "Insight AI tidak tersedia: ANTHROPIC_API_KEY belum dikonfigurasi.",
-      content: {},
-    };
-  }
+  let result: InsightCall;
+  if (type === "narrative") result = await generateNarrative(ownerUserId, period);
+  else if (type === "anomaly") result = await generateAnomaly(ownerUserId);
+  else result = await generateKbRecommendations(ownerUserId, period);
 
-  let content: Record<string, unknown> | null = null;
-  if (type === "narrative") content = await generateNarrative(ownerUserId, period);
-  else if (type === "anomaly") content = await generateAnomaly(ownerUserId);
-  else content = await generateKbRecommendations(ownerUserId, period);
-
-  if (!content) {
+  if (!result.data) {
     return {
       type,
       generatedAt: now.toISOString(),
@@ -108,17 +200,20 @@ export async function getInsight(
       fromCache: false,
       error: "Insight AI tidak tersedia saat ini. Coba muat ulang.",
       content: {},
+      engine: null,
     };
   }
 
+  const content = result.data;
+  const engine = result.engine;
   const expiresAt = new Date(now.getTime() + TTL_MS[type]);
   // Upsert into the per-(owner,key) cache.
   await db
     .insert(reportAiCacheTable)
-    .values({ ownerUserId, cacheKey: key, content, generatedAt: now, expiresAt })
+    .values({ ownerUserId, cacheKey: key, content, engine, generatedAt: now, expiresAt })
     .onConflictDoUpdate({
       target: [reportAiCacheTable.ownerUserId, reportAiCacheTable.cacheKey],
-      set: { content, generatedAt: now, expiresAt },
+      set: { content, engine, generatedAt: now, expiresAt },
     });
 
   return {
@@ -128,6 +223,7 @@ export async function getInsight(
     fromCache: false,
     error: null,
     content,
+    engine,
   };
 }
 
@@ -136,7 +232,7 @@ export async function invalidateInsightCache(ownerUserId: number): Promise<void>
   await db.delete(reportAiCacheTable).where(eq(reportAiCacheTable.ownerUserId, ownerUserId));
 }
 
-async function generateNarrative(ownerUserId: number, period: PeriodKey): Promise<Record<string, unknown> | null> {
+async function generateNarrative(ownerUserId: number, period: PeriodKey): Promise<InsightCall> {
   const p = resolvePeriod(period);
   const [summary, ai] = await Promise.all([
     computeSummary(ownerUserId, p),
@@ -147,12 +243,13 @@ async function generateNarrative(ownerUserId: number, period: PeriodKey): Promis
   const user = `Berikut adalah data percakapan customer service untuk periode ${p.label}:
 
 Total chat: ${summary.totalChats}
-Chat diselesaikan AI: ${ai.resolvedByAi}%
-Chat dieskalasi ke agent: ${ai.escalatedToAgent}%
-Perubahan eskalasi vs periode sebelumnya: ${ai.escalatedChange}%
+Chat diselesaikan otomatis AI/bot (auto-reply AI atau chatbot flow, tanpa campur tangan manusia): ${ai.resolvedByAi}%
+Chat ditangani manusia/agent (ada balasan manusia atau diambil alih): ${ai.escalatedToAgent}%
+Perubahan chat ditangani manusia vs periode sebelumnya: ${ai.escalatedChange}%
 Waktu respons rata-rata: ${summary.avgResponseTimeSeconds} detik
+Catatan: sisa persentase adalah chat masuk yang belum dibalas sama sekali.
 
-Topik yang paling sering dieskalasi:
+Topik yang paling sering ditangani manusia:
 ${topics}
 
 Berikan insight dalam format JSON:
@@ -163,10 +260,10 @@ Berikan insight dalam format JSON:
   "totalChatsAnalyzed": ${summary.totalChats}
 }`;
 
-  return callClaudeJson({ ownerUserId, system: SYSTEM_PROMPT, user, maxTokens: 500 });
+  return callInsightJson(ownerUserId, SYSTEM_PROMPT, user, 500);
 }
 
-async function generateAnomaly(ownerUserId: number): Promise<Record<string, unknown> | null> {
+async function generateAnomaly(ownerUserId: number): Promise<InsightCall> {
   const a = await gatherAnomalyInputs(ownerUserId);
   const user = `Berikut adalah data perbandingan performa customer service:
 
@@ -193,10 +290,10 @@ Respons dalam format JSON:
 
 Bila tidak ada anomali yang signifikan, return: { "anomalies": [] }`;
 
-  return callClaudeJson({ ownerUserId, system: SYSTEM_PROMPT, user, maxTokens: 600 });
+  return callInsightJson(ownerUserId, SYSTEM_PROMPT, user, 600);
 }
 
-async function generateKbRecommendations(ownerUserId: number, period: PeriodKey): Promise<Record<string, unknown> | null> {
+async function generateKbRecommendations(ownerUserId: number, period: PeriodKey): Promise<InsightCall> {
   const p = resolvePeriod(period);
   const ai = await computeAiPerformance(ownerUserId, p);
   const topics = ai.topEscalationTopics
@@ -234,5 +331,5 @@ Respons dalam format JSON:
   ]
 }`;
 
-  return callClaudeJson({ ownerUserId, system: SYSTEM_PROMPT, user, maxTokens: 400 });
+  return callInsightJson(ownerUserId, SYSTEM_PROMPT, user, 400);
 }

@@ -46,15 +46,57 @@ router.put("/general", requireSuperAdmin, async (req, res): Promise<void> => {
     if (!channel) return;
 
     // Ensure a tenant row exists, then update it for this owner.
-    await getOrCreateTenantSettings(channel.userId);
+    const current = await getOrCreateTenantSettings(channel.userId);
+
+    // A hand-edit of the persona in AI Studio marks the prompt as 'manual' (so the
+    // wizard asks before overwriting) and snapshots the old text for single-step
+    // undo ("Kembalikan versi sebelumnya"). Lapis C guardrails are not stored here,
+    // so they can never be edited away through this path.
+    const patch: Partial<typeof tenantSettingsTable.$inferInsert> = {
+      ...parsed.data,
+      updatedAt: new Date(),
+    };
+    if (parsed.data.systemPrompt !== undefined && parsed.data.systemPrompt !== current.systemPrompt) {
+      patch.aiPromptSource = "manual";
+      patch.systemPromptPrevious = current.systemPrompt;
+    }
     await db
       .update(tenantSettingsTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set(patch)
       .where(eq(tenantSettingsTable.ownerUserId, channel.userId));
 
     res.json(await getMergedSettings(channel));
   } catch (err) {
     req.log.error({ err }, "Failed to update general settings");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Single-step "Kembalikan versi sebelumnya" — swap system_prompt with the
+// snapshot taken before the last overwrite (wizard save or manual edit). Marks
+// the restored prompt 'manual' since it is now an explicit owner choice.
+router.post("/restore-previous", requireSuperAdmin, async (req, res): Promise<void> => {
+  try {
+    const channel = await requireOwnedChannelLoose(req, res);
+    if (!channel) return;
+    const current = await getOrCreateTenantSettings(channel.userId);
+    if (!current.systemPromptPrevious) {
+      res.status(400).json({ error: "Tidak ada versi sebelumnya untuk dikembalikan." });
+      return;
+    }
+    await db
+      .update(tenantSettingsTable)
+      .set({
+        systemPrompt: current.systemPromptPrevious,
+        // Swap so a second click toggles back (and clears once consumed below).
+        systemPromptPrevious: current.systemPrompt,
+        aiPromptSource: "manual",
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantSettingsTable.ownerUserId, channel.userId));
+    res.json(await getMergedSettings(channel));
+  } catch (err) {
+    req.log.error({ err }, "Failed to restore previous prompt");
     res.status(500).json({ error: "Internal server error" });
   }
 });
