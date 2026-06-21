@@ -6,6 +6,7 @@ import { resolveOwnerUserId } from "./seed";
 import { resolvePlatformEngine, getPlatformAiConfig, type PlatformEngine } from "./platform-ai-config";
 import { getEnabledEnginesByPriority } from "./platform-ai-engine";
 import { createFailoverClient } from "./ai-failover";
+import { isOwnerTokenBlocked, TokenQuotaExceededError } from "./ai-quota";
 
 // Full centralization (owner's decision): tenants do NOT use their own BYOK key
 // — every tenant rides the centralized platform engine (precedence #2 below).
@@ -140,6 +141,16 @@ export async function resolveAiClient(
   userId: number
 ): Promise<ResolvedAiClient> {
   const ownerUserId = await resolveOwnerUserId(userId);
+
+  // 0) Token hard-block (LOCKED spec C1). The SINGLE chokepoint all 8 AI paths
+  // pass through — placed here, not per-route, so background schedulers/cron
+  // (which bypass route checks) are caught too. Blocks the NEXT call before it
+  // starts; never interrupts an in-flight call. Independent of capability
+  // gating (paket) and of the prepaid wallet — this is purely "kuota habis?".
+  // Infinity owners and uncapped/unprovisioned tenants are never blocked.
+  if (await isOwnerTokenBlocked(ownerUserId)) {
+    throw new TokenQuotaExceededError(ownerUserId);
+  }
 
   // 1) Tenant BYOK (policy-gated).
   if (POLICY_ALLOW_TENANT_BYOK) {

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { and, asc, eq, inArray, not, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, not, sql } from "drizzle-orm";
 import {
   db,
   workboardBoardsTable,
@@ -8,12 +8,17 @@ import {
   workboardColumnsTable,
   workboardTasksTable,
   workboardTaskAssigneesTable,
+  workboardTaskCommentsTable,
+  workboardCommentMentionsTable,
+  workboardNotificationsTable,
   usersTable,
   type WorkboardBoardMemberRow,
 } from "@workspace/db";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import { requirePermission } from "../lib/role-permissions";
+import { parseMentionIds } from "../lib/workboard-mentions";
+import { notifyWorkboardMentions } from "../lib/workboard-notify";
 
 const router = Router();
 
@@ -520,10 +525,13 @@ router.put(
 
     const currentMember = await requireBoardAccess(boardId, uid, "owner", res);
     if (!currentMember) return;
+    const ownerUserId = await resolveOwnerUserId(uid);
 
     const { role } = req.body as { role?: string };
-    if (!role || !["owner", "editor", "viewer"].includes(role)) {
-      res.status(400).json({ error: "role harus 'owner', 'editor', atau 'viewer'." });
+    // The board owner is always the tenant owner (super_admin), permanent — the
+    // "owner" role can never be granted via update (spec #4/§6.2c).
+    if (!role || !["editor", "viewer"].includes(role)) {
+      res.status(400).json({ error: "role harus 'editor' atau 'viewer'." });
       return;
     }
 
@@ -543,21 +551,10 @@ router.put(
       return;
     }
 
-    // Prevent demoting self if only owner
-    if (target.userId === uid && target.role === "owner" && role !== "owner") {
-      const ownerCount = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(workboardBoardMembersTable)
-        .where(
-          and(
-            eq(workboardBoardMembersTable.boardId, boardId),
-            eq(workboardBoardMembersTable.role, "owner")
-          )
-        );
-      if ((ownerCount[0]?.count ?? 0) <= 1) {
-        res.status(400).json({ error: "Tidak bisa menurunkan role karena Anda satu-satunya owner board ini." });
-        return;
-      }
+    // The tenant owner's own board role is permanent (spec §6.2d).
+    if (target.userId === ownerUserId) {
+      res.status(400).json({ error: "Owner tenant tidak dapat diubah perannya di board." });
+      return;
     }
 
     const [updated] = await db
@@ -584,6 +581,7 @@ router.delete(
 
     const currentMember = await requireBoardAccess(boardId, uid, "viewer", res);
     if (!currentMember) return;
+    const ownerUserId = await resolveOwnerUserId(uid);
 
     const [target] = await db
       .select()
@@ -608,26 +606,48 @@ router.delete(
       return;
     }
 
-    // Prevent removing the only owner
-    if (target.role === "owner") {
-      const ownerCount = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(workboardBoardMembersTable)
-        .where(
-          and(
-            eq(workboardBoardMembersTable.boardId, boardId),
-            eq(workboardBoardMembersTable.role, "owner")
-          )
-        );
-      if ((ownerCount[0]?.count ?? 0) <= 1) {
-        res.status(400).json({ error: "Tidak bisa menghapus satu-satunya owner board ini." });
-        return;
-      }
+    // The tenant owner (permanent board owner) can never be removed (spec §6.2d).
+    if (target.userId === ownerUserId) {
+      res.status(400).json({ error: "Owner tenant tidak dapat dikeluarkan dari board." });
+      return;
     }
 
-    await db
-      .delete(workboardBoardMembersTable)
-      .where(eq(workboardBoardMembersTable.id, memberId));
+    // Remove membership AND clean up the user's footprint on this board in one
+    // transaction (spec §6.3): drop their task assignments (no ghost assignees)
+    // and their mention-join rows (so they stop counting in notifications). The
+    // comment BODIES are kept — they're discussion history; the dropped mention
+    // just renders as a fallback name on the client.
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(workboardBoardMembersTable)
+        .where(eq(workboardBoardMembersTable.id, memberId));
+
+      await tx.delete(workboardTaskAssigneesTable).where(
+        and(
+          eq(workboardTaskAssigneesTable.userId, target.userId),
+          inArray(
+            workboardTaskAssigneesTable.taskId,
+            tx
+              .select({ id: workboardTasksTable.id })
+              .from(workboardTasksTable)
+              .where(eq(workboardTasksTable.boardId, boardId))
+          )
+        )
+      );
+
+      await tx.delete(workboardCommentMentionsTable).where(
+        and(
+          eq(workboardCommentMentionsTable.mentionedUserId, target.userId),
+          inArray(
+            workboardCommentMentionsTable.commentId,
+            tx
+              .select({ id: workboardTaskCommentsTable.id })
+              .from(workboardTaskCommentsTable)
+              .where(eq(workboardTaskCommentsTable.boardId, boardId))
+          )
+        )
+      );
+    });
 
     res.json({ ok: true });
   }
@@ -661,7 +681,10 @@ router.get(
 
 router.post(
   "/boards/:boardId/columns",
-  requirePermission("workboard", "create"),
+  // Column creation is in-board WORK, gated by board-role editor — NOT the
+  // workboard "create" menu flag (which now gates only board creation, owner
+  // only). So editors/owners keep creating columns even without canCreate.
+  requirePermission("workboard", "view"),
   async (req: Request, res: Response): Promise<void> => {
     const uid = getSessionUserId(req)!;
     const boardId = Number(req.params.boardId);
@@ -847,7 +870,10 @@ router.get(
 
 router.post(
   "/boards/:boardId/tasks",
-  requirePermission("workboard", "create"),
+  // Task creation is in-board WORK (like columns), gated by board-role editor —
+  // NOT the workboard "create" menu flag (board creation only, owner only).
+  // Without this, agents/editors who lost canCreate could no longer add tasks.
+  requirePermission("workboard", "view"),
   async (req: Request, res: Response): Promise<void> => {
     const uid = getSessionUserId(req)!;
     const boardId = Number(req.params.boardId);
@@ -1202,6 +1228,355 @@ router.delete(
     }
 
     await db.delete(workboardTasksTable).where(eq(workboardTasksTable.id, taskId));
+    res.json({ ok: true });
+  }
+);
+
+// ─── COMMENTS + @MENTIONS ────────────────────────────────────────────────────
+// Comment access is gated by BOARD MEMBERSHIP (requireBoardAccess "viewer"), NOT
+// the menu-CRUD flags. Decision #6: viewers may comment + mention; what they may
+// not do is mutate tasks/columns/board. Mention candidates + delivery are
+// restricted to board members on the SERVER (frontend is never trusted).
+
+// Ensure a task belongs to a board (blocks cross-board access). Returns the task
+// row (id + title) or null after writing the 404.
+async function requireTaskInBoard(
+  boardId: number,
+  taskId: number,
+  res: Response
+): Promise<{ id: number; title: string } | null> {
+  const [task] = await db
+    .select({ id: workboardTasksTable.id, title: workboardTasksTable.title })
+    .from(workboardTasksTable)
+    .where(and(eq(workboardTasksTable.id, taskId), eq(workboardTasksTable.boardId, boardId)))
+    .limit(1);
+  if (!task) {
+    res.status(404).json({ error: "Task tidak ditemukan di board ini." });
+    return null;
+  }
+  return task;
+}
+
+router.get(
+  "/boards/:boardId/tasks/:taskId/comments",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const boardId = Number(req.params.boardId);
+    const taskId = Number(req.params.taskId);
+    if (!Number.isInteger(boardId) || !Number.isInteger(taskId)) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+    const member = await requireBoardAccess(boardId, uid, "viewer", res);
+    if (!member) return;
+    if (!(await requireTaskInBoard(boardId, taskId, res))) return;
+
+    const comments = await db
+      .select({
+        id: workboardTaskCommentsTable.id,
+        taskId: workboardTaskCommentsTable.taskId,
+        body: workboardTaskCommentsTable.body,
+        mentionedUserIds: workboardTaskCommentsTable.mentionedUserIds,
+        authorUserId: workboardTaskCommentsTable.authorUserId,
+        authorName: usersTable.name,
+        authorEmail: usersTable.email,
+        createdAt: workboardTaskCommentsTable.createdAt,
+      })
+      .from(workboardTaskCommentsTable)
+      .leftJoin(usersTable, eq(workboardTaskCommentsTable.authorUserId, usersTable.id))
+      .where(eq(workboardTaskCommentsTable.taskId, taskId))
+      .orderBy(asc(workboardTaskCommentsTable.createdAt));
+
+    res.json({ comments });
+  }
+);
+
+router.post(
+  "/boards/:boardId/tasks/:taskId/comments",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const boardId = Number(req.params.boardId);
+    const taskId = Number(req.params.taskId);
+    if (!Number.isInteger(boardId) || !Number.isInteger(taskId)) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+    const member = await requireBoardAccess(boardId, uid, "viewer", res);
+    if (!member) return;
+
+    const { body } = req.body as { body?: string };
+    if (!body || typeof body !== "string" || body.trim().length === 0) {
+      res.status(400).json({ error: "Komentar tidak boleh kosong." });
+      return;
+    }
+    if (body.length > 4000) {
+      res.status(400).json({ error: "Komentar maksimal 4000 karakter." });
+      return;
+    }
+
+    const task = await requireTaskInBoard(boardId, taskId, res);
+    if (!task) return;
+
+    // Parse mention tokens, then FILTER to board members (server is authority —
+    // a hand-typed @[id] for a non-member is dropped silently, enforcing #5).
+    const rawIds = parseMentionIds(body);
+    let validMentionIds: number[] = [];
+    if (rawIds.length > 0) {
+      const memberRows = await db
+        .select({ userId: workboardBoardMembersTable.userId })
+        .from(workboardBoardMembersTable)
+        .where(
+          and(
+            eq(workboardBoardMembersTable.boardId, boardId),
+            inArray(workboardBoardMembersTable.userId, rawIds)
+          )
+        );
+      const memberSet = new Set(memberRows.map((r) => r.userId));
+      validMentionIds = rawIds.filter((id) => memberSet.has(id));
+    }
+
+    const now = new Date();
+    const comment = await db.transaction(async (tx) => {
+      const [c] = await tx
+        .insert(workboardTaskCommentsTable)
+        .values({
+          taskId,
+          boardId,
+          authorUserId: uid,
+          body: body.trim(),
+          mentionedUserIds: validMentionIds,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      if (validMentionIds.length > 0) {
+        await tx.insert(workboardCommentMentionsTable).values(
+          validMentionIds.map((mid) => ({
+            commentId: c.id,
+            mentionedUserId: mid,
+            createdAt: now,
+          }))
+        );
+      }
+      return c;
+    });
+
+    // Notify mentioned users (exclude self) — best-effort, never blocks response.
+    const notifyIds = validMentionIds.filter((id) => id !== uid);
+    if (notifyIds.length > 0) {
+      try {
+        await notifyWorkboardMentions({
+          mentionedUserIds: notifyIds,
+          boardId,
+          taskId,
+          taskTitle: task.title,
+          commentId: comment.id,
+          authorUserId: uid,
+        });
+      } catch (err) {
+        req.log?.error?.({ err }, "workboard mention notify failed");
+      }
+    }
+
+    const [author] = await db
+      .select({ name: usersTable.name, email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.id, uid))
+      .limit(1);
+
+    res.status(201).json({
+      comment: {
+        id: comment.id,
+        taskId,
+        body: comment.body,
+        mentionedUserIds: validMentionIds,
+        authorUserId: uid,
+        authorName: author?.name ?? null,
+        authorEmail: author?.email ?? null,
+        createdAt: comment.createdAt,
+      },
+    });
+  }
+);
+
+router.delete(
+  "/boards/:boardId/tasks/:taskId/comments/:commentId",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const boardId = Number(req.params.boardId);
+    const taskId = Number(req.params.taskId);
+    const commentId = Number(req.params.commentId);
+    if (
+      !Number.isInteger(boardId) ||
+      !Number.isInteger(taskId) ||
+      !Number.isInteger(commentId)
+    ) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+    const member = await requireBoardAccess(boardId, uid, "viewer", res);
+    if (!member) return;
+
+    const [comment] = await db
+      .select({
+        id: workboardTaskCommentsTable.id,
+        authorUserId: workboardTaskCommentsTable.authorUserId,
+      })
+      .from(workboardTaskCommentsTable)
+      .where(
+        and(
+          eq(workboardTaskCommentsTable.id, commentId),
+          eq(workboardTaskCommentsTable.taskId, taskId),
+          eq(workboardTaskCommentsTable.boardId, boardId)
+        )
+      )
+      .limit(1);
+    if (!comment) {
+      res.status(404).json({ error: "Komentar tidak ditemukan." });
+      return;
+    }
+
+    // Only the comment's author OR the board owner may delete it.
+    if (comment.authorUserId !== uid && member.role !== "owner") {
+      res.status(403).json({ error: "Tidak boleh menghapus komentar ini." });
+      return;
+    }
+
+    // ON DELETE CASCADE removes mentions + notifications for this comment.
+    await db
+      .delete(workboardTaskCommentsTable)
+      .where(eq(workboardTaskCommentsTable.id, commentId));
+    res.json({ ok: true });
+  }
+);
+
+router.get(
+  "/boards/:boardId/mention-candidates",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const boardId = Number(req.params.boardId);
+    if (!Number.isInteger(boardId)) {
+      res.status(400).json({ error: "boardId tidak valid." });
+      return;
+    }
+    const member = await requireBoardAccess(boardId, uid, "viewer", res);
+    if (!member) return;
+
+    const rows = await db
+      .select({
+        userId: workboardBoardMembersTable.userId,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: workboardBoardMembersTable.role,
+      })
+      .from(workboardBoardMembersTable)
+      .leftJoin(usersTable, eq(workboardBoardMembersTable.userId, usersTable.id))
+      .where(eq(workboardBoardMembersTable.boardId, boardId));
+
+    res.json({ candidates: rows });
+  }
+);
+
+// ─── NOTIFICATIONS (bell) ────────────────────────────────────────────────────
+// Scoped to the signed-in user as RECIPIENT. Menu gating is workboard:view.
+
+router.get(
+  "/notifications",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const unreadOnly = req.query.unreadOnly === "true";
+
+    const rows = await db
+      .select({
+        id: workboardNotificationsTable.id,
+        boardId: workboardNotificationsTable.boardId,
+        taskId: workboardNotificationsTable.taskId,
+        commentId: workboardNotificationsTable.commentId,
+        type: workboardNotificationsTable.type,
+        isRead: workboardNotificationsTable.isRead,
+        createdAt: workboardNotificationsTable.createdAt,
+        actorUserId: workboardNotificationsTable.actorUserId,
+        actorName: usersTable.name,
+        actorEmail: usersTable.email,
+        taskTitle: workboardTasksTable.title,
+        boardName: workboardBoardsTable.name,
+      })
+      .from(workboardNotificationsTable)
+      .leftJoin(usersTable, eq(workboardNotificationsTable.actorUserId, usersTable.id))
+      .leftJoin(workboardTasksTable, eq(workboardNotificationsTable.taskId, workboardTasksTable.id))
+      .leftJoin(workboardBoardsTable, eq(workboardNotificationsTable.boardId, workboardBoardsTable.id))
+      .where(
+        unreadOnly
+          ? and(
+              eq(workboardNotificationsTable.recipientUserId, uid),
+              eq(workboardNotificationsTable.isRead, false)
+            )
+          : eq(workboardNotificationsTable.recipientUserId, uid)
+      )
+      .orderBy(desc(workboardNotificationsTable.createdAt))
+      .limit(100);
+
+    const [unread] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(workboardNotificationsTable)
+      .where(
+        and(
+          eq(workboardNotificationsTable.recipientUserId, uid),
+          eq(workboardNotificationsTable.isRead, false)
+        )
+      );
+
+    res.json({ notifications: rows, unreadCount: unread?.count ?? 0 });
+  }
+);
+
+router.patch(
+  "/notifications/read-all",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    await db
+      .update(workboardNotificationsTable)
+      .set({ isRead: true, readAt: new Date() })
+      .where(
+        and(
+          eq(workboardNotificationsTable.recipientUserId, uid),
+          eq(workboardNotificationsTable.isRead, false)
+        )
+      );
+    res.json({ ok: true });
+  }
+);
+
+router.patch(
+  "/notifications/:notifId/read",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const notifId = Number(req.params.notifId);
+    if (!Number.isInteger(notifId)) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+    const [updated] = await db
+      .update(workboardNotificationsTable)
+      .set({ isRead: true, readAt: new Date() })
+      .where(
+        and(
+          eq(workboardNotificationsTable.id, notifId),
+          eq(workboardNotificationsTable.recipientUserId, uid)
+        )
+      )
+      .returning({ id: workboardNotificationsTable.id });
+    if (!updated) {
+      res.status(404).json({ error: "Notifikasi tidak ditemukan." });
+      return;
+    }
     res.json({ ok: true });
   }
 );

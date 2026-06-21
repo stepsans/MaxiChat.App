@@ -74,6 +74,10 @@ export const flowNodeSchema = z.object({
     // ai — restrict the AI's knowledge-base reference to these specific entry
     // ids while this node's handoff is active. Empty = full knowledge base.
     knowledgeIds: z.array(z.number().int().positive()).optional(),
+    // question — when true, each option pressed on this node is recorded to
+    // chatbot_flow_events and counted in the Dashboard "Menu chatbot ditekan"
+    // panel. Default false (opt-in).
+    countInDashboard: z.boolean().optional(),
   }),
 });
 

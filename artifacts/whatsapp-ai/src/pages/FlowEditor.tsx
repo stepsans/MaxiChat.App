@@ -69,6 +69,7 @@ type FlowNodeData = {
   productIds?: number[];
   aiInstruction?: string;
   knowledgeIds?: number[];
+  countInDashboard?: boolean;
 };
 
 type RFNode = Node<FlowNodeData & { label?: string }, NodeKind>;
@@ -869,6 +870,20 @@ function Inspector({
               </p>
             </div>
           )}
+          <div className="flex items-start justify-between gap-3 pt-1">
+            <div className="space-y-0.5">
+              <Label className="text-xs">Hitung di Dashboard</Label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Jika ON: setiap pilihan opsi di node ini dicatat & muncul di
+                panel "Menu chatbot ditekan" pada Dashboard. Default OFF.
+              </p>
+            </div>
+            <Switch
+              data-testid="switch-count-in-dashboard"
+              checked={!!node.data.countInDashboard}
+              onCheckedChange={(v) => onChange({ countInDashboard: v })}
+            />
+          </div>
         </div>
       )}
 

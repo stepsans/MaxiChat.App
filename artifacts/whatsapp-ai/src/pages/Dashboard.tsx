@@ -1,23 +1,16 @@
+import { useMemo, useState } from "react";
 import {
-  useGetAnalyticsSummary,
-  useListChats,
   useGetStorageUsage,
   useGetMyQuota,
-  getGetAnalyticsSummaryQueryKey,
-  getListChatsQueryKey,
   getGetStorageUsageQueryKey,
   getGetMyQuotaQueryKey,
 } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MessageSquare,
   Bot,
-  UserCheck,
   Flame,
-  TrendingUp,
   Users,
   ShieldAlert,
   HardDrive,
@@ -25,59 +18,135 @@ import {
   Layers,
   Coins,
   AlertTriangle,
+  Frown,
+  Clock,
+  Inbox,
+  GitBranch,
+  Kanban,
+  Trophy,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  MousePointerClick,
+  Award,
+  Package,
+  HelpCircle,
 } from "lucide-react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { cn, formatBytes } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { FirstRunWizard } from "@/components/FirstRunWizard";
+import SystemHealthStrip from "@/components/dashboard/SystemHealthStrip";
+import DrillDownDialog from "@/components/dashboard/DrillDownDialog";
+import {
+  useDashboardSummary,
+  useDashboardFlowMenu,
+  useDashboardProducts,
+  useDashboardTopQuestions,
+  type DashboardRange,
+} from "@/hooks/useDashboard";
+import {
+  rangeForPreset,
+  isLivePreset,
+  PRESET_LABELS,
+  type RangePreset,
+} from "@/components/dashboard/dashboard-range";
 
-// Convert a label's hex color into translucent fill/border so the count chip
-// reads as a soft tint with the label color as text — consistent with the
-// tag/status badge styling used elsewhere in the app.
-function hexToRgba(hex: string, alpha: number): string {
-  const m = hex.replace("#", "");
-  const full =
-    m.length === 3 ? m.split("").map((c) => c + c).join("") : m.slice(0, 6);
-  const r = parseInt(full.slice(0, 2), 16) || 0;
-  const g = parseInt(full.slice(2, 4), 16) || 0;
-  const b = parseInt(full.slice(4, 6), 16) || 0;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+// ── Formatters ───────────────────────────────────────────────────────────────
+function fmtFrt(seconds: number | null): string {
+  if (seconds == null) return "—";
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }
-const labelChipBg = (hex: string) => hexToRgba(hex, 0.15);
-const labelChipBorder = (hex: string) => hexToRgba(hex, 0.35);
 
+function fmtRupiah(n: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+    notation: "compact",
+  }).format(n);
+}
+
+// A KPI card. When `metric` is provided the whole card becomes a button that
+// opens the drill-down list (spec 5.1). Colours use theme tokens only.
 function StatCard({
   title,
   value,
   icon: Icon,
-  color,
+  tone = "primary",
   sub,
+  delta,
+  onClick,
+  testId,
 }: {
   title: string;
   value: number | string;
   icon: React.ElementType;
-  color: string;
+  tone?: "primary" | "destructive" | "success" | "warning" | "muted";
   sub?: string;
+  delta?: number;
+  onClick?: () => void;
+  testId?: string;
 }) {
-  return (
-    <Card data-testid={`stat-card-${title.toLowerCase().replace(/\s/g, "-")}`}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-              {title}
+  const toneCls: Record<string, string> = {
+    primary: "bg-primary/10 text-primary",
+    destructive: "bg-destructive/10 text-destructive",
+    success: "bg-success/10 text-success",
+    warning: "bg-warning/10 text-warning",
+    muted: "bg-muted text-muted-foreground",
+  };
+  const body = (
+    <CardContent className="p-4">
+      <div className="flex items-start justify-between">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+            {title}
+          </p>
+          <p className="text-2xl font-bold mt-1 text-foreground tabular-nums">{value}</p>
+          {(sub || delta != null) && (
+            <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+              {delta != null && delta !== 0 && (
+                <span
+                  className={cn(
+                    "inline-flex items-center font-medium",
+                    delta > 0 ? "text-success" : "text-destructive"
+                  )}
+                >
+                  {delta > 0 ? (
+                    <ArrowUp className="w-3 h-3" />
+                  ) : (
+                    <ArrowDown className="w-3 h-3" />
+                  )}
+                  {Math.abs(delta)}
+                </span>
+              )}
+              {sub}
             </p>
-            <p className="text-2xl font-bold mt-1 text-foreground">{value}</p>
-            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-          </div>
-          <div className={cn("p-2 rounded-md", color)}>
-            <Icon className="w-4 h-4" />
-          </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+        <div className={cn("p-2 rounded-md flex-shrink-0", toneCls[tone])}>
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
+    </CardContent>
   );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid={testId}
+        className="rounded-xl border bg-card text-card-foreground shadow text-left transition-colors hover:bg-accent/40 cursor-pointer"
+      >
+        {body}
+      </button>
+    );
+  }
+  return <Card data-testid={testId}>{body}</Card>;
 }
 
 function QuotaBar({
@@ -103,13 +172,11 @@ function QuotaBar({
   warnPercent?: number;
   enforced?: boolean;
 }) {
-  // Owner Infinity: render ∞ with no progress bar / near-limit warning.
   const hasLimit = !unlimited && limit > 0;
   const pct = hasLimit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  // Near-limit threshold; for storage this is operator-configured (FASE C).
   const threshold = warnPercent > 0 && warnPercent <= 100 ? warnPercent : 80;
   const warn = hasLimit && pct >= threshold;
-  const barColor = warn ? "bg-amber-500" : "bg-cyan-500";
+  const barColor = warn ? "bg-warning" : "bg-primary";
   return (
     <div data-testid={testId}>
       <div className="flex items-center justify-between mb-1.5">
@@ -118,7 +185,7 @@ function QuotaBar({
           {label}
           {warn && (
             <AlertTriangle
-              className="w-3.5 h-3.5 text-amber-500"
+              className="w-3.5 h-3.5 text-warning"
               data-testid={`${testId}-warning`}
             />
           )}
@@ -130,7 +197,7 @@ function QuotaBar({
         </span>
       </div>
       {unlimited ? (
-        <p className="text-[11px] mt-1 text-cyan-500" data-testid={`${testId}-unlimited`}>
+        <p className="text-[11px] mt-1 text-primary" data-testid={`${testId}-unlimited`}>
           Tidak terbatas
         </p>
       ) : (
@@ -145,7 +212,7 @@ function QuotaBar({
             <p
               className={cn(
                 "text-[11px] mt-1 tabular-nums",
-                warn ? "text-amber-500" : "text-muted-foreground"
+                warn ? "text-warning" : "text-muted-foreground"
               )}
             >
               {pct}% terpakai
@@ -162,16 +229,180 @@ function QuotaBar({
   );
 }
 
+// A Tier-1 → Tier-2 module summary tile: a headline number + an arrow that
+// navigates to the module's own (Tier-2) dashboard (spec A.0).
+function ModuleCard({
+  title,
+  value,
+  icon: Icon,
+  href,
+  testId,
+}: {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+  href: string;
+  testId?: string;
+}) {
+  const [, navigate] = useLocation();
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(href)}
+      data-testid={testId}
+      className="rounded-xl border bg-card text-card-foreground shadow text-left w-full transition-colors hover:bg-accent/40 cursor-pointer"
+    >
+      <CardContent className="p-4 flex items-center gap-3">
+          <div className="p-2 rounded-md bg-primary/10 text-primary flex-shrink-0">
+            <Icon className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground font-medium">{title}</p>
+            <p className="text-sm font-semibold text-foreground truncate">{value}</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        </CardContent>
+      </button>
+  );
+}
+
+// "Menu chatbot ditekan" (spec A.4). Conditional: only meaningful when the owner
+// has an active flow; otherwise nudge them to activate one.
+function FlowMenuPanel({ range, enabled }: { range: DashboardRange; enabled: boolean }) {
+  const { data, isLoading } = useDashboardFlowMenu(range, enabled);
+  if (isLoading || !data) return null;
+  const rows = data.rows;
+  const max = rows.reduce((m, r) => Math.max(m, r.count), 0) || 1;
+  return (
+    <Card data-testid="flow-menu-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <MousePointerClick className="w-4 h-4 text-muted-foreground" />
+          Menu Chatbot Ditekan
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {!data.hasActiveFlow ? (
+          <p className="text-sm text-muted-foreground">
+            Belum ada Chatbot Flow aktif. Aktifkan flow dan nyalakan "Hitung di
+            Dashboard" pada node pertanyaan untuk melihat menu yang paling sering ditekan.
+          </p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Belum ada opsi yang ditekan pada periode ini.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((r, i) => (
+              <div key={`${r.label}-${r.level}-${i}`} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-foreground truncate">{r.label}</span>
+                  <span className="tabular-nums text-muted-foreground">{r.count}</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${Math.round((r.count / max) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// "Produk paling diminati" (spec A.3) — bar ranking from AI analyses.
+function ProductsPanel({ range, enabled }: { range: DashboardRange; enabled: boolean }) {
+  const { data, isLoading } = useDashboardProducts(range, enabled);
+  if (isLoading || !data || data.rows.length === 0) return null;
+  const rows = data.rows;
+  const max = rows.reduce((m, r) => Math.max(m, r.count), 0) || 1;
+  return (
+    <Card data-testid="products-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Package className="w-4 h-4 text-muted-foreground" />
+          Produk Paling Diminati
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={`${r.product}-${i}`} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-foreground truncate">{r.product}</span>
+                <span className="tabular-nums text-muted-foreground">{r.count}</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${Math.round((r.count / max) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// "Pertanyaan tersering" (spec A.3) — cached AI intent clustering. Range-
+// independent (it's a scheduled snapshot), so it ignores the header range.
+function TopQuestionsPanel({ enabled }: { enabled: boolean }) {
+  const { data, isLoading } = useDashboardTopQuestions(enabled);
+  if (isLoading || !data || data.questions.length === 0) return null;
+  const rows = data.questions;
+  const max = rows.reduce((m, r) => Math.max(m, r.count), 0) || 1;
+  return (
+    <Card data-testid="top-questions-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <HelpCircle className="w-4 h-4 text-muted-foreground" />
+          Pertanyaan Tersering
+          <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+            {data.windowDays} hari terakhir
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={`${r.intent}-${i}`} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-foreground truncate">{r.intent}</span>
+                <span className="tabular-nums text-muted-foreground">{r.count}</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${Math.round((r.count / max) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const PRESETS: RangePreset[] = ["today", "7d", "month"];
+
 export default function Dashboard() {
   const { menus, isLoading: permLoading } = usePermissions();
   const canView = menus.dashboard.canView;
 
-  const { data: summary, isLoading: summaryLoading } = useGetAnalyticsSummary({
-    query: { queryKey: getGetAnalyticsSummaryQueryKey(), enabled: canView },
-  });
-  const { data: chats } = useListChats(undefined, {
-    query: { queryKey: getListChatsQueryKey(), enabled: canView },
-  });
+  const [preset, setPreset] = useState<RangePreset>("today");
+  const range = useMemo(() => rangeForPreset(preset), [preset]);
+  const live = isLivePreset(preset);
+
+  const [drill, setDrill] = useState<{ metric: string; title: string } | null>(null);
+
+  const { data: summary, isLoading: summaryLoading } = useDashboardSummary(range, live);
   const { data: storage, isLoading: storageLoading } = useGetStorageUsage({
     query: { queryKey: getGetStorageUsageQueryKey(), enabled: canView },
   });
@@ -179,7 +410,12 @@ export default function Dashboard() {
     query: { queryKey: getGetMyQuotaQueryKey(), enabled: canView },
   });
 
-  const needsHumanChats = chats?.filter((c) => c.status === "needs_human") ?? [];
+  // View-role: owners can preview the CS operational layout. CS users are pinned
+  // to "cs" (owner-only signals come back null from the API anyway).
+  const apiRole = summary?.role ?? "cs";
+  const [viewRole, setViewRole] = useState<"owner" | "cs" | null>(null);
+  const role = viewRole ?? apiRole;
+  const isOwner = apiRole === "owner";
 
   // Route is unguarded — self-guard so a user without dashboard.view who
   // navigates here directly gets a clear message instead of 403-driven blanks.
@@ -203,84 +439,244 @@ export default function Dashboard() {
     );
   }
 
+  const ls = summary?.lead_status ?? { lead: 0, not_lead: 0, unknown: 0 };
+  const openDrill = (metric: string, title: string) => setDrill({ metric, title });
+
   return (
     <div className="flex flex-col h-full overflow-auto">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 h-14 border-b border-border flex-shrink-0">
-        <div>
+      <div className="flex items-center justify-between gap-3 px-6 h-14 border-b border-border flex-shrink-0">
+        <div className="min-w-0">
           <h1 className="text-base font-semibold text-foreground">Dashboard</h1>
-          <p className="text-xs text-muted-foreground">AI automation overview</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {live ? "Pantauan langsung" : "Mode laporan"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Owner can preview the CS view */}
+          {isOwner && (
+            <div className="flex rounded-md border border-border overflow-hidden text-xs">
+              {(["owner", "cs"] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setViewRole(r)}
+                  data-testid={`role-toggle-${r}`}
+                  className={cn(
+                    "px-2.5 py-1 font-medium transition-colors",
+                    role === r
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-card text-muted-foreground hover:bg-accent/40"
+                  )}
+                >
+                  {r === "owner" ? "Owner" : "CS"}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Date range presets */}
+          <div className="flex rounded-md border border-border overflow-hidden text-xs">
+            {PRESETS.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPreset(p)}
+                data-testid={`range-preset-${p}`}
+                className={cn(
+                  "px-2.5 py-1 font-medium transition-colors",
+                  preset === p
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground hover:bg-accent/40"
+                )}
+              >
+                {PRESET_LABELS[p]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="flex-1 p-6 space-y-6">
-        {/* First-run wizard — Connect WA → AI profile → live sandbox.
-            Hides itself once WA is connected AND AI has been tried. */}
-        <FirstRunWizard />
+        {/* System Health strip (spec A.9) — reliability signals at the very top. */}
+        <SystemHealthStrip />
 
-        {/* Onboarding checklist — hides itself at 100% health */}
+        {/* First-run wizard + onboarding (hide themselves once healthy). */}
+        <FirstRunWizard />
         <OnboardingChecklist />
 
-        {/* Stats Grid */}
+        {/* KPI grid — role-based (spec A.2). */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {summaryLoading ? (
-            Array(8)
+            Array(5)
               .fill(0)
               .map((_, i) => <Skeleton key={i} className="h-24 rounded-lg" />)
           ) : (
             <>
               <StatCard
-                title="Total Chats"
-                value={summary?.totalChats ?? 0}
+                title="Percakapan"
+                value={summary?.percakapan.count ?? 0}
                 icon={MessageSquare}
-                color="bg-orange-500/10 text-orange-400"
-                sub={`${summary?.todayChats ?? 0} today`}
+                tone="primary"
+                delta={summary?.percakapan.delta}
+                sub="vs periode sebelumnya"
+                onClick={() => openDrill("conversations", "Percakapan")}
+                testId="kpi-percakapan"
               />
+
               <StatCard
-                title="AI Handled"
-                value={summary?.aiHandled ?? 0}
-                icon={Bot}
-                color="bg-primary/10 text-primary"
+                title="Belum Dibalas"
+                value={summary?.belum_dibalas ?? 0}
+                icon={Inbox}
+                tone="warning"
+                onClick={() => openDrill("waiting", "Belum Dibalas")}
+                testId="kpi-belum-dibalas"
               />
-              <StatCard
-                title="Needs Human"
-                value={summary?.needsHuman ?? 0}
-                icon={UserCheck}
-                color="bg-yellow-500/10 text-yellow-400"
-              />
-              <StatCard
-                title="Lead Rate"
-                value={`${summary?.leadRate ?? 0}%`}
-                icon={TrendingUp}
-                color="bg-emerald-500/10 text-emerald-400"
-              />
-              <StatCard
-                title="Leads"
-                value={summary?.leads ?? 0}
-                icon={Flame}
-                color="bg-emerald-500/10 text-emerald-400"
-              />
-              <StatCard
-                title="Not Leads"
-                value={summary?.notLeads ?? 0}
-                icon={Users}
-                color="bg-rose-500/10 text-rose-400"
-              />
-              <StatCard
-                title="Total Messages"
-                value={summary?.totalMessages ?? 0}
-                icon={MessageSquare}
-                color="bg-cyan-500/10 text-cyan-400"
-              />
+
+              {summary?.tidak_puas != null && (
+                <StatCard
+                  title="Customer Tidak Puas"
+                  value={summary.tidak_puas}
+                  icon={Frown}
+                  tone="destructive"
+                  testId="kpi-tidak-puas"
+                />
+              )}
+
+              {role === "owner" ? (
+                <>
+                  {summary?.lead_panas != null && (
+                    <StatCard
+                      title="Lead Panas"
+                      value={summary.lead_panas}
+                      icon={Flame}
+                      tone="primary"
+                      sub="skor ≥ 80"
+                      testId="kpi-lead-panas"
+                    />
+                  )}
+                  <StatCard
+                    title="Ditangani AI"
+                    value={summary?.ai_handled_percent != null ? `${summary.ai_handled_percent}%` : "—"}
+                    icon={Bot}
+                    tone="success"
+                    testId="kpi-ai-handled"
+                  />
+                  {summary?.won != null && (
+                    <StatCard
+                      title="Won"
+                      value={summary.won.count}
+                      icon={Award}
+                      tone="success"
+                      sub={fmtRupiah(summary.won.value)}
+                      testId="kpi-won"
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  <StatCard
+                    title="Avg Balas Pertama"
+                    value={fmtFrt(summary?.avg_frt_seconds ?? null)}
+                    icon={Clock}
+                    tone="primary"
+                    testId="kpi-frt"
+                  />
+                  <StatCard
+                    title="Chat Aktif Saya"
+                    value={summary?.my_active ?? 0}
+                    icon={Users}
+                    tone="muted"
+                    onClick={() => openDrill("my_active", "Chat Aktif Saya")}
+                    testId="kpi-my-active"
+                  />
+                </>
+              )}
             </>
           )}
+        </div>
+
+        {/* Lead Status (spec A.7) — each row drills into its chat list. */}
+        <Card data-testid="lead-status-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Status Lead</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3">
+              {([
+                { key: "lead", label: "Leads", value: ls.lead, tone: "success" as const },
+                { key: "not_lead", label: "Not Leads", value: ls.not_lead, tone: "muted" as const },
+                { key: "unknown", label: "Unknown", value: ls.unknown, tone: "muted" as const },
+              ]).map((row) => (
+                <button
+                  key={row.key}
+                  type="button"
+                  onClick={() => openDrill(row.key, row.label)}
+                  data-testid={`lead-status-${row.key}`}
+                  className="text-left rounded-md border border-border p-3 transition-colors hover:bg-accent/40"
+                >
+                  <p className="text-2xl font-bold tabular-nums text-foreground">{row.value}</p>
+                  <p
+                    className={cn(
+                      "text-xs font-medium mt-0.5",
+                      row.tone === "success" ? "text-success" : "text-muted-foreground"
+                    )}
+                  >
+                    {row.label}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Produk paling diminati (spec A.3) + Pertanyaan tersering (spec A.3) +
+            Menu chatbot ditekan (spec A.4). */}
+        <ProductsPanel range={range} enabled={canView} />
+        <TopQuestionsPanel enabled={canView} />
+        <FlowMenuPanel range={range} enabled={canView} />
+
+        {/* Module summary tiles → Tier-2 dashboards (spec A.0). */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Modul
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <ModuleCard
+              title="Chat"
+              value={`${summary?.percakapan.count ?? 0} percakapan`}
+              icon={MessageSquare}
+              href="/chat-insights"
+              testId="module-chat"
+            />
+            <ModuleCard
+              title="AI Pipeline"
+              value={`${summary?.lead_panas ?? 0} lead panas`}
+              icon={GitBranch}
+              href="/ai-pipeline"
+              testId="module-ai-pipeline"
+            />
+            <ModuleCard
+              title="WorkBoard"
+              value="Buka papan"
+              icon={Kanban}
+              href="/workboard"
+              testId="module-workboard"
+            />
+            <ModuleCard
+              title="KPI Agent"
+              value="Lihat laporan"
+              icon={Trophy}
+              href="/analytics?tab=ai"
+              testId="module-agent-kpi"
+            />
+          </div>
         </div>
 
         {/* Data Usage */}
         <Card data-testid="storage-usage-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <HardDrive className="w-4 h-4 text-cyan-400" />
+              <HardDrive className="w-4 h-4 text-muted-foreground" />
               Penggunaan Data Chat
             </CardTitle>
           </CardHeader>
@@ -309,17 +705,14 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground mt-3">
-              Estimasi ukuran data chat di seluruh channel akun ini.
-            </p>
           </CardContent>
         </Card>
 
-        {/* Quota Usage */}
+        {/* Quota Usage — owner-facing limits. */}
         <Card data-testid="quota-usage-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Gauge className="w-4 h-4 text-cyan-400" />
+              <Gauge className="w-4 h-4 text-muted-foreground" />
               Penggunaan Kuota
             </CardTitle>
           </CardHeader>
@@ -373,72 +766,15 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-
-        {/* Chats by Label */}
-        {!summaryLoading && (summary?.chatsByLabel?.length ?? 0) > 0 && (
-          <Card data-testid="chats-by-label-card">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Chat per Label</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {summary!.chatsByLabel.map((label) => (
-                  <span
-                    key={label.id}
-                    data-testid={`label-count-${label.id}`}
-                    className="inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium"
-                    style={{
-                      backgroundColor: labelChipBg(label.color),
-                      color: label.color,
-                      border: `1px solid ${labelChipBorder(label.color)}`,
-                    }}
-                  >
-                    <span
-                      className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: label.color }}
-                    />
-                    <span>{label.name}</span>
-                    <span className="font-bold tabular-nums">{label.count}</span>
-                  </span>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Needs Human Section */}
-        {needsHumanChats.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-yellow-400">
-                Needs Human Attention ({needsHumanChats.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {needsHumanChats.slice(0, 5).map((chat) => (
-                  <Link
-                    key={chat.id}
-                    href={`/chats/${chat.id}`}
-                    data-testid={`needs-human-chat-${chat.id}`}
-                    className="flex items-center justify-between p-3 rounded-md bg-secondary hover:bg-accent transition-colors cursor-pointer"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{chat.contactName}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {chat.lastMessage ?? "No messages"}
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="border-yellow-500/30 text-yellow-400 text-[10px] ml-2 flex-shrink-0">
-                      Needs Human
-                    </Badge>
-                  </Link>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
+
+      {/* Drill-down dialog (spec 5.1). */}
+      <DrillDownDialog
+        metric={drill?.metric ?? null}
+        title={drill?.title ?? ""}
+        range={range}
+        onClose={() => setDrill(null)}
+      />
     </div>
   );
 }

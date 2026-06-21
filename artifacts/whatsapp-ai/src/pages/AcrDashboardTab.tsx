@@ -207,7 +207,7 @@ const FREQ_OPTIONS = [
 ] as const;
 
 const RED_FLAG_SERIES = [
-  { key: "totalCustomerAngry", label: "Customer Marah", color: "#dc2626" },
+  { key: "totalCustomerAngry", label: "Customer Tidak Puas", color: "#dc2626" },
   { key: "totalRudeLanguage", label: "Bahasa Tidak Sopan", color: "#7f1d1d" },
   { key: "totalCustomerIgnored", label: "Customer Dicuekin", color: "#ea580c" },
   { key: "totalNoReplyCritical", label: "Tidak Dibalas", color: "#475569" },

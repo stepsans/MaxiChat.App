@@ -10,6 +10,8 @@ import {
   channelsTable,
 } from "@workspace/db";
 import { resolveAiClient } from "./ai-provider";
+import { TokenQuotaExceededError } from "./ai-quota";
+import { recordDeferredJob } from "./ai-deferred-jobs";
 import { recordAiUsage } from "./ai-usage";
 import { getOrCreateTenantSettings } from "./settings-store";
 import { buildFollowupSystemPrompt } from "./followup-prompt";
@@ -220,6 +222,7 @@ export async function generateFollowupMessage(
       stalledReason: analysis?.stalledReason,
       productInterest: entry.productInterest,
       aiNotes: analysis?.aiNotes,
+      customerTone: analysis?.customerTone,
       contactName: entry.contactName,
       recentMessages: recentContext,
     });
@@ -250,6 +253,18 @@ export async function generateFollowupMessage(
 
     return completion.choices?.[0]?.message?.content?.trim() ?? null;
   } catch (err) {
+    // Token hard-block (spec C2): the entry is left DUE (we return before
+    // advancing nextFollowupAt), so the 5-min scheduler re-runs it — re-checking
+    // reply/Won-Lost/do-not-contact each time — once quota returns. Record the
+    // deferred state for audit; nothing is sent stale.
+    if (err instanceof TokenQuotaExceededError) {
+      await recordDeferredJob({
+        ownerUserId: pipeline.ownerUserId,
+        jobType: "pipeline_followup",
+        jobRef: entry.id,
+      });
+      return null;
+    }
     console.error("[ai-pipeline-followup] message generation failed:", err);
     return null;
   }

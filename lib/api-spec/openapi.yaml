@@ -1041,6 +1041,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ai-usage/me/by-channel:
+    get:
+      operationId: getMyAiUsageByChannel
+      tags: [ai-usage]
+      summary: The owner's AI token usage for the current period, grouped per channel
+      description: >-
+        Per-channel breakdown of token spend in the current billing period, for
+        the channel filter and the "which channel burns the most" diagnostic.
+        Always the owner's tenant-wide figures.
+      responses:
+        "200":
+          description: Usage grouped by channel
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiUsageByChannel"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-usage/me/daily:
+    get:
+      operationId: getMyAiUsageDaily
+      tags: [ai-usage]
+      summary: The owner's daily AI token usage for the trailing window
+      description: >-
+        Daily token totals for a trailing window (default 30 days), for the usage
+        trend sparkline/bar chart. Always the owner's tenant-wide figures.
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 30
+          description: Number of trailing days to return (1–90, default 30).
+      responses:
+        "200":
+          description: Daily usage points, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiUsageDailyPoint"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /billing/me:
     get:
       operationId: getMyBilling
@@ -10938,6 +10997,18 @@ components:
           completionTokens,
           totalTokens,
           requestCount,
+          planName,
+          isTrial,
+          isInfinity,
+          tokenLimit,
+          tokenUsed,
+          tokenRemaining,
+          usagePercent,
+          grantLimit,
+          grantRemaining,
+          grantResetAt,
+          boosterRemaining,
+          notifyLevel,
         ]
       properties:
         userId:
@@ -10951,15 +11022,22 @@ components:
         joinedAt:
           type: string
           format: date-time
-          description: The super admin's join date — anchors the billing period day-of-month.
+          description: >-
+            The super admin's join date. Informational only — it determines when
+            the 14-day trial started, NOT the billing window. The authoritative
+            window is periodStart/periodEnd, sourced from tenant_quota.
         periodStart:
           type: string
           format: date-time
-          description: Inclusive start of the current billing period.
+          description: >-
+            Inclusive start of the current billing period. Sourced from
+            tenant_quota.periodStart (the locked anniversary anchor). Falls back
+            to a join-date-derived window only while a tenant is unprovisioned
+            (trial / no plan purchased yet).
         periodEnd:
           type: string
           format: date-time
-          description: Exclusive end of the current billing period (start of the next).
+          description: Exclusive end of the current billing period (start of the next), from tenant_quota.periodEnd.
         promptTokens:
           type: integer
         completionTokens:
@@ -10969,6 +11047,108 @@ components:
         requestCount:
           type: integer
           description: Number of AI completion calls in the period.
+        planName:
+          type: string
+          description: Active plan display name (e.g. "Growth"), or "Trial" while on trial, "Infinity" for the dev/infinity owner.
+        isTrial:
+          type: boolean
+          description: True while the tenant is in the trial window (subscription effective status = trial).
+        isInfinity:
+          type: boolean
+          description: True for the unlimited/never-billed infinity owner. The UI shows "unlimited" rather than a bar.
+        tokenLimit:
+          type: integer
+          description: >-
+            Total token plafon for progress bars = grant allowance + active
+            booster balance. 0 means "no enforced cap" (unprovisioned trial or
+            infinity owner) — the UI must treat 0 as unlimited, not depleted.
+        tokenUsed:
+          type: integer
+          description: Tokens consumed in the current period (alias of totalTokens, named explicitly for the quota UI).
+        tokenRemaining:
+          type: integer
+          description: max(0, tokenLimit − tokenUsed). 0 when tokenLimit is 0 (uncapped) too — read alongside notifyLevel.
+        usagePercent:
+          type: integer
+          description: Percent of tokenLimit consumed, 0..100 (0 when uncapped). Drives the progress-bar colour.
+        grantLimit:
+          type: integer
+          description: Monthly grant allowance from the active plan (tenant_quota.tokenLimit). Use-it-or-lose-it.
+        grantRemaining:
+          type: integer
+          description: Remaining grant this period = max(0, grantLimit − tokenUsed). Expires at grantResetAt.
+        grantResetAt:
+          type: string
+          format: date-time
+          description: When the grant resets / expires (= periodEnd).
+        boosterRemaining:
+          type: integer
+          description: Total remaining tokens across all active (non-expired) paid boosters.
+        boosterNextExpiresAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Expiry of the soonest-expiring active booster, or null when there are no boosters.
+        boosters:
+          type: array
+          description: Per-booster breakdown for the detailed quota view, soonest expiry first.
+          items:
+            $ref: "#/components/schemas/TokenBoosterSummary"
+        notifyLevel:
+          type: string
+          enum: [ok, warn80, warn20, crit5, depleted]
+          description: >-
+            Bell severity derived from remaining quota. ok = >20% left; warn80 =
+            ≥80% used (≤20% left); crit5 = ≤5% left; depleted = 0 left / hard
+            block. warn20 is reserved (founder's 80%-used == 20%-remaining are the
+            same trigger; warn80 is emitted for that band). Always "ok" when uncapped.
+        projectedDaysRemaining:
+          type: ["integer", "null"]
+          description: Estimated whole days until depletion at the current burn rate, or null when the rate is 0 / data is insufficient / uncapped.
+
+    TokenBoosterSummary:
+      type: object
+      required: [amount, remaining, expiresAt]
+      properties:
+        amount:
+          type: integer
+          description: Original token amount of this booster purchase.
+        remaining:
+          type: integer
+          description: Remaining tokens on this booster.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When this booster expires (purchasedAt + 90 days).
+
+    AiUsageByChannel:
+      type: object
+      required: [channelId, channelName, channelType, totalTokens, requestCount]
+      properties:
+        channelId:
+          type: ["integer", "null"]
+          description: Channel id, or null for usage not attributed to a channel.
+        channelName:
+          type: string
+          description: Channel label (or "Tanpa channel" when channelId is null).
+        channelType:
+          type: string
+          description: Channel kind (e.g. whatsapp, telegram).
+        totalTokens:
+          type: integer
+        requestCount:
+          type: integer
+
+    AiUsageDailyPoint:
+      type: object
+      required: [date, totalTokens, requestCount]
+      properties:
+        date:
+          type: string
+          description: Calendar day in YYYY-MM-DD (UTC).
+        totalTokens:
+          type: integer
+        requestCount:
+          type: integer
 
     PricingConfig:
       type: object
@@ -12500,6 +12680,9 @@ components:
               type: array
               items: { type: integer }
               description: "AI node only: restrict the AI's knowledge-base reference to these specific knowledge entry IDs while this node's handoff is active. Empty = use all of the owner's knowledge base."
+            countInDashboard:
+              type: boolean
+              description: "Question only: when true, each option pressed on this node is recorded to chatbot_flow_events and counted in the Dashboard 'Menu chatbot ditekan' panel. Default false (opt-in)."
 
     FlowEdge:
       type: object

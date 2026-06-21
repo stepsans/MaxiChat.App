@@ -6,7 +6,6 @@ import {
   BookOpen,
   Package,
   Settings,
-  BarChart3,
   GitBranch,
   KeyRound,
   Wallet,
@@ -48,6 +47,7 @@ import { useListLeadReviews, getListLeadReviewsQueryKey } from "@workspace/api-c
 import { usePermissions, type PermissionMenu } from "@/hooks/use-permissions";
 import { useBillingStatus } from "@/hooks/use-billing-status";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
+import { QuotaBell } from "@/components/QuotaBell";
 import { useChatNotificationSound } from "@/hooks/use-notification-sound";
 import { AlertTriangle } from "lucide-react";
 
@@ -82,6 +82,7 @@ const navGroups: NavGroup[] = [
   {
     id: "main",
     items: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard, menu: "dashboard" },
       { href: "/chats", label: "Chats", icon: MessageSquare, menu: "chats" },
       { href: "/status", label: "Status", icon: CircleDashed, menu: "statuses" },
     ],
@@ -91,7 +92,7 @@ const navGroups: NavGroup[] = [
     label: "AI",
     items: [
       { href: "/ai-studio", label: "AI Studio", icon: Sparkles, menu: "aiStudio" },
-      { href: "/ai-review", label: "AI Review", icon: ReceiptText, menu: "aiReview" },
+      { href: "/ai-review", label: "AI Capture", icon: ReceiptText, menu: "aiReview" },
       {
         href: "/ai-pipeline",
         label: "AI Pipeline",
@@ -117,14 +118,6 @@ const navGroups: NavGroup[] = [
       { href: "/knowledge", label: "Knowledge Base", icon: BookOpen, menu: "knowledge" },
       { href: "/products", label: "Products", icon: Package, menu: "products" },
       { href: "/flows", label: "Chatbot Flow", icon: GitBranch, menu: "flows" },
-    ],
-  },
-  {
-    id: "insights",
-    label: "Laporan",
-    items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard, menu: "dashboard" },
-      { href: "/analytics", label: "Laporan & Jadwal", icon: BarChart3, menu: "analytics" },
     ],
   },
   {
@@ -303,26 +296,29 @@ export default function Layout({
               </span>
             </div>
           )}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                data-testid="button-toggle-sidebar"
-                aria-label={collapsed ? "Buka sidebar" : "Sembunyikan sidebar"}
-                onClick={() => setCollapsed((v) => !v)}
-                className="flex items-center justify-center w-8 h-8 rounded-md text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              >
-                {collapsed ? (
-                  <PanelLeftOpen className="w-4 h-4" />
-                ) : (
-                  <PanelLeftClose className="w-4 h-4" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              {collapsed ? "Buka sidebar" : "Sembunyikan sidebar"}
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-1">
+            {!collapsed && <QuotaBell />}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  data-testid="button-toggle-sidebar"
+                  aria-label={collapsed ? "Buka sidebar" : "Sembunyikan sidebar"}
+                  onClick={() => setCollapsed((v) => !v)}
+                  className="flex items-center justify-center w-8 h-8 rounded-md text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                >
+                  {collapsed ? (
+                    <PanelLeftOpen className="w-4 h-4" />
+                  ) : (
+                    <PanelLeftClose className="w-4 h-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {collapsed ? "Buka sidebar" : "Sembunyikan sidebar"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         {/* Channel switcher — multi-channel omnichannel header. */}

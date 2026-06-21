@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import {
   db,
   usersTable,
@@ -17,7 +17,8 @@ import { logger } from "./logger";
 import { createInvoiceForPayment } from "./invoices";
 import { markInvoicePaid, clearDunningForOwner } from "./dunning";
 import { decodeInvoiceDirective } from "./proration-directive";
-import { grantCredits, addPaidCredits } from "./credit-wallet";
+import { grantCredits } from "./credit-wallet";
+import { grantBooster } from "./token-boosters";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -44,6 +45,51 @@ export async function getOrCreateTenantQuota(
     .where(eq(tenantQuotaTable.userId, ownerId))
     .limit(1);
   return row;
+}
+
+// The catalog's entry-level plan = lowest sortOrder among active plans (the
+// canonical "entry-level first" ordering used across billing/plans routes).
+export async function getEntryLevelPlan(
+  exec: DbExecutor = db
+): Promise<PlanRow | null> {
+  const [plan] = await exec
+    .select()
+    .from(plansTable)
+    .where(eq(plansTable.isActive, true))
+    .orderBy(asc(plansTable.sortOrder), asc(plansTable.id))
+    .limit(1);
+  return plan ?? null;
+}
+
+// Provision a TRIAL tenant with the full entry-level plan grant (LOCKED spec
+// A1/B: "rasakan nilai AI penuh" — not a tiny trial grant), so the C1 hard-block
+// also applies during trial once the grant is spent. Sets the trial window
+// (periodStart=now .. periodEnd=trialEnd) but NOT anchorDate — the anniversary
+// anchor only locks at the first paid conversion. planId stays NULL so the
+// monthly-close billing path never charges a trial. onConflictDoNothing: never
+// clobber an existing quota row (e.g. a returning/converted tenant).
+export async function provisionTrialQuota(
+  ownerId: number,
+  trialEnd: Date,
+  exec: DbExecutor = db
+): Promise<void> {
+  const plan = await getEntryLevelPlan(exec);
+  if (!plan) return; // No catalog yet — nothing to grant.
+  const now = new Date();
+  await exec
+    .insert(tenantQuotaTable)
+    .values({
+      userId: ownerId,
+      planId: null,
+      tokenLimit: plan.quotaTokens,
+      channelLimit: plan.quotaChannels,
+      userLimit: plan.quotaUsers,
+      storageLimit: plan.quotaStorageBytes,
+      periodStart: now,
+      periodEnd: trialEnd,
+      anchorDate: null,
+    })
+    .onConflictDoNothing({ target: tenantQuotaTable.userId });
 }
 
 // Activate (or renew) a plan for an owner. This is the authoritative state
@@ -98,6 +144,8 @@ export async function activatePlanForOwner(
       storageLimit: plan.quotaStorageBytes,
       periodStart: now,
       periodEnd,
+      // First conversion → this is the locked anniversary anchor (spec A1).
+      anchorDate: now,
     })
     .onConflictDoUpdate({
       target: tenantQuotaTable.userId,
@@ -109,6 +157,9 @@ export async function activatePlanForOwner(
         storageLimit: plan.quotaStorageBytes,
         periodStart: now,
         periodEnd,
+        // LOCK the anchor: keep the existing first-conversion date forever;
+        // only set it now if this row never had one (e.g. a pre-anchor tenant).
+        anchorDate: sql`COALESCE(${tenantQuotaTable.anchorDate}, ${now})`,
         updatedAt: now,
       },
     });
@@ -221,10 +272,12 @@ export async function addAddonToQuota(
   const delta = addon.unitAmount * Math.max(1, quantity);
   const now = new Date();
 
-  // SPEC BAGIAN 1/10: a 'token' add-on is a prepaid AI-credit TOP-UP — it fills
-  // the wallet's paid_balance (Ember B, rollover), NOT tenant_quota.tokenLimit.
+  // LOCKED spec B: a 'token' add-on is a paid BOOSTER (Ember B) — a separate
+  // bucket with its own 90-day expiry that carries across billing periods, NOT a
+  // grant top-up of tenant_quota.tokenLimit (which lapses each period). Created
+  // inside the settlement txn so the booster is atomic with the paid flip.
   if (addon.type === "token") {
-    await addPaidCredits({ ownerUserId: ownerId, amount: delta, reason: "topup", now }, exec);
+    await grantBooster({ ownerUserId: ownerId, amountTokens: delta, now }, exec);
     return;
   }
 

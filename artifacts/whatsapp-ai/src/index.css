@@ -39,6 +39,11 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-destructive-border: var(--destructive-border);
 
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
@@ -126,6 +131,12 @@
   --destructive: 0 70% 55%;
   --destructive-foreground: 0 0% 100%;
 
+  /* Status-only: green = positive (e.g. Won, connected), amber = warning. */
+  --success: 142 65% 42%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+
   --input: 200 19% 14%;
   --ring: 25 95% 53%;
 
@@ -202,6 +213,12 @@
 
   --destructive: 0 72% 50%;
   --destructive-foreground: 0 0% 100%;
+
+  /* Status-only: green = positive, amber = warning. */
+  --success: 142 70% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 95% 45%;
+  --warning-foreground: 0 0% 100%;
 
   --input: 0 0% 100%;
   --ring: 22 92% 48%;

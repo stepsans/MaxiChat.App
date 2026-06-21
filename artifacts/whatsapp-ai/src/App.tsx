@@ -12,6 +12,7 @@ import { ChannelProvider } from "@/contexts/ChannelContext";
 import Channels from "@/pages/Channels";
 import Dashboard from "@/pages/Dashboard";
 import Chats from "@/pages/Chats";
+import ChatInsights from "@/pages/ChatInsights";
 import Status from "@/pages/Status";
 import Knowledge from "@/pages/Knowledge";
 import Settings from "@/pages/Settings";
@@ -112,6 +113,7 @@ function AuthGate() {
       <Layout user={data!.user ?? undefined}>
         <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/chat-insights" component={ChatInsights} />
         <Route path="/chats" component={Chats} />
         <Route path="/chats/:id" component={Chats} />
         <Route path="/status" component={Status} />

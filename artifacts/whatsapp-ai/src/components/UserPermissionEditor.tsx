@@ -47,7 +47,7 @@ const MENUS: { key: PermissionMenu; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "aiStudio", label: "AI Studio" },
   { key: "usage", label: "Pemakaian Token" },
-  { key: "aiReview", label: "AI Review" },
+  { key: "aiReview", label: "AI Capture" },
   { key: "acr", label: "AI Chat Report" },
 ];
 

@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import type { RequestHandler } from "express";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { TokenQuotaExceededError } from "./lib/ai-quota";
 import { resolveMobileToken, touchMobileToken } from "./lib/mobile-auth";
 
 const app: Express = express();
@@ -208,5 +209,29 @@ app.use((req, _res, next) => {
 });
 
 app.use("/api", router);
+
+// Token hard-block → HTTP 402 for any request-time AI route that lets the error
+// propagate (Express 5 auto-forwards async throws here). Background jobs catch
+// TokenQuotaExceededError themselves to defer; the WA/Telegram auto-reply path
+// swallows it and sends the static fallback. This is the catch-all for the rest.
+app.use(
+  (
+    err: unknown,
+    _req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    if (err instanceof TokenQuotaExceededError) {
+      if (res.headersSent) return next(err);
+      res.status(402).json({
+        error:
+          "Kuota token AI habis. Tambah kuota atau beli booster untuk melanjutkan.",
+        code: "token_quota_exceeded",
+      });
+      return;
+    }
+    next(err);
+  }
+);
 
 export default app;

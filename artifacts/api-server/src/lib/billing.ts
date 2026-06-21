@@ -31,9 +31,9 @@ import { computeBillingPeriod } from "./billing-period";
 import { isInfinityOwner } from "./infinity-owner";
 import { logger } from "./logger";
 
-// New tenants get a 7-day trial; after that they fall into read-only until an
-// admin marks them paid.
-const TRIAL_DAYS = 7;
+// New tenants get a 14-day trial (LOCKED spec A1 — time-to-first-value); after
+// that they fall into read-only until an admin marks them paid.
+const TRIAL_DAYS = 14;
 
 const PRICING_ROW_ID = 1;
 

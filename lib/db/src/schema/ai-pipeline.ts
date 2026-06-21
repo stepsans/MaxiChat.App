@@ -164,6 +164,15 @@ export const aiPipelineAnalysesTable = pgTable(
     // specific point left hanging instead of just a product label.
     lastOpenPoint: text("last_open_point"),
     stalledReason: text("stalled_reason"),
+    // Customer's language register/tone, detected ONCE here so every follow-up
+    // (FU1..FU3) mirrors a consistent style instead of re-inferring it live.
+    // e.g. "santai/akrab, pakai 'kak' + emoji" or "sopan, agak formal". NULL when
+    // the customer wrote too little to judge.
+    customerTone: text("customer_tone"),
+    // Customer sentiment detected in the same analysis pass (spec 2.2):
+    // 'marah' | 'kesal' | 'netral' | 'senang'. NULL on legacy rows → treat as
+    // 'netral'. The "Customer Tidak Puas" dashboard card = COUNT of ('marah','kesal').
+    sentiment: text("sentiment"),
     // Source chat (set when known) so the analysis links back to the thread.
     chatId: integer("chat_id"),
     // Lead classification from the AI: 'lead' | 'not_lead' | 'unclear'.

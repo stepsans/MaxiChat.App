@@ -16,6 +16,8 @@ import {
   tenantAiMemoriesTable,
 } from "@workspace/db";
 import { resolveAiClient } from "./ai-provider";
+import { TokenQuotaExceededError } from "./ai-quota";
+import { recordDeferredJob } from "./ai-deferred-jobs";
 import { recordAiUsage } from "./ai-usage";
 import { createHash } from "crypto";
 import { scheduleCutoffLogs } from "./ai-pipeline-scheduler";
@@ -51,6 +53,11 @@ interface AiAnalysisResult {
   aiNotes: string;
   lastOpenPoint: string | null;
   stalledReason: string | null;
+  // Customer's language register/tone, detected once so follow-ups stay consistent.
+  customerTone: string | null;
+  // Customer sentiment toward the service/product. Drives the "Customer Tidak
+  // Puas" dashboard card (marah/kesal = dissatisfied). Defaults to "netral".
+  sentiment: "marah" | "kesal" | "netral" | "senang";
   // Lead/role classification (§B.9 LANGKAH 0/1).
   conversationRole: "tenant_is_seller" | "tenant_is_buyer" | "unclear";
   leadClassification: "lead" | "not_lead" | "unclear";
@@ -119,6 +126,8 @@ Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
   "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
   "lastOpenPoint": "<hal terakhir yang menggantung / pertanyaan customer yang belum tuntas dijawab / keberatan yang dia sampaikan. null kalau tidak ada yang jelas — JANGAN mengarang>",
   "stalledReason": "<alasan percakapan berhenti, sependek mungkin. null kalau tidak jelas>",
+  "customerTone": "<gaya bahasa & nada CUSTOMER (bukan agent): pilih dari santai/akrab, sopan, formal, to-the-point — plus ciri spesifik bila ada (mis. 'pakai sapaan kak', 'banyak emoji', 'pakai singkatan', 'huruf kecil semua'). Contoh: 'santai & akrab, pakai kak + emoji'. null kalau pesan customer terlalu sedikit untuk dinilai. JANGAN mengarang>",
+  "sentiment": "<sentimen CUSTOMER terhadap layanan/produk: pilih satu — marah | kesal | netral | senang. 'marah'=komplain keras / emosi kuat, 'kesal'=tidak puas / mengeluh ringan, 'netral'=biasa saja, 'senang'=puas / antusias. 'netral' bila tidak jelas — JANGAN mengarang>",
   "contextHash": "<3-5 kata kunci topik utama percakapan, dipisah koma>"
 }`;
 }
@@ -192,6 +201,8 @@ Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
   "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
   "lastOpenPoint": "<hal terakhir yang menggantung / pertanyaan customer yang belum tuntas dijawab / keberatan yang dia sampaikan. null kalau tidak ada yang jelas — JANGAN mengarang>",
   "stalledReason": "<alasan percakapan berhenti, sependek mungkin. null kalau tidak jelas>",
+  "customerTone": "<gaya bahasa & nada CUSTOMER (bukan agent): pilih dari santai/akrab, sopan, formal, to-the-point — plus ciri spesifik bila ada (mis. 'pakai sapaan kak', 'banyak emoji', 'pakai singkatan', 'huruf kecil semua'). Contoh: 'santai & akrab, pakai kak + emoji'. null kalau pesan customer terlalu sedikit untuk dinilai. JANGAN mengarang>",
+  "sentiment": "<sentimen CUSTOMER terhadap layanan/produk: pilih satu — marah | kesal | netral | senang. 'marah'=komplain keras / emosi kuat, 'kesal'=tidak puas / mengeluh ringan, 'netral'=biasa saja, 'senang'=puas / antusias. 'netral' bila tidak jelas — JANGAN mengarang>",
   "contextHash": "<3-5 kata kunci topik utama percakapan, dipisah koma>"
 }`;
 }
@@ -388,6 +399,8 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           aiNotes: result.aiNotes || null,
           lastOpenPoint: result.lastOpenPoint,
           stalledReason: result.stalledReason,
+          customerTone: result.customerTone,
+          sentiment: result.sentiment,
           conversationRole: result.conversationRole,
           leadClassification: result.leadClassification,
           leadClassificationReason: result.leadClassificationReason,
@@ -506,6 +519,20 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
       pipeline.timezone
     );
   } catch (err) {
+    // Token hard-block (spec C2): DEFER, don't fail. Reset the log to pending so
+    // the cutoff scheduler re-runs it (with full re-validation) once quota
+    // returns, and record the deferred-job state. Nothing is lost mid-window.
+    if (err instanceof TokenQuotaExceededError) {
+      await db.update(aiPipelineCutoffLogsTable)
+        .set({ status: "pending", startedAt: null })
+        .where(eq(aiPipelineCutoffLogsTable.id, cutoffLogId));
+      await recordDeferredJob({
+        ownerUserId: log.ownerUserId,
+        jobType: "pipeline_cutoff",
+        jobRef: cutoffLogId,
+      });
+      return;
+    }
     await db.update(aiPipelineCutoffLogsTable)
       .set({
         status: "failed",
@@ -725,6 +752,8 @@ async function analyzeChat(opts: {
     aiNotes: typeof parsed.aiNotes === "string" ? parsed.aiNotes : "",
     lastOpenPoint: parseNullableText(parsed.lastOpenPoint),
     stalledReason: parseNullableText(parsed.stalledReason),
+    customerTone: parseNullableText(parsed.customerTone),
+    sentiment: parseEnum(parsed.sentiment, ["marah", "kesal", "netral", "senang"], "netral"),
     conversationRole,
     leadClassification,
     leadClassificationReason: parseNullableText(parsed.lead_classification_reason),
@@ -885,6 +914,8 @@ function buildSkippedResult(
     aiNotes: "",
     lastOpenPoint: null,
     stalledReason: null,
+    customerTone: null,
+    sentiment: "netral",
     conversationRole,
     leadClassification: "not_lead",
     leadClassificationReason: skipReason,

@@ -13,10 +13,14 @@ import { startMonthlyCloseScheduler } from "./lib/monthly-close";
 import { startFollowUpScheduler } from "./lib/follow-up-engine";
 import { startAiPipelineScheduler } from "./lib/ai-pipeline-scheduler";
 import { startAcrSchedulesPoller } from "./lib/acr-schedules-poller";
+import { startDashboardInsightsScheduler } from "./lib/dashboard-insights";
 import { startReportSchedulePoller } from "./lib/report-schedule-runner";
 import { startCreditHoldSweeper } from "./lib/credit-wallet";
 import { startEngineReprobeScheduler } from "./lib/platform-ai-engine";
 import { startDripScheduler } from "./lib/drip-engine";
+import { startBoosterExpiryScheduler } from "./lib/token-boosters";
+import { startDeferredResumeScheduler } from "./lib/ai-deferred-jobs";
+import { startTokenNotifyScheduler } from "./lib/token-notify";
 import { logger } from "./lib/logger";
 import { initWhatsapp } from "./routes/whatsapp";
 import { runSeed } from "./lib/seed";
@@ -162,6 +166,9 @@ async function main(): Promise<void> {
   // AI Chat Report: multi-schedule recurring-report poller (every 60s). Runs
   // due acr_schedules. Replaces the legacy single-per-tenant acr-scheduler.
   startAcrSchedulesPoller();
+  // Dashboard "Pertanyaan tersering": AI intent-clustering of recent inbound
+  // messages, every 6h, cached per owner (token-bounded, never real-time).
+  startDashboardInsightsScheduler();
   // Laporan & Jadwal: report-schedule poller (every 60s). Sends due scheduled
   // reports via email and logs each attempt. Additive; no-op when no schedules.
   startReportSchedulePoller();
@@ -177,6 +184,15 @@ async function main(): Promise<void> {
   // trial tenants and enqueues/sends nudge emails (no-op when Resend is
   // unconfigured — logs only). Default-safe, additive.
   startDripScheduler();
+  // Token boosters (LOCKED spec B2): daily sweep flips boosters past their
+  // 90-day expiry to "expired" so they stop counting toward the plafon.
+  startBoosterExpiryScheduler();
+  // Deferred AI jobs (spec C2): every 5 min, release + re-dispatch jobs held by
+  // the token hard-block for owners whose quota has returned.
+  startDeferredResumeScheduler();
+  // Token threshold emails (spec E1): every 15 min, email owners whose quota
+  // crossed 80/5/0%. Anti-spam — one email per threshold per period.
+  startTokenNotifyScheduler();
   // Billing v2 (FASE A): backfill immutable invoices for any already-paid
   // payments that predate the invoices table. Idempotent + best-effort, so it
   // never blocks boot (the NOT EXISTS filter makes it a no-op once caught up).

@@ -89,6 +89,8 @@ import type {
   AiReviewRunResult,
   AiSandboxInput,
   AiSandboxResponse,
+  AiUsageByChannel,
+  AiUsageDailyPoint,
   AiUsageSummary,
   AnalyticsSummary,
   AnalyticsV2Summary,
@@ -169,6 +171,7 @@ import type {
   GetKnowledgeSyncConfig200,
   GetLinkPreviewParams,
   GetMyAcrScoresParams,
+  GetMyAiUsageDailyParams,
   GetMyBillingTrendParams,
   GetMyCreditWalletUsageParams,
   GetNextActionsParams,
@@ -3111,6 +3114,169 @@ export function useGetMyAiUsage<TData = Awaited<ReturnType<typeof getMyAiUsage>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetMyAiUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyAiUsageByChannelUrl = () => {
+
+
+
+
+  return `/api/ai-usage/me/by-channel`
+}
+
+/**
+ * Per-channel breakdown of token spend in the current billing period, for the channel filter and the "which channel burns the most" diagnostic. Always the owner's tenant-wide figures.
+ * @summary The owner's AI token usage for the current period, grouped per channel
+ */
+export const getMyAiUsageByChannel = async ( options?: RequestInit): Promise<AiUsageByChannel[]> => {
+
+  return customFetch<AiUsageByChannel[]>(getGetMyAiUsageByChannelUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyAiUsageByChannelQueryKey = () => {
+    return [
+    `/api/ai-usage/me/by-channel`
+    ] as const;
+    }
+
+
+export const getGetMyAiUsageByChannelQueryOptions = <TData = Awaited<ReturnType<typeof getMyAiUsageByChannel>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsageByChannel>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyAiUsageByChannelQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyAiUsageByChannel>>> = ({ signal }) => getMyAiUsageByChannel({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsageByChannel>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyAiUsageByChannelQueryResult = NonNullable<Awaited<ReturnType<typeof getMyAiUsageByChannel>>>
+export type GetMyAiUsageByChannelQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The owner's AI token usage for the current period, grouped per channel
+ */
+
+export function useGetMyAiUsageByChannel<TData = Awaited<ReturnType<typeof getMyAiUsageByChannel>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsageByChannel>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyAiUsageByChannelQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyAiUsageDailyUrl = (params?: GetMyAiUsageDailyParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/ai-usage/me/daily?${stringifiedParams}` : `/api/ai-usage/me/daily`
+}
+
+/**
+ * Daily token totals for a trailing window (default 30 days), for the usage trend sparkline/bar chart. Always the owner's tenant-wide figures.
+ * @summary The owner's daily AI token usage for the trailing window
+ */
+export const getMyAiUsageDaily = async (params?: GetMyAiUsageDailyParams, options?: RequestInit): Promise<AiUsageDailyPoint[]> => {
+
+  return customFetch<AiUsageDailyPoint[]>(getGetMyAiUsageDailyUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyAiUsageDailyQueryKey = (params?: GetMyAiUsageDailyParams,) => {
+    return [
+    `/api/ai-usage/me/daily`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetMyAiUsageDailyQueryOptions = <TData = Awaited<ReturnType<typeof getMyAiUsageDaily>>, TError = ErrorType<ErrorResponse>>(params?: GetMyAiUsageDailyParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsageDaily>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyAiUsageDailyQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyAiUsageDaily>>> = ({ signal }) => getMyAiUsageDaily(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsageDaily>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyAiUsageDailyQueryResult = NonNullable<Awaited<ReturnType<typeof getMyAiUsageDaily>>>
+export type GetMyAiUsageDailyQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary The owner's daily AI token usage for the trailing window
+ */
+
+export function useGetMyAiUsageDaily<TData = Awaited<ReturnType<typeof getMyAiUsageDaily>>, TError = ErrorType<ErrorResponse>>(
+ params?: GetMyAiUsageDailyParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyAiUsageDaily>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyAiUsageDailyQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

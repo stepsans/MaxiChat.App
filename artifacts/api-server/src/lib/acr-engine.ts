@@ -30,6 +30,8 @@ import {
   type AcrJobRow,
 } from "@workspace/db";
 import { resolveAiClient, type ResolvedAiClient } from "./ai-provider";
+import { TokenQuotaExceededError } from "./ai-quota";
+import { recordDeferredJob } from "./ai-deferred-jobs";
 import { recordAiUsage } from "./ai-usage";
 import { buildAcrPdf } from "./acr-pdf";
 import { saveTenantMedia } from "./tenant-storage";
@@ -185,6 +187,20 @@ export async function runAcrJob(jobId: string): Promise<void> {
   try {
     await executeJob(job);
   } catch (err) {
+    // Token hard-block (spec C2): DEFER, don't fail. Reset to pending so the acr
+    // poller re-runs the report (re-validating its inputs) once quota returns.
+    if (err instanceof TokenQuotaExceededError) {
+      await db
+        .update(acrJobsTable)
+        .set({ status: "pending", startedAt: null, errorMessage: null })
+        .where(eq(acrJobsTable.id, jobId));
+      await recordDeferredJob({
+        ownerUserId: job.ownerUserId,
+        jobType: "acr_job",
+        jobRef: jobId,
+      });
+      return;
+    }
     logger.error({ err, jobId }, "[acr] job failed");
     await db
       .update(acrJobsTable)

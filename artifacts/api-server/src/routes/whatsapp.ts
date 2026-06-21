@@ -15,6 +15,7 @@ import {
   whatsappStatusesTable,
   chatbotFlowsTable,
   chatbotFlowChannelsTable,
+  chatbotFlowEventsTable,
   productsTable,
   channelsTable,
   type FlowGraph,
@@ -2901,6 +2902,29 @@ async function tryRunFlow(
         .set({ flowState: muteState })
         .where(eq(chatsTable.id, chat.id));
       return false;
+    }
+    // Dashboard "Menu chatbot ditekan" (spec A.4 / 3.1): record the pressed
+    // option, but only for question nodes the author opted into. Best-effort —
+    // a heartbeat write must never break the flow, and adds no send delay.
+    if (node.data.countInDashboard) {
+      const optionLabel =
+        node.data.options?.find((o) => o.id === optId)?.label ?? optId ?? "?";
+      try {
+        await db.insert(chatbotFlowEventsTable).values({
+          ownerUserId: userId,
+          flowId: flowRow.id,
+          nodeId: node.id,
+          optionId: optId,
+          nodeLabel: optionLabel,
+          channelId,
+          contactId: chat.id,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, flowId: flowRow.id, nodeId: node.id },
+          "flow-event record failed",
+        );
+      }
     }
     await runFlowFrom(
       userId,

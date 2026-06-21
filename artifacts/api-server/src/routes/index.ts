@@ -49,6 +49,7 @@ import acrRouter from "./acr";
 import analyticsV2Router from "./analytics-v2";
 import reportSchedulesRouter from "./report-schedules";
 import workboardRouter from "./workboard";
+import dashboardRouter from "./dashboard";
 import chatClassifierRouter from "./chat-classifier";
 import waOtpRouter from "./wa-otp";
 import onboardingRouter from "./onboarding";
@@ -134,6 +135,7 @@ router.use("/ai-pipelines", aiPipelineRouter);
 // AI Chat Report: AI-driven CS performance evaluation.
 router.use("/acr", acrRouter);
 router.use("/workboard", workboardRouter);
+router.use("/dashboard", dashboardRouter);
 router.use("/chat-classifier", chatClassifierRouter);
 router.use("/billing", billingRouter);
 router.use("/retention", retentionRouter);

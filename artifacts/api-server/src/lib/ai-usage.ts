@@ -6,6 +6,7 @@ import { tokensToCredits } from "./credit-math";
 import { settleCall } from "./credit-wallet";
 import { maybeNotifyLowBalance } from "./credit-notify";
 import { readCreditMeta } from "./ai-call-meta";
+import { consumeBoosterOverflow } from "./token-boosters";
 
 // Prepaid AI-credit wallet gate. Default OFF → zero behavior change (no charge,
 // creditsCharged stays 0). Flip on only once tenant wallets are funded.
@@ -103,6 +104,12 @@ export async function recordAiUsage(opts: {
       totalTokens,
       creditsCharged,
     });
+
+    // Two-bucket quota (LOCKED spec B3): grant is computed live, but any spend
+    // beyond the monthly grant must DECREMENT paid boosters (they carry across
+    // periods, so the counter has to persist). Best-effort, never throws; cheap
+    // no-op for the common case of an owner with no boosters.
+    void consumeBoosterOverflow(opts.ownerUserId, totalTokens);
   } catch (err) {
     logger.error({ err }, "recordAiUsage failed");
   }

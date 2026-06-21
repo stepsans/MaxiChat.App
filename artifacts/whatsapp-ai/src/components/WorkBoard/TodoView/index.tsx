@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, Calendar, AlertCircle } from "lucide-react";
 import { format, isToday, isPast, parseISO } from "date-fns";
 import TaskModal from "../TaskModal";
+import BoardFilterBar, { EMPTY_FILTER, type BoardFilterState } from "../BoardFilterBar";
+import { matchesFilter } from "../board-filter";
+import { useGetMe } from "@workspace/api-client-react";
 
 type FilterTab = "all" | "today" | "done";
 
@@ -15,6 +18,7 @@ interface TodoViewProps {
   tasks: WorkboardTask[];
   members: WorkboardMember[];
   canEdit: boolean;
+  myRole?: "owner" | "editor" | "viewer" | null;
   onCreateTask: (data: {
     title: string;
     columnId?: number | null;
@@ -40,12 +44,16 @@ export default function TodoView({
   tasks,
   members,
   canEdit,
+  myRole = null,
   onCreateTask,
   onUpdateTask,
   onDeleteTask,
   onToggleComplete,
 }: TodoViewProps) {
+  const { data: me } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
+  const myUserId = me?.user?.id ?? null;
   const [filter, setFilter] = useState<FilterTab>("all");
+  const [boardFilter, setBoardFilter] = useState<BoardFilterState>(EMPTY_FILTER);
   const [quickAdd, setQuickAdd] = useState<Record<number, string>>({});
   const [taskModal, setTaskModal] = useState<{ open: boolean; task?: WorkboardTask | null }>({ open: false });
 
@@ -55,7 +63,10 @@ export default function TodoView({
     return true;
   }
 
-  const filteredTasks = useMemo(() => tasks.filter(applyFilter), [tasks, filter]);
+  const filteredTasks = useMemo(
+    () => tasks.filter(applyFilter).filter((t) => matchesFilter(t, boardFilter)),
+    [tasks, filter, boardFilter]
+  );
 
   // Group by column, null column at end
   const grouped = useMemo(() => {
@@ -77,20 +88,29 @@ export default function TodoView({
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border rounded-lg p-1 w-fit">
-        {(["all", "today", "done"] as FilterTab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setFilter(tab)}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-              filter === tab
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab === "all" ? "Semua" : tab === "today" ? "Hari Ini" : "Selesai"}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 border rounded-lg p-1 w-fit">
+          {(["all", "today", "done"] as FilterTab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                filter === tab
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab === "all" ? "Semua" : tab === "today" ? "Hari Ini" : "Selesai"}
+            </button>
+          ))}
+        </div>
+        <BoardFilterBar
+          tasks={tasks}
+          members={members}
+          currentUserId={myUserId}
+          value={boardFilter}
+          onChange={setBoardFilter}
+        />
       </div>
 
       <div className="space-y-6">
@@ -170,6 +190,7 @@ export default function TodoView({
         columns={columns}
         members={members}
         readOnly={!canEdit}
+        myRole={myRole}
         onSave={async (data) => {
           if (taskModal.task) {
             await onUpdateTask(taskModal.task.id, data);

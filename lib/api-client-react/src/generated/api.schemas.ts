@@ -2640,6 +2640,29 @@ export interface AdminUpdateUserInput {
   role?: AdminUpdateUserInputRole;
 }
 
+/**
+ * Bell severity derived from remaining quota. ok = >20% left; warn80 = ≥80% used (≤20% left); crit5 = ≤5% left; depleted = 0 left / hard block. warn20 is reserved (founder's 80%-used == 20%-remaining are the same trigger; warn80 is emitted for that band). Always "ok" when uncapped.
+ */
+export type AiUsageSummaryNotifyLevel = typeof AiUsageSummaryNotifyLevel[keyof typeof AiUsageSummaryNotifyLevel];
+
+
+export const AiUsageSummaryNotifyLevel = {
+  ok: 'ok',
+  warn80: 'warn80',
+  warn20: 'warn20',
+  crit5: 'crit5',
+  depleted: 'depleted',
+} as const;
+
+export interface TokenBoosterSummary {
+  /** Original token amount of this booster purchase. */
+  amount: number;
+  /** Remaining tokens on this booster. */
+  remaining: number;
+  /** When this booster expires (purchasedAt + 90 days). */
+  expiresAt: string;
+}
+
 export interface AiUsageSummary {
   userId: number;
   email: string;
@@ -2648,16 +2671,73 @@ export interface AiUsageSummary {
      * @nullable
      */
   name?: string | null;
-  /** The super admin's join date — anchors the billing period day-of-month. */
+  /** The super admin's join date. Informational only — it determines when the 14-day trial started, NOT the billing window. The authoritative window is periodStart/periodEnd, sourced from tenant_quota. */
   joinedAt: string;
-  /** Inclusive start of the current billing period. */
+  /** Inclusive start of the current billing period. Sourced from tenant_quota.periodStart (the locked anniversary anchor). Falls back to a join-date-derived window only while a tenant is unprovisioned (trial / no plan purchased yet). */
   periodStart: string;
-  /** Exclusive end of the current billing period (start of the next). */
+  /** Exclusive end of the current billing period (start of the next), from tenant_quota.periodEnd. */
   periodEnd: string;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
   /** Number of AI completion calls in the period. */
+  requestCount: number;
+  /** Active plan display name (e.g. "Growth"), or "Trial" while on trial, "Infinity" for the dev/infinity owner. */
+  planName: string;
+  /** True while the tenant is in the trial window (subscription effective status = trial). */
+  isTrial: boolean;
+  /** True for the unlimited/never-billed infinity owner. The UI shows "unlimited" rather than a bar. */
+  isInfinity: boolean;
+  /** Total token plafon for progress bars = grant allowance + active booster balance. 0 means "no enforced cap" (unprovisioned trial or infinity owner) — the UI must treat 0 as unlimited, not depleted. */
+  tokenLimit: number;
+  /** Tokens consumed in the current period (alias of totalTokens, named explicitly for the quota UI). */
+  tokenUsed: number;
+  /** max(0, tokenLimit − tokenUsed). 0 when tokenLimit is 0 (uncapped) too — read alongside notifyLevel. */
+  tokenRemaining: number;
+  /** Percent of tokenLimit consumed, 0..100 (0 when uncapped). Drives the progress-bar colour. */
+  usagePercent: number;
+  /** Monthly grant allowance from the active plan (tenant_quota.tokenLimit). Use-it-or-lose-it. */
+  grantLimit: number;
+  /** Remaining grant this period = max(0, grantLimit − tokenUsed). Expires at grantResetAt. */
+  grantRemaining: number;
+  /** When the grant resets / expires (= periodEnd). */
+  grantResetAt: string;
+  /** Total remaining tokens across all active (non-expired) paid boosters. */
+  boosterRemaining: number;
+  /**
+     * Expiry of the soonest-expiring active booster, or null when there are no boosters.
+     * @nullable
+     */
+  boosterNextExpiresAt?: string | null;
+  /** Per-booster breakdown for the detailed quota view, soonest expiry first. */
+  boosters?: TokenBoosterSummary[];
+  /** Bell severity derived from remaining quota. ok = >20% left; warn80 = ≥80% used (≤20% left); crit5 = ≤5% left; depleted = 0 left / hard block. warn20 is reserved (founder's 80%-used == 20%-remaining are the same trigger; warn80 is emitted for that band). Always "ok" when uncapped. */
+  notifyLevel: AiUsageSummaryNotifyLevel;
+  /**
+     * Estimated whole days until depletion at the current burn rate, or null when the rate is 0 / data is insufficient / uncapped.
+     * @nullable
+     */
+  projectedDaysRemaining?: number | null;
+}
+
+export interface AiUsageByChannel {
+  /**
+     * Channel id, or null for usage not attributed to a channel.
+     * @nullable
+     */
+  channelId: number | null;
+  /** Channel label (or "Tanpa channel" when channelId is null). */
+  channelName: string;
+  /** Channel kind (e.g. whatsapp, telegram). */
+  channelType: string;
+  totalTokens: number;
+  requestCount: number;
+}
+
+export interface AiUsageDailyPoint {
+  /** Calendar day in YYYY-MM-DD (UTC). */
+  date: string;
+  totalTokens: number;
   requestCount: number;
 }
 
@@ -3812,6 +3892,8 @@ export type FlowNodeData = {
   aiInstruction?: string;
   /** AI node only: restrict the AI's knowledge-base reference to these specific knowledge entry IDs while this node's handoff is active. Empty = use all of the owner's knowledge base. */
   knowledgeIds?: number[];
+  /** Question only: when true, each option pressed on this node is recorded to chatbot_flow_events and counted in the Dashboard 'Menu chatbot ditekan' panel. Default false (opt-in). */
+  countInDashboard?: boolean;
 };
 
 export interface FlowNode {
@@ -5911,6 +5993,15 @@ export interface AcrGroupSummaryInput {
   /** WhatsApp phone number (digits) or group JID (...@g.us). */
   target: string;
 }
+
+export type GetMyAiUsageDailyParams = {
+/**
+ * Number of trailing days to return (1–90, default 30).
+ * @minimum 1
+ * @maximum 90
+ */
+days?: number;
+};
 
 export type GetMyBillingTrendParams = {
 /**

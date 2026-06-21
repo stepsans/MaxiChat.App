@@ -3,6 +3,7 @@ import { db, acrSchedulesTable, acrJobsTable, acrConfigsTable } from "@workspace
 import { computeScheduleNextRun, schedulePeriod, type ScheduleFrequency } from "./acr-build";
 import { snapshotFromConfig } from "./acr-scheduler";
 import { runAcrJob } from "./acr-engine";
+import { recordJobRun, runScheduledJob } from "./job-runs";
 import { deliverJobOutputs } from "./acr-deliver";
 import { buildAcrFilterSnapshot } from "./acr-filters";
 import { logger } from "./logger";
@@ -114,7 +115,17 @@ async function tick(): Promise<void> {
           })
           .returning({ id: acrJobsTable.id });
 
-        await runAcrJob(job!.id);
+        // Heartbeat for System Health: runAcrJob produces both the AI Chat
+        // Report and the per-agent quality scores, so it stamps both jobs.
+        await runScheduledJob("ai_chat_report", sched.ownerUserId, () =>
+          runAcrJob(job!.id)
+        );
+        await recordJobRun({
+          ownerUserId: sched.ownerUserId,
+          jobName: "agent_quality",
+          status: "ok",
+          finishedAt: new Date(),
+        });
         // Shared delivery: PDF + WhatsApp + in-app notifications (super admin
         // always notified). Reads the resolved actions stored on the job.
         await deliverJobOutputs(job!.id);
@@ -124,6 +135,13 @@ async function tick(): Promise<void> {
           .where(eq(acrSchedulesTable.id, sched.id));
         logger.info({ scheduleId: sched.id, jobId: job!.id }, "[acr-schedules] ran scheduled report");
       } catch (err) {
+        await recordJobRun({
+          ownerUserId: sched.ownerUserId,
+          jobName: "agent_quality",
+          status: "failed",
+          finishedAt: new Date(),
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
         logger.error({ err, scheduleId: sched.id }, "[acr-schedules] schedule run failed");
       }
     }

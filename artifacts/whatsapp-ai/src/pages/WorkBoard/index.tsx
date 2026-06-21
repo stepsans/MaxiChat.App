@@ -4,6 +4,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useWorkboard } from "@/hooks/useWorkboard";
 import BoardCard from "@/components/WorkBoard/BoardCard";
 import CreateBoardModal from "@/components/WorkBoard/CreateBoardModal";
+import NotificationBell from "@/components/WorkBoard/NotificationBell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
@@ -43,12 +44,15 @@ export default function WorkBoardPage() {
           <h1 className="text-xl font-bold">WorkBoard</h1>
           <p className="text-sm text-muted-foreground">Kelola pekerjaan tim Anda</p>
         </div>
-        {menus.workboard?.canCreate && (
-          <Button onClick={() => setCreateOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Buat Board
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          {menus.workboard?.canCreate && (
+            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Buat Board
+            </Button>
+          )}
+        </div>
       </div>
 
       {loading ? (

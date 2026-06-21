@@ -8,6 +8,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./auth";
 
 export const workboardBoardsTable = pgTable(
@@ -137,8 +138,93 @@ export const workboardTaskAssigneesTable = pgTable(
   ]
 );
 
+export const workboardTaskCommentsTable = pgTable(
+  "workboard_task_comments",
+  {
+    id: serial("id").primaryKey(),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => workboardTasksTable.id, { onDelete: "cascade" }),
+    boardId: integer("board_id")
+      .notNull()
+      .references(() => workboardBoardsTable.id, { onDelete: "cascade" }),
+    authorUserId: integer("author_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    mentionedUserIds: integer("mentioned_user_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index("workboard_comments_task_idx").on(t.taskId),
+    index("workboard_comments_board_idx").on(t.boardId),
+    index("workboard_comments_author_idx").on(t.authorUserId),
+  ]
+);
+
+export const workboardCommentMentionsTable = pgTable(
+  "workboard_comment_mentions",
+  {
+    id: serial("id").primaryKey(),
+    commentId: integer("comment_id")
+      .notNull()
+      .references(() => workboardTaskCommentsTable.id, { onDelete: "cascade" }),
+    mentionedUserId: integer("mentioned_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("workboard_comment_mentions_unique").on(t.commentId, t.mentionedUserId),
+    index("workboard_comment_mentions_user_idx").on(t.mentionedUserId),
+  ]
+);
+
+// In-app mention notifications (bell). Deep-links to board_id + task_id.
+export const workboardNotificationsTable = pgTable(
+  "workboard_notifications",
+  {
+    id: serial("id").primaryKey(),
+    recipientUserId: integer("recipient_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    actorUserId: integer("actor_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    boardId: integer("board_id")
+      .notNull()
+      .references(() => workboardBoardsTable.id, { onDelete: "cascade" }),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => workboardTasksTable.id, { onDelete: "cascade" }),
+    commentId: integer("comment_id")
+      .notNull()
+      .references(() => workboardTaskCommentsTable.id, { onDelete: "cascade" }),
+    type: text("type").notNull().default("mention"),
+    isRead: boolean("is_read").notNull().default(false),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("workboard_notifications_recipient_idx").on(t.recipientUserId, t.isRead),
+  ]
+);
+
 export type WorkboardBoardRow = typeof workboardBoardsTable.$inferSelect;
 export type WorkboardBoardMemberRow = typeof workboardBoardMembersTable.$inferSelect;
 export type WorkboardColumnRow = typeof workboardColumnsTable.$inferSelect;
 export type WorkboardTaskRow = typeof workboardTasksTable.$inferSelect;
 export type WorkboardTaskAssigneeRow = typeof workboardTaskAssigneesTable.$inferSelect;
+export type WorkboardTaskCommentRow = typeof workboardTaskCommentsTable.$inferSelect;
+export type WorkboardCommentMentionRow = typeof workboardCommentMentionsTable.$inferSelect;
+export type WorkboardNotificationRow = typeof workboardNotificationsTable.$inferSelect;

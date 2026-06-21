@@ -22,6 +22,7 @@ import { createEmailVerification, consumeEmailVerification } from "../lib/email-
 import { canonicalizeEmail, isDisposableEmail } from "../lib/email-canonical";
 import { createMobileToken, revokeMobileToken } from "../lib/mobile-auth";
 import { resolveOwnerUserId } from "../lib/seed";
+import { provisionTrialQuota } from "../lib/subscription-purchase";
 import { ownerHasSalesAssistant } from "../lib/sales-assistant";
 import { logger } from "../lib/logger";
 
@@ -374,6 +375,10 @@ router.post("/verify-email", async (req, res): Promise<void> => {
             },
           });
         await tx.update(usersTable).set({ trialUsed: true }).where(eq(usersTable.id, user.id));
+        // Grant the entry-level token plafon for the trial so the AI hard-block
+        // (spec C1) applies during trial too. Window = trial period; anchor not
+        // locked yet (locks at first paid conversion).
+        await provisionTrialQuota(user.id, trialEnd, tx);
       });
     }
 

@@ -290,9 +290,9 @@ export default function AIReviewPage() {
       <div className="p-6">
         <div className="max-w-md mx-auto mt-20 text-center space-y-3">
           <ReceiptText className="w-10 h-10 mx-auto text-muted-foreground" />
-          <h1 className="text-lg font-semibold">AI Review</h1>
+          <h1 className="text-lg font-semibold">AI Capture</h1>
           <p className="text-sm text-muted-foreground">
-            Anda tidak memiliki izin untuk mengakses fitur AI Review.
+            Anda tidak memiliki izin untuk mengakses fitur AI Capture.
           </p>
         </div>
       </div>
@@ -304,9 +304,9 @@ export default function AIReviewPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <ReceiptText className="w-5 h-5" /> AI Review
+            <ReceiptText className="w-5 h-5" /> AI Capture
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">Smart Review By AI</p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">Smart Capture by AI</p>
         </div>
         {canManage && (
           <Button onClick={() => setEditor({ mode: "create" })}>

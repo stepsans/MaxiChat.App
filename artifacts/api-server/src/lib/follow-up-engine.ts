@@ -20,6 +20,7 @@ import {
 import { lastMeaningfulInteractionAt } from "./last-meaningful-interaction";
 import { sendFollowUpOnChannel } from "../routes/whatsapp";
 import { logger } from "./logger";
+import { runScheduledJob } from "./job-runs";
 
 // ===========================================================================
 // AI Sales Assistant — Auto Follow-Up engine (DB layer + scheduler).
@@ -486,7 +487,9 @@ export function startFollowUpScheduler(): void {
     // skip the next tick rather than send the same follow-up twice.
     if (followUpSweepRunning) return;
     followUpSweepRunning = true;
-    runFollowUpSweep()
+    // Wrapped for the System Health heartbeat (job_runs). Global sweep across
+    // tenants → recorded with a null owner.
+    runScheduledJob("crm_followup_poller", null, () => runFollowUpSweep())
       .catch((err) =>
         logger.error({ err }, "follow-up scheduler run failed")
       )

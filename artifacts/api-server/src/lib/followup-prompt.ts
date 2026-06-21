@@ -35,6 +35,10 @@ export interface FollowupContext {
   productInterest?: string | null;
   // Free-text analysis notes about the customer's need.
   aiNotes?: string | null;
+  // Customer's language register/tone, detected ONCE at analysis time. When set,
+  // it's the authoritative style for every touch (FU1..FU3) so the voice stays
+  // consistent; when null, the generator falls back to mirroring the last message.
+  customerTone?: string | null;
   // Customer display name, if known.
   contactName?: string | null;
   // Pre-formatted recent conversation (oldest → newest), one line per message.
@@ -56,7 +60,25 @@ export function buildFollowupInstruction(ctx: FollowupContext): string {
     "(belum ada percakapan sebelumnya — tulis pembuka follow-up yang hangat dan menyambung)"
   );
 
+  // When analysis already detected the customer's register, lead with it so the
+  // tone is consistent across FU1..FU3 instead of drifting per message.
+  const tone = (ctx.customerTone ?? "").trim();
+  const toneLine = tone
+    ? `\n- REGISTER CUSTOMER (hasil analisa percakapan — INI ACUAN UTAMA, ikuti konsisten): ${tone}. Tetap cek pesan terakhir, tapi jangan menyimpang dari gaya ini.`
+    : "";
+
   return `TUGAS SAAT INI: kamu menulis SATU pesan follow-up WhatsApp untuk customer yang sebelumnya ngobrol tapi belum lanjut. LANJUTKAN obrolan sebelumnya — jangan menyapa seperti baru kenal. Pakai gaya & panggilan yang sama seperti yang sudah ditetapkan di atas (jangan berubah jadi formal).
+
+GAYA BAHASA (PALING PENTING — bikin pesan terasa dari manusia, bukan bot):${toneLine}
+- Tulis seperti kamu lagi chat ke TEMAN yang kamu kenal, bukan customer service korporat. Santai dan hangat.
+- BACA dulu cara customer ngetik di "Pesan terakhir", lalu CERMIN register-nya:
+  • Kalau dia santai/akrab (singkatan, "gpp", "oke kak", emoji, huruf kecil) → balas santai juga, boleh pakai singkatan & sapaan yang sama.
+  • Kalau dia sopan tapi tetap luwes → balas sopan tapi tetap akrab, jangan kaku.
+  • Pakai sapaan yang DIA pakai / yang cocok (kak, bro, mas, dll) — jangan ganti-ganti.
+- Default condong ke SANTAI & ramah. Lebih baik kurang formal daripada terlalu formal.
+- HINDARI frasa kaku ala template CS: "Dengan ini kami informasikan", "Mohon konfirmasinya", "Baik kak, untuk hal tersebut", "Terima kasih atas waktunya", "Apakah ada yang bisa kami bantu". Ganti dengan bahasa ngobrol biasa.
+- Boleh pakai 1 emoji ringan kalau cocok dengan nada customer (jangan dipaksa).
+- Pesan pendek, langsung, terasa diketik orang — bukan paragraf rapi yang sempurna.
 
 CARA MENULIS (urutan prioritas konteks):
 1. Kalau ada "Hal yang menggantung", JADIKAN ITU inti pesan — singgung hal spesifik itu, lalu tawarkan bantuan menyelesaikannya. Ini yang bikin pesan terasa nyambung, bukan template.
@@ -78,7 +100,12 @@ ${recent}
 Contoh (tiru cara merujuk konteksnya, BUKAN produknya):
 ❌ "Halo kak, masih minat produknya?"  (template, tidak nyambung)
 ❌ "Halo kak, masih mempertimbangkan Mesin UV DTF-nya?"  (cuma label produk)
+❌ "Selamat siang, kami ingin menindaklanjuti percakapan sebelumnya mengenai Mesin UV DTF. Apakah ada yang bisa kami bantu?"  (kaku, formal, jelas bot)
 ✅ "Halo kak! Soal Mesin UV DTF kemarin — tadi sempat nanya bisa cicilan atau nggak ya. Itu bisa kok, mau aku bantu jelasin? 😊"  (menyinggung hal yang menggantung → terasa lanjutan obrolan)
+
+Contoh CERMIN register (samakan nada dengan customer):
+- Customer santai ("gpp kak nanti aku pikir2 dulu") → ✅ "Sip kak, santai aja 😄 btw soal cicilan yg kemarin, kalau mau aku bantu itungin tinggal bilang ya"
+- Customer sopan ("Baik, terima kasih infonya, saya pertimbangkan dulu") → ✅ "Siap kak, monggo dipikir dulu 🙏 kalau ada yang mau ditanya soal cicilannya, aku bantu ya"
 
 Pakai nama customer kalau tersedia. Output HANYA teks pesan yang akan dikirim: tanpa penjelasan, tanpa JSON, tanpa preamble.`;
 }

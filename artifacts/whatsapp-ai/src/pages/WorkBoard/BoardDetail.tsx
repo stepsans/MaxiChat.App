@@ -6,12 +6,13 @@ import BoardHeader from "@/components/WorkBoard/BoardHeader";
 import KanbanView from "@/components/WorkBoard/KanbanView";
 import TableView from "@/components/WorkBoard/TableView";
 import TodoView from "@/components/WorkBoard/TodoView";
+import DashboardView from "@/components/WorkBoard/DashboardView";
 import InviteMemberModal from "@/components/WorkBoard/InviteMemberModal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type ViewType = "kanban" | "table" | "todo";
+type ViewType = "kanban" | "table" | "todo" | "dashboard";
 
 export default function BoardDetailPage() {
   const params = useParams<{ boardId: string }>();
@@ -101,6 +102,7 @@ export default function BoardDetailPage() {
             tasks={detail.tasks}
             members={detail.members}
             canEdit={canEdit}
+            myRole={detail.myRole}
             onMoveTask={detail.moveTask}
             onCreateTask={detail.createTask}
             onUpdateTask={detail.updateTask}
@@ -115,6 +117,7 @@ export default function BoardDetailPage() {
             tasks={detail.tasks}
             members={detail.members}
             canEdit={canEdit}
+            myRole={detail.myRole}
             onCreateTask={detail.createTask}
             onUpdateTask={detail.updateTask}
             onDeleteTask={detail.deleteTask}
@@ -128,10 +131,19 @@ export default function BoardDetailPage() {
             tasks={detail.tasks}
             members={detail.members}
             canEdit={canEdit}
+            myRole={detail.myRole}
             onCreateTask={detail.createTask}
             onUpdateTask={detail.updateTask}
             onDeleteTask={detail.deleteTask}
             onToggleComplete={detail.toggleComplete}
+          />
+        )}
+
+        {activeView === "dashboard" && (
+          <DashboardView
+            columns={detail.columns}
+            tasks={detail.tasks}
+            members={detail.members}
           />
         )}
       </div>

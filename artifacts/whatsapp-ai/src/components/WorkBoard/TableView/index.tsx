@@ -7,6 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, ChevronUp, ChevronDown, ArrowUpDown } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
 import TaskModal from "../TaskModal";
+import BoardFilterBar, { EMPTY_FILTER, type BoardFilterState } from "../BoardFilterBar";
+import { matchesFilter } from "../board-filter";
+import { useGetMe } from "@workspace/api-client-react";
 
 const PRIORITY_STYLES: Record<string, string> = {
   high: "bg-red-100 text-red-700",
@@ -30,6 +33,7 @@ interface TableViewProps {
   tasks: WorkboardTask[];
   members: WorkboardMember[];
   canEdit: boolean;
+  myRole?: "owner" | "editor" | "viewer" | null;
   onCreateTask: (data: {
     title: string;
     description?: string;
@@ -49,12 +53,16 @@ export default function TableView({
   tasks,
   members,
   canEdit,
+  myRole = null,
   onCreateTask,
   onUpdateTask,
   onDeleteTask,
   onBulkDelete,
 }: TableViewProps) {
+  const { data: me } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
+  const myUserId = me?.user?.id ?? null;
   const [search, setSearch] = useState("");
+  const [boardFilter, setBoardFilter] = useState<BoardFilterState>(EMPTY_FILTER);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -65,7 +73,8 @@ export default function TableView({
   const colMap = Object.fromEntries(columns.map((c) => [c.id, c.name]));
 
   const filtered = useMemo(() => {
-    let result = tasks;
+    // Assignee/tag filter first (§7), then search, then sort.
+    let result = tasks.filter((t) => matchesFilter(t, boardFilter));
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((t) => t.title.toLowerCase().includes(q));
@@ -93,7 +102,7 @@ export default function TableView({
       });
     }
     return result;
-  }, [tasks, search, sortKey, sortDir, colMap]);
+  }, [tasks, boardFilter, search, sortKey, sortDir, colMap]);
 
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -145,12 +154,19 @@ export default function TableView({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           className="max-w-xs"
           placeholder="Cari task..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+        />
+        <BoardFilterBar
+          tasks={tasks}
+          members={members}
+          currentUserId={myUserId}
+          value={boardFilter}
+          onChange={(next) => { setBoardFilter(next); setPage(0); }}
         />
         {selected.size > 0 && canEdit && (
           <Button
@@ -343,6 +359,7 @@ export default function TableView({
         columns={columns}
         members={members}
         readOnly={!canEdit}
+        myRole={myRole}
         onSave={async (data) => {
           if (taskModal.task) {
             await onUpdateTask(taskModal.task.id, data);

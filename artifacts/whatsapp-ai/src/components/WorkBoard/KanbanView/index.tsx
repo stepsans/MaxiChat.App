@@ -3,6 +3,9 @@ import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import type { WorkboardColumn, WorkboardTask, WorkboardMember } from "@/hooks/useBoardDetail";
 import KanbanColumn from "./KanbanColumn";
 import TaskModal from "../TaskModal";
+import BoardFilterBar, { EMPTY_FILTER, type BoardFilterState } from "../BoardFilterBar";
+import { matchesFilter } from "../board-filter";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, X } from "lucide-react";
@@ -12,6 +15,7 @@ interface KanbanViewPropsSimple {
   tasks: WorkboardTask[];
   members: WorkboardMember[];
   canEdit: boolean;
+  myRole?: "owner" | "editor" | "viewer" | null;
   onMoveTask: (taskId: number, columnId: number | null, position: number) => Promise<void>;
   onCreateTask: (data: {
     title: string;
@@ -32,12 +36,16 @@ export default function KanbanView({
   tasks,
   members,
   canEdit,
+  myRole = null,
   onMoveTask,
   onCreateTask,
   onUpdateTask,
   onDeleteTask,
   onCreateColumn,
 }: KanbanViewPropsSimple) {
+  const { data: me } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
+  const myUserId = me?.user?.id ?? null;
+  const [filter, setFilter] = useState<BoardFilterState>(EMPTY_FILTER);
   const [taskModal, setTaskModal] = useState<{
     open: boolean;
     task?: WorkboardTask | null;
@@ -55,7 +63,7 @@ export default function KanbanView({
     setLocalTasks(null);
   }, [tasks]);
 
-  const displayTasks = localTasks ?? tasks;
+  const displayTasks = (localTasks ?? tasks).filter((t) => matchesFilter(t, filter));
 
   function tasksForColumn(colId: number) {
     return displayTasks
@@ -102,7 +110,17 @@ export default function KanbanView({
   taskModalRef.current = taskModal;
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 h-full">
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex-shrink-0">
+        <BoardFilterBar
+          tasks={tasks}
+          members={members}
+          currentUserId={myUserId}
+          value={filter}
+          onChange={setFilter}
+        />
+      </div>
+      <div className="flex flex-1 gap-4 overflow-x-auto pb-4">
       <DragDropContext onDragEnd={handleDragEnd}>
         {columns.map((col) => (
           <KanbanColumn
@@ -163,6 +181,7 @@ export default function KanbanView({
         columns={columns}
         members={members}
         readOnly={!canEdit}
+        myRole={myRole}
         // Pass the preColumnId so TaskModal pre-selects the correct column
         preColumnId={taskModal.preColumnId}
         onSave={async (data) => {
@@ -179,6 +198,7 @@ export default function KanbanView({
         }}
         onDelete={taskModal.task ? () => onDeleteTask(taskModal.task!.id) : undefined}
       />
+      </div>
     </div>
   );
 }

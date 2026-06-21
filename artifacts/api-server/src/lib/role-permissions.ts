@@ -90,8 +90,9 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     opportunities: allow(true, true, true, true),
     // AI Pipeline: supervisors may manage pipelines by default.
     ai_pipeline: allow(true, true, true, true),
-    // WorkBoard: supervisors get full access by default.
-    workboard: allow(true, true, true, true),
+    // WorkBoard: only the tenant owner (super_admin) may CREATE boards.
+    // Supervisors still view/edit/delete tasks inside boards they're members of.
+    workboard: allow(true, false, true, true),
     // AI Chat Report: supervisors may view their team's reports and run new
     // ones, but cannot change the KPI weight config (edit) or archive jobs.
     acr: allow(true, true, false, false),
@@ -122,8 +123,10 @@ function defaultMatrix(): Record<TeamRole, Record<PermissionMenu, RolePerm>> {
     opportunities: allow(true, false, true, false),
     // AI Pipeline: agents may view but not configure pipelines by default.
     ai_pipeline: allow(true, false, false, false),
-    // WorkBoard: agents can view and create tasks (but not delete boards).
-    workboard: allow(true, true, true, false),
+    // WorkBoard: agents work tasks inside boards (view + edit) but cannot CREATE
+    // boards — only the tenant owner (super_admin) may. Column creation is gated
+    // by board-role editor, not this menu flag, so agents keep full in-board work.
+    workboard: allow(true, false, true, false),
     // AI Chat Report: agents may only view their OWN scores (self-scope is
     // enforced by the route layer, not this matrix).
     acr: allow(true, false, false, false),

@@ -101,6 +101,36 @@ async function sendExpoPush(messages: ExpoMessage[]): Promise<void> {
   }
 }
 
+// Push a notification to a specific set of users (by id), each on every device
+// they have registered. Best-effort: never throws. `data` carries the in-app
+// deep-link payload (e.g. { boardId, taskId }). Generic helper — unlike
+// notifyInboundMessage it does not resolve recipients itself.
+export async function notifyUsersPush(input: {
+  userIds: number[];
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    if (input.userIds.length === 0) return;
+    const tokens = await db
+      .select({ token: deviceTokensTable.token })
+      .from(deviceTokensTable)
+      .where(inArray(deviceTokensTable.userId, input.userIds));
+    if (tokens.length === 0) return;
+    const messages: ExpoMessage[] = tokens.map((t) => ({
+      to: t.token,
+      title: input.title,
+      body: input.body,
+      sound: "default",
+      data: input.data,
+    }));
+    await sendExpoPush(messages);
+  } catch (err) {
+    logger.warn({ err }, "notifyUsersPush failed");
+  }
+}
+
 export interface InboundPushInput {
   channelId: number;
   chatId: number;

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Table2, CheckSquare, UserPlus, Users, Eye } from "lucide-react";
+import { LayoutDashboard, Table2, CheckSquare, UserPlus, Users, Eye, PieChart } from "lucide-react";
 
-type ViewType = "kanban" | "table" | "todo";
+type ViewType = "kanban" | "table" | "todo" | "dashboard";
 
 interface BoardHeaderProps {
   boardName: string;
@@ -19,6 +19,7 @@ const VIEW_TABS: Array<{ key: ViewType; label: string; Icon: typeof LayoutDashbo
   { key: "kanban", label: "Kanban", Icon: LayoutDashboard },
   { key: "table", label: "Table", Icon: Table2 },
   { key: "todo", label: "Todo", Icon: CheckSquare },
+  { key: "dashboard", label: "Dashboard", Icon: PieChart },
 ];
 
 export default function BoardHeader({

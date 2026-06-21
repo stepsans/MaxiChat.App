@@ -737,13 +737,32 @@ export const AdminListAiUsageResponseItem = zod.object({
   "userId": zod.number(),
   "email": zod.string().email(),
   "name": zod.string().nullish().describe('Display name of the super admin, if set.'),
-  "joinedAt": zod.coerce.date().describe('The super admin\'s join date — anchors the billing period day-of-month.'),
-  "periodStart": zod.coerce.date().describe('Inclusive start of the current billing period.'),
-  "periodEnd": zod.coerce.date().describe('Exclusive end of the current billing period (start of the next).'),
+  "joinedAt": zod.coerce.date().describe('The super admin\'s join date. Informational only — it determines when the 14-day trial started, NOT the billing window. The authoritative window is periodStart\/periodEnd, sourced from tenant_quota.'),
+  "periodStart": zod.coerce.date().describe('Inclusive start of the current billing period. Sourced from tenant_quota.periodStart (the locked anniversary anchor). Falls back to a join-date-derived window only while a tenant is unprovisioned (trial \/ no plan purchased yet).'),
+  "periodEnd": zod.coerce.date().describe('Exclusive end of the current billing period (start of the next), from tenant_quota.periodEnd.'),
   "promptTokens": zod.number(),
   "completionTokens": zod.number(),
   "totalTokens": zod.number(),
-  "requestCount": zod.number().describe('Number of AI completion calls in the period.')
+  "requestCount": zod.number().describe('Number of AI completion calls in the period.'),
+  "planName": zod.string().describe('Active plan display name (e.g. \"Growth\"), or \"Trial\" while on trial, \"Infinity\" for the dev\/infinity owner.'),
+  "isTrial": zod.boolean().describe('True while the tenant is in the trial window (subscription effective status = trial).'),
+  "isInfinity": zod.boolean().describe('True for the unlimited\/never-billed infinity owner. The UI shows \"unlimited\" rather than a bar.'),
+  "tokenLimit": zod.number().describe('Total token plafon for progress bars = grant allowance + active booster balance. 0 means \"no enforced cap\" (unprovisioned trial or infinity owner) — the UI must treat 0 as unlimited, not depleted.'),
+  "tokenUsed": zod.number().describe('Tokens consumed in the current period (alias of totalTokens, named explicitly for the quota UI).'),
+  "tokenRemaining": zod.number().describe('max(0, tokenLimit − tokenUsed). 0 when tokenLimit is 0 (uncapped) too — read alongside notifyLevel.'),
+  "usagePercent": zod.number().describe('Percent of tokenLimit consumed, 0..100 (0 when uncapped). Drives the progress-bar colour.'),
+  "grantLimit": zod.number().describe('Monthly grant allowance from the active plan (tenant_quota.tokenLimit). Use-it-or-lose-it.'),
+  "grantRemaining": zod.number().describe('Remaining grant this period = max(0, grantLimit − tokenUsed). Expires at grantResetAt.'),
+  "grantResetAt": zod.coerce.date().describe('When the grant resets \/ expires (= periodEnd).'),
+  "boosterRemaining": zod.number().describe('Total remaining tokens across all active (non-expired) paid boosters.'),
+  "boosterNextExpiresAt": zod.coerce.date().nullish().describe('Expiry of the soonest-expiring active booster, or null when there are no boosters.'),
+  "boosters": zod.array(zod.object({
+  "amount": zod.number().describe('Original token amount of this booster purchase.'),
+  "remaining": zod.number().describe('Remaining tokens on this booster.'),
+  "expiresAt": zod.coerce.date().describe('When this booster expires (purchasedAt + 90 days).')
+})).optional().describe('Per-booster breakdown for the detailed quota view, soonest expiry first.'),
+  "notifyLevel": zod.enum(['ok', 'warn80', 'warn20', 'crit5', 'depleted']).describe('Bell severity derived from remaining quota. ok = >20% left; warn80 = ≥80% used (≤20% left); crit5 = ≤5% left; depleted = 0 left \/ hard block. warn20 is reserved (founder\'s 80%-used == 20%-remaining are the same trigger; warn80 is emitted for that band). Always \"ok\" when uncapped.'),
+  "projectedDaysRemaining": zod.number().nullish().describe('Estimated whole days until depletion at the current burn rate, or null when the rate is 0 \/ data is insufficient \/ uncapped.')
 })
 export const AdminListAiUsageResponse = zod.array(AdminListAiUsageResponseItem)
 
@@ -755,14 +774,68 @@ export const GetMyAiUsageResponse = zod.object({
   "userId": zod.number(),
   "email": zod.string().email(),
   "name": zod.string().nullish().describe('Display name of the super admin, if set.'),
-  "joinedAt": zod.coerce.date().describe('The super admin\'s join date — anchors the billing period day-of-month.'),
-  "periodStart": zod.coerce.date().describe('Inclusive start of the current billing period.'),
-  "periodEnd": zod.coerce.date().describe('Exclusive end of the current billing period (start of the next).'),
+  "joinedAt": zod.coerce.date().describe('The super admin\'s join date. Informational only — it determines when the 14-day trial started, NOT the billing window. The authoritative window is periodStart\/periodEnd, sourced from tenant_quota.'),
+  "periodStart": zod.coerce.date().describe('Inclusive start of the current billing period. Sourced from tenant_quota.periodStart (the locked anniversary anchor). Falls back to a join-date-derived window only while a tenant is unprovisioned (trial \/ no plan purchased yet).'),
+  "periodEnd": zod.coerce.date().describe('Exclusive end of the current billing period (start of the next), from tenant_quota.periodEnd.'),
   "promptTokens": zod.number(),
   "completionTokens": zod.number(),
   "totalTokens": zod.number(),
-  "requestCount": zod.number().describe('Number of AI completion calls in the period.')
+  "requestCount": zod.number().describe('Number of AI completion calls in the period.'),
+  "planName": zod.string().describe('Active plan display name (e.g. \"Growth\"), or \"Trial\" while on trial, \"Infinity\" for the dev\/infinity owner.'),
+  "isTrial": zod.boolean().describe('True while the tenant is in the trial window (subscription effective status = trial).'),
+  "isInfinity": zod.boolean().describe('True for the unlimited\/never-billed infinity owner. The UI shows \"unlimited\" rather than a bar.'),
+  "tokenLimit": zod.number().describe('Total token plafon for progress bars = grant allowance + active booster balance. 0 means \"no enforced cap\" (unprovisioned trial or infinity owner) — the UI must treat 0 as unlimited, not depleted.'),
+  "tokenUsed": zod.number().describe('Tokens consumed in the current period (alias of totalTokens, named explicitly for the quota UI).'),
+  "tokenRemaining": zod.number().describe('max(0, tokenLimit − tokenUsed). 0 when tokenLimit is 0 (uncapped) too — read alongside notifyLevel.'),
+  "usagePercent": zod.number().describe('Percent of tokenLimit consumed, 0..100 (0 when uncapped). Drives the progress-bar colour.'),
+  "grantLimit": zod.number().describe('Monthly grant allowance from the active plan (tenant_quota.tokenLimit). Use-it-or-lose-it.'),
+  "grantRemaining": zod.number().describe('Remaining grant this period = max(0, grantLimit − tokenUsed). Expires at grantResetAt.'),
+  "grantResetAt": zod.coerce.date().describe('When the grant resets \/ expires (= periodEnd).'),
+  "boosterRemaining": zod.number().describe('Total remaining tokens across all active (non-expired) paid boosters.'),
+  "boosterNextExpiresAt": zod.coerce.date().nullish().describe('Expiry of the soonest-expiring active booster, or null when there are no boosters.'),
+  "boosters": zod.array(zod.object({
+  "amount": zod.number().describe('Original token amount of this booster purchase.'),
+  "remaining": zod.number().describe('Remaining tokens on this booster.'),
+  "expiresAt": zod.coerce.date().describe('When this booster expires (purchasedAt + 90 days).')
+})).optional().describe('Per-booster breakdown for the detailed quota view, soonest expiry first.'),
+  "notifyLevel": zod.enum(['ok', 'warn80', 'warn20', 'crit5', 'depleted']).describe('Bell severity derived from remaining quota. ok = >20% left; warn80 = ≥80% used (≤20% left); crit5 = ≤5% left; depleted = 0 left \/ hard block. warn20 is reserved (founder\'s 80%-used == 20%-remaining are the same trigger; warn80 is emitted for that band). Always \"ok\" when uncapped.'),
+  "projectedDaysRemaining": zod.number().nullish().describe('Estimated whole days until depletion at the current burn rate, or null when the rate is 0 \/ data is insufficient \/ uncapped.')
 })
+
+
+/**
+ * Per-channel breakdown of token spend in the current billing period, for the channel filter and the "which channel burns the most" diagnostic. Always the owner's tenant-wide figures.
+ * @summary The owner's AI token usage for the current period, grouped per channel
+ */
+export const GetMyAiUsageByChannelResponseItem = zod.object({
+  "channelId": zod.number().nullable().describe('Channel id, or null for usage not attributed to a channel.'),
+  "channelName": zod.string().describe('Channel label (or \"Tanpa channel\" when channelId is null).'),
+  "channelType": zod.string().describe('Channel kind (e.g. whatsapp, telegram).'),
+  "totalTokens": zod.number(),
+  "requestCount": zod.number()
+})
+export const GetMyAiUsageByChannelResponse = zod.array(GetMyAiUsageByChannelResponseItem)
+
+
+/**
+ * Daily token totals for a trailing window (default 30 days), for the usage trend sparkline/bar chart. Always the owner's tenant-wide figures.
+ * @summary The owner's daily AI token usage for the trailing window
+ */
+export const getMyAiUsageDailyQueryDaysDefault = 30;
+export const getMyAiUsageDailyQueryDaysMax = 90;
+
+
+
+export const GetMyAiUsageDailyQueryParams = zod.object({
+  "days": zod.coerce.number().min(1).max(getMyAiUsageDailyQueryDaysMax).default(getMyAiUsageDailyQueryDaysDefault).describe('Number of trailing days to return (1–90, default 30).')
+})
+
+export const GetMyAiUsageDailyResponseItem = zod.object({
+  "date": zod.string().describe('Calendar day in YYYY-MM-DD (UTC).'),
+  "totalTokens": zod.number(),
+  "requestCount": zod.number()
+})
+export const GetMyAiUsageDailyResponse = zod.array(GetMyAiUsageDailyResponseItem)
 
 
 /**
@@ -4912,7 +4985,8 @@ export const ImportFlowBody = zod.object({
   "aiRephrase": zod.boolean().optional().describe('Question only: when true, the question text is rephrased by AI (same meaning, varied natural wording) each time it is sent, so it doesn\'t feel like a canned bot message. Answer options are never rephrased.'),
   "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
   "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.'),
-  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.')
+  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.'),
+  "countInDashboard": zod.boolean().optional().describe('Question only: when true, each option pressed on this node is recorded to chatbot_flow_events and counted in the Dashboard \'Menu chatbot ditekan\' panel. Default false (opt-in).')
 })
 })),
   "edges": zod.array(zod.object({
@@ -4959,7 +5033,8 @@ export const GetFlowResponse = zod.object({
   "aiRephrase": zod.boolean().optional().describe('Question only: when true, the question text is rephrased by AI (same meaning, varied natural wording) each time it is sent, so it doesn\'t feel like a canned bot message. Answer options are never rephrased.'),
   "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
   "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.'),
-  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.')
+  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.'),
+  "countInDashboard": zod.boolean().optional().describe('Question only: when true, each option pressed on this node is recorded to chatbot_flow_events and counted in the Dashboard \'Menu chatbot ditekan\' panel. Default false (opt-in).')
 })
 })),
   "edges": zod.array(zod.object({
@@ -5009,7 +5084,8 @@ export const UpdateFlowBody = zod.object({
   "aiRephrase": zod.boolean().optional().describe('Question only: when true, the question text is rephrased by AI (same meaning, varied natural wording) each time it is sent, so it doesn\'t feel like a canned bot message. Answer options are never rephrased.'),
   "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
   "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.'),
-  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.')
+  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.'),
+  "countInDashboard": zod.boolean().optional().describe('Question only: when true, each option pressed on this node is recorded to chatbot_flow_events and counted in the Dashboard \'Menu chatbot ditekan\' panel. Default false (opt-in).')
 })
 })),
   "edges": zod.array(zod.object({
@@ -5049,7 +5125,8 @@ export const UpdateFlowResponse = zod.object({
   "aiRephrase": zod.boolean().optional().describe('Question only: when true, the question text is rephrased by AI (same meaning, varied natural wording) each time it is sent, so it doesn\'t feel like a canned bot message. Answer options are never rephrased.'),
   "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
   "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.'),
-  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.')
+  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.'),
+  "countInDashboard": zod.boolean().optional().describe('Question only: when true, each option pressed on this node is recorded to chatbot_flow_events and counted in the Dashboard \'Menu chatbot ditekan\' panel. Default false (opt-in).')
 })
 })),
   "edges": zod.array(zod.object({
@@ -5106,7 +5183,8 @@ export const ActivateFlowResponse = zod.object({
   "aiRephrase": zod.boolean().optional().describe('Question only: when true, the question text is rephrased by AI (same meaning, varied natural wording) each time it is sent, so it doesn\'t feel like a canned bot message. Answer options are never rephrased.'),
   "productIds": zod.array(zod.number()).optional().describe('Products only: list of product IDs to send (image + Nama\/Kode\/Harga caption).'),
   "aiInstruction": zod.string().optional().describe('AI node only: extra instruction appended to the global AI Studio system prompt while this node\'s AI handoff is active (during the flow cooldown). Empty = use the global prompt only.'),
-  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.')
+  "knowledgeIds": zod.array(zod.number()).optional().describe('AI node only: restrict the AI\'s knowledge-base reference to these specific knowledge entry IDs while this node\'s handoff is active. Empty = use all of the owner\'s knowledge base.'),
+  "countInDashboard": zod.boolean().optional().describe('Question only: when true, each option pressed on this node is recorded to chatbot_flow_events and counted in the Dashboard \'Menu chatbot ditekan\' panel. Default false (opt-in).')
 })
 })),
   "edges": zod.array(zod.object({

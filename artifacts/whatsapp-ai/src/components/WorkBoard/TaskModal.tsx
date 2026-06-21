@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
+import TaskComments from "./TaskComments";
 import type { WorkboardTask, WorkboardColumn, WorkboardMember } from "@/hooks/useBoardDetail";
 
 interface TaskModalProps {
@@ -39,6 +40,7 @@ interface TaskModalProps {
   task?: WorkboardTask | null;
   readOnly?: boolean;
   preColumnId?: number;
+  myRole?: "owner" | "editor" | "viewer" | null;
 }
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -61,6 +63,7 @@ export default function TaskModal({
   task,
   readOnly = false,
   preColumnId,
+  myRole = null,
 }: TaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -277,6 +280,17 @@ export default function TaskModal({
               </div>
             )}
           </div>
+
+          {/* Comments + @mentions — only for an existing (saved) task. Open to all
+              board members including viewers; the server gates on membership. */}
+          {task && (
+            <TaskComments
+              boardId={task.boardId}
+              taskId={task.id}
+              members={members}
+              myRole={myRole}
+            />
+          )}
         </div>
 
         <DialogFooter className="flex justify-between">

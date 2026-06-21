@@ -40,6 +40,12 @@ export const tenantQuotaTable = pgTable(
     // plan is purchased.
     periodStart: timestamp("period_start", { withTimezone: true }),
     periodEnd: timestamp("period_end", { withTimezone: true }),
+    // LOCKED anniversary anchor (spec A1): the date of the FIRST trial→paid
+    // conversion. Set once, then never shifted by upgrade/downgrade/renewal — so
+    // the billing window is stable & auditable for the tenant's whole life. The
+    // current period is computed live from this day-of-month. Null until the
+    // first conversion (trial tenants use the trial window instead).
+    anchorDate: timestamp("anchor_date", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

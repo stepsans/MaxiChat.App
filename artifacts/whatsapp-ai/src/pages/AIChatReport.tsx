@@ -121,7 +121,7 @@ function defaultPeriod(): { start: string; end: string } {
 }
 
 export const VIOLATION_LABELS: Record<string, string> = {
-  customer_angry: "Customer Marah",
+  customer_angry: "Customer Tidak Puas",
   rude_language: "Bahasa Tidak Sopan",
   no_reply_critical: "Tidak Dibalas",
   customer_ignored: "Customer Dicuekin",
