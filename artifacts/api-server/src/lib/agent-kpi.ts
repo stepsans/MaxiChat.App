@@ -117,3 +117,77 @@ export async function agentKpiLeaderboard(
     rows,
   };
 }
+
+// Tier-2 Agent KPI (spec A.10) — every dimension for every agent in one table,
+// plus the AI coaching narrative per agent. Reads the same latest completed ACR
+// job as the Tier-1 leaderboard; sorted by composite score (best first).
+export interface AgentKpiTableRow {
+  agentUserId: number;
+  name: string;
+  email: string | null;
+  role: string;
+  grade: string;
+  insufficientData: boolean;
+  kpi: number | null;
+  speed: number | null; // avg first-reply minutes (lower better)
+  lang: number | null;
+  accuracy: number | null;
+  complaint: number | null;
+  unanswered: number; // missed chats (lower better)
+  totalConversations: number;
+  // AI coaching detail (spec A.10 "rincian coaching per agent").
+  aiSummary: string | null;
+  aiStrengths: string | null;
+  aiImprovements: string | null;
+}
+
+export interface AgentKpiTableResult {
+  jobId: string | null;
+  periodEnd: string | null;
+  rows: AgentKpiTableRow[];
+}
+
+export async function agentKpiTable(ownerUserId: number): Promise<AgentKpiTableResult> {
+  const [job] = await db
+    .select({ id: acrJobsTable.id, periodEnd: acrJobsTable.periodEnd })
+    .from(acrJobsTable)
+    .where(and(eq(acrJobsTable.ownerUserId, ownerUserId), eq(acrJobsTable.status, "completed")))
+    .orderBy(desc(acrJobsTable.createdAt))
+    .limit(1);
+
+  if (!job) return { jobId: null, periodEnd: null, rows: [] };
+
+  const scores = await db
+    .select()
+    .from(acrAgentScoresTable)
+    .where(eq(acrAgentScoresTable.jobId, job.id));
+
+  const rows: AgentKpiTableRow[] = scores.map((s) => ({
+    agentUserId: s.agentUserId,
+    name: s.agentName || s.agentEmail || `User ${s.agentUserId}`,
+    email: s.agentEmail,
+    role: s.agentRole,
+    grade: s.grade,
+    insufficientData: s.insufficientData,
+    kpi: num(s.totalScore),
+    speed: num(s.avgResponseTimeMinutes),
+    lang: num(s.scoreLanguageQuality),
+    accuracy: num(s.scoreAnswerQuality),
+    complaint: num(s.scoreComplaintHandling),
+    unanswered: s.totalMissedChats,
+    totalConversations: s.totalConversations,
+    aiSummary: s.aiSummary,
+    aiStrengths: s.aiStrengths,
+    aiImprovements: s.aiImprovements,
+  }));
+
+  // Composite score desc; nulls last; insufficient-data agents sink to the bottom.
+  rows.sort((a, b) => {
+    if (a.insufficientData !== b.insufficientData) return a.insufficientData ? 1 : -1;
+    const av = a.kpi ?? -1;
+    const bv = b.kpi ?? -1;
+    return bv - av;
+  });
+
+  return { jobId: job.id, periodEnd: job.periodEnd, rows };
+}

@@ -3227,7 +3227,18 @@ async function startBaileys(userId: number, channelId: number) {
     });
     ctx.sock = sock;
 
-    sock.ev.on("creds.update", saveCreds);
+    // Guard saveCreds: during a logout we wipe the auth dir (see the
+    // `loggedOut` branch below), but Baileys can still emit a trailing
+    // `creds.update` afterwards. The unawaited writeFile would then hit a
+    // deleted directory (ENOENT) and surface as an unhandledRejection, which
+    // the global handler turns into a fatal process exit — crash-looping the
+    // whole API server. Swallow the write error: losing a creds write on a
+    // dead/re-pairing session is harmless.
+    sock.ev.on("creds.update", () => {
+      void saveCreds().catch((err) =>
+        logger.warn({ err, channelId, userId }, "saveCreds failed (ignored)"),
+      );
+    });
 
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;

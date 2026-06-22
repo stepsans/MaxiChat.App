@@ -187,3 +187,63 @@ export function useDashboardTier2Chat(range: DashboardRange, live: boolean) {
     refetchInterval: live ? 30_000 : false,
   });
 }
+
+export interface Tier2Workboard {
+  kpi: { total: number; overdue: number; due_soon: number; selesai: number; unassigned: number };
+  per_column: { column: string; count: number }[];
+  per_assignee: { userId: number; name: string; count: number }[];
+  overdue_list: {
+    taskId: number;
+    title: string;
+    board: string;
+    dueDate: string | null;
+    assignees: string[];
+  }[];
+  boards: { id: number; name: string }[];
+}
+
+// WorkBoard module Tier-2 dashboard (spec A.10). Optional board/assignee filters.
+export function useDashboardTier2Workboard(boardId?: number, assigneeId?: number) {
+  const params = new URLSearchParams();
+  if (boardId) params.set("board", String(boardId));
+  if (assigneeId) params.set("assignee", String(assigneeId));
+  const suffix = params.toString();
+  return useQuery<Tier2Workboard>({
+    queryKey: ["/api/dashboard/tier2/workboard", boardId ?? null, assigneeId ?? null],
+    queryFn: () => apiFetch(`/api/dashboard/tier2/workboard${suffix ? `?${suffix}` : ""}`),
+  });
+}
+
+export interface AgentKpiTableRow {
+  agentUserId: number;
+  name: string;
+  email: string | null;
+  role: string;
+  grade: string;
+  insufficientData: boolean;
+  kpi: number | null;
+  speed: number | null;
+  lang: number | null;
+  accuracy: number | null;
+  complaint: number | null;
+  unanswered: number;
+  totalConversations: number;
+  aiSummary: string | null;
+  aiStrengths: string | null;
+  aiImprovements: string | null;
+}
+
+export interface Tier2AgentKpi {
+  jobId: string | null;
+  periodEnd: string | null;
+  rows: AgentKpiTableRow[];
+}
+
+// Agent KPI module Tier-2 — all dimensions per agent + coaching (spec A.10).
+export function useDashboardTier2AgentKpi(enabled: boolean) {
+  return useQuery<Tier2AgentKpi>({
+    queryKey: ["/api/dashboard/tier2/agent-kpi"],
+    queryFn: () => apiFetch(`/api/dashboard/tier2/agent-kpi`),
+    enabled,
+  });
+}

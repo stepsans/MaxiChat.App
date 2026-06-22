@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MessageSquare,
-  Bot,
   Flame,
   Users,
   ShieldAlert,
@@ -28,16 +27,18 @@ import {
   ArrowUp,
   ArrowDown,
   MousePointerClick,
-  Award,
   Package,
   HelpCircle,
   RefreshCw,
   Sparkles,
+  Download,
+  Printer,
+  FileText,
+  ChevronDown,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { cn, formatBytes } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
-import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { FirstRunWizard } from "@/components/FirstRunWizard";
 import SystemHealthStrip from "@/components/dashboard/SystemHealthStrip";
 import DrillDownDialog from "@/components/dashboard/DrillDownDialog";
@@ -60,6 +61,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   rangeForPreset,
   isLivePreset,
@@ -76,21 +84,31 @@ function fmtFrt(seconds: number | null): string {
   return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }
 
-function fmtRupiah(n: number): string {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-    notation: "compact",
-  }).format(n);
-}
-
 // "HH:MM" in WIB (UTC+7) for the "diperbarui … WIB" label.
 function wibTime(iso: string): string {
   const shifted = new Date(new Date(iso).getTime() + 7 * 60 * 60 * 1000);
   return `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(
     shifted.getUTCMinutes()
   ).padStart(2, "0")}`;
+}
+
+// Header Export (spec 5.1) — downloads the Percakapan (conversations) list for
+// the active range as CSV/PDF. Fetched as a blob so the session cookie is sent
+// and we control the filename; reuses the per-metric /dashboard/export endpoint.
+async function exportDashboard(format: "csv" | "pdf", range: DashboardRange): Promise<void> {
+  const url =
+    `/api/dashboard/export?metric=conversations` +
+    `&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}` +
+    `&format=${format}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = `percakapan-${range.from.slice(0, 10)}.${format}`;
+  a.click();
+  URL.revokeObjectURL(href);
 }
 
 // AI Chat Report narrative panel (spec A.3 / 4.3). Rendered from the snapshot's
@@ -672,6 +690,36 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+          {/* Export (Percakapan list, CSV/PDF) + Print the dashboard (spec 5.1). */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2.5" data-testid="dashboard-export">
+                <Download className="w-3.5 h-3.5" />
+                Export
+                <ChevronDown className="w-3 h-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => exportDashboard("csv", range)} data-testid="dashboard-export-csv">
+                <Download className="w-3.5 h-3.5 mr-2" />
+                Percakapan (CSV)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportDashboard("pdf", range)} data-testid="dashboard-export-pdf">
+                <FileText className="w-3.5 h-3.5 mr-2" />
+                Percakapan (PDF)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 px-2.5"
+            onClick={() => window.print()}
+            data-testid="dashboard-print"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            Print
+          </Button>
         </div>
       </div>
 
@@ -679,14 +727,13 @@ export default function Dashboard() {
         {/* System Health strip (spec A.9) — reliability signals at the very top. */}
         <SystemHealthStrip />
 
-        {/* First-run wizard + onboarding (hide themselves once healthy). */}
+        {/* First-run wizard (hides itself once WA is connected + AI tried). */}
         <FirstRunWizard />
-        <OnboardingChecklist />
 
         {/* KPI grid — role-based (spec A.2). */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {summaryLoading ? (
-            Array(5)
+            Array(4)
               .fill(0)
               .map((_, i) => <Skeleton key={i} className="h-24 rounded-lg" />)
           ) : (
@@ -731,23 +778,6 @@ export default function Dashboard() {
                       tone="primary"
                       sub="skor ≥ 80"
                       testId="kpi-lead-panas"
-                    />
-                  )}
-                  <StatCard
-                    title="Ditangani AI"
-                    value={summary?.ai_handled_percent != null ? `${summary.ai_handled_percent}%` : "—"}
-                    icon={Bot}
-                    tone="success"
-                    testId="kpi-ai-handled"
-                  />
-                  {summary?.won != null && (
-                    <StatCard
-                      title="Won"
-                      value={summary.won.count}
-                      icon={Award}
-                      tone="success"
-                      sub={fmtRupiah(summary.won.value)}
-                      testId="kpi-won"
                     />
                   )}
                 </>
@@ -842,16 +872,16 @@ export default function Dashboard() {
             />
             <ModuleCard
               title="WorkBoard"
-              value="Buka papan"
+              value="Lihat dashboard"
               icon={Kanban}
-              href="/workboard"
+              href="/workboard-insights"
               testId="module-workboard"
             />
             <ModuleCard
               title="KPI Agent"
               value="Lihat laporan"
               icon={Trophy}
-              href="/analytics?tab=ai"
+              href="/agent-kpi"
               testId="module-agent-kpi"
             />
           </div>

@@ -13,6 +13,8 @@ import Channels from "@/pages/Channels";
 import Dashboard from "@/pages/Dashboard";
 import Chats from "@/pages/Chats";
 import ChatInsights from "@/pages/ChatInsights";
+import WorkboardInsights from "@/pages/WorkboardInsights";
+import AgentKpiInsights from "@/pages/AgentKpiInsights";
 import Status from "@/pages/Status";
 import Knowledge from "@/pages/Knowledge";
 import Settings from "@/pages/Settings";
@@ -114,6 +116,8 @@ function AuthGate() {
         <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/chat-insights" component={ChatInsights} />
+        <Route path="/workboard-insights" component={WorkboardInsights} />
+        <Route path="/agent-kpi" component={AgentKpiInsights} />
         <Route path="/chats" component={Chats} />
         <Route path="/chats/:id" component={Chats} />
         <Route path="/status" component={Status} />

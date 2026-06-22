@@ -36,3 +36,24 @@ reconnect.
   shipped), the dead auth dir must be removed once by hand to unstick it;
   remove ONLY that `<userId>/<channelId>` dir — sibling channels are live
   sessions and wiping them logs those numbers out.
+
+## The wipe races a trailing `creds.update` → fatal unhandledRejection
+
+The logout-wipe above introduced a crash: after `fs.rm(authDir)` deletes the
+dir, Baileys can still emit ONE more `creds.update`. If `creds.update` is wired
+as the bare `sock.ev.on("creds.update", saveCreds)`, that unawaited
+`saveCreds()` does `writeFile(.whatsapp-auth/<u>/<c>/creds.json)` into the
+now-deleted dir → `ENOENT`. The rejection is unhandled, the global
+`unhandledRejection` handler exits the process, and api-server **crash-loops on
+every start** (a conflict/loggedOut channel re-triggers it immediately). Symptom
+in logs: `Fatal: unhandledRejection; exiting` + `ENOENT ... creds.json` right
+after a `loggedOut`/`Stream Errored (conflict)` close.
+
+**Rule:** never wire an unawaited promise-returning Baileys listener bare. Wrap
+saveCreds so its write error can't escape:
+`sock.ev.on("creds.update", () => void saveCreds().catch(logWarn))`.
+
+**Why:** losing a creds write on a dead/re-pairing session is harmless, but an
+uncaught write into a wiped dir takes down the whole API. Same class as the
+media-stream and scheduler unhandledRejection crashes — any async Baileys/IO
+side-effect off an event handler must own its own catch.

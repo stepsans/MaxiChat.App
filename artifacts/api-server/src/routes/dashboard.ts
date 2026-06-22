@@ -9,7 +9,8 @@ import { getCachedTopQuestions } from "../lib/dashboard-insights";
 import { buildDrillPdf, buildDrillCsv } from "../lib/dashboard-pdf";
 import { startOfWibDay } from "../lib/timezone";
 import { getLatestSnapshot, refreshOwnerSnapshot } from "../lib/dashboard-snapshot";
-import { agentKpiLeaderboard, type AgentKpiDimension } from "../lib/agent-kpi";
+import { agentKpiLeaderboard, agentKpiTable, type AgentKpiDimension } from "../lib/agent-kpi";
+import { workboardTier2 } from "../lib/dashboard-workboard";
 import {
   type DashboardRange,
   conversationCount,
@@ -212,6 +213,37 @@ router.get(
       volume_by_hour: volumeByHour,
       ai_vs_human: aiVsHuman,
     });
+  }
+);
+
+// GET /dashboard/tier2/workboard?board&assignee — dense WorkBoard dashboard
+// (spec A.10): task KPIs + per-column + per-assignee load + overdue list.
+router.get(
+  "/tier2/workboard",
+  requirePermission("dashboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const ownerUserId = await resolveOwnerUserId(uid);
+    const boardId = Number(req.query.board);
+    const assigneeId = Number(req.query.assignee);
+    res.json(
+      await workboardTier2(ownerUserId, {
+        boardId: Number.isInteger(boardId) && boardId > 0 ? boardId : undefined,
+        assigneeId: Number.isInteger(assigneeId) && assigneeId > 0 ? assigneeId : undefined,
+      })
+    );
+  }
+);
+
+// GET /dashboard/tier2/agent-kpi — every dimension per agent + coaching detail
+// (spec A.10), from the latest completed ACR job.
+router.get(
+  "/tier2/agent-kpi",
+  requirePermission("dashboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const ownerUserId = await resolveOwnerUserId(uid);
+    res.json(await agentKpiTable(ownerUserId));
   }
 );
 

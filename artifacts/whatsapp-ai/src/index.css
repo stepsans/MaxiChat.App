@@ -325,6 +325,13 @@
   display: none;
 }
 
+/* Print: drop the app chrome (sidebar, banners) so a printed Dashboard /
+   report shows only the content. Buttons opt out via Tailwind `print:hidden`. */
+@media print {
+  aside { display: none !important; }
+  main { overflow: visible !important; }
+}
+
 /* Scrollbar styled like WhatsApp Web */
 .wa-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .wa-scroll::-webkit-scrollbar-track { background: transparent; }

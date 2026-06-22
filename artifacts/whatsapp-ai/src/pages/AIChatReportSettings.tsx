@@ -185,7 +185,7 @@ const WEIGHT_ROWS: Array<{
   {
     key: "weightComplaintHandling",
     label: "Handling Komplain",
-    desc: "Kemampuan meredam customer marah/kesal",
+    desc: "Kemampuan meredam customer tidak puas",
   },
   {
     key: "weightMissedChat",
