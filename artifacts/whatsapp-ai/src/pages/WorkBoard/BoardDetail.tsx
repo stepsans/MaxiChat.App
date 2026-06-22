@@ -2,17 +2,17 @@ import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useBoardDetail } from "@/hooks/useBoardDetail";
+import { useWorkboard } from "@/hooks/useWorkboard";
 import BoardHeader from "@/components/WorkBoard/BoardHeader";
 import KanbanView from "@/components/WorkBoard/KanbanView";
-import TableView from "@/components/WorkBoard/TableView";
-import TodoView from "@/components/WorkBoard/TodoView";
 import DashboardView from "@/components/WorkBoard/DashboardView";
 import InviteMemberModal from "@/components/WorkBoard/InviteMemberModal";
+import CreateBoardModal from "@/components/WorkBoard/CreateBoardModal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type ViewType = "kanban" | "table" | "todo" | "dashboard";
+type ViewType = "kanban" | "dashboard";
 
 export default function BoardDetailPage() {
   const params = useParams<{ boardId: string }>();
@@ -20,10 +20,12 @@ export default function BoardDetailPage() {
   const [, navigate] = useLocation();
   const { menus, isLoading: permLoading } = usePermissions();
   const detail = useBoardDetail(boardId);
+  const { updateBoard } = useWorkboard();
 
   const [activeView, setActiveView] = useState<ViewType>("kanban");
   const [memberModalOpen, setMemberModalOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     if (!permLoading && !menus.workboard?.canView) {
@@ -34,7 +36,7 @@ export default function BoardDetailPage() {
   useEffect(() => {
     if (detail.board) {
       const v = detail.board.defaultView as ViewType;
-      if (["kanban", "table", "todo"].includes(v)) setActiveView(v);
+      if (["kanban", "dashboard"].includes(v)) setActiveView(v);
     }
   }, [detail.board?.id]);
 
@@ -65,10 +67,6 @@ export default function BoardDetailPage() {
   const canEdit =
     detail.myRole === "owner" || detail.myRole === "editor";
 
-  async function handleBulkDelete(taskIds: number[]) {
-    await Promise.all(taskIds.map((id) => detail.deleteTask(id)));
-  }
-
   return (
     <div className="flex flex-col h-full p-4 space-y-4">
       <div className="flex items-center gap-2">
@@ -93,6 +91,7 @@ export default function BoardDetailPage() {
         memberCount={detail.members.length}
         onInvite={() => setInviteOpen(true)}
         onMemberList={() => setMemberModalOpen(true)}
+        onEdit={() => setEditOpen(true)}
       />
 
       <div className="flex-1 overflow-auto">
@@ -108,34 +107,7 @@ export default function BoardDetailPage() {
             onUpdateTask={detail.updateTask}
             onDeleteTask={detail.deleteTask}
             onCreateColumn={detail.createColumn}
-          />
-        )}
-
-        {activeView === "table" && (
-          <TableView
-            columns={detail.columns}
-            tasks={detail.tasks}
-            members={detail.members}
-            canEdit={canEdit}
-            myRole={detail.myRole}
-            onCreateTask={detail.createTask}
-            onUpdateTask={detail.updateTask}
-            onDeleteTask={detail.deleteTask}
-            onBulkDelete={handleBulkDelete}
-          />
-        )}
-
-        {activeView === "todo" && (
-          <TodoView
-            columns={detail.columns}
-            tasks={detail.tasks}
-            members={detail.members}
-            canEdit={canEdit}
-            myRole={detail.myRole}
-            onCreateTask={detail.createTask}
-            onUpdateTask={detail.updateTask}
-            onDeleteTask={detail.deleteTask}
-            onToggleComplete={detail.toggleComplete}
+            onUpdateColumn={detail.updateColumn}
           />
         )}
 
@@ -158,6 +130,22 @@ export default function BoardDetailPage() {
         onUpdateRole={detail.updateMemberRole}
         onRemove={detail.removeMember}
       />
+
+      {detail.myRole === "owner" && detail.board && (
+        <CreateBoardModal
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          mode="edit"
+          initial={{
+            id: detail.board.id,
+            name: detail.board.name,
+            description: detail.board.description,
+            color: detail.board.color,
+            emoji: detail.board.emoji,
+          }}
+          onSubmit={(data) => updateBoard(boardId, data)}
+        />
+      )}
     </div>
   );
 }

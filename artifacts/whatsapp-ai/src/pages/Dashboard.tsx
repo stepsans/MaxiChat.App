@@ -36,16 +36,29 @@ import {
   FileText,
   ChevronDown,
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
+import {
+  useGetProductInterest,
+  getGetProductInterestQueryKey,
+} from "@workspace/api-client-react";
 import { cn, formatBytes } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
+import { TopProductsTable } from "@/components/analytics/TopProductsTable";
+import { formatRupiah, type PeriodKey } from "@/components/analytics/format";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { FirstRunWizard } from "@/components/FirstRunWizard";
 import SystemHealthStrip from "@/components/dashboard/SystemHealthStrip";
 import DrillDownDialog from "@/components/dashboard/DrillDownDialog";
 import {
   useDashboardSummary,
   useDashboardFlowMenu,
-  useDashboardProducts,
   useDashboardTopQuestions,
   useDashboardRefresh,
   useDashboardAgentKpi,
@@ -395,39 +408,75 @@ function FlowMenuPanel({ range, enabled }: { range: DashboardRange; enabled: boo
   );
 }
 
-// "Produk paling diminati" (spec A.3) — bar ranking from AI analyses.
-function ProductsPanel({ range, enabled }: { range: DashboardRange; enabled: boolean }) {
-  const { data, isLoading } = useDashboardProducts(range, enabled);
-  if (isLoading || !data || data.rows.length === 0) return null;
-  const rows = data.rows;
-  const max = rows.reduce((m, r) => Math.max(m, r.count), 0) || 1;
+// "Produk Paling Diminati" + "Peluang Produk Baru" (spec A.3) — REUSE the AI
+// Pipeline › Analitik data (global tenant-wide product-interest, GET
+// /v2/product-interest). Same columns as the pipeline tab: Produk · Minat ·
+// Estimasi Nilai · Status (Ada/Baru). Fixed to a 30-day window to mirror the AI
+// Pipeline Analitik tab exactly — it intentionally ignores the header date range
+// (product interest over a single day is too sparse to be useful).
+function ProductsPanel({ enabled }: { enabled: boolean }) {
+  const period: PeriodKey = "30d";
+  const { data, isLoading } = useGetProductInterest(
+    { period },
+    { query: { queryKey: getGetProductInterestQueryKey({ period }), enabled } }
+  );
+  const top = data?.topProducts ?? [];
+  const baru = data?.unmatchedProducts ?? [];
+  if (!isLoading && top.length === 0 && baru.length === 0) return null;
+
   return (
-    <Card data-testid="products-card">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Package className="w-4 h-4 text-muted-foreground" />
-          Produk Paling Diminati
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          {rows.map((r, i) => (
-            <div key={`${r.product}-${i}`} className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-foreground truncate">{r.product}</span>
-                <span className="tabular-nums text-muted-foreground">{r.count}</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary"
-                  style={{ width: `${Math.round((r.count / max) * 100)}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <>
+      {/* Produk Paling Diminati — reuse the exact AI Pipeline table component. */}
+      <div data-testid="products-card">
+        <TopProductsTable rows={data?.topProducts} loading={isLoading} period={period} />
+      </div>
+
+      {/* Peluang Produk Baru — produk yang diminati tapi belum ada di katalog
+          (product_in_catalog=false). Read-only di dashboard; aksi dismiss ada di
+          AI Pipeline › Analitik. */}
+      {(isLoading || baru.length > 0) && (
+        <Card data-testid="new-products-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Package className="w-4 h-4 text-muted-foreground" />
+              Peluang Produk Baru
+              <Link
+                href="/ai-pipeline"
+                className="ml-auto text-[11px] font-normal text-primary hover:underline"
+              >
+                selengkapnya di AI Pipeline › Analitik
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm">
+            {isLoading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Produk</TableHead>
+                    <TableHead className="text-right">Minat</TableHead>
+                    <TableHead className="text-right">Estimasi Nilai</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {baru.slice(0, 10).map((r, i) => (
+                    <TableRow key={`${r.productInterest}-${i}`}>
+                      <TableCell className="font-medium">{r.productInterest}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.count}x</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {r.totalEstimatedValue > 0 ? formatRupiah(r.totalEstimatedValue) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </>
   );
 }
 
@@ -843,7 +892,7 @@ export default function Dashboard() {
 
         {/* Produk paling diminati (spec A.3) + Pertanyaan tersering (spec A.3) +
             Menu chatbot ditekan (spec A.4). */}
-        <ProductsPanel range={range} enabled={canView} />
+        <ProductsPanel enabled={canView} />
         <TopQuestionsPanel enabled={canView} />
         <FlowMenuPanel range={range} enabled={canView} />
 

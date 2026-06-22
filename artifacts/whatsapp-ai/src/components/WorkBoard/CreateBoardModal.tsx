@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,13 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 const COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#ef4444",
@@ -24,55 +17,85 @@ const COLORS = [
   "#3b82f6", "#64748b",
 ];
 
-const EMOJIS = ["📋", "🚀", "🎯", "💡", "🛠️", "📊", "🎨", "📱", "🌟", "🔥"];
+const EMOJIS = [
+  // existing
+  "📋", "🚀", "🎯", "💡", "🛠️", "📊", "🎨", "📱", "🌟", "🔥",
+  // added (business / sales / logistics)
+  "⚙️", "📈", "🤝", "📦", "🚚", "👥", "🧑‍💼", "💰", "💳", "💵", "🛒", "📑", "💻", "🖥️",
+];
 
-interface CreateBoardModalProps {
+interface BoardModalProps {
   open: boolean;
   onClose: () => void;
-  onCreate: (data: {
+  mode?: "create" | "edit";
+  // Required when mode === "edit": pre-fills the form.
+  initial?: {
+    id: number;
+    name: string;
+    description?: string | null;
+    color: string;
+    emoji?: string | null;
+  };
+  onSubmit: (data: {
     name: string;
     description?: string;
-    defaultView?: string;
     color?: string;
     emoji?: string;
   }) => Promise<void>;
 }
 
-export default function CreateBoardModal({ open, onClose, onCreate }: CreateBoardModalProps) {
+export default function CreateBoardModal({
+  open,
+  onClose,
+  mode = "create",
+  initial,
+  onSubmit,
+}: BoardModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [defaultView, setDefaultView] = useState("kanban");
   const [color, setColor] = useState(COLORS[0]);
   const [emoji, setEmoji] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function handleCreate() {
+  // Sync form with edit target (or reset for create) whenever the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    if (mode === "edit" && initial) {
+      setName(initial.name);
+      setDescription(initial.description ?? "");
+      setColor(initial.color);
+      setEmoji(initial.emoji ?? "");
+    } else {
+      setName("");
+      setDescription("");
+      setColor(COLORS[0]);
+      setEmoji("");
+    }
+  }, [open, mode, initial]);
+
+  async function handleSubmit() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await onCreate({
+      await onSubmit({
         name: name.trim(),
         description: description.trim() || undefined,
-        defaultView,
         color,
         emoji: emoji || undefined,
       });
-      setName("");
-      setDescription("");
-      setDefaultView("kanban");
-      setColor(COLORS[0]);
-      setEmoji("");
       onClose();
     } finally {
       setSaving(false);
     }
   }
 
+  const isEdit = mode === "edit";
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Buat Board Baru</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Board" : "Buat Board Baru"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -94,20 +117,6 @@ export default function CreateBoardModal({ open, onClose, onCreate }: CreateBoar
               placeholder="Deskripsi singkat (opsional)"
               rows={2}
             />
-          </div>
-
-          <div className="space-y-1">
-            <Label>Tampilan Default</Label>
-            <Select value={defaultView} onValueChange={setDefaultView}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="kanban">Kanban</SelectItem>
-                <SelectItem value="table">Table</SelectItem>
-                <SelectItem value="todo">Todo List</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           <div className="space-y-1">
@@ -150,8 +159,8 @@ export default function CreateBoardModal({ open, onClose, onCreate }: CreateBoar
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Batal
           </Button>
-          <Button onClick={handleCreate} disabled={saving || !name.trim()}>
-            {saving ? "Membuat..." : "Buat Board"}
+          <Button onClick={handleSubmit} disabled={saving || !name.trim()}>
+            {saving ? "Menyimpan..." : isEdit ? "Simpan" : "Buat Board"}
           </Button>
         </DialogFooter>
       </DialogContent>

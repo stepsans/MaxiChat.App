@@ -161,7 +161,10 @@
       "Bash(npm *)",
       "Bash(npx *)",
       "Bash(grep -rln \"Not Lead\\\\|Not-Lead\\\\|not_lead\\\\|notLead\\\\|Bukan Lead\\\\|Unknown.*Lead\\\\|Lead.*Not\" src)",
-      "Bash(grep -rln \"leadStatus\\\\|lead_status\\\\|isLead\" src)"
+      "Bash(grep -rln \"leadStatus\\\\|lead_status\\\\|isLead\" src)",
+      "Read(//home/hooks/**)",
+      "Read(//home/**)",
+      "Bash(perl -0pi -e 's/assignees: assignees\\\\.map\\\\\\(\\\\\\(a\\\\\\) => \\\\\\(\\\\{ userId: a\\\\.userId, name: a\\\\.name, email: a\\\\.email \\\\}\\\\\\)\\\\\\)/assignees: assignees.map\\(\\(a\\) => \\({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl }\\)\\)/g' workboard.ts)"
     ],
     "deny": [
       "Bash(sudo *)",

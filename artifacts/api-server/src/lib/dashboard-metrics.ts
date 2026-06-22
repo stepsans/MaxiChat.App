@@ -354,37 +354,6 @@ export async function wonMetric(
   return { count: row?.count ?? 0, value: Number(row?.value ?? 0) };
 }
 
-// ── Produk paling diminati (spec A.3): group analyses by product_interest.
-export interface ProductRow {
-  product: string;
-  count: number;
-}
-
-export async function productRanking(
-  allowed: Set<number>,
-  range: DashboardRange
-): Promise<ProductRow[]> {
-  if (noChannels(allowed)) return [];
-  const rows = await db
-    .select({
-      product: aiPipelineAnalysesTable.productInterest,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(aiPipelineAnalysesTable)
-    .where(
-      and(
-        inArray(aiPipelineAnalysesTable.channelId, [...allowed]),
-        sql`${aiPipelineAnalysesTable.productInterest} is not null and ${aiPipelineAnalysesTable.productInterest} <> ''`,
-        gte(aiPipelineAnalysesTable.createdAt, range.from),
-        lte(aiPipelineAnalysesTable.createdAt, range.to)
-      )
-    )
-    .groupBy(aiPipelineAnalysesTable.productInterest)
-    .orderBy(desc(sql`count(*)`))
-    .limit(20);
-  return rows.map((r) => ({ product: r.product ?? "", count: r.count }));
-}
-
 // ── Chat Tier 2 (spec A.10): inbound volume per hour-of-day over the range.
 export async function chatVolumeByHour(
   allowed: Set<number>,

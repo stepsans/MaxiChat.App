@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
+import { addDays, format } from "date-fns";
 import TaskComments from "./TaskComments";
 import type { WorkboardTask, WorkboardColumn, WorkboardMember } from "@/hooks/useBoardDetail";
 
@@ -52,6 +53,19 @@ const PRIORITY_LABELS: Record<string, string> = {
 // Radix Select forbids an empty-string item value, so we use a sentinel for the
 // "no column" option and map it back to "" in component state.
 const NO_COLUMN_VALUE = "__none__";
+
+// Quick due-date shortcuts. Returns yyyy-MM-dd (local) to match the native date
+// input and the existing save path (backend does new Date(dueDate)).
+const DUE_SHORTCUTS: Array<{ label: string; days: number }> = [
+  { label: "Hari Ini", days: 0 },
+  { label: "H+1", days: 1 },
+  { label: "H+3", days: 3 },
+  { label: "H+7", days: 7 },
+];
+
+function quickDue(days: number): string {
+  return format(addDays(new Date(), days), "yyyy-MM-dd");
+}
 
 export default function TaskModal({
   open,
@@ -212,6 +226,37 @@ export default function TaskModal({
 
           <div className="space-y-1">
             <Label>Tenggat Waktu</Label>
+            {!readOnly && (
+              <div className="flex flex-wrap gap-1.5">
+                {DUE_SHORTCUTS.map(({ label, days }) => {
+                  const value = quickDue(days);
+                  const active = dueDate === value;
+                  return (
+                    <Button
+                      key={label}
+                      type="button"
+                      size="sm"
+                      variant={active ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setDueDate(value)}
+                    >
+                      {label}
+                    </Button>
+                  );
+                })}
+                {dueDate && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    onClick={() => setDueDate("")}
+                  >
+                    Hapus
+                  </Button>
+                )}
+              </div>
+            )}
             <Input
               type="date"
               value={dueDate}

@@ -11,6 +11,7 @@ import {
   workboardTaskCommentsTable,
   workboardCommentMentionsTable,
   workboardNotificationsTable,
+  workboardTaskEventsTable,
   usersTable,
   type WorkboardBoardMemberRow,
 } from "@workspace/db";
@@ -19,6 +20,8 @@ import { resolveOwnerUserId } from "../lib/seed";
 import { requirePermission } from "../lib/role-permissions";
 import { parseMentionIds } from "../lib/workboard-mentions";
 import { notifyWorkboardMentions } from "../lib/workboard-notify";
+import { recordTaskEvent } from "../lib/workboard-events";
+import { deriveIsCompleted } from "../lib/workboard-finish";
 
 const router = Router();
 
@@ -74,6 +77,7 @@ async function getTaskAssignees(taskIds: number[]) {
       userId: workboardTaskAssigneesTable.userId,
       name: usersTable.name,
       email: usersTable.email,
+      profilePhotoUrl: usersTable.profilePhotoUrl,
     })
     .from(workboardTaskAssigneesTable)
     .leftJoin(usersTable, eq(workboardTaskAssigneesTable.userId, usersTable.id))
@@ -169,9 +173,10 @@ router.post(
       res.status(400).json({ error: "Nama board maksimal 100 karakter." });
       return;
     }
-    const validViews = ["kanban", "table", "todo"];
+    // Table & Todo views were removed; Kanban is the only persisted view.
+    const validViews = ["kanban"];
     if (defaultView && !validViews.includes(defaultView)) {
-      res.status(400).json({ error: "defaultView harus salah satu dari: kanban, table, todo." });
+      res.status(400).json({ error: "defaultView hanya boleh: kanban." });
       return;
     }
 
@@ -250,6 +255,7 @@ router.get(
           updatedAt: workboardBoardMembersTable.updatedAt,
           name: usersTable.name,
           email: usersTable.email,
+          profilePhotoUrl: usersTable.profilePhotoUrl,
         })
         .from(workboardBoardMembersTable)
         .leftJoin(usersTable, eq(workboardBoardMembersTable.userId, usersTable.id))
@@ -268,10 +274,10 @@ router.get(
 
     const taskIds = tasks.map((t) => t.id);
     const assignees = await getTaskAssignees(taskIds);
-    const assigneeMap: Record<number, Array<{ userId: number; name: string | null; email: string | null }>> = {};
+    const assigneeMap: Record<number, Array<{ userId: number; name: string | null; email: string | null; profilePhotoUrl: string | null }>> = {};
     for (const a of assignees) {
       if (!assigneeMap[a.taskId]) assigneeMap[a.taskId] = [];
-      assigneeMap[a.taskId].push({ userId: a.userId, name: a.name, email: a.email });
+      assigneeMap[a.taskId].push({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl });
     }
 
     const tasksWithAssignees = tasks.map((t) => ({ ...t, assignees: assigneeMap[t.id] ?? [] }));
@@ -313,9 +319,10 @@ router.put(
         return;
       }
     }
-    const validViews = ["kanban", "table", "todo"];
+    // Table & Todo views were removed; Kanban is the only persisted view.
+    const validViews = ["kanban"];
     if (defaultView && !validViews.includes(defaultView)) {
-      res.status(400).json({ error: "defaultView harus salah satu dari: kanban, table, todo." });
+      res.status(400).json({ error: "defaultView hanya boleh: kanban." });
       return;
     }
 
@@ -393,6 +400,7 @@ router.get(
         updatedAt: workboardBoardMembersTable.updatedAt,
         name: usersTable.name,
         email: usersTable.email,
+        profilePhotoUrl: usersTable.profilePhotoUrl,
       })
       .from(workboardBoardMembersTable)
       .leftJoin(usersTable, eq(workboardBoardMembersTable.userId, usersTable.id))
@@ -752,11 +760,21 @@ router.put(
       return;
     }
 
-    const { name, color, position } = req.body as {
+    const { name, color, position, isFinishStage } = req.body as {
       name?: string;
       color?: string;
       position?: number;
+      isFinishStage?: boolean;
     };
+
+    // Finish-stage is board STRUCTURE — only the owner may change which columns
+    // count as "done". name/color/position stay editor-level (existing behavior).
+    const finishChanged =
+      isFinishStage !== undefined && isFinishStage !== existing.isFinishStage;
+    if (finishChanged && member.role !== "owner") {
+      res.status(403).json({ error: "Hanya owner board yang dapat mengubah stage selesai." });
+      return;
+    }
 
     const [updated] = await db
       .update(workboardColumnsTable)
@@ -764,10 +782,20 @@ router.put(
         name: name !== undefined ? name.trim() : existing.name,
         color: color ?? existing.color,
         position: position !== undefined ? position : existing.position,
+        isFinishStage: isFinishStage !== undefined ? isFinishStage : existing.isFinishStage,
         updatedAt: new Date(),
       })
       .where(eq(workboardColumnsTable.id, columnId))
       .returning();
+
+    // When the finish-stage flag flips, re-derive isCompleted for EVERY task in
+    // this column — otherwise tasks already sitting here keep a stale status.
+    if (finishChanged) {
+      await db
+        .update(workboardTasksTable)
+        .set({ isCompleted: isFinishStage, updatedAt: new Date() })
+        .where(eq(workboardTasksTable.columnId, columnId));
+    }
 
     res.json({ column: updated });
   }
@@ -856,10 +884,10 @@ router.get(
       tasks = tasks.filter((t) => taskIdsWithAssignee.has(t.id));
     }
 
-    const assigneeMap: Record<number, Array<{ userId: number; name: string | null; email: string | null }>> = {};
+    const assigneeMap: Record<number, Array<{ userId: number; name: string | null; email: string | null; profilePhotoUrl: string | null }>> = {};
     for (const a of assignees) {
       if (!assigneeMap[a.taskId]) assigneeMap[a.taskId] = [];
-      assigneeMap[a.taskId].push({ userId: a.userId, name: a.name, email: a.email });
+      assigneeMap[a.taskId].push({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl });
     }
 
     res.json({
@@ -959,11 +987,24 @@ router.post(
       );
     }
 
+    await recordTaskEvent({
+      boardId,
+      taskId: task.id,
+      eventType: "task_created",
+      actorUserId: uid,
+      payload: {
+        columnId: task.columnId,
+        dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+        priority: task.priority,
+        assigneeIds: assigneeIds ?? [],
+      },
+    });
+
     const assignees = await getTaskAssignees([task.id]);
     res.status(201).json({
       task: {
         ...task,
-        assignees: assignees.map((a) => ({ userId: a.userId, name: a.name, email: a.email })),
+        assignees: assignees.map((a) => ({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl })),
       },
     });
   }
@@ -1001,9 +1042,40 @@ router.get(
     res.json({
       task: {
         ...task,
-        assignees: assignees.map((a) => ({ userId: a.userId, name: a.name, email: a.email })),
+        assignees: assignees.map((a) => ({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl })),
       },
     });
+  }
+);
+
+// Read-only task history timeline (§5). For verification + a future "task
+// history" UI. KPI aggregation endpoints are intentionally NOT built here.
+router.get(
+  "/boards/:boardId/tasks/:taskId/events",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const boardId = Number(req.params.boardId);
+    const taskId = Number(req.params.taskId);
+    if (!Number.isInteger(boardId) || !Number.isInteger(taskId)) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+
+    const member = await requireBoardAccess(boardId, uid, "viewer", res);
+    if (!member) return;
+
+    const events = await db
+      .select()
+      .from(workboardTaskEventsTable)
+      .where(
+        and(
+          eq(workboardTaskEventsTable.taskId, taskId),
+          eq(workboardTaskEventsTable.boardId, boardId)
+        )
+      )
+      .orderBy(asc(workboardTaskEventsTable.createdAt));
+    res.json({ events });
   }
 );
 
@@ -1076,6 +1148,22 @@ router.put(
       }
     }
 
+    // isCompleted is DERIVED from the (effective) target column's finish-stage
+    // flag — never taken from the request body (Model A). `isCompleted` in the
+    // body is ignored intentionally.
+    void isCompleted;
+    const effectiveColumnId = columnId !== undefined ? columnId : existing.columnId;
+    let targetIsFinish: boolean | null = null;
+    if (effectiveColumnId !== null && effectiveColumnId !== undefined) {
+      const [col] = await db
+        .select({ isFinishStage: workboardColumnsTable.isFinishStage })
+        .from(workboardColumnsTable)
+        .where(eq(workboardColumnsTable.id, effectiveColumnId))
+        .limit(1);
+      targetIsFinish = col?.isFinishStage ?? null;
+    }
+    const derivedCompleted = deriveIsCompleted(targetIsFinish);
+
     const [updated] = await db
       .update(workboardTasksTable)
       .set({
@@ -1085,13 +1173,21 @@ router.put(
         priority: priority ?? existing.priority,
         dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : existing.dueDate,
         tags: tags !== undefined ? tags : existing.tags,
-        isCompleted: isCompleted !== undefined ? isCompleted : existing.isCompleted,
+        isCompleted: derivedCompleted, // ← derived from column, not manual
         updatedAt: new Date(),
       })
       .where(eq(workboardTasksTable.id, taskId))
       .returning();
 
+    // Capture the pre-update assignee set BEFORE the delete-and-reinsert so we
+    // can diff it for assignee_added / assignee_removed events.
+    let oldAssigneeIds: number[] = [];
     if (assigneeIds !== undefined) {
+      const oldRows = await db
+        .select({ userId: workboardTaskAssigneesTable.userId })
+        .from(workboardTaskAssigneesTable)
+        .where(eq(workboardTaskAssigneesTable.taskId, taskId));
+      oldAssigneeIds = oldRows.map((r) => r.userId);
       await db
         .delete(workboardTaskAssigneesTable)
         .where(eq(workboardTaskAssigneesTable.taskId, taskId));
@@ -1102,11 +1198,97 @@ router.put(
       }
     }
 
+    // ── Best-effort history (§3.3). All after the main DB writes succeed. ──
+    const oldDue = existing.dueDate ? existing.dueDate.toISOString() : null;
+    const newDue = updated.dueDate ? updated.dueDate.toISOString() : null;
+    if (dueDate !== undefined && oldDue !== newDue) {
+      await recordTaskEvent({
+        boardId,
+        taskId,
+        eventType: "due_date_changed",
+        actorUserId: uid,
+        payload: { from: oldDue, to: newDue },
+      });
+    }
+
+    if (columnId !== undefined && columnId !== existing.columnId) {
+      let fromIsFinish: boolean | null = null;
+      if (existing.columnId !== null) {
+        const [oldCol] = await db
+          .select({ isFinishStage: workboardColumnsTable.isFinishStage })
+          .from(workboardColumnsTable)
+          .where(eq(workboardColumnsTable.id, existing.columnId))
+          .limit(1);
+        fromIsFinish = oldCol?.isFinishStage ?? null;
+      }
+      await recordTaskEvent({
+        boardId,
+        taskId,
+        eventType: "task_moved",
+        actorUserId: uid,
+        payload: {
+          fromColumnId: existing.columnId,
+          toColumnId: updated.columnId,
+          fromIsFinish: fromIsFinish === true,
+          toIsFinish: targetIsFinish === true,
+        },
+      });
+    }
+
+    // Completion is derived: an edit that lands the task in/out of a finish
+    // stage flips isCompleted, which we record as completed/reopened.
+    if (updated.isCompleted !== existing.isCompleted) {
+      if (updated.isCompleted) {
+        await recordTaskEvent({
+          boardId,
+          taskId,
+          eventType: "task_completed",
+          actorUserId: uid,
+          payload: { columnId: updated.columnId, dueDate: newDue },
+        });
+      } else {
+        await recordTaskEvent({
+          boardId,
+          taskId,
+          eventType: "task_reopened",
+          actorUserId: uid,
+          payload: { columnId: updated.columnId },
+        });
+      }
+    }
+
+    if (assigneeIds !== undefined) {
+      const oldSet = new Set(oldAssigneeIds);
+      const newSet = new Set(assigneeIds);
+      for (const userId of assigneeIds) {
+        if (!oldSet.has(userId)) {
+          await recordTaskEvent({
+            boardId,
+            taskId,
+            eventType: "assignee_added",
+            actorUserId: uid,
+            payload: { userId },
+          });
+        }
+      }
+      for (const userId of oldAssigneeIds) {
+        if (!newSet.has(userId)) {
+          await recordTaskEvent({
+            boardId,
+            taskId,
+            eventType: "assignee_removed",
+            actorUserId: uid,
+            payload: { userId },
+          });
+        }
+      }
+    }
+
     const assignees = await getTaskAssignees([taskId]);
     res.json({
       task: {
         ...updated,
-        assignees: assignees.map((a) => ({ userId: a.userId, name: a.name, email: a.email })),
+        assignees: assignees.map((a) => ({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl })),
       },
     });
   }
@@ -1145,59 +1327,85 @@ router.patch(
     const targetColumn = columnId !== undefined ? columnId : task.columnId;
     const targetPosition = position !== undefined ? position : task.position;
 
+    // Derive isCompleted from the destination column's finish-stage flag.
+    let targetIsFinish: boolean | null = null;
+    if (targetColumn !== null) {
+      const [col] = await db
+        .select({ isFinishStage: workboardColumnsTable.isFinishStage })
+        .from(workboardColumnsTable)
+        .where(eq(workboardColumnsTable.id, targetColumn))
+        .limit(1);
+      targetIsFinish = col?.isFinishStage ?? null;
+    }
+    const derivedCompleted = deriveIsCompleted(targetIsFinish);
+
     const [updated] = await db
       .update(workboardTasksTable)
-      .set({ columnId: targetColumn, position: targetPosition, updatedAt: new Date() })
+      .set({
+        columnId: targetColumn,
+        position: targetPosition,
+        isCompleted: derivedCompleted, // ← derived, not manual
+        updatedAt: new Date(),
+      })
       .where(eq(workboardTasksTable.id, taskId))
       .returning();
+
+    // Stage change is the primary KPI signal. Position-only reorders within the
+    // same column are not history-worthy, so only log when the column changed.
+    if (targetColumn !== task.columnId) {
+      let fromIsFinish: boolean | null = null;
+      if (task.columnId !== null) {
+        const [oldCol] = await db
+          .select({ isFinishStage: workboardColumnsTable.isFinishStage })
+          .from(workboardColumnsTable)
+          .where(eq(workboardColumnsTable.id, task.columnId))
+          .limit(1);
+        fromIsFinish = oldCol?.isFinishStage ?? null;
+      }
+      await recordTaskEvent({
+        boardId,
+        taskId,
+        eventType: "task_moved",
+        actorUserId: uid,
+        payload: {
+          fromColumnId: task.columnId,
+          toColumnId: targetColumn,
+          fromIsFinish: fromIsFinish === true,
+          toIsFinish: targetIsFinish === true,
+        },
+      });
+
+      // Crossing into / out of a finish stage flips completion.
+      if (updated.isCompleted && !task.isCompleted) {
+        await recordTaskEvent({
+          boardId,
+          taskId,
+          eventType: "task_completed",
+          actorUserId: uid,
+          payload: {
+            columnId: targetColumn,
+            dueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
+          },
+        });
+      } else if (!updated.isCompleted && task.isCompleted) {
+        await recordTaskEvent({
+          boardId,
+          taskId,
+          eventType: "task_reopened",
+          actorUserId: uid,
+          payload: { columnId: targetColumn },
+        });
+      }
+    }
 
     res.json({ task: updated });
   }
 );
 
-router.patch(
-  "/boards/:boardId/tasks/:taskId/complete",
-  requirePermission("workboard", "edit"),
-  async (req: Request, res: Response): Promise<void> => {
-    const uid = getSessionUserId(req)!;
-    const boardId = Number(req.params.boardId);
-    const taskId = Number(req.params.taskId);
-    if (!Number.isInteger(boardId) || !Number.isInteger(taskId)) {
-      res.status(400).json({ error: "Parameter tidak valid." });
-      return;
-    }
-
-    const member = await requireBoardAccess(boardId, uid, "editor", res);
-    if (!member) return;
-
-    const { isCompleted } = req.body as { isCompleted?: boolean };
-    if (typeof isCompleted !== "boolean") {
-      res.status(400).json({ error: "isCompleted harus boolean." });
-      return;
-    }
-
-    const [task] = await db
-      .select()
-      .from(workboardTasksTable)
-      .where(
-        and(eq(workboardTasksTable.id, taskId), eq(workboardTasksTable.boardId, boardId))
-      )
-      .limit(1);
-
-    if (!task) {
-      res.status(404).json({ error: "Task tidak ditemukan." });
-      return;
-    }
-
-    const [updated] = await db
-      .update(workboardTasksTable)
-      .set({ isCompleted, updatedAt: new Date() })
-      .where(eq(workboardTasksTable.id, taskId))
-      .returning();
-
-    res.json({ task: updated });
-  }
-);
+// NOTE: the old PATCH .../complete route was removed in WorkBoard Tahap 2.
+// Completion is now derived from a task's column (Model A): a task is done iff
+// it sits in a finish-stage column. It is set on the move & PUT routes above —
+// there is no manual completion toggle.
 
 router.delete(
   "/boards/:boardId/tasks/:taskId",
@@ -1227,6 +1435,10 @@ router.delete(
       return;
     }
 
+    // No task_deleted event: workboard_task_events.task_id is ON DELETE CASCADE,
+    // so any event written here would be removed with the task in the same
+    // breath (cascade decision, spec §3.4). If history must survive deletion,
+    // switch the FK to ON DELETE SET NULL + snapshot the title first.
     await db.delete(workboardTasksTable).where(eq(workboardTasksTable.id, taskId));
     res.json({ ok: true });
   }

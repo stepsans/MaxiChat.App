@@ -8,6 +8,7 @@ export interface WorkboardColumn {
   name: string;
   color: string;
   position: number;
+  isFinishStage: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,6 +17,7 @@ export interface WorkboardAssignee {
   userId: number;
   name: string | null;
   email: string | null;
+  profilePhotoUrl: string | null;
 }
 
 export interface WorkboardTask {
@@ -45,6 +47,7 @@ export interface WorkboardMember {
   updatedAt: string;
   name: string | null;
   email: string | null;
+  profilePhotoUrl: string | null;
 }
 
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
@@ -129,16 +132,6 @@ export function useBoardDetail(boardId: number) {
     onError: (err: Error) => { toast({ variant: "destructive", description: err.message }); },
   });
 
-  const toggleCompleteMut = useMutation({
-    mutationFn: ({ taskId, isCompleted }: { taskId: number; isCompleted: boolean }) =>
-      apiFetch<{ task: WorkboardTask }>(`/api/workboard/boards/${boardId}/tasks/${taskId}/complete`, {
-        method: "PATCH",
-        body: JSON.stringify({ isCompleted }),
-      }),
-    onSuccess: () => { invalidate(); },
-    onError: (err: Error) => { toast({ variant: "destructive", description: err.message }); },
-  });
-
   // ── Columns ──────────────────────────────────────────────────────────────
   const createColumnMut = useMutation({
     mutationFn: (body: { name: string; color?: string }) =>
@@ -151,7 +144,7 @@ export function useBoardDetail(boardId: number) {
   });
 
   const updateColumnMut = useMutation({
-    mutationFn: ({ columnId, data }: { columnId: number; data: Partial<Pick<WorkboardColumn, "name" | "color" | "position">> }) =>
+    mutationFn: ({ columnId, data }: { columnId: number; data: Partial<Pick<WorkboardColumn, "name" | "color" | "position" | "isFinishStage">> }) =>
       apiFetch<{ column: WorkboardColumn }>(`/api/workboard/boards/${boardId}/columns/${columnId}`, {
         method: "PUT",
         body: JSON.stringify(data),
@@ -213,9 +206,6 @@ export function useBoardDetail(boardId: number) {
     },
     moveTask: async (taskId: number, columnId: number | null, position: number): Promise<void> => {
       await moveTaskMut.mutateAsync({ taskId, columnId, position });
-    },
-    toggleComplete: async (taskId: number, isCompleted: boolean): Promise<void> => {
-      await toggleCompleteMut.mutateAsync({ taskId, isCompleted });
     },
     createColumn: async (data: Parameters<typeof createColumnMut.mutateAsync>[0]): Promise<void> => {
       await createColumnMut.mutateAsync(data);

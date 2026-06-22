@@ -1,19 +1,16 @@
 import type { ReactNode } from "react";
 import { useLocation } from "wouter";
 import type { WorkboardBoard } from "@/hooks/useWorkboard";
-import { LayoutDashboard, Table2, CheckSquare, Users, CheckCircle2 } from "lucide-react";
+import { LayoutDashboard, Users, CheckCircle2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
+// Kanban is the only board view now (Table & Todo were removed in Tahap 2).
 const VIEW_ICONS: Record<string, ReactNode> = {
   kanban: <LayoutDashboard className="w-3 h-3" />,
-  table: <Table2 className="w-3 h-3" />,
-  todo: <CheckSquare className="w-3 h-3" />,
 };
 const VIEW_LABELS: Record<string, string> = {
   kanban: "Kanban",
-  table: "Table",
-  todo: "Todo",
 };
 
 interface BoardCardProps {

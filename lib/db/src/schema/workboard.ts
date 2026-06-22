@@ -5,6 +5,7 @@ import {
   text,
   boolean,
   timestamp,
+  jsonb,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -77,6 +78,9 @@ export const workboardColumnsTable = pgTable(
     name: text("name").notNull(),
     color: text("color").notNull().default("#94a3b8"),
     position: integer("position").notNull().default(0),
+    // A task is "done" iff it sits in a column with is_finish_stage = true.
+    // tasks.is_completed is derived from this — never set manually.
+    isFinishStage: boolean("is_finish_stage").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -220,6 +224,40 @@ export const workboardNotificationsTable = pgTable(
   ]
 );
 
+// Append-only history of task transitions (created / moved / completed /
+// reopened / due-date / assignee changes). Mirrors crm_events: never updated,
+// only inserted. Feeds future WorkBoard KPI (on-time rate, cycle time,
+// throughput). Completion keys off workboard_tasks.is_completed transitions —
+// this codebase has no finish-stage column.
+export const workboardTaskEventsTable = pgTable(
+  "workboard_task_events",
+  {
+    id: serial("id").primaryKey(),
+    boardId: integer("board_id")
+      .notNull()
+      .references(() => workboardBoardsTable.id, { onDelete: "cascade" }),
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => workboardTasksTable.id, { onDelete: "cascade" }),
+    actor: text("actor").notNull().default("user"),
+    actorUserId: integer("actor_user_id").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("workboard_task_events_board_idx").on(t.boardId, t.createdAt),
+    index("workboard_task_events_task_idx").on(t.taskId, t.createdAt),
+    index("workboard_task_events_actor_idx").on(t.actorUserId, t.createdAt),
+    index("workboard_task_events_type_idx").on(t.eventType),
+  ]
+);
+
 export type WorkboardBoardRow = typeof workboardBoardsTable.$inferSelect;
 export type WorkboardBoardMemberRow = typeof workboardBoardMembersTable.$inferSelect;
 export type WorkboardColumnRow = typeof workboardColumnsTable.$inferSelect;
@@ -228,3 +266,4 @@ export type WorkboardTaskAssigneeRow = typeof workboardTaskAssigneesTable.$infer
 export type WorkboardTaskCommentRow = typeof workboardTaskCommentsTable.$inferSelect;
 export type WorkboardCommentMentionRow = typeof workboardCommentMentionsTable.$inferSelect;
 export type WorkboardNotificationRow = typeof workboardNotificationsTable.$inferSelect;
+export type WorkboardTaskEventRow = typeof workboardTaskEventsTable.$inferSelect;

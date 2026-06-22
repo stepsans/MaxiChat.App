@@ -25,7 +25,6 @@ import {
   flowMenuRanking,
   ownerHasActiveFlow,
   wonMetric,
-  productRanking,
   chatVolumeByHour,
   aiVsHumanCounts,
 } from "../lib/dashboard-metrics";
@@ -279,18 +278,6 @@ router.get(
     const uid = getSessionUserId(req)!;
     const ownerUserId = await resolveOwnerUserId(uid);
     res.json(await getCachedTopQuestions(ownerUserId));
-  }
-);
-
-// GET /dashboard/products — most-requested products (spec A.3).
-router.get(
-  "/products",
-  requirePermission("dashboard", "view"),
-  async (req: Request, res: Response): Promise<void> => {
-    const uid = getSessionUserId(req)!;
-    const allowed = await getAllowedChannelIds(uid);
-    const rows = await productRanking(allowed, parseRange(req));
-    res.json({ rows });
   }
 );
 

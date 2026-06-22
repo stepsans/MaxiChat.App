@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Table2, CheckSquare, UserPlus, Users, Eye, PieChart } from "lucide-react";
+import { LayoutDashboard, UserPlus, Users, Eye, PieChart, Pencil } from "lucide-react";
 
-type ViewType = "kanban" | "table" | "todo" | "dashboard";
+type ViewType = "kanban" | "dashboard";
 
 interface BoardHeaderProps {
   boardName: string;
@@ -13,12 +13,11 @@ interface BoardHeaderProps {
   memberCount: number;
   onInvite: () => void;
   onMemberList: () => void;
+  onEdit?: () => void;
 }
 
 const VIEW_TABS: Array<{ key: ViewType; label: string; Icon: typeof LayoutDashboard }> = [
   { key: "kanban", label: "Kanban", Icon: LayoutDashboard },
-  { key: "table", label: "Table", Icon: Table2 },
-  { key: "todo", label: "Todo", Icon: CheckSquare },
   { key: "dashboard", label: "Dashboard", Icon: PieChart },
 ];
 
@@ -32,6 +31,7 @@ export default function BoardHeader({
   memberCount,
   onInvite,
   onMemberList,
+  onEdit,
 }: BoardHeaderProps) {
   const isOwner = myRole === "owner";
   const isViewer = myRole === "viewer";
@@ -78,6 +78,12 @@ export default function BoardHeader({
           <Users className="w-3.5 h-3.5" />
           {memberCount}
         </Button>
+        {isOwner && onEdit && (
+          <Button variant="outline" size="sm" onClick={onEdit} className="gap-1.5">
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
+          </Button>
+        )}
         {isOwner && (
           <Button size="sm" onClick={onInvite} className="gap-1.5">
             <UserPlus className="w-3.5 h-3.5" />

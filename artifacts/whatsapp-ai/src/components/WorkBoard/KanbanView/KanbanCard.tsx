@@ -3,6 +3,7 @@ import type { WorkboardTask } from "@/hooks/useBoardDetail";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, AlertCircle } from "lucide-react";
 import { format, isPast, parseISO } from "date-fns";
+import AssigneeAvatar from "../AssigneeAvatar";
 
 const PRIORITY_STYLES: Record<string, string> = {
   high: "bg-red-100 text-red-700 border-red-200",
@@ -41,7 +42,13 @@ export default function KanbanCard({ task, index, onClick }: KanbanCardProps) {
             snapshot.isDragging ? "shadow-lg rotate-1 border-primary/50" : ""
           }`}
         >
-          <p className="text-sm font-medium leading-snug">{task.title}</p>
+          <p
+            className={`text-sm font-medium leading-snug ${
+              task.isCompleted ? "line-through text-muted-foreground" : ""
+            }`}
+          >
+            {task.title}
+          </p>
 
           <div className="flex items-center gap-1 flex-wrap">
             <span
@@ -79,13 +86,12 @@ export default function KanbanCard({ task, index, onClick }: KanbanCardProps) {
             {task.assignees.length > 0 && (
               <div className="flex -space-x-1 ml-auto">
                 {visibleAssignees.map((a) => (
-                  <div
+                  <AssigneeAvatar
                     key={a.userId}
-                    className="w-5 h-5 rounded-full bg-primary/20 border border-card flex items-center justify-center text-[9px] font-bold"
-                    title={a.name ?? a.email ?? ""}
-                  >
-                    {(a.name ?? a.email ?? "?").slice(0, 1).toUpperCase()}
-                  </div>
+                    url={a.profilePhotoUrl}
+                    name={a.name}
+                    email={a.email}
+                  />
                 ))}
                 {extraAssignees > 0 && (
                   <div className="w-5 h-5 rounded-full bg-muted border border-card flex items-center justify-center text-[9px] font-bold">

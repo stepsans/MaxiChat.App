@@ -90,7 +90,8 @@ export default function WorkBoardPage() {
       <CreateBoardModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreate={createBoard}
+        mode="create"
+        onSubmit={createBoard}
       />
     </div>
   );

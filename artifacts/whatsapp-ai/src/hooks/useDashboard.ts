@@ -89,20 +89,6 @@ export function useDashboardDrill(metric: string | null, range: DashboardRange) 
   });
 }
 
-export interface ProductRow {
-  product: string;
-  count: number;
-}
-
-// "Produk paling diminati" ranking (spec A.3).
-export function useDashboardProducts(range: DashboardRange, enabled: boolean) {
-  return useQuery<{ rows: ProductRow[] }>({
-    queryKey: ["/api/dashboard/products", range.from, range.to],
-    queryFn: () => apiFetch(`/api/dashboard/products?${qs(range)}`),
-    enabled,
-  });
-}
-
 export interface FlowMenuRow {
   label: string;
   level: number;

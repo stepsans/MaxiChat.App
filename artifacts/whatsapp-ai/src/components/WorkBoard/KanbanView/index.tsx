@@ -29,6 +29,7 @@ interface KanbanViewPropsSimple {
   onUpdateTask: (taskId: number, data: Partial<WorkboardTask> & { assigneeIds?: number[] }) => Promise<void>;
   onDeleteTask: (taskId: number) => Promise<void>;
   onCreateColumn: (data: { name: string; color?: string }) => Promise<void>;
+  onUpdateColumn: (columnId: number, data: Partial<Pick<WorkboardColumn, "name" | "color" | "position" | "isFinishStage">>) => Promise<void>;
 }
 
 export default function KanbanView({
@@ -42,6 +43,7 @@ export default function KanbanView({
   onUpdateTask,
   onDeleteTask,
   onCreateColumn,
+  onUpdateColumn,
 }: KanbanViewPropsSimple) {
   const { data: me } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
   const myUserId = me?.user?.id ?? null;
@@ -128,8 +130,10 @@ export default function KanbanView({
             column={col}
             tasks={tasksForColumn(col.id)}
             canEdit={canEdit}
+            isOwner={myRole === "owner"}
             onCardClick={(task) => setTaskModal({ open: true, task })}
             onAddTask={(columnId) => setTaskModal({ open: true, task: null, preColumnId: columnId })}
+            onToggleFinish={(columnId, isFinishStage) => onUpdateColumn(columnId, { isFinishStage })}
           />
         ))}
       </DragDropContext>
