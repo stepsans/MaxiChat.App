@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { and, asc, desc, eq, gte, lte, ilike, or, sql, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ilike, or, sql, inArray, isNotNull } from "drizzle-orm";
 import {
   db,
   aiPipelinesTable,
@@ -103,7 +103,7 @@ async function buildTodayStats(pipelineId: number) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const [analyzed, entered, followups] = await Promise.all([
+  const [analyzed, entered, followups, opportunities] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(aiPipelineAnalysesTable)
@@ -132,12 +132,24 @@ async function buildTodayStats(pipelineId: number) {
           gte(aiPipelineFollowupLogsTable.sentAt, todayStart)
         )
       ),
+    // Distinct opportunities auto-created from this pipeline's analyses today.
+    db
+      .select({ count: sql<number>`count(distinct ${aiPipelineAnalysesTable.opportunityId})::int` })
+      .from(aiPipelineAnalysesTable)
+      .where(
+        and(
+          eq(aiPipelineAnalysesTable.pipelineId, pipelineId),
+          gte(aiPipelineAnalysesTable.createdAt, todayStart),
+          isNotNull(aiPipelineAnalysesTable.opportunityId)
+        )
+      ),
   ]);
 
   return {
     analyzed: analyzed[0]?.count ?? 0,
     enteredPipeline: entered[0]?.count ?? 0,
     followupsSent: followups[0]?.count ?? 0,
+    opportunities: opportunities[0]?.count ?? 0,
   };
 }
 
@@ -286,6 +298,73 @@ router.post("/", async (req: Request, res: Response) => {
 
   const result = await buildPipelineResponse(pipeline);
   res.status(201).json(result);
+});
+
+// ─── Duplicate ──────────────────────────────────────────────────────────────────
+// Clone a pipeline's full configuration (channels + exclude labels + prompt) into
+// a new, INACTIVE pipeline named "<name> (Salinan)". Inactive by default so a
+// clone never starts analysing until the operator reviews and activates it.
+router.post("/:id/duplicate", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const src = await getPipelineWithOwner(id, ownerUserId);
+  if (!src) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [channels, labels] = await Promise.all([
+    db.select({ channelId: aiPipelineChannelsTable.channelId })
+      .from(aiPipelineChannelsTable)
+      .where(eq(aiPipelineChannelsTable.pipelineId, src.id)),
+    db.select({ labelId: aiPipelineExcludeLabelsTable.labelId })
+      .from(aiPipelineExcludeLabelsTable)
+      .where(eq(aiPipelineExcludeLabelsTable.pipelineId, src.id)),
+  ]);
+
+  const [clone] = await db
+    .insert(aiPipelinesTable)
+    .values({
+      ownerUserId,
+      name: `${src.name} (Salinan)`,
+      description: src.description,
+      isActive: false,
+      scoreThreshold: src.scoreThreshold,
+      opportunityThreshold: src.opportunityThreshold,
+      autoCreateOpportunity: src.autoCreateOpportunity,
+      autoFollowupEnabled: src.autoFollowupEnabled,
+      followupIntervals: src.followupIntervals,
+      cutoffTimes: src.cutoffTimes,
+      timezone: src.timezone,
+      staleDaysThreshold: src.staleDaysThreshold,
+      highValueThresholdIdr: src.highValueThresholdIdr,
+      customPrompt: src.customPrompt,
+      directionFilter: src.directionFilter,
+    })
+    .returning();
+
+  if (src.customPrompt) {
+    await db.insert(aiPipelinePromptVersionsTable).values({
+      pipelineId: clone.id,
+      ownerUserId,
+      version: 1,
+      promptText: src.customPrompt,
+      changedBy: getSessionUserId(req)!,
+    });
+  }
+
+  await upsertChannelsAndLabels(
+    clone.id,
+    channels.map((c) => c.channelId),
+    labels.map((l) => l.labelId)
+  );
+
+  // Schedule cutoff logs like a normal create. runCutoffAnalysis skips inactive
+  // pipelines, so nothing runs until the operator activates the clone.
+  await scheduleCutoffLogs(clone.id, ownerUserId, clone.cutoffTimes as string[], clone.timezone);
+
+  res.status(201).json(await buildPipelineResponse(clone));
 });
 
 // ─── Get ──────────────────────────────────────────────────────────────────────
@@ -572,8 +651,12 @@ router.get("/:id/product-interest", async (req: Request, res: Response) => {
   const pipeline = await getPipelineWithOwner(id, ownerUserId);
   if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
 
-  const p = resolvePeriod("30d");
-  res.json(await computeProductInterest(ownerUserId, p, "30d", undefined, id));
+  const raw = String(req.query.period ?? "30d");
+  const periodKey = (["today", "7d", "30d"] as const).includes(raw as never)
+    ? (raw as "today" | "7d" | "30d")
+    : "30d";
+  const p = resolvePeriod(periodKey);
+  res.json(await computeProductInterest(ownerUserId, p, periodKey, undefined, id));
 });
 
 // ─── Ignored products ("Peluang Produk Baru" dismissals) ───────────────────────
@@ -783,6 +866,8 @@ async function serializeEntry(e: typeof aiPipelineEntriesTable.$inferSelect, wit
     nextFollowupAt: e.nextFollowupAt?.toISOString() ?? null,
     doNotFollowup: e.doNotFollowup,
     doNotFollowupReason: e.doNotFollowupReason,
+    followupStoppedBy: e.followupStoppedBy,
+    opportunityId: e.opportunityId,
     cooled: e.cooled,
     cooledAt: e.cooledAt?.toISOString() ?? null,
     scoreHistory: e.scoreHistory,
@@ -977,20 +1062,76 @@ router.post("/:id/entries/:eid/do-not-followup", async (req: Request, res: Respo
   });
   if (!entry) { res.status(404).json({ error: "Not found" }); return; }
 
-  const { reason } = req.body as { reason?: string };
+  const { reason, stoppedBy } = req.body as { reason?: string; stoppedBy?: string };
+  // 'user' (operator pressed the button — default) only mutes auto follow-up;
+  // 'customer' (opt-out detected) is a hard stop honored by the entry rules.
+  const who = stoppedBy === "customer" ? "customer" : "user";
 
   const [updated] = await db
     .update(aiPipelineEntriesTable)
     .set({
       doNotFollowup: true,
-      doNotFollowupReason: reason ?? "Manual: jangan follow-up",
+      doNotFollowupReason:
+        reason ?? (who === "customer" ? "Pelanggan meminta berhenti" : "Manual: jangan follow-up"),
       doNotFollowupAt: new Date(),
+      followupStoppedBy: who,
       status: "do_not_followup",
       nextFollowupAt: null,
       updatedAt: new Date(),
     })
     .where(eq(aiPipelineEntriesTable.id, eid))
     .returning();
+
+  res.json(await serializeEntry(updated, true));
+});
+
+// Re-enable auto follow-up for an entry the OPERATOR previously stopped. A
+// customer opt-out (followupStoppedBy='customer') is never re-enabled here — we
+// honor the contact's request.
+router.post("/:id/entries/:eid/enable-followup", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  const eid = parseInt(String(req.params.eid), 10);
+  if (isNaN(id) || isNaN(eid)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const entry = await db.query.aiPipelineEntriesTable.findFirst({
+    where: and(eq(aiPipelineEntriesTable.id, eid), eq(aiPipelineEntriesTable.pipelineId, id))
+  });
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (entry.followupStoppedBy === "customer") {
+    res.status(409).json({ error: "Pelanggan meminta berhenti — follow-up tidak bisa diaktifkan kembali." });
+    return;
+  }
+
+  const [updated] = await db
+    .update(aiPipelineEntriesTable)
+    .set({
+      doNotFollowup: false,
+      doNotFollowupReason: null,
+      doNotFollowupAt: null,
+      followupStoppedBy: null,
+      status: entry.status === "do_not_followup" ? "new" : entry.status,
+      updatedAt: new Date(),
+    })
+    .where(eq(aiPipelineEntriesTable.id, eid))
+    .returning();
+
+  // Re-arm the next follow-up if auto-followup is on and not maxed out.
+  if (pipeline.autoFollowupEnabled && updated.followupCount < 3 && !updated.nextFollowupAt) {
+    await scheduleFollowups({
+      entryId: eid,
+      pipelineId: id,
+      ownerUserId,
+      followupIntervals: (pipeline.followupIntervals as string[] | null) ?? ["24h", "48h", "72h"],
+      currentFollowupCount: updated.followupCount,
+    });
+  }
 
   res.json(await serializeEntry(updated, true));
 });

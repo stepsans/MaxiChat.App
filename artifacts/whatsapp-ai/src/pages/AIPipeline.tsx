@@ -5,6 +5,7 @@ import {
   useToggleAiPipeline,
   useDeleteAiPipeline,
   useUpdateAiPipeline,
+  useDuplicateAiPipeline,
   getListAiPipelinesQueryKey,
   getGetPipelineHealthQueryKey,
   type AiPipeline,
@@ -18,6 +19,7 @@ import {
   Power,
   MoreVertical,
   ShieldAlert,
+  Copy,
   Trash2,
   Clock,
   Zap,
@@ -504,6 +506,7 @@ function PipelineCardSkeleton() {
 function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
   const [, navigate] = useLocation();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   const [riskOpen, setRiskOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [staleDraft, setStaleDraft] = useState("");
@@ -576,7 +579,19 @@ function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
     },
   });
 
-  const stats = pipeline.todayStats ?? { analyzed: 0, enteredPipeline: 0 };
+  const { mutate: duplicatePipeline, isPending: duplicating } = useDuplicateAiPipeline({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListAiPipelinesQueryKey() });
+        toast({ description: "Pipeline diduplikasi." });
+      },
+      onError: () => {
+        toast({ title: "Gagal menduplikasi pipeline", variant: "destructive" });
+      },
+    },
+  });
+
+  const stats = pipeline.todayStats ?? { analyzed: 0, enteredPipeline: 0, opportunities: 0 };
 
   return (
     <>
@@ -621,10 +636,11 @@ function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
         </div>
 
         {/* Today stats */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {[
             { label: "Dianalisa", value: stats.analyzed },
             { label: "Masuk Pipeline", value: stats.enteredPipeline },
+            { label: "Opportunity", value: stats.opportunities ?? 0 },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg bg-muted/50 p-2 text-center">
               <p className="text-xl font-bold">{value}</p>
@@ -686,6 +702,13 @@ function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
                 <DropdownMenuItem onClick={() => setRiskOpen(true)}>
                   <ShieldAlert className="h-4 w-4 mr-2 text-destructive" />
                   Setelan Risiko
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => duplicatePipeline({ id: pipeline.id })}
+                  disabled={duplicating}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Duplikat
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -766,7 +789,13 @@ function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(v) => {
+          setDeleteOpen(v);
+          if (!v) setDeleteConfirm("");
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Pipeline?</AlertDialogTitle>
@@ -775,12 +804,27 @@ function PipelineCard({ pipeline }: { pipeline: AiPipeline }) {
               data analisa dan entries. Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-1.5 py-1">
+            <Label htmlFor={`delete-confirm-${pipeline.id}`}>
+              Ketik <strong>{pipeline.name}</strong> untuk mengonfirmasi
+            </Label>
+            <Input
+              id={`delete-confirm-${pipeline.id}`}
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder={pipeline.name}
+              autoComplete="off"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
-              onClick={() => deletePipeline({ id: pipeline.id })}
-              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                deletePipeline({ id: pipeline.id });
+              }}
+              disabled={deleting || deleteConfirm !== pipeline.name}
             >
               {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Hapus

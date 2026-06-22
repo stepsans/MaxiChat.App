@@ -491,7 +491,12 @@ export async function gatherAnomalyInputs(ownerUserId: number, now: Date = new D
 // Aggregates ai_pipeline_analyses.product_interest over the period, scoped to
 // the owner and the viewer's channel set. product_in_catalog distinguishes
 // products already sold (status "Ada") from net-new demand (status "Baru").
-// Skipped / not-lead analyses carry no real interest, so they're excluded.
+//
+// Strict demand filter (spec C.10 / B.7): only count analyses that genuinely
+// represent a prospect's interest in OUR catalog — i.e. ones that entered the
+// pipeline board, were not skipped, are not classified not_lead, are not a
+// reverse-role conversation (contact is the supplier), and are not group chats.
+// All entry statuses are included (Interpretation B — closed_won counts too).
 
 export interface ProductInterestRow {
   productInterest: string;
@@ -505,6 +510,15 @@ export interface ProductInterestResult {
   topProducts: ProductInterestRow[];
   unmatchedProducts: ProductInterestRow[];
   totalUnmatchedValue: number;
+  totalMatchedValue: number;
+  appliedFilters: {
+    enteredPipelineOnly: boolean;
+    excludeNotLead: boolean;
+    excludeGroupChat: boolean;
+    excludeSkipped: boolean;
+    excludeTenantIsBuyer: boolean;
+    entryStatusInterpretation: "B";
+  };
   period: string;
 }
 
@@ -534,7 +548,10 @@ export async function computeProductInterest(
       AND ${chFilter(channelIds)}
       ${pipelineFilter}
       AND a.skipped = false
+      AND a.entered_pipeline = true
       AND a.lead_classification <> 'not_lead'
+      AND a.conversation_role <> 'tenant_is_buyer'
+      AND a.contact_phone NOT LIKE '%@g.us%'
       AND a.product_interest IS NOT NULL
       AND TRIM(a.product_interest) <> ''
       AND a.created_at >= ${p.start.toISOString()}
@@ -577,11 +594,23 @@ export async function computeProductInterest(
     (r) => !r.productInCatalog && !ignoredKeys.has(r.productInterest.trim().toLowerCase())
   );
   const totalUnmatchedValue = unmatchedProducts.reduce((s, r) => s + r.totalEstimatedValue, 0);
+  const totalMatchedValue = rows
+    .filter((r) => r.productInCatalog)
+    .reduce((s, r) => s + r.totalEstimatedValue, 0);
 
   return {
     topProducts: rows,
     unmatchedProducts,
     totalUnmatchedValue,
+    totalMatchedValue,
+    appliedFilters: {
+      enteredPipelineOnly: true,
+      excludeNotLead: true,
+      excludeGroupChat: true,
+      excludeSkipped: true,
+      excludeTenantIsBuyer: true,
+      entryStatusInterpretation: "B",
+    },
     period: periodKey,
   };
 }

@@ -1318,6 +1318,17 @@ export const ChatLeadStatus = {
   not_lead: 'not_lead',
 } as const;
 
+/**
+ * Who last set leadStatus — 'manual' (operator) or 'ai' (AI Pipeline auto-classification). AI never overrides a manual value.
+ */
+export type ChatLeadClassifiedBy = typeof ChatLeadClassifiedBy[keyof typeof ChatLeadClassifiedBy];
+
+
+export const ChatLeadClassifiedBy = {
+  manual: 'manual',
+  ai: 'ai',
+} as const;
+
 export interface CustomerLabel {
   id: number;
   name: string;
@@ -1353,6 +1364,8 @@ export interface Chat {
   tag: ChatTag;
   /** Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list. */
   leadStatus?: ChatLeadStatus;
+  /** Who last set leadStatus — 'manual' (operator) or 'ai' (AI Pipeline auto-classification). AI never overrides a manual value. */
+  leadClassifiedBy?: ChatLeadClassifiedBy;
   isHumanTakeover: boolean;
   /** @nullable */
   lastMessage: string | null;
@@ -1511,6 +1524,17 @@ export const ChatWithMessagesLeadStatus = {
 } as const;
 
 /**
+ * Who last set leadStatus — 'manual' (operator) or 'ai' (AI Pipeline auto-classification). AI never overrides a manual value.
+ */
+export type ChatWithMessagesLeadClassifiedBy = typeof ChatWithMessagesLeadClassifiedBy[keyof typeof ChatWithMessagesLeadClassifiedBy];
+
+
+export const ChatWithMessagesLeadClassifiedBy = {
+  manual: 'manual',
+  ai: 'ai',
+} as const;
+
+/**
  * Best-effort live presence from WhatsApp, populated after the chat is opened (the server subscribes on first fetch and reads it on the next poll). Null when unknown / not yet received.
 
  * @nullable
@@ -1548,6 +1572,8 @@ export interface ChatWithMessages {
   tag: ChatWithMessagesTag;
   /** Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list. */
   leadStatus?: ChatWithMessagesLeadStatus;
+  /** Who last set leadStatus — 'manual' (operator) or 'ai' (AI Pipeline auto-classification). AI never overrides a manual value. */
+  leadClassifiedBy?: ChatWithMessagesLeadClassifiedBy;
   isHumanTakeover: boolean;
   /** @nullable */
   lastMessage: string | null;
@@ -4688,6 +4714,8 @@ export interface AiPipelineCreate {
 export type AiPipelineTodayStats = {
   analyzed?: number;
   enteredPipeline?: number;
+  followupsSent?: number;
+  opportunities?: number;
 };
 
 export interface AiPipeline {
@@ -4808,6 +4836,18 @@ export interface AiPipelineFollowupLog {
   status: string;
 }
 
+/**
+ * Who stopped follow-up. 'user' = operator muted auto follow-up only (AI keeps scoring; can be re-enabled). 'customer' = contact opted out (hard stop; not re-enabled). null = follow-up active.
+
+ */
+export type AiPipelineEntryFollowupStoppedBy = typeof AiPipelineEntryFollowupStoppedBy[keyof typeof AiPipelineEntryFollowupStoppedBy] | null;
+
+
+export const AiPipelineEntryFollowupStoppedBy = {
+  user: 'user',
+  customer: 'customer',
+} as const;
+
 export type AiPipelineEntryScoreHistoryItem = {
   score?: number;
   date?: string;
@@ -4831,6 +4871,11 @@ export interface AiPipelineEntry {
   nextFollowupAt?: string | null;
   doNotFollowup?: boolean;
   doNotFollowupReason?: string | null;
+  /** Who stopped follow-up. 'user' = operator muted auto follow-up only (AI keeps scoring; can be re-enabled). 'customer' = contact opted out (hard stop; not re-enabled). null = follow-up active.
+   */
+  followupStoppedBy?: AiPipelineEntryFollowupStoppedBy;
+  /** Linked sales opportunity id, once one has been auto-created for this entry. */
+  opportunityId?: number | null;
   cooled?: boolean;
   cooledAt?: string | null;
   scoreHistory?: AiPipelineEntryScoreHistoryItem[];
@@ -4850,6 +4895,7 @@ export type AiPipelineDashboardStatsToday = {
   analyzed: number;
   enteredPipeline: number;
   followupsSent: number;
+  opportunities?: number;
 };
 
 export type AiPipelineDashboardStatsScoreDistributionItem = {
@@ -6504,9 +6550,40 @@ export type UpdateAiPipelineEntryBody = {
   status?: string;
 };
 
+/**
+ * Who is stopping follow-up. 'user' (default) only mutes auto follow-up and can be re-enabled. 'customer' is a hard stop.
+
+ */
+export type DoNotFollowupAiPipelineEntryBodyStoppedBy = typeof DoNotFollowupAiPipelineEntryBodyStoppedBy[keyof typeof DoNotFollowupAiPipelineEntryBodyStoppedBy];
+
+
+export const DoNotFollowupAiPipelineEntryBodyStoppedBy = {
+  user: 'user',
+  customer: 'customer',
+} as const;
+
 export type DoNotFollowupAiPipelineEntryBody = {
   reason?: string;
+  /** Who is stopping follow-up. 'user' (default) only mutes auto follow-up and can be re-enabled. 'customer' is a hard stop.
+   */
+  stoppedBy?: DoNotFollowupAiPipelineEntryBodyStoppedBy;
 };
+
+export type GetAiPipelineProductInterestParams = {
+/**
+ * Aggregation window. Defaults to 30d.
+ */
+period?: GetAiPipelineProductInterestPeriod;
+};
+
+export type GetAiPipelineProductInterestPeriod = typeof GetAiPipelineProductInterestPeriod[keyof typeof GetAiPipelineProductInterestPeriod];
+
+
+export const GetAiPipelineProductInterestPeriod = {
+  today: 'today',
+  '7d': '7d',
+  '30d': '30d',
+} as const;
 
 export type ListAiPipelineCutoffLogsParams = {
 limit?: number;

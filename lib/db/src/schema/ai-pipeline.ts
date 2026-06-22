@@ -240,6 +240,17 @@ export const aiPipelineEntriesTable = pgTable(
     doNotFollowup: boolean("do_not_followup").notNull().default(false),
     doNotFollowupReason: text("do_not_followup_reason"),
     doNotFollowupAt: timestamp("do_not_followup_at", { withTimezone: true }),
+    // Who stopped follow-up:
+    //  'user'     = operator clicked "Hentikan Follow-up" — only the AUTO
+    //               follow-up is muted; AI keeps re-scoring the entry and the
+    //               operator can re-enable it. NOT a blacklist.
+    //  'customer' = the contact asked to stop ("jangan WA lagi") — hard stop;
+    //               AI skips the entry until a >7-day gap, no re-enable button.
+    //  null       = follow-up not stopped.
+    followupStoppedBy: text("followup_stopped_by"),
+    // Set once an Opportunity has been auto-created for this entry, so a later
+    // cut-off won't spawn a duplicate.
+    opportunityId: integer("opportunity_id"),
     // Lead has gone cold: a later analysis scored it below the pipeline's
     // threshold. The entry stays in the pipeline (sticky) but is flagged so the
     // team can see/filter cooled leads. Cleared when it scores back above.

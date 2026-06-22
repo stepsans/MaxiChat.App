@@ -23,6 +23,7 @@ import {
   useGetAiPipelineEntry,
   useGetAiPipelineAnalysis,
   useDoNotFollowupAiPipelineEntry,
+  useEnableFollowupAiPipelineEntry,
   useUpdateAiPipelineEntry,
   useRunAiPipelineNow,
   useToggleAiPipeline,
@@ -326,17 +327,27 @@ function NextCutoffCountdown({
   );
 }
 
-function DashboardTab({ pipelineId }: { pipelineId: number }) {
+// Period options for the "Produk Paling Diminati" picker (subset of the shared
+// PeriodKey — no "custom" here).
+type ProductPeriodKey = "today" | "7d" | "30d";
+
+function DashboardTab({ pipelineId, onProductDrillDown }: { pipelineId: number; onProductDrillDown: (product: string) => void }) {
   const { data: stats } = useGetAiPipelineDashboardStats(pipelineId, {
     query: { queryKey: getGetAiPipelineDashboardStatsQueryKey(pipelineId) },
   });
   const { data: entriesData } = useListAiPipelineEntries(pipelineId, { pageSize: 500 });
   const entries = entriesData?.data ?? [];
 
-  // Top Produk Diminati + Peluang Produk Baru for this pipeline (last 30 days).
-  const { data: productData, isLoading: productLoading } = useGetAiPipelineProductInterest(pipelineId, {
-    query: { queryKey: getGetAiPipelineProductInterestQueryKey(pipelineId) },
-  });
+  // Top Produk Diminati + Peluang Produk Baru for this pipeline. The period is
+  // user-selectable (Hari ini / 7 hari / 30 hari) on the "Produk Paling
+  // Diminati" section; we vary the React Query key so each period is cached and
+  // refetched independently. The server honors the `period` param (today/7d/30d).
+  const [productPeriod, setProductPeriod] = useState<ProductPeriodKey>("30d");
+  const { data: productData, isLoading: productLoading } = useGetAiPipelineProductInterest(
+    pipelineId,
+    { period: productPeriod },
+    { query: { queryKey: [...getGetAiPipelineProductInterestQueryKey(pipelineId), productPeriod] } }
+  );
 
   // Compute pipeline-level metrics from entries
   const terminalStatuses = new Set<string>(KANBAN_COLUMNS.filter((c) => c.isTerminal).map((c) => c.id));
@@ -544,14 +555,20 @@ function DashboardTab({ pipelineId }: { pipelineId: number }) {
         )}
       </div>
 
-      {/* ── Produk Diminati + Peluang Produk Baru (30 hari) ── */}
-      <TopProductsTable rows={productData?.topProducts} loading={productLoading} period="30d" />
+      {/* ── Produk Diminati + Peluang Produk Baru ── */}
+      <TopProductsTable
+        rows={productData?.topProducts}
+        loading={productLoading}
+        period={productPeriod}
+        onPeriodChange={setProductPeriod}
+        onProductClick={onProductDrillDown}
+      />
       <NewProductOpportunity
         pipelineId={pipelineId}
         rows={productData?.unmatchedProducts}
         loading={productLoading}
         totalUnmatchedValue={productData?.totalUnmatchedValue ?? 0}
-        period="30d"
+        period={productPeriod}
       />
 
       {/* ── Analisa Terbaru (enhanced) ── */}
@@ -727,9 +744,19 @@ function AnalysisDrawer({ analysis, onClose }: { analysis: AiPipelineAnalysis | 
 type ScoreTier = "all" | "panas" | "potensial" | "hangat" | "dingin";
 type PipelineFilter = "all" | "masuk" | "tidak";
 
-function AnalysesTab({ pipelineId }: { pipelineId: number }) {
+function AnalysesTab({ pipelineId, searchSeed }: { pipelineId: number; searchSeed?: { value: string; nonce: number } }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+
+  // When the user drills in from the Dashboard's "Produk Paling Diminati", seed
+  // the search box with the product name. Keyed on nonce so re-clicking the same
+  // product re-applies the filter.
+  useEffect(() => {
+    if (searchSeed && searchSeed.nonce > 0) {
+      setSearch(searchSeed.value);
+      setPage(1);
+    }
+  }, [searchSeed?.nonce]);
   const [scoreTier, setScoreTier] = useState<ScoreTier>("all");
   const [pipelineFilter, setPipelineFilter] = useState<PipelineFilter>("all");
   const [sortBy, setSortBy] = useState<"score" | "time">("time");
@@ -747,7 +774,14 @@ function AnalysesTab({ pipelineId }: { pipelineId: number }) {
 
   const filtered = allAnalyses
     .filter((a) => {
-      if (search && !a.contactPhone.includes(search) && !(a.contactName ?? "").toLowerCase().includes(search.toLowerCase())) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const matches =
+          a.contactPhone.includes(search) ||
+          (a.contactName ?? "").toLowerCase().includes(q) ||
+          (a.productInterest ?? "").toLowerCase().includes(q);
+        if (!matches) return false;
+      }
       if (scoreTier === "panas" && a.score <= 79) return false;
       if (scoreTier === "potensial" && (a.score <= 60 || a.score > 79)) return false;
       if (scoreTier === "hangat" && (a.score <= 40 || a.score > 60)) return false;
@@ -836,7 +870,7 @@ function AnalysesTab({ pipelineId }: { pipelineId: number }) {
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Cari nomor/nama..." className="pl-9 h-8 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input placeholder="Cari nomor/nama/produk..." className="pl-9 h-8 text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
         {/* Score tier filter */}
@@ -1074,6 +1108,23 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
         qc.invalidateQueries({ queryKey: getListAiPipelineEntriesQueryKey(pipelineId) });
         toast({ title: "Follow-up dihentikan untuk kontak ini." });
         onClose();
+      },
+    },
+  });
+
+  const { mutate: enableFollowup, isPending: enabling } = useEnableFollowupAiPipelineEntry({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListAiPipelineEntriesQueryKey(pipelineId) });
+        qc.invalidateQueries({ queryKey: getGetAiPipelineEntryQueryKey(pipelineId, entryId ?? 0) });
+        toast({ title: "Follow-up otomatis diaktifkan kembali." });
+      },
+      onError: (err: unknown) => {
+        toast({
+          title: "Tidak bisa mengaktifkan follow-up",
+          description: err instanceof Error ? err.message : "Coba lagi sebentar.",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -1401,28 +1452,50 @@ function EntryModal({ pipelineId, entryId, onClose }: { pipelineId: number; entr
                   </div>
                 ) : null}
 
-                {/* Do not followup info */}
-                {entry.doNotFollowup && entry.doNotFollowupReason ? (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                    <p className="text-xs font-semibold text-destructive mb-1 flex items-center gap-1">
-                      <Ban className="w-3.5 h-3.5" />Follow-up Dihentikan
-                    </p>
-                    <p className="text-xs text-muted-foreground">{entry.doNotFollowupReason}</p>
-                  </div>
-                ) : null}
-
-                {/* Stop followup button */}
-                {entry.status !== "do_not_followup" ? (
+                {/* Follow-up stop status + controls */}
+                {entry.doNotFollowup ? (
+                  entry.followupStoppedBy === "customer" ? (
+                    // Customer opt-out — hard stop, no re-enable (we honor it).
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                      <p className="text-xs font-semibold text-destructive mb-1 flex items-center gap-1">
+                        <Ban className="w-3.5 h-3.5" />Customer Minta Stop
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.doNotFollowupReason ?? "Pelanggan meminta untuk tidak dihubungi lagi."}
+                      </p>
+                    </div>
+                  ) : (
+                    // Operator muted auto follow-up — AI keeps scoring; can re-enable.
+                    <div className="rounded-lg border border-amber-300/50 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-2">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-1">
+                        <Ban className="w-3.5 h-3.5" />Follow-up Dimatikan (oleh Anda)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        AI tetap menganalisa & memperbarui skor kontak ini; hanya follow-up otomatis yang dimatikan.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2"
+                        onClick={() => enableFollowup({ id: pipelineId, eid: entry.id })}
+                        disabled={enabling}
+                      >
+                        {enabling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                        Aktifkan Kembali Follow-up
+                      </Button>
+                    </div>
+                  )
+                ) : (
                   <Button
                     variant="outline"
                     className="w-full text-destructive hover:text-destructive gap-2"
-                    onClick={() => doNotFollowup({ id: pipelineId, eid: entry.id, data: { reason: "Diblokir manual" } })}
+                    onClick={() => doNotFollowup({ id: pipelineId, eid: entry.id, data: { reason: "Dihentikan manual", stoppedBy: "user" } })}
                     disabled={blocking}
                   >
                     {blocking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
                     Hentikan Follow-up
                   </Button>
-                ) : null}
+                )}
               </div>
             ) : null}
 
@@ -2199,6 +2272,9 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
   const [promptVersions, setPromptVersions] = useState<Array<{ id: number; version: number; promptText: string; changedAt: string; changedByName: string | null }>>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // Type-to-confirm: the destructive button stays disabled until the user types
+  // the pipeline's exact name. Reset whenever the dialog opens/closes.
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const promptLen = customPrompt.length;
   const promptValid = promptLen === 0 || (promptLen >= 80 && promptLen <= 1500);
@@ -2568,20 +2644,46 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
         </Button>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(o) => {
+          setDeleteOpen(o);
+          if (!o) setDeleteConfirmText("");
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Pipeline?</AlertDialogTitle>
             <AlertDialogDescription>
               Pipeline <strong>{pipeline.name}</strong> akan dihapus permanen beserta semua data analisa.
+              Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-1.5 py-1">
+            <Label className="text-xs text-muted-foreground">
+              Ketik <strong className="text-foreground">{pipeline.name}</strong> untuk mengonfirmasi.
+            </Label>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={pipeline.name}
+              autoFocus
+              disabled={deleting}
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
-              onClick={() => deletePipeline({ id: pipeline.id })}
-              disabled={deleting}
+              onClick={(e) => {
+                // Guard: typed name must match exactly before deleting.
+                if (deleteConfirmText !== pipeline.name) {
+                  e.preventDefault();
+                  return;
+                }
+                deletePipeline({ id: pipeline.id });
+              }}
+              disabled={deleting || deleteConfirmText !== pipeline.name}
             >
               {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null} Hapus
             </AlertDialogAction>
@@ -2605,6 +2707,15 @@ export default function AIPipelineDetailPage() {
 
   const initialView: ViewMode = location.endsWith("/edit") ? "settings" : "board";
   const [view, setView] = useState<ViewMode>(initialView);
+
+  // Seed for the Analisa tab's search box. Bumped (with a nonce) when a product
+  // row in the Dashboard's "Produk Paling Diminati" is clicked, so the same
+  // product can be re-applied even if the text is unchanged.
+  const [analysesSearchSeed, setAnalysesSearchSeed] = useState<{ value: string; nonce: number }>({ value: "", nonce: 0 });
+  const drillToProduct = useCallback((product: string) => {
+    setAnalysesSearchSeed((prev) => ({ value: product, nonce: prev.nonce + 1 }));
+    setView("analyses");
+  }, []);
 
   // Reset view to board when switching pipelines via tabs
   const prevPipelineId = useRef(pipelineId);
@@ -2788,14 +2899,14 @@ export default function AIPipelineDetailPage() {
       {/* ── Analitik ── */}
       {view === "analytics" && (
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-          <DashboardTab pipelineId={pipelineId} />
+          <DashboardTab pipelineId={pipelineId} onProductDrillDown={drillToProduct} />
         </div>
       )}
 
       {/* ── Analisa ── */}
       {view === "analyses" && (
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-          <AnalysesTab pipelineId={pipelineId} />
+          <AnalysesTab pipelineId={pipelineId} searchSeed={analysesSearchSeed} />
         </div>
       )}
 

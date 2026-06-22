@@ -38,6 +38,11 @@ export function NextActionBox({ context }: { context: Ctx }) {
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-3/4" />
           </>
+        ) : (data ?? []).length === 0 ? (
+          <div className="flex items-center gap-2.5 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">
+            <span className="h-2 w-2 flex-shrink-0 rounded-full bg-green-500" />
+            Semua berjalan baik hari ini 👍
+          </div>
         ) : (
           (data ?? []).map((item, i) => (
             <div key={i} className="flex items-center gap-2.5 rounded-md border border-border px-3 py-2">

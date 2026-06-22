@@ -167,6 +167,7 @@ import type {
   GetAcrMomReportParams,
   GetAiInsightsParams,
   GetAiPerformanceParams,
+  GetAiPipelineProductInterestParams,
   GetAnalyticsChatHistoryParams,
   GetAnalyticsV2SummaryParams,
   GetChatHistoryParams,
@@ -21048,6 +21049,76 @@ export const useRunAiPipelineNow = <TError = ErrorType<ErrorResponse>,
       return useMutation(getRunAiPipelineNowMutationOptions(options));
     }
 
+export const getDuplicateAiPipelineUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-pipelines/${id}/duplicate`
+}
+
+/**
+ * @summary Duplicate a pipeline (config + channels + labels) as a new inactive pipeline
+ */
+export const duplicateAiPipeline = async (id: number, options?: RequestInit): Promise<AiPipeline> => {
+
+  return customFetch<AiPipeline>(getDuplicateAiPipelineUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDuplicateAiPipelineMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateAiPipeline>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof duplicateAiPipeline>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['duplicateAiPipeline'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof duplicateAiPipeline>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  duplicateAiPipeline(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DuplicateAiPipelineMutationResult = NonNullable<Awaited<ReturnType<typeof duplicateAiPipeline>>>
+
+    export type DuplicateAiPipelineMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Duplicate a pipeline (config + channels + labels) as a new inactive pipeline
+ */
+export const useDuplicateAiPipeline = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateAiPipeline>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof duplicateAiPipeline>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDuplicateAiPipelineMutationOptions(options));
+    }
+
 export const getListAiPipelineAnalysesUrl = (id: number,
     params?: ListAiPipelineAnalysesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -21538,6 +21609,80 @@ export const useDoNotFollowupAiPipelineEntry = <TError = ErrorType<ErrorResponse
       return useMutation(getDoNotFollowupAiPipelineEntryMutationOptions(options));
     }
 
+export const getEnableFollowupAiPipelineEntryUrl = (id: number,
+    eid: number,) => {
+
+
+
+
+  return `/api/ai-pipelines/${id}/entries/${eid}/enable-followup`
+}
+
+/**
+ * Clears an operator-set do-not-follow-up flag and re-arms follow-up. Rejected with 409 when the contact opted out (followupStoppedBy='customer').
+
+ * @summary Re-enable auto follow-up for an operator-stopped pipeline entry
+ */
+export const enableFollowupAiPipelineEntry = async (id: number,
+    eid: number, options?: RequestInit): Promise<AiPipelineEntry> => {
+
+  return customFetch<AiPipelineEntry>(getEnableFollowupAiPipelineEntryUrl(id,eid),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getEnableFollowupAiPipelineEntryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableFollowupAiPipelineEntry>>, TError,{id: number;eid: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof enableFollowupAiPipelineEntry>>, TError,{id: number;eid: number}, TContext> => {
+
+const mutationKey = ['enableFollowupAiPipelineEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof enableFollowupAiPipelineEntry>>, {id: number;eid: number}> = (props) => {
+          const {id,eid} = props ?? {};
+
+          return  enableFollowupAiPipelineEntry(id,eid,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EnableFollowupAiPipelineEntryMutationResult = NonNullable<Awaited<ReturnType<typeof enableFollowupAiPipelineEntry>>>
+
+    export type EnableFollowupAiPipelineEntryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Re-enable auto follow-up for an operator-stopped pipeline entry
+ */
+export const useEnableFollowupAiPipelineEntry = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableFollowupAiPipelineEntry>>, TError,{id: number;eid: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof enableFollowupAiPipelineEntry>>,
+        TError,
+        {id: number;eid: number},
+        TContext
+      > => {
+      return useMutation(getEnableFollowupAiPipelineEntryMutationOptions(options));
+    }
+
 export const getGenerateFollowupAiPipelineEntryUrl = (id: number,
     eid: number,) => {
 
@@ -21687,20 +21832,29 @@ export function useGetAiPipelineDashboardStats<TData = Awaited<ReturnType<typeof
 
 
 
-export const getGetAiPipelineProductInterestUrl = (id: number,) => {
+export const getGetAiPipelineProductInterestUrl = (id: number,
+    params?: GetAiPipelineProductInterestParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/ai-pipelines/${id}/product-interest`
+  return stringifiedParams.length > 0 ? `/api/ai-pipelines/${id}/product-interest?${stringifiedParams}` : `/api/ai-pipelines/${id}/product-interest`
 }
 
 /**
- * @summary Top product interest + new-product demand for a single pipeline (last 30 days)
+ * @summary Top product interest + new-product demand for a single pipeline
  */
-export const getAiPipelineProductInterest = async (id: number, options?: RequestInit): Promise<ProductInterestResult> => {
+export const getAiPipelineProductInterest = async (id: number,
+    params?: GetAiPipelineProductInterestParams, options?: RequestInit): Promise<ProductInterestResult> => {
 
-  return customFetch<ProductInterestResult>(getGetAiPipelineProductInterestUrl(id),
+  return customFetch<ProductInterestResult>(getGetAiPipelineProductInterestUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -21713,23 +21867,25 @@ export const getAiPipelineProductInterest = async (id: number, options?: Request
 
 
 
-export const getGetAiPipelineProductInterestQueryKey = (id: number,) => {
+export const getGetAiPipelineProductInterestQueryKey = (id: number,
+    params?: GetAiPipelineProductInterestParams,) => {
     return [
-    `/api/ai-pipelines/${id}/product-interest`
+    `/api/ai-pipelines/${id}/product-interest`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetAiPipelineProductInterestQueryOptions = <TData = Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetAiPipelineProductInterestQueryOptions = <TData = Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError = ErrorType<ErrorResponse>>(id: number,
+    params?: GetAiPipelineProductInterestParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetAiPipelineProductInterestQueryKey(id);
+  const queryKey =  queryOptions?.queryKey ?? getGetAiPipelineProductInterestQueryKey(id,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiPipelineProductInterest>>> = ({ signal }) => getAiPipelineProductInterest(id, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiPipelineProductInterest>>> = ({ signal }) => getAiPipelineProductInterest(id,params, { signal, ...requestOptions });
 
 
 
@@ -21743,15 +21899,16 @@ export type GetAiPipelineProductInterestQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Top product interest + new-product demand for a single pipeline (last 30 days)
+ * @summary Top product interest + new-product demand for a single pipeline
  */
 
 export function useGetAiPipelineProductInterest<TData = Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError = ErrorType<ErrorResponse>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ id: number,
+    params?: GetAiPipelineProductInterestParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetAiPipelineProductInterestQueryOptions(id,options)
+  const queryOptions = getGetAiPipelineProductInterestQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

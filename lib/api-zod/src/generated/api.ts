@@ -1781,6 +1781,7 @@ export const ListChatsResponseItem = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadClassifiedBy": zod.enum(['manual', 'ai']).optional().describe('Who last set leadStatus — \'manual\' (operator) or \'ai\' (AI Pipeline auto-classification). AI never overrides a manual value.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -2052,6 +2053,7 @@ export const GetChatResponse = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadClassifiedBy": zod.enum(['manual', 'ai']).optional().describe('Who last set leadStatus — \'manual\' (operator) or \'ai\' (AI Pipeline auto-classification). AI never overrides a manual value.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -2133,6 +2135,7 @@ export const UpdateChatResponse = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadClassifiedBy": zod.enum(['manual', 'ai']).optional().describe('Who last set leadStatus — \'manual\' (operator) or \'ai\' (AI Pipeline auto-classification). AI never overrides a manual value.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -2366,6 +2369,7 @@ export const AssignChatResponse = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadClassifiedBy": zod.enum(['manual', 'ai']).optional().describe('Who last set leadStatus — \'manual\' (operator) or \'ai\' (AI Pipeline auto-classification). AI never overrides a manual value.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -2409,6 +2413,7 @@ export const TakeoverChatResponse = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadClassifiedBy": zod.enum(['manual', 'ai']).optional().describe('Who last set leadStatus — \'manual\' (operator) or \'ai\' (AI Pipeline auto-classification). AI never overrides a manual value.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -2452,6 +2457,7 @@ export const MuteChatResponse = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadClassifiedBy": zod.enum(['manual', 'ai']).optional().describe('Who last set leadStatus — \'manual\' (operator) or \'ai\' (AI Pipeline auto-classification). AI never overrides a manual value.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -2495,6 +2501,7 @@ export const BlockChatResponse = zod.object({
   "status": zod.enum(['ai_handled', 'needs_human', 'closed']),
   "tag": zod.enum(['none', 'hot_lead', 'cold', 'closing']),
   "leadStatus": zod.enum(['unknown', 'lead', 'not_lead']).optional().describe('Manual lead classification, independent of the auto-routing tag. Drives the lead marker\/filter in the chat list.'),
+  "leadClassifiedBy": zod.enum(['manual', 'ai']).optional().describe('Who last set leadStatus — \'manual\' (operator) or \'ai\' (AI Pipeline auto-classification). AI never overrides a manual value.'),
   "isHumanTakeover": zod.boolean(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
@@ -6629,7 +6636,9 @@ export const ListAiPipelinesResponseItem = zod.object({
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),
-  "enteredPipeline": zod.number().optional()
+  "enteredPipeline": zod.number().optional(),
+  "followupsSent": zod.number().optional(),
+  "opportunities": zod.number().optional()
 }).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -6717,7 +6726,9 @@ export const GetAiPipelineResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),
-  "enteredPipeline": zod.number().optional()
+  "enteredPipeline": zod.number().optional(),
+  "followupsSent": zod.number().optional(),
+  "opportunities": zod.number().optional()
 }).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -6800,7 +6811,9 @@ export const UpdateAiPipelineResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),
-  "enteredPipeline": zod.number().optional()
+  "enteredPipeline": zod.number().optional(),
+  "followupsSent": zod.number().optional(),
+  "opportunities": zod.number().optional()
 }).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -6849,7 +6862,9 @@ export const ToggleAiPipelineResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullish(),
   "todayStats": zod.object({
   "analyzed": zod.number().optional(),
-  "enteredPipeline": zod.number().optional()
+  "enteredPipeline": zod.number().optional(),
+  "followupsSent": zod.number().optional(),
+  "opportunities": zod.number().optional()
 }).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -6874,6 +6889,14 @@ export const RunAiPipelineNowResponse = zod.object({
   "contactsEnteredPipeline": zod.number(),
   "errorMessage": zod.string().nullish(),
   "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Duplicate a pipeline (config + channels + labels) as a new inactive pipeline
+ */
+export const DuplicateAiPipelineParams = zod.object({
+  "id": zod.coerce.number()
 })
 
 
@@ -7031,6 +7054,8 @@ export const ListAiPipelineEntriesResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "followupStoppedBy": zod.enum(['user', 'customer']).nullish().describe('Who stopped follow-up. \'user\' = operator muted auto follow-up only (AI keeps scoring; can be re-enabled). \'customer\' = contact opted out (hard stop; not re-enabled). null = follow-up active.\n'),
+  "opportunityId": zod.number().nullish().describe('Linked sales opportunity id, once one has been auto-created for this entry.'),
   "cooled": zod.boolean().optional(),
   "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
@@ -7082,6 +7107,8 @@ export const GetAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "followupStoppedBy": zod.enum(['user', 'customer']).nullish().describe('Who stopped follow-up. \'user\' = operator muted auto follow-up only (AI keeps scoring; can be re-enabled). \'customer\' = contact opted out (hard stop; not re-enabled). null = follow-up active.\n'),
+  "opportunityId": zod.number().nullish().describe('Linked sales opportunity id, once one has been auto-created for this entry.'),
   "cooled": zod.boolean().optional(),
   "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
@@ -7133,6 +7160,8 @@ export const UpdateAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "followupStoppedBy": zod.enum(['user', 'customer']).nullish().describe('Who stopped follow-up. \'user\' = operator muted auto follow-up only (AI keeps scoring; can be re-enabled). \'customer\' = contact opted out (hard stop; not re-enabled). null = follow-up active.\n'),
+  "opportunityId": zod.number().nullish().describe('Linked sales opportunity id, once one has been auto-created for this entry.'),
   "cooled": zod.boolean().optional(),
   "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
@@ -7164,7 +7193,8 @@ export const DoNotFollowupAiPipelineEntryParams = zod.object({
 })
 
 export const DoNotFollowupAiPipelineEntryBody = zod.object({
-  "reason": zod.string().optional()
+  "reason": zod.string().optional(),
+  "stoppedBy": zod.enum(['user', 'customer']).optional().describe('Who is stopping follow-up. \'user\' (default) only mutes auto follow-up and can be re-enabled. \'customer\' is a hard stop.\n')
 })
 
 export const DoNotFollowupAiPipelineEntryResponse = zod.object({
@@ -7184,6 +7214,59 @@ export const DoNotFollowupAiPipelineEntryResponse = zod.object({
   "nextFollowupAt": zod.coerce.date().nullish(),
   "doNotFollowup": zod.boolean().optional(),
   "doNotFollowupReason": zod.string().nullish(),
+  "followupStoppedBy": zod.enum(['user', 'customer']).nullish().describe('Who stopped follow-up. \'user\' = operator muted auto follow-up only (AI keeps scoring; can be re-enabled). \'customer\' = contact opted out (hard stop; not re-enabled). null = follow-up active.\n'),
+  "opportunityId": zod.number().nullish().describe('Linked sales opportunity id, once one has been auto-created for this entry.'),
+  "cooled": zod.boolean().optional(),
+  "cooledAt": zod.coerce.date().nullish(),
+  "scoreHistory": zod.array(zod.object({
+  "score": zod.number().optional(),
+  "date": zod.string().optional(),
+  "cutoffWindow": zod.string().optional()
+})).optional(),
+  "followupLogs": zod.array(zod.object({
+  "id": zod.number(),
+  "entryId": zod.number(),
+  "followupNumber": zod.number(),
+  "messageSent": zod.string(),
+  "sentAt": zod.coerce.date(),
+  "wasReplied": zod.boolean(),
+  "repliedAt": zod.coerce.date().nullish(),
+  "status": zod.string()
+})).optional(),
+  "enteredAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Clears an operator-set do-not-follow-up flag and re-arms follow-up. Rejected with 409 when the contact opted out (followupStoppedBy='customer').
+
+ * @summary Re-enable auto follow-up for an operator-stopped pipeline entry
+ */
+export const EnableFollowupAiPipelineEntryParams = zod.object({
+  "id": zod.coerce.number(),
+  "eid": zod.coerce.number()
+})
+
+export const EnableFollowupAiPipelineEntryResponse = zod.object({
+  "id": zod.number(),
+  "pipelineId": zod.number(),
+  "analysisId": zod.number().optional(),
+  "contactPhone": zod.string(),
+  "contactName": zod.string().nullish(),
+  "channelId": zod.number(),
+  "channelType": zod.string().nullish(),
+  "currentScore": zod.number(),
+  "estimatedValue": zod.number().nullish(),
+  "productInterest": zod.string().nullish(),
+  "status": zod.string(),
+  "followupCount": zod.number(),
+  "lastFollowupAt": zod.coerce.date().nullish(),
+  "nextFollowupAt": zod.coerce.date().nullish(),
+  "doNotFollowup": zod.boolean().optional(),
+  "doNotFollowupReason": zod.string().nullish(),
+  "followupStoppedBy": zod.enum(['user', 'customer']).nullish().describe('Who stopped follow-up. \'user\' = operator muted auto follow-up only (AI keeps scoring; can be re-enabled). \'customer\' = contact opted out (hard stop; not re-enabled). null = follow-up active.\n'),
+  "opportunityId": zod.number().nullish().describe('Linked sales opportunity id, once one has been auto-created for this entry.'),
   "cooled": zod.boolean().optional(),
   "cooledAt": zod.coerce.date().nullish(),
   "scoreHistory": zod.array(zod.object({
@@ -7230,7 +7313,8 @@ export const GetAiPipelineDashboardStatsResponse = zod.object({
   "today": zod.object({
   "analyzed": zod.number(),
   "enteredPipeline": zod.number(),
-  "followupsSent": zod.number()
+  "followupsSent": zod.number(),
+  "opportunities": zod.number().optional()
 }),
   "scoreDistribution": zod.array(zod.object({
   "range": zod.string().optional(),
@@ -7283,10 +7367,16 @@ export const GetAiPipelineDashboardStatsResponse = zod.object({
 
 
 /**
- * @summary Top product interest + new-product demand for a single pipeline (last 30 days)
+ * @summary Top product interest + new-product demand for a single pipeline
  */
 export const GetAiPipelineProductInterestParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const getAiPipelineProductInterestQueryPeriodDefault = `30d`;
+
+export const GetAiPipelineProductInterestQueryParams = zod.object({
+  "period": zod.enum(['today', '7d', '30d']).default(getAiPipelineProductInterestQueryPeriodDefault).describe('Aggregation window. Defaults to 30d.')
 })
 
 export const GetAiPipelineProductInterestResponse = zod.object({

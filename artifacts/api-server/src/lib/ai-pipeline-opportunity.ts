@@ -1,10 +1,29 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   db,
   opportunitiesTable,
   aiPipelineAnalysesTable,
+  aiPipelineEntriesTable,
   aiPipelinesTable,
 } from "@workspace/db";
+
+// Link a freshly resolved opportunity id to both the analysis and (when known)
+// its pipeline entry, so a later cut-off won't auto-create a duplicate.
+async function linkOpportunity(
+  analysis: typeof aiPipelineAnalysesTable.$inferSelect,
+  opportunityId: number,
+): Promise<void> {
+  await db
+    .update(aiPipelineAnalysesTable)
+    .set({ opportunityId })
+    .where(eq(aiPipelineAnalysesTable.id, analysis.id));
+  if (analysis.pipelineEntryId != null) {
+    await db
+      .update(aiPipelineEntriesTable)
+      .set({ opportunityId })
+      .where(eq(aiPipelineEntriesTable.id, analysis.pipelineEntryId));
+  }
+}
 
 // Auto-create a sales Opportunity from a high-scoring AI Pipeline analysis.
 // Reuses the existing opportunities table. The opportunity lands "unsorted"
@@ -19,6 +38,27 @@ export async function createOpportunityFromAi(opts: {
   // chatId is required by opportunities; analyses created before this feature
   // (or via paths that don't set it) may lack it — skip rather than crash.
   if (analysis.chatId == null) return;
+
+  // Idempotency guard. Pipeline-created opportunities use a null intentKey, so
+  // the (chat, intent) unique index can't dedup them. Without this, a contact
+  // that re-crosses the opportunity threshold on a later cut-off would spawn a
+  // second opportunity row. If an open opportunity already exists for this chat,
+  // link the analysis to it instead of creating a duplicate.
+  const [existing] = await db
+    .select({ id: opportunitiesTable.id })
+    .from(opportunitiesTable)
+    .where(
+      and(
+        eq(opportunitiesTable.chatId, analysis.chatId),
+        eq(opportunitiesTable.ownerUserId, pipeline.ownerUserId),
+        eq(opportunitiesTable.status, "open")
+      )
+    )
+    .limit(1);
+  if (existing) {
+    await linkOpportunity(analysis, existing.id);
+    return;
+  }
 
   const notes = [
     analysis.aiNotes ? `📋 Catatan AI: ${analysis.aiNotes}` : null,
@@ -52,9 +92,6 @@ export async function createOpportunityFromAi(opts: {
     .returning({ id: opportunitiesTable.id });
 
   if (opp) {
-    await db
-      .update(aiPipelineAnalysesTable)
-      .set({ opportunityId: opp.id })
-      .where(eq(aiPipelineAnalysesTable.id, analysis.id));
+    await linkOpportunity(analysis, opp.id);
   }
 }

@@ -26,7 +26,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PROMPT_TEMPLATES } from "@/lib/pipeline-prompt-templates";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PROMPT_TEMPLATES, type PromptTemplate } from "@/lib/pipeline-prompt-templates";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -223,10 +231,14 @@ function Step1({
   onNext: () => void;
   onCancel: () => void;
 }) {
-  const nameError = data.name.trim().length > 0 && data.name.trim().length < 3
-    ? "Nama pipeline minimal 3 karakter"
-    : null;
-  const canNext = data.name.trim().length >= 3;
+  const nameLen = data.name.trim().length;
+  const nameError =
+    nameLen > 0 && nameLen < 3
+      ? "Nama pipeline minimal 3 karakter"
+      : nameLen > 100
+      ? "Nama pipeline maksimal 100 karakter"
+      : null;
+  const canNext = nameLen >= 3 && nameLen <= 100;
 
   return (
     <div className="space-y-6">
@@ -305,6 +317,19 @@ function Step2({
   } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<PromptTemplate | null>(null);
+
+  const applyTemplate = (t: PromptTemplate) => {
+    if (
+      data.customPrompt.trim().length > 0 &&
+      data.customPrompt !== t.value &&
+      !window.confirm("Prompt yang sudah kamu tulis akan ditimpa. Lanjutkan?")
+    ) {
+      return;
+    }
+    onChange({ customPrompt: t.value });
+    setPreviewTemplate(null);
+  };
 
   const promptLen = data.customPrompt.length;
   const promptValid = promptLen === 0 || (promptLen >= 80 && promptLen <= 1500);
@@ -357,7 +382,7 @@ function Step2({
               variant={data.customPrompt === t.value ? "default" : "outline"}
               size="sm"
               className="gap-1"
-              onClick={() => onChange({ customPrompt: t.value })}
+              onClick={() => setPreviewTemplate(t)}
             >
               <Sparkles className="h-3.5 w-3.5" />
               {t.label}
@@ -365,6 +390,39 @@ function Step2({
           ))}
         </div>
       </div>
+
+      {/* Template preview modal */}
+      <Dialog open={previewTemplate !== null} onOpenChange={(o) => !o && setPreviewTemplate(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              {previewTemplate?.label}
+            </DialogTitle>
+            <DialogDescription>
+              Pratinjau template prompt. Salin ke kolom panduan untuk menggunakannya, lalu sesuaikan dengan bisnismu.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            readOnly
+            rows={12}
+            value={previewTemplate?.value ?? ""}
+            className="text-sm font-mono"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewTemplate(null)}>
+              Batal
+            </Button>
+            <Button
+              className="gap-1"
+              onClick={() => previewTemplate && applyTemplate(previewTemplate)}
+            >
+              <Check className="h-4 w-4" />
+              Salin &amp; Gunakan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Prompt textarea */}
       <div className="space-y-2">
@@ -468,6 +526,9 @@ function Step3({
   const { data: channels } = useListChannels();
   const { data: labels } = useListCustomerLabels();
 
+  const [customAmount, setCustomAmount] = useState("");
+  const [customUnit, setCustomUnit] = useState<"jam" | "hari">("jam");
+
   const windows = computeWindows(data.cutoffTimes);
 
   const addCutoffTime = () => {
@@ -495,6 +556,17 @@ function Step3({
         ? current.filter((v) => v !== val)
         : [...current, val],
     });
+  };
+
+  const addCustomInterval = () => {
+    const n = Number(customAmount);
+    if (!Number.isInteger(n) || n <= 0) return;
+    const hours = customUnit === "hari" ? n * 24 : n;
+    const val = `${hours}h`;
+    if (!data.followupIntervals.includes(val)) {
+      onChange({ followupIntervals: [...data.followupIntervals, val] });
+    }
+    setCustomAmount("");
   };
 
   const canSubmit = data.channelIds.length >= 1;
@@ -718,6 +790,67 @@ function Step3({
                 </label>
               ))}
             </div>
+
+            {/* Custom interval */}
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Interval kustom</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    placeholder="cth: 5"
+                    className="w-24"
+                  />
+                  <select
+                    value={customUnit}
+                    onChange={(e) => setCustomUnit(e.target.value as "jam" | "hari")}
+                    className="border rounded-md px-2 py-1 text-sm h-9 bg-background"
+                  >
+                    <option value="jam">jam</option>
+                    <option value="hari">hari</option>
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addCustomInterval}
+                    disabled={data.followupIntervals.length >= 3}
+                    className="gap-1"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Tambah
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom intervals (non-preset) chips */}
+            {data.followupIntervals.some((v) => !FOLLOWUP_PRESETS.some((p) => p.value === v)) && (
+              <div className="flex flex-wrap gap-2">
+                {data.followupIntervals
+                  .filter((v) => !FOLLOWUP_PRESETS.some((p) => p.value === v))
+                  .map((v) => (
+                    <Badge key={v} variant="secondary" className="gap-1 pr-1">
+                      {v}
+                      <button
+                        type="button"
+                        onClick={() => toggleFollowupInterval(v)}
+                        className="hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+              </div>
+            )}
+
+            {data.followupIntervals.length >= 3 && (
+              <p className="text-xs text-muted-foreground">
+                Maksimal 3 interval follow-up. Hapus salah satu untuk menambah yang lain.
+              </p>
+            )}
             {data.followupIntervals.length === 0 && (
               <p className="text-xs text-destructive">Pilih minimal 1 interval follow-up</p>
             )}

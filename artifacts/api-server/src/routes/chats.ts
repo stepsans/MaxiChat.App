@@ -492,13 +492,14 @@ async function fetchLabelsForChats(
 // contact_lead_status on phone number. Chats with no row default to "unknown".
 async function fetchLeadStatusForChats(
   chatIds: number[]
-): Promise<Map<number, string>> {
-  const map = new Map<number, string>();
+): Promise<Map<number, { leadStatus: string; leadClassifiedBy: string }>> {
+  const map = new Map<number, { leadStatus: string; leadClassifiedBy: string }>();
   if (chatIds.length === 0) return map;
   const rows = await db
     .select({
       chatId: chatsTable.id,
       leadStatus: contactLeadStatusTable.leadStatus,
+      leadClassifiedBy: contactLeadStatusTable.leadClassifiedBy,
     })
     .from(chatsTable)
     .innerJoin(channelsTable, eq(chatsTable.channelId, channelsTable.id))
@@ -510,7 +511,8 @@ async function fetchLeadStatusForChats(
       )
     )
     .where(inArray(chatsTable.id, chatIds));
-  for (const r of rows) map.set(r.chatId, r.leadStatus);
+  for (const r of rows)
+    map.set(r.chatId, { leadStatus: r.leadStatus, leadClassifiedBy: r.leadClassifiedBy });
   return map;
 }
 
@@ -607,7 +609,8 @@ router.get("/", async (req, res): Promise<void> => {
         ...c,
         lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),
-        leadStatus: leadMap.get(c.id) ?? "unknown",
+        leadStatus: leadMap.get(c.id)?.leadStatus ?? "unknown",
+        leadClassifiedBy: leadMap.get(c.id)?.leadClassifiedBy ?? "manual",
         labels: labelMap.get(c.id) ?? [],
       }))
     );
@@ -1808,7 +1811,8 @@ router.get("/:id", async (req, res): Promise<void> => {
       lastMessageAt: chat.lastMessageAt?.toISOString() ?? null,
       mutedUntil: chat.mutedUntil?.toISOString() ?? null,
       createdAt: chat.createdAt.toISOString(),
-      leadStatus: leadMap.get(chat.id) ?? "unknown",
+      leadStatus: leadMap.get(chat.id)?.leadStatus ?? "unknown",
+      leadClassifiedBy: leadMap.get(chat.id)?.leadClassifiedBy ?? "manual",
       labels: labelMap.get(chat.id) ?? [],
       presence,
       hasMoreMessages,
@@ -2006,7 +2010,8 @@ router.patch("/:id", async (req, res): Promise<void> => {
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
-      leadStatus: leadMap.get(updated.id) ?? "unknown",
+      leadStatus: leadMap.get(updated.id)?.leadStatus ?? "unknown",
+      leadClassifiedBy: leadMap.get(updated.id)?.leadClassifiedBy ?? "manual",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
@@ -2363,7 +2368,8 @@ router.post("/:id/takeover", async (req, res): Promise<void> => {
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
-      leadStatus: leadMap.get(updated.id) ?? "unknown",
+      leadStatus: leadMap.get(updated.id)?.leadStatus ?? "unknown",
+      leadClassifiedBy: leadMap.get(updated.id)?.leadClassifiedBy ?? "manual",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
@@ -2402,7 +2408,8 @@ router.put("/:id/mute", async (req, res): Promise<void> => {
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       mutedUntil: updated.mutedUntil?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
-      leadStatus: leadMap.get(updated.id) ?? "unknown",
+      leadStatus: leadMap.get(updated.id)?.leadStatus ?? "unknown",
+      leadClassifiedBy: leadMap.get(updated.id)?.leadClassifiedBy ?? "manual",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
@@ -2462,7 +2469,8 @@ router.put("/:id/block", async (req, res): Promise<void> => {
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       mutedUntil: updated.mutedUntil?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
-      leadStatus: leadMap.get(updated.id) ?? "unknown",
+      leadStatus: leadMap.get(updated.id)?.leadStatus ?? "unknown",
+      leadClassifiedBy: leadMap.get(updated.id)?.leadClassifiedBy ?? "manual",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {
@@ -2622,7 +2630,8 @@ router.patch("/:id/assign", async (req, res): Promise<void> => {
       ...updated,
       lastMessageAt: updated.lastMessageAt?.toISOString() ?? null,
       createdAt: updated.createdAt.toISOString(),
-      leadStatus: leadMap.get(updated.id) ?? "unknown",
+      leadStatus: leadMap.get(updated.id)?.leadStatus ?? "unknown",
+      leadClassifiedBy: leadMap.get(updated.id)?.leadClassifiedBy ?? "manual",
       labels: labelMap.get(updated.id) ?? [],
     });
   } catch (err) {

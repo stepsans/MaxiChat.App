@@ -67,7 +67,26 @@ export function ChatHistoryTable({ period, from, to, channel }: { period: Period
     query: { queryKey: getGetAnalyticsChatHistoryQueryKey(params) },
   });
 
-  const records = data?.records ?? [];
+  type ChatRow = NonNullable<typeof data>["records"][number];
+
+  // Accumulate pages so "Muat lebih banyak" appends rather than replaces. The
+  // query hook still drives one page at a time; we stitch them together here.
+  const [rows, setRows] = useState<ChatRow[]>([]);
+
+  // Reset the accumulator whenever filters/scope change (page goes back to 1).
+  useEffect(() => {
+    setRows([]);
+  }, [period, from, to, channel, handledBy, status, search]);
+
+  // Merge each freshly-loaded page into the accumulator. Page 1 replaces the
+  // whole set (it's the start of a new result list); later pages append.
+  useEffect(() => {
+    if (!data) return;
+    setRows((prev) => (page === 1 ? data.records : [...prev, ...data.records]));
+  }, [data, page]);
+
+  const records = rows;
+  const hasMore = data?.hasMore ?? false;
 
   const resetPageThen = (fn: () => void) => {
     setPage(1);
@@ -123,8 +142,8 @@ export function ChatHistoryTable({ period, from, to, channel }: { period: Period
 
   return (
     <div className="space-y-3">
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Filter bar — sticky so it stays visible while the table scrolls */}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 bg-background py-1">
         <div className="relative min-w-[200px] flex-1">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -183,7 +202,7 @@ export function ChatHistoryTable({ period, from, to, channel }: { period: Period
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading ? (
+              {isLoading && records.length === 0 ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={i}>
                     <TableCell colSpan={5}>
@@ -242,7 +261,7 @@ export function ChatHistoryTable({ period, from, to, channel }: { period: Period
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => navigate(`/chats?chat=${r.chatId}`)}>
+                      <Button variant="ghost" size="sm" onClick={() => navigate(`/chats/${r.chatId}`)}>
                         Buka
                       </Button>
                     </TableCell>
@@ -254,20 +273,22 @@ export function ChatHistoryTable({ period, from, to, channel }: { period: Period
         </CardContent>
       </Card>
 
-      {/* Pagination */}
-      {data && data.total > limit && (
+      {/* Pagination — "load more" appends the next page to the accumulated rows */}
+      {data && records.length > 0 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Halaman {page} · {data.total} percakapan
+            {records.length} dari {data.total} percakapan
           </span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
-              Sebelumnya
+          {hasMore && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoading}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              {isLoading ? "Memuat…" : "Muat lebih banyak"}
             </Button>
-            <Button variant="outline" size="sm" disabled={!data.hasMore} onClick={() => setPage((p) => p + 1)}>
-              Berikutnya
-            </Button>
-          </div>
+          )}
         </div>
       )}
     </div>

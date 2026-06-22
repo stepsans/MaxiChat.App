@@ -15,6 +15,7 @@ import { recordDeferredJob } from "./ai-deferred-jobs";
 import { recordAiUsage } from "./ai-usage";
 import { getOrCreateTenantSettings } from "./settings-store";
 import { buildFollowupSystemPrompt } from "./followup-prompt";
+import { setContactLeadStatusByAi } from "./contact-lead-status";
 
 // ─── Schedule follow-up for a newly entered pipeline entry ────────────────────
 
@@ -162,9 +163,15 @@ async function sendFollowup(entryId: number): Promise<void> {
     })
     .where(eq(aiPipelineEntriesTable.id, entryId));
 
-  // Send the actual WhatsApp/Telegram message.
+  // Send the actual WhatsApp/Telegram message, paced with the tenant's own
+  // reply-delay bounds (per CLAUDE.md: every automated send must random-delay
+  // per message using replyDelayMin/Max or the number risks a ban).
   if (chat) {
-    await sendMessageToChat(chat.id, entry.channelId, message);
+    const tenant = await getOrCreateTenantSettings(pipeline.ownerUserId);
+    await sendMessageToChat(chat.id, entry.channelId, message, {
+      min: tenant.replyDelayMin,
+      max: tenant.replyDelayMax,
+    });
   }
 }
 
@@ -275,11 +282,15 @@ export async function generateFollowupMessage(
 async function sendMessageToChat(
   chatId: number,
   channelId: number,
-  message: string
+  message: string,
+  // Per-message pacing bounds in SECONDS — flowSendDelayMs multiplies by 1000.
+  // These MUST be the tenant's configured replyDelayMin/Max (typically 1–3s),
+  // never a hardcoded value.
+  delayBounds: { min: number; max: number }
 ): Promise<void> {
   try {
     const { sendFollowUpOnChannel } = await import("../routes/whatsapp");
-    await sendFollowUpOnChannel(channelId, chatId, message, { min: 1000, max: 3000 });
+    await sendFollowUpOnChannel(channelId, chatId, message, delayBounds);
   } catch {
     console.warn("[ai-pipeline-followup] could not send message to chat", chatId);
   }
@@ -296,6 +307,32 @@ function parseIntervalHours(interval: string): number {
 // ─── Stop signal detection ─────────────────────────────────────────────────────
 // Called from the message receive handler when a customer sends a message.
 
+// Explicit opt-outs ("jangan WA lagi", "stop", "tidak tertarik"). Single-word
+// tokens are matched on word boundaries so "stop" can't fire inside another word.
+// Bare "jangan" is deliberately NOT a keyword — it tripped on innocuous phrases
+// like "jangan lupa kirim ya"; we require the specific "jangan <channel>" forms.
+const STOP_EXPLICIT = [
+  "jangan hubungi", "jangan wa", "jangan whatsapp", "jangan chat", "jangan sms",
+  "jangan telpon", "jangan telepon", "hapus nomor", "remove my number",
+  "tidak tertarik", "ga tertarik", "gak tertarik", "nggak tertarik",
+  "do not contact", "not interested", "unsubscribe",
+  "stop", "berhenti", "block", "blokir", "spam", "ganggu", "batalkan", "cancel",
+];
+
+// Soft signals the contact is out of market ("sudah punya", "tidak butuh lagi").
+const STOP_IMPLICIT = [
+  "sudah pakai lain", "sudah pakai yang lain", "sudah punya", "tidak butuh lagi",
+  "ga butuh", "gak butuh", "tidak perlu", "gak perlu", "tidak usah", "no thanks",
+  "nanti kalau butuh saya yang hubungi",
+];
+
+function isStopMessage(text: string): boolean {
+  const lc = text.toLowerCase();
+  return [...STOP_EXPLICIT, ...STOP_IMPLICIT].some((kw) =>
+    kw.includes(" ") ? lc.includes(kw) : new RegExp(`\\b${kw}\\b`).test(lc)
+  );
+}
+
 export async function handleInboundMessageStopSignal(
   contactPhone: string,
   channelId: number,
@@ -303,7 +340,10 @@ export async function handleInboundMessageStopSignal(
 ): Promise<void> {
   // Look for active pipeline entries for this contact.
   const entries = await db
-    .select({ id: aiPipelineEntriesTable.id })
+    .select({
+      id: aiPipelineEntriesTable.id,
+      ownerUserId: aiPipelineEntriesTable.ownerUserId,
+    })
     .from(aiPipelineEntriesTable)
     .where(
       and(
@@ -315,19 +355,17 @@ export async function handleInboundMessageStopSignal(
 
   if (entries.length === 0) return;
 
-  // Detect explicit stop signals.
-  const stopKeywords = ["stop", "berhenti", "tidak perlu", "no thanks", "tidak usah", "jangan", "cancel", "batalkan"];
-  const lc = messageContent.toLowerCase();
-  const isStopSignal = stopKeywords.some((kw) => lc.includes(kw));
+  const isStopSignal = isStopMessage(messageContent);
 
   for (const entry of entries) {
     if (isStopSignal) {
-      // Hard stop.
+      // Hard stop requested by the customer.
       await db.update(aiPipelineEntriesTable)
         .set({
           doNotFollowup: true,
           doNotFollowupReason: "Pelanggan meminta berhenti",
           doNotFollowupAt: new Date(),
+          followupStoppedBy: "customer",
           status: "do_not_followup",
           nextFollowupAt: null,
           updatedAt: new Date(),
@@ -343,5 +381,11 @@ export async function handleInboundMessageStopSignal(
         })
         .where(eq(aiPipelineEntriesTable.id, entry.id));
     }
+  }
+
+  // A customer opt-out also reclassifies the contact as not_lead. AI-attributed
+  // via setContactLeadStatusByAi, so a prior 'manual' classification still wins.
+  if (isStopSignal) {
+    await setContactLeadStatusByAi(entries[0]!.ownerUserId, contactPhone, "not_lead");
   }
 }

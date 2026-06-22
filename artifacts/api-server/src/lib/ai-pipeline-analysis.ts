@@ -148,18 +148,24 @@ Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
 }`;
 }
 
-// Wraps a tenant's custom prompt: their text drives the scoring *persona &
-// emphasis*, while the conversation transcript and the fixed JSON output
-// contract are appended by the system so output stays parseable.
-function buildCustomPrompt(
-  customPrompt: string,
+// Build the analysis prompt. When the pipeline has a custom guidance prompt it is
+// injected as a clearly-labelled section that AUGMENTS (does not replace) the
+// default persona, classification rules and 6-dimension rubric — those always
+// come from the shared buildOutputContract() so the JSON output stays parseable.
+function buildAnalysisPrompt(
   transcript: string,
   contactName: string | null,
   channelType: string | null,
-  lessonsBlock: string
+  lessonsBlock: string,
+  customPrompt?: string | null
 ): string {
-  return `${customPrompt.trim()}
+  const customSection =
+    customPrompt && customPrompt.trim().length > 0
+      ? `\n=== PANDUAN KHUSUS PIPELINE INI (prioritaskan bila relevan) ===\n${customPrompt.trim()}\n`
+      : "";
 
+  return `Kamu adalah AI analis penjualan untuk bisnis Indonesia. Analisa percakapan WhatsApp/Telegram berikut dan beri skor prospek secara objektif.
+${customSection}
 Nama kontak: ${contactName ?? "Tidak diketahui"}
 Platform: ${channelType ?? "WhatsApp"}
 
@@ -167,67 +173,6 @@ TRANSKIP PERCAKAPAN:
 ${transcript}
 
 ${lessonsBlock}${buildOutputContract()}`;
-}
-
-function buildAnalysisPrompt(
-  transcript: string,
-  contactName: string | null,
-  channelType: string | null,
-  lessonsBlock: string
-): string {
-  return `Kamu adalah AI analis penjualan untuk bisnis Indonesia. Analisa percakapan WhatsApp/Telegram berikut dan beri skor prospek secara objektif.
-
-Nama kontak: ${contactName ?? "Tidak diketahui"}
-Platform: ${channelType ?? "WhatsApp"}
-
-TRANSKIP PERCAKAPAN:
-${transcript}
-
-${lessonsBlock}${CLASSIFICATION_INSTRUCTION}Beri skor berdasarkan 6 dimensi:
-1. buying_signal (0-30): Seberapa kuat sinyal pembelian (tanya harga, stok, minta penawaran, dll)
-2. urgency (0-20): Tingkat urgensi (butuh segera, ada deadline, dll)
-3. engagement (0-20): Seberapa aktif dan responsif dalam percakapan
-4. commitment (0-15): Tanda-tanda komitmen (setuju harga, minta invoice, konfirmasi, dll)
-5. product_fit (0-10): Seberapa cocok produk dengan kebutuhan yang disampaikan
-6. barrier_adjustment (-5 to +5): Hambatan seperti keluhan harga, kompetitor, dll (negatif = hambatan besar)
-
-Total skor = jumlah semua dimensi (0-100).
-
-PENCOCOKAN PRODUK (gunakan KATALOG PRODUK TENANT di atas, bila ada):
-- productInterest = produk/jasa yang diminati customer, pakai kata customer apa adanya.
-- productMatchedCode = kode (field "kode:") dari katalog yang paling cocok secara SEMANTIK dengan minat customer (mis. "printer uv a3" cocok dengan "Mesin UV DTF A3"). null bila tidak ada yang cocok atau katalog kosong. JANGAN mengarang kode yang tidak ada di katalog.
-- productInCatalog = true bila productMatchedCode terisi (produk ADA di katalog), false bila customer meminta produk yang TIDAK ada di katalog.
-
-Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
-{
-  "conversation_role": "tenant_is_seller" | "tenant_is_buyer" | "unclear",
-  "lead_classification": "lead" | "not_lead" | "unclear",
-  "lead_classification_reason": "<1 kalimat singkat, atau null>",
-  "skip_pipeline": <true bila tenant_is_buyer, selain itu false>,
-  "skip_reason": "<alasan bila skip_pipeline=true, atau null>",
-  "score": <integer 0-100, 0 bila skip_pipeline=true>,
-  "scoreBreakdown": {
-    "buying_signal": <integer 0-30>,
-    "urgency": <integer 0-20>,
-    "engagement": <integer 0-20>,
-    "commitment": <integer 0-15>,
-    "product_fit": <integer 0-10>,
-    "barrier_adjustment": <integer -5 to 5>
-  },
-  "status": "<hot|warm|cold>",
-  "estimatedValue": <integer dalam Rupiah, 0 jika tidak ada indikasi>,
-  "productInterest": "<produk/jasa yang diminati (kata customer apa adanya), kosong jika tidak ada>",
-  "productMatchedCode": "<kode produk dari katalog yang cocok, atau null bila tidak ada>",
-  "productInCatalog": <true bila productMatchedCode terisi, selain itu false>,
-  "recommendation": "<rekomendasi tindak lanjut, 1-2 kalimat>",
-  "scoreReason": "<alasan skor dalam 1-2 kalimat>",
-  "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
-  "lastOpenPoint": "<hal terakhir yang menggantung / pertanyaan customer yang belum tuntas dijawab / keberatan yang dia sampaikan. null kalau tidak ada yang jelas — JANGAN mengarang>",
-  "stalledReason": "<alasan percakapan berhenti, sependek mungkin. null kalau tidak jelas>",
-  "customerTone": "<gaya bahasa & nada CUSTOMER (bukan agent): pilih dari santai/akrab, sopan, formal, to-the-point — plus ciri spesifik bila ada (mis. 'pakai sapaan kak', 'banyak emoji', 'pakai singkatan', 'huruf kecil semua'). Contoh: 'santai & akrab, pakai kak + emoji'. null kalau pesan customer terlalu sedikit untuk dinilai. JANGAN mengarang>",
-  "sentiment": "<sentimen CUSTOMER terhadap layanan/produk: pilih satu — marah | kesal | netral | senang. 'marah'=komplain keras / emosi kuat, 'kesal'=tidak puas / mengeluh ringan, 'netral'=biasa saja, 'senang'=puas / antusias. 'netral' bila tidak jelas — JANGAN mengarang>",
-  "contextHash": "<3-5 kata kunci topik utama percakapan, dipisah koma>"
-}`;
 }
 
 // ─── Main analysis runner ──────────────────────────────────────────────────────
@@ -517,6 +462,9 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           result.score >= pipeline.opportunityThreshold
         ) {
           try {
+            // The rules just (re)linked the entry; reflect it in memory so the
+            // opportunity links back to the entry (entry.opportunity_id).
+            analysis.pipelineEntryId = entryResult.entryId;
             await createOpportunityFromAi({ analysis, pipeline });
           } catch (err) {
             console.error("[ai-pipeline] opportunity auto-create failed:", err);
@@ -654,8 +602,11 @@ async function analyzeChat(opts: {
         lte(chatMessagesTable.createdAt, windowEnd)
       )
     )
-    .orderBy(chatMessagesTable.createdAt)
-    .limit(80); // cap at 80 messages for token safety
+    // Take the most recent 50 messages in the window (latest intent matters
+    // most), then restore chronological order for the transcript.
+    .orderBy(desc(chatMessagesTable.createdAt))
+    .limit(50);
+  messages.reverse();
 
   if (messages.length === 0) return null;
 
@@ -709,9 +660,13 @@ async function analyzeChat(opts: {
   // A tenant-supplied custom prompt overrides the default scoring persona; the
   // system still appends the transcript + fixed JSON contract so output parses.
   // Empty/blank custom prompt → fall back to the hardcoded default (no change).
-  const prompt = customPrompt && customPrompt.trim().length > 0
-    ? buildCustomPrompt(customPrompt, transcript, chat.contactName, channelType, teachingBlock)
-    : buildAnalysisPrompt(transcript, chat.contactName, channelType, teachingBlock);
+  const prompt = buildAnalysisPrompt(
+    transcript,
+    chat.contactName,
+    channelType,
+    teachingBlock,
+    customPrompt
+  );
 
   // Call AI. Retry up to 3 times with exponential backoff (§B.14) — transient
   // provider errors (rate limits, 5xx, dropped connections) shouldn't drop a
@@ -1021,6 +976,38 @@ function parseNullableText(v: unknown): string | null {
 
 // ─── Pipeline entry rules ──────────────────────────────────────────────────────
 
+// Insert a brand-new pipeline entry from a qualifying analysis and mark the
+// analysis as entered. Shared by the no-entry case and the >7-day re-entry paths
+// (closed deals / customer opt-out that re-engaged after a long gap).
+async function createFreshEntry(opts: {
+  analysis: typeof aiPipelineAnalysesTable.$inferSelect;
+  pipeline: typeof aiPipelinesTable.$inferSelect;
+  scoreHistoryItem: { score: number; date: string; cutoffWindow: string };
+}): Promise<{ entered: boolean; entryId: number }> {
+  const { analysis, pipeline, scoreHistoryItem } = opts;
+  const [entry] = await db.insert(aiPipelineEntriesTable).values({
+    pipelineId: pipeline.id,
+    analysisId: analysis.id,
+    ownerUserId: pipeline.ownerUserId,
+    contactPhone: analysis.contactPhone,
+    contactName: analysis.contactName,
+    channelId: analysis.channelId,
+    channelType: analysis.channelType,
+    currentScore: analysis.score,
+    estimatedValue: analysis.estimatedValue,
+    productInterest: analysis.productInterest,
+    status: "new",
+    followupCount: 0,
+    scoreHistory: [scoreHistoryItem],
+  }).returning();
+
+  await db.update(aiPipelineAnalysesTable)
+    .set({ enteredPipeline: true, pipelineEntryId: entry.id })
+    .where(eq(aiPipelineAnalysesTable.id, analysis.id));
+
+  return { entered: true, entryId: entry.id };
+}
+
 async function applyPipelineEntryRules(opts: {
   analysis: typeof aiPipelineAnalysesTable.$inferSelect;
   pipeline: typeof aiPipelinesTable.$inferSelect;
@@ -1044,36 +1031,68 @@ async function applyPipelineEntryRules(opts: {
   };
 
   if (!existingEntry) {
-    // Case 1: No existing entry.
+    // Case 1: No existing entry — create one if it clears the threshold.
     if (analysis.score >= pipeline.scoreThreshold) {
-      // Create entry.
-      const [entry] = await db.insert(aiPipelineEntriesTable).values({
-        pipelineId: pipeline.id,
-        analysisId: analysis.id,
-        ownerUserId: pipeline.ownerUserId,
-        contactPhone: analysis.contactPhone,
-        contactName: analysis.contactName,
-        channelId: analysis.channelId,
-        channelType: analysis.channelType,
-        currentScore: analysis.score,
-        estimatedValue: analysis.estimatedValue,
-        productInterest: analysis.productInterest,
-        status: "new",
-        followupCount: 0,
-        scoreHistory: [scoreHistoryItem],
-      }).returning();
-
-      // Mark analysis as having entered the pipeline.
-      await db.update(aiPipelineAnalysesTable)
-        .set({ enteredPipeline: true, pipelineEntryId: entry.id })
-        .where(eq(aiPipelineAnalysesTable.id, analysis.id));
-
-      return { entered: true, entryId: entry.id };
+      return await createFreshEntry({ analysis, pipeline, scoreHistoryItem });
     }
     return { entered: false, entryId: null };
   }
 
-  // Case 2: Existing entry + score above threshold → update score.
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // ── CASE B — special existing-entry states (handled before the generic update).
+
+  // (a) Customer hard-stop: honor the opt-out. Only renewed qualifying interest
+  //     after a >7-day gap is treated as a fresh intent (brand-new entry).
+  if (existingEntry.doNotFollowup && existingEntry.followupStoppedBy === "customer") {
+    const ref = existingEntry.doNotFollowupAt ?? existingEntry.updatedAt;
+    const reEngaged = windowEnd.getTime() - ref.getTime() > SEVEN_DAYS_MS;
+    if (reEngaged && analysis.score >= pipeline.scoreThreshold) {
+      return await createFreshEntry({ analysis, pipeline, scoreHistoryItem });
+    }
+    return { entered: false, entryId: existingEntry.id };
+  }
+
+  // (b) Closed deal (won/lost): a >7-day gap with renewed qualifying interest
+  //     opens a new entry; otherwise the closed record is left untouched.
+  if (existingEntry.status === "closed_won" || existingEntry.status === "closed_lost") {
+    const reEngaged = windowEnd.getTime() - existingEntry.updatedAt.getTime() > SEVEN_DAYS_MS;
+    if (reEngaged && analysis.score >= pipeline.scoreThreshold) {
+      return await createFreshEntry({ analysis, pipeline, scoreHistoryItem });
+    }
+    return { entered: false, entryId: existingEntry.id };
+  }
+
+  // (c) Operator-stopped follow-up: NOT a blacklist. AI keeps scoring the same
+  //     entry; auto follow-up stays muted (doNotFollowup/followupStoppedBy
+  //     untouched) until the operator re-enables it manually.
+  if (existingEntry.doNotFollowup && existingEntry.followupStoppedBy === "user") {
+    const newHistory = [
+      ...((existingEntry.scoreHistory as typeof scoreHistoryItem[]) ?? []),
+      scoreHistoryItem,
+    ].slice(-10);
+    const above = analysis.score >= pipeline.scoreThreshold;
+    await db.update(aiPipelineEntriesTable)
+      .set({
+        currentScore: analysis.score,
+        estimatedValue: analysis.estimatedValue ?? existingEntry.estimatedValue,
+        productInterest: analysis.productInterest ?? existingEntry.productInterest,
+        analysisId: analysis.id,
+        scoreHistory: newHistory,
+        // Reactivate visibility when warm again, but keep auto follow-up muted.
+        status: above ? "in_progress" : existingEntry.status,
+        cooled: above ? false : true,
+        cooledAt: above ? null : existingEntry.cooled ? existingEntry.cooledAt : new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(aiPipelineEntriesTable.id, existingEntry.id));
+    await db.update(aiPipelineAnalysesTable)
+      .set({ enteredPipeline: true, pipelineEntryId: existingEntry.id })
+      .where(eq(aiPipelineAnalysesTable.id, analysis.id));
+    return { entered: above, entryId: existingEntry.id };
+  }
+
+  // Case 2: Existing active entry + score above threshold → update score.
   if (analysis.score >= pipeline.scoreThreshold) {
     const newHistory = [
       ...((existingEntry.scoreHistory as typeof scoreHistoryItem[]) ?? []),

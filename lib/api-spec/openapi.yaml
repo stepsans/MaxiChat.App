@@ -6743,6 +6743,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ai-pipelines/{id}/duplicate:
+    post:
+      operationId: duplicateAiPipeline
+      tags: [ai-pipeline]
+      summary: Duplicate a pipeline (config + channels + labels) as a new inactive pipeline
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Cloned pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipeline"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ai-pipelines/{id}/analyses:
     get:
       operationId: listAiPipelineAnalyses
@@ -7011,6 +7042,12 @@ paths:
               properties:
                 reason:
                   type: string
+                stoppedBy:
+                  type: string
+                  enum: [user, customer]
+                  description: >
+                    Who is stopping follow-up. 'user' (default) only mutes auto
+                    follow-up and can be re-enabled. 'customer' is a hard stop.
       responses:
         "200":
           description: Entry updated
@@ -7026,6 +7063,51 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/entries/{eid}/enable-followup:
+    post:
+      operationId: enableFollowupAiPipelineEntry
+      tags: [ai-pipeline]
+      summary: Re-enable auto follow-up for an operator-stopped pipeline entry
+      description: >
+        Clears an operator-set do-not-follow-up flag and re-arms follow-up.
+        Rejected with 409 when the contact opted out (followupStoppedBy='customer').
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eid
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entry updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Customer opt-out cannot be re-enabled
           content:
             application/json:
               schema:
@@ -7108,13 +7190,21 @@ paths:
     get:
       operationId: getAiPipelineProductInterest
       tags: [ai-pipeline]
-      summary: Top product interest + new-product demand for a single pipeline (last 30 days)
+      summary: Top product interest + new-product demand for a single pipeline
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: integer
+        - name: period
+          in: query
+          required: false
+          description: Aggregation window. Defaults to 30d.
+          schema:
+            type: string
+            enum: [today, 7d, 30d]
+            default: 30d
       responses:
         "200":
           description: Product interest aggregation for this pipeline
@@ -9840,6 +9930,10 @@ components:
           type: string
           enum: [unknown, lead, not_lead]
           description: Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
+        leadClassifiedBy:
+          type: string
+          enum: [manual, ai]
+          description: Who last set leadStatus — 'manual' (operator) or 'ai' (AI Pipeline auto-classification). AI never overrides a manual value.
         isHumanTakeover:
           type: boolean
         lastMessage:
@@ -9994,6 +10088,10 @@ components:
           type: string
           enum: [unknown, lead, not_lead]
           description: Manual lead classification, independent of the auto-routing tag. Drives the lead marker/filter in the chat list.
+        leadClassifiedBy:
+          type: string
+          enum: [manual, ai]
+          description: Who last set leadStatus — 'manual' (operator) or 'ai' (AI Pipeline auto-classification). AI never overrides a manual value.
         isHumanTakeover:
           type: boolean
         lastMessage:
@@ -13520,6 +13618,10 @@ components:
               type: integer
             enteredPipeline:
               type: integer
+            followupsSent:
+              type: integer
+            opportunities:
+              type: integer
         createdAt:
           type: string
           format: date-time
@@ -13716,6 +13818,18 @@ components:
         doNotFollowupReason:
           type: string
           nullable: true
+        followupStoppedBy:
+          type: string
+          enum: [user, customer]
+          nullable: true
+          description: >
+            Who stopped follow-up. 'user' = operator muted auto follow-up only
+            (AI keeps scoring; can be re-enabled). 'customer' = contact opted out
+            (hard stop; not re-enabled). null = follow-up active.
+        opportunityId:
+          type: integer
+          nullable: true
+          description: Linked sales opportunity id, once one has been auto-created for this entry.
         cooled:
           type: boolean
         cooledAt:
@@ -13772,6 +13886,8 @@ components:
             enteredPipeline:
               type: integer
             followupsSent:
+              type: integer
+            opportunities:
               type: integer
         scoreDistribution:
           type: array

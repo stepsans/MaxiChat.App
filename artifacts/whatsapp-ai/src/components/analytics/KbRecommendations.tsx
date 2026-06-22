@@ -22,7 +22,9 @@ export function KbRecommendations({ period }: { period: InsightPeriod }) {
     query: { queryKey: getGetAiInsightsQueryKey(params) },
   });
 
-  const recs = ((data?.content as { recommendations?: KbRec[] } | undefined)?.recommendations ?? []).filter((r) => r.topic);
+  const recs = ((data?.content as { recommendations?: KbRec[] } | undefined)?.recommendations ?? [])
+    .filter((r) => r.topic)
+    .slice(0, 3);
   const err = data?.error;
 
   return (
