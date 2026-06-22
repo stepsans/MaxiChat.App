@@ -558,7 +558,24 @@ export async function computeProductInterest(
     totalEstimatedValue: Number(r.total_value),
   }));
 
-  const unmatchedProducts = rows.filter((r) => !r.productInCatalog);
+  // Products the owner dismissed from "Peluang Produk Baru" never reappear there.
+  // Scoped to this pipeline when one is given; otherwise to anything the owner
+  // dismissed across pipelines. Matched case-insensitively on the trimmed name,
+  // consistent with how rows are grouped above. Only the unmatched (new-product
+  // demand) section is filtered — "Produk Paling Diminati" still shows them.
+  const ignoredRes = await db.execute(sql`
+    SELECT LOWER(TRIM(product_interest)) AS key
+    FROM ai_pipeline_ignored_products
+    WHERE owner_user_id = ${ownerUserId}
+      ${pipelineId != null ? sql`AND pipeline_id = ${pipelineId}` : sql``}
+  `);
+  const ignoredKeys = new Set(
+    (ignoredRes.rows as Array<{ key: string }>).map((r) => r.key)
+  );
+
+  const unmatchedProducts = rows.filter(
+    (r) => !r.productInCatalog && !ignoredKeys.has(r.productInterest.trim().toLowerCase())
+  );
   const totalUnmatchedValue = unmatchedProducts.reduce((s, r) => s + r.totalEstimatedValue, 0);
 
   return {

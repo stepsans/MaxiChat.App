@@ -1,8 +1,6 @@
 import {
   useGetAiPerformance,
   getGetAiPerformanceQueryKey,
-  useGetProductInterest,
-  getGetProductInterestQueryKey,
 } from "@workspace/api-client-react";
 import { InfoBar } from "./InfoBar";
 import { KpiCard } from "./KpiCard";
@@ -11,8 +9,6 @@ import { AiInsightCard } from "./AiInsightCard";
 import { AnomalyList } from "./AnomalyList";
 import { KbRecommendations } from "./KbRecommendations";
 import { EscalationTopics } from "./EscalationTopics";
-import { TopProductsTable } from "./TopProductsTable";
-import { NewProductOpportunity } from "./NewProductOpportunity";
 import type { PeriodKey } from "./format";
 
 type InsightPeriod = "today" | "7d" | "30d";
@@ -21,12 +17,6 @@ export function AiAnalysisTab({ period, from, to, channel }: { period: PeriodKey
   const params = { period, ...(from ? { from } : {}), ...(to ? { to } : {}), ...(channel != null ? { channel } : {}) };
   const { data, isLoading } = useGetAiPerformance(params, {
     query: { queryKey: getGetAiPerformanceQueryKey(params) },
-  });
-
-  // Product interest (Top Produk Diminati + Peluang Produk Baru). Same period +
-  // channel scope as the rest of the tab.
-  const { data: productData, isLoading: productLoading } = useGetProductInterest(params, {
-    query: { queryKey: getGetProductInterestQueryKey(params) },
   });
 
   // ai-insights endpoint only supports today/7d/30d — map custom to 30d.
@@ -77,15 +67,6 @@ export function AiAnalysisTab({ period, from, to, channel }: { period: PeriodKey
       </div>
 
       <KbRecommendations period={insightPeriod} />
-
-      <TopProductsTable rows={productData?.topProducts} loading={productLoading} period={period} />
-
-      <NewProductOpportunity
-        rows={productData?.unmatchedProducts}
-        loading={productLoading}
-        totalUnmatchedValue={productData?.totalUnmatchedValue ?? 0}
-        period={period}
-      />
 
       <NextActionBox context="ai" />
     </div>

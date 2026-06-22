@@ -13,6 +13,7 @@ import {
   aiPipelinePromptVersionsTable,
   aiPipelineVisibilityTable,
   aiPipelineUserVisibilityTable,
+  aiPipelineIgnoredProductsTable,
   channelsTable,
   customerLabelsTable,
   usersTable,
@@ -573,6 +574,59 @@ router.get("/:id/product-interest", async (req: Request, res: Response) => {
 
   const p = resolvePeriod("30d");
   res.json(await computeProductInterest(ownerUserId, p, "30d", undefined, id));
+});
+
+// ─── Ignored products ("Peluang Produk Baru" dismissals) ───────────────────────
+
+// List the product names the owner dismissed from this pipeline's new-product
+// demand section. Used for management/undo surfaces.
+router.get("/:id/ignored-products", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const rows = await db
+    .select({
+      productInterest: aiPipelineIgnoredProductsTable.productInterest,
+      ignoredAt: aiPipelineIgnoredProductsTable.ignoredAt,
+    })
+    .from(aiPipelineIgnoredProductsTable)
+    .where(eq(aiPipelineIgnoredProductsTable.pipelineId, id))
+    .orderBy(desc(aiPipelineIgnoredProductsTable.ignoredAt));
+
+  res.json({
+    data: rows.map((r) => ({
+      productInterest: r.productInterest,
+      ignoredAt: r.ignoredAt.toISOString(),
+    })),
+  });
+});
+
+// Dismiss a product from this pipeline's "Peluang Produk Baru" section. Idempotent.
+router.delete("/:id/ignored-products", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const productInterest = String((req.body as { productInterest?: unknown })?.productInterest ?? "").trim();
+  if (!productInterest) { res.status(400).json({ error: "productInterest is required" }); return; }
+
+  await db
+    .insert(aiPipelineIgnoredProductsTable)
+    .values({ ownerUserId, pipelineId: id, productInterest })
+    .onConflictDoNothing();
+
+  res.json({ ignored: true, productInterest });
 });
 
 // ─── Analyses ─────────────────────────────────────────────────────────────────

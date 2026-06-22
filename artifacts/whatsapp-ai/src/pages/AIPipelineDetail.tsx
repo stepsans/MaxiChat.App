@@ -547,6 +547,7 @@ function DashboardTab({ pipelineId }: { pipelineId: number }) {
       {/* ── Produk Diminati + Peluang Produk Baru (30 hari) ── */}
       <TopProductsTable rows={productData?.topProducts} loading={productLoading} period="30d" />
       <NewProductOpportunity
+        pipelineId={pipelineId}
         rows={productData?.unmatchedProducts}
         loading={productLoading}
         totalUnmatchedValue={productData?.totalUnmatchedValue ?? 0}

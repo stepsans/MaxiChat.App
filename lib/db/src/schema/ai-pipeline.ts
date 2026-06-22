@@ -383,6 +383,31 @@ export const aiPipelineUserVisibilityTable = pgTable(
   ]
 );
 
+// Products the owner dismissed from a pipeline's "Peluang Produk Baru" section.
+// Once a product_interest is here, it never reappears in that pipeline's
+// new-product-demand list, even if a later customer asks for it again.
+export const aiPipelineIgnoredProductsTable = pgTable(
+  "ai_pipeline_ignored_products",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    pipelineId: integer("pipeline_id")
+      .notNull()
+      .references(() => aiPipelinesTable.id, { onDelete: "cascade" }),
+    // Stored verbatim as it appeared in the section (from ai_pipeline_analyses).
+    // Matching against analyses is done case-insensitively on the trimmed value.
+    productInterest: text("product_interest").notNull(),
+    ignoredAt: timestamp("ignored_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ai_pipeline_ignored_products_pipeline_idx").on(t.pipelineId),
+    index("ai_pipeline_ignored_products_owner_idx").on(t.ownerUserId),
+    uniqueIndex("ai_pipeline_ignored_products_unique").on(t.pipelineId, t.productInterest),
+  ]
+);
+
 // ---------------------------------------------------------------------------
 // Zod insert schemas
 // ---------------------------------------------------------------------------
@@ -409,3 +434,4 @@ export type AiPipelineCutoffLogRow = typeof aiPipelineCutoffLogsTable.$inferSele
 export type AiPipelinePromptVersionRow = typeof aiPipelinePromptVersionsTable.$inferSelect;
 export type AiPipelineVisibilityRow = typeof aiPipelineVisibilityTable.$inferSelect;
 export type AiPipelineUserVisibilityRow = typeof aiPipelineUserVisibilityTable.$inferSelect;
+export type AiPipelineIgnoredProductRow = typeof aiPipelineIgnoredProductsTable.$inferSelect;

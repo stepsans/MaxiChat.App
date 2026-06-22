@@ -5510,6 +5510,25 @@ export interface ProductInterestResult {
   period: ProductInterestResultPeriod;
 }
 
+export interface IgnoreAiPipelineProductBody {
+  /** Exact product name (as shown in the section) to dismiss. */
+  productInterest: string;
+}
+
+export interface AiPipelineIgnoredProductItem {
+  productInterest: string;
+  ignoredAt: string;
+}
+
+export interface AiPipelineIgnoredProductsList {
+  data: AiPipelineIgnoredProductItem[];
+}
+
+export interface AiPipelineIgnoreProductResponse {
+  ignored: boolean;
+  productInterest: string;
+}
+
 export type ChatHistoryItemHandledBy = typeof ChatHistoryItemHandledBy[keyof typeof ChatHistoryItemHandledBy];
 
 

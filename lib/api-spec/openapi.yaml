@@ -7135,6 +7135,78 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /ai-pipelines/{id}/ignored-products:
+    get:
+      operationId: listAiPipelineIgnoredProducts
+      tags: [ai-pipeline]
+      summary: List products dismissed from this pipeline's "Peluang Produk Baru"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dismissed products for this pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineIgnoredProductsList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: ignoreAiPipelineProduct
+      tags: [ai-pipeline]
+      summary: Dismiss a product from this pipeline's "Peluang Produk Baru" section
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IgnoreAiPipelineProductBody"
+      responses:
+        "200":
+          description: Product dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPipelineIgnoreProductResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ai-pipelines/{id}/cutoff-logs:
     get:
       operationId: listAiPipelineCutoffLogs
@@ -14459,6 +14531,36 @@ components:
           items: { $ref: "#/components/schemas/ProductInterestItem" }
         totalUnmatchedValue: { type: integer, description: Sum of estimated values for products not in catalog (whole Rupiah) }
         period: { type: string, enum: [today, 7d, 30d, custom] }
+
+    IgnoreAiPipelineProductBody:
+      type: object
+      required: [productInterest]
+      properties:
+        productInterest:
+          type: string
+          description: Exact product name (as shown in the section) to dismiss.
+
+    AiPipelineIgnoredProductItem:
+      type: object
+      required: [productInterest, ignoredAt]
+      properties:
+        productInterest: { type: string }
+        ignoredAt: { type: string, format: date-time }
+
+    AiPipelineIgnoredProductsList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AiPipelineIgnoredProductItem" }
+
+    AiPipelineIgnoreProductResponse:
+      type: object
+      required: [ignored, productInterest]
+      properties:
+        ignored: { type: boolean }
+        productInterest: { type: string }
 
     ChatHistoryItem:
       type: object

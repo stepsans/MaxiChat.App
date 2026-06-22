@@ -75,6 +75,8 @@ import type {
   AiPipelineEntry,
   AiPipelineEntryList,
   AiPipelineGenerateFollowupResponse,
+  AiPipelineIgnoreProductResponse,
+  AiPipelineIgnoredProductsList,
   AiProfileInput,
   AiProfileResponse,
   AiProviderConfig,
@@ -182,6 +184,7 @@ import type {
   GetStarredMessages200,
   GroupInfo,
   HealthStatus,
+  IgnoreAiPipelineProductBody,
   ImportKnowledge200,
   ImportKnowledge400,
   ImportKnowledge409,
@@ -21760,6 +21763,155 @@ export function useGetAiPipelineProductInterest<TData = Awaited<ReturnType<typeo
 
 
 
+
+export const getListAiPipelineIgnoredProductsUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-pipelines/${id}/ignored-products`
+}
+
+/**
+ * @summary List products dismissed from this pipeline's "Peluang Produk Baru"
+ */
+export const listAiPipelineIgnoredProducts = async (id: number, options?: RequestInit): Promise<AiPipelineIgnoredProductsList> => {
+
+  return customFetch<AiPipelineIgnoredProductsList>(getListAiPipelineIgnoredProductsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAiPipelineIgnoredProductsQueryKey = (id: number,) => {
+    return [
+    `/api/ai-pipelines/${id}/ignored-products`
+    ] as const;
+    }
+
+
+export const getListAiPipelineIgnoredProductsQueryOptions = <TData = Awaited<ReturnType<typeof listAiPipelineIgnoredProducts>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiPipelineIgnoredProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAiPipelineIgnoredProductsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAiPipelineIgnoredProducts>>> = ({ signal }) => listAiPipelineIgnoredProducts(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAiPipelineIgnoredProducts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAiPipelineIgnoredProductsQueryResult = NonNullable<Awaited<ReturnType<typeof listAiPipelineIgnoredProducts>>>
+export type ListAiPipelineIgnoredProductsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List products dismissed from this pipeline's "Peluang Produk Baru"
+ */
+
+export function useListAiPipelineIgnoredProducts<TData = Awaited<ReturnType<typeof listAiPipelineIgnoredProducts>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiPipelineIgnoredProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAiPipelineIgnoredProductsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getIgnoreAiPipelineProductUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-pipelines/${id}/ignored-products`
+}
+
+/**
+ * @summary Dismiss a product from this pipeline's "Peluang Produk Baru" section
+ */
+export const ignoreAiPipelineProduct = async (id: number,
+    ignoreAiPipelineProductBody: IgnoreAiPipelineProductBody, options?: RequestInit): Promise<AiPipelineIgnoreProductResponse> => {
+
+  return customFetch<AiPipelineIgnoreProductResponse>(getIgnoreAiPipelineProductUrl(id),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      ignoreAiPipelineProductBody,)
+  }
+);}
+
+
+
+
+export const getIgnoreAiPipelineProductMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ignoreAiPipelineProduct>>, TError,{id: number;data: BodyType<IgnoreAiPipelineProductBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof ignoreAiPipelineProduct>>, TError,{id: number;data: BodyType<IgnoreAiPipelineProductBody>}, TContext> => {
+
+const mutationKey = ['ignoreAiPipelineProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ignoreAiPipelineProduct>>, {id: number;data: BodyType<IgnoreAiPipelineProductBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  ignoreAiPipelineProduct(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IgnoreAiPipelineProductMutationResult = NonNullable<Awaited<ReturnType<typeof ignoreAiPipelineProduct>>>
+    export type IgnoreAiPipelineProductMutationBody = BodyType<IgnoreAiPipelineProductBody>
+    export type IgnoreAiPipelineProductMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Dismiss a product from this pipeline's "Peluang Produk Baru" section
+ */
+export const useIgnoreAiPipelineProduct = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ignoreAiPipelineProduct>>, TError,{id: number;data: BodyType<IgnoreAiPipelineProductBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof ignoreAiPipelineProduct>>,
+        TError,
+        {id: number;data: BodyType<IgnoreAiPipelineProductBody>},
+        TContext
+      > => {
+      return useMutation(getIgnoreAiPipelineProductMutationOptions(options));
+    }
 
 export const getListAiPipelineCutoffLogsUrl = (id: number,
     params?: ListAiPipelineCutoffLogsParams,) => {

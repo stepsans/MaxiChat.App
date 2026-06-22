@@ -7310,6 +7310,38 @@ export const GetAiPipelineProductInterestResponse = zod.object({
 
 
 /**
+ * @summary List products dismissed from this pipeline's "Peluang Produk Baru"
+ */
+export const ListAiPipelineIgnoredProductsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListAiPipelineIgnoredProductsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "productInterest": zod.string(),
+  "ignoredAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Dismiss a product from this pipeline's "Peluang Produk Baru" section
+ */
+export const IgnoreAiPipelineProductParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const IgnoreAiPipelineProductBody = zod.object({
+  "productInterest": zod.string().describe('Exact product name (as shown in the section) to dismiss.')
+})
+
+export const IgnoreAiPipelineProductResponse = zod.object({
+  "ignored": zod.boolean(),
+  "productInterest": zod.string()
+})
+
+
+/**
  * @summary List cut-off run history for a pipeline
  */
 export const ListAiPipelineCutoffLogsParams = zod.object({
