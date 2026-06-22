@@ -49,3 +49,4 @@ export * from "./lead-learning";
 export * from "./job-runs";
 export * from "./chatbot-flow-events";
 export * from "./dashboard-top-questions";
+export * from "./dashboard-snapshots";

@@ -31,6 +31,8 @@ import {
   Award,
   Package,
   HelpCircle,
+  RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { cn, formatBytes } from "@/lib/utils";
@@ -44,8 +46,20 @@ import {
   useDashboardFlowMenu,
   useDashboardProducts,
   useDashboardTopQuestions,
+  useDashboardRefresh,
+  useDashboardAgentKpi,
   type DashboardRange,
+  type DailyNarrative,
+  type AgentKpiDimension,
 } from "@/hooks/useDashboard";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import {
   rangeForPreset,
   isLivePreset,
@@ -69,6 +83,55 @@ function fmtRupiah(n: number): string {
     maximumFractionDigits: 0,
     notation: "compact",
   }).format(n);
+}
+
+// "HH:MM" in WIB (UTC+7) for the "diperbarui … WIB" label.
+function wibTime(iso: string): string {
+  const shifted = new Date(new Date(iso).getTime() + 7 * 60 * 60 * 1000);
+  return `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(
+    shifted.getUTCMinutes()
+  ).padStart(2, "0")}`;
+}
+
+// AI Chat Report narrative panel (spec A.3 / 4.3). Rendered from the snapshot's
+// cached narrative (no per-open AI cost).
+function NarrativePanel({ narrative }: { narrative: DailyNarrative | null }) {
+  if (!narrative || (!narrative.ringkasan && !(narrative.rekomendasi?.length))) return null;
+  return (
+    <Card data-testid="ai-chat-report-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" />
+          AI Chat Report
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {narrative.ringkasan && (
+          <p className="text-sm text-foreground leading-relaxed">{narrative.ringkasan}</p>
+        )}
+        {(narrative.sorotan?.length ?? 0) > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Sorotan</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              {narrative.sorotan!.map((s, i) => (
+                <li key={i} className="text-xs text-foreground">{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {(narrative.rekomendasi?.length ?? 0) > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Rekomendasi</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              {narrative.rekomendasi!.map((s, i) => (
+                <li key={i} className="text-xs text-foreground">{s}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // A KPI card. When `metric` is provided the whole card becomes a button that
@@ -390,6 +453,105 @@ function TopQuestionsPanel({ enabled }: { enabled: boolean }) {
   );
 }
 
+// Papan KPI Agent (spec 5.4) — dimension dropdown + ranked leaderboard sourced
+// from the latest ACR job's per-agent scores.
+const AGENT_KPI_DIMENSIONS: { key: AgentKpiDimension; label: string; ai: boolean; unit?: string }[] = [
+  { key: "kpi", label: "Nilai KPI (gabungan)", ai: false },
+  { key: "speed", label: "Kecepatan Balas", ai: false, unit: "mnt" },
+  { key: "lang", label: "Kualitas Bahasa", ai: true },
+  { key: "accuracy", label: "Ketepatan Jawaban", ai: true },
+  { key: "complaint", label: "Handling Komplain", ai: true },
+  { key: "unanswered", label: "Chat Tak Terjawab", ai: false },
+];
+
+function fmtKpiValue(dim: AgentKpiDimension, v: number | null): string {
+  if (v == null) return "—";
+  if (dim === "speed") return `${v.toFixed(1)} mnt`;
+  if (dim === "unanswered") return `${v}`;
+  return `${Math.round(v)}`;
+}
+
+function initials(name: string): string {
+  return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+}
+
+function AgentKpiPanel({ enabled }: { enabled: boolean }) {
+  const [dimension, setDimension] = useState<AgentKpiDimension>("kpi");
+  const { data, isLoading } = useDashboardAgentKpi(dimension, enabled);
+  const meta = AGENT_KPI_DIMENSIONS.find((d) => d.key === dimension)!;
+  const rows = data?.rows ?? [];
+  const maxVal = rows.reduce((m, r) => Math.max(m, r.value ?? 0), 0) || 1;
+
+  return (
+    <Card data-testid="agent-kpi-card">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-muted-foreground" />
+            Papan KPI Agent
+          </CardTitle>
+          <Select value={dimension} onValueChange={(v) => setDimension(v as AgentKpiDimension)}>
+            <SelectTrigger className="h-8 w-[200px] text-xs" data-testid="agent-kpi-dimension">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AGENT_KPI_DIMENSIONS.map((d) => (
+                <SelectItem key={d.key} value={d.key} className="text-xs">
+                  {d.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {meta.ai && (
+          <Badge variant="outline" className="mb-3 text-[10px] gap-1">
+            <Sparkles className="w-3 h-3" />
+            dinilai AI
+          </Badge>
+        )}
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Memuat…</p>
+        ) : !data?.jobId ? (
+          <p className="text-sm text-muted-foreground">
+            Belum ada data KPI agent. Jalankan AI Chat Report terlebih dahulu.
+          </p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Belum ada agent yang dinilai.</p>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((r, i) => (
+              <div key={r.agentUserId} className="flex items-center gap-3">
+                <span className="w-5 text-xs font-semibold tabular-nums text-muted-foreground text-right">
+                  {i + 1}
+                </span>
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                  {initials(r.name)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-foreground truncate">{r.name}</span>
+                    <span className="tabular-nums text-foreground font-semibold ml-2">
+                      {r.insufficientData ? "—" : fmtKpiValue(dimension, r.value)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 mt-1 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.round(((r.value ?? 0) / maxVal) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 const PRESETS: RangePreset[] = ["today", "7d", "month"];
 
 export default function Dashboard() {
@@ -403,6 +565,7 @@ export default function Dashboard() {
   const [drill, setDrill] = useState<{ metric: string; title: string } | null>(null);
 
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary(range, live);
+  const refresh = useDashboardRefresh();
   const { data: storage, isLoading: storageLoading } = useGetStorageUsage({
     query: { queryKey: getGetStorageUsageQueryKey(), enabled: canView },
   });
@@ -448,8 +611,24 @@ export default function Dashboard() {
       <div className="flex items-center justify-between gap-3 px-6 h-14 border-b border-border flex-shrink-0">
         <div className="min-w-0">
           <h1 className="text-base font-semibold text-foreground">Dashboard</h1>
-          <p className="text-xs text-muted-foreground truncate">
-            {live ? "Pantauan langsung" : "Mode laporan"}
+          <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
+            {summary?.from_snapshot && summary.updated_at
+              ? `Diperbarui ${wibTime(summary.updated_at)} WIB`
+              : live
+              ? "Pantauan langsung"
+              : "Mode laporan"}
+            {isOwner && summary?.from_snapshot && (
+              <button
+                type="button"
+                onClick={() => refresh.mutate()}
+                disabled={refresh.isPending}
+                data-testid="dashboard-refresh"
+                className="inline-flex items-center gap-1 text-primary hover:underline disabled:opacity-50"
+              >
+                <RefreshCw className={cn("w-3 h-3", refresh.isPending && "animate-spin")} />
+                Refresh
+              </button>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -595,6 +774,9 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* AI Chat Report narrative (spec A.3) — owner-facing, from snapshot. */}
+        {role === "owner" && <NarrativePanel narrative={summary?.narrative ?? null} />}
+
         {/* Lead Status (spec A.7) — each row drills into its chat list. */}
         <Card data-testid="lead-status-card">
           <CardHeader className="pb-3">
@@ -634,6 +816,9 @@ export default function Dashboard() {
         <ProductsPanel range={range} enabled={canView} />
         <TopQuestionsPanel enabled={canView} />
         <FlowMenuPanel range={range} enabled={canView} />
+
+        {/* Papan KPI Agent (spec 5.4). */}
+        <AgentKpiPanel enabled={canView} />
 
         {/* Module summary tiles → Tier-2 dashboards (spec A.0). */}
         <div>

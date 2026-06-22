@@ -14,6 +14,7 @@ import { startFollowUpScheduler } from "./lib/follow-up-engine";
 import { startAiPipelineScheduler } from "./lib/ai-pipeline-scheduler";
 import { startAcrSchedulesPoller } from "./lib/acr-schedules-poller";
 import { startDashboardInsightsScheduler } from "./lib/dashboard-insights";
+import { startDashboardSnapshotScheduler } from "./lib/dashboard-snapshot";
 import { startReportSchedulePoller } from "./lib/report-schedule-runner";
 import { startCreditHoldSweeper } from "./lib/credit-wallet";
 import { startEngineReprobeScheduler } from "./lib/platform-ai-engine";
@@ -169,6 +170,9 @@ async function main(): Promise<void> {
   // Dashboard "Pertanyaan tersering": AI intent-clustering of recent inbound
   // messages, every 6h, cached per owner (token-bounded, never real-time).
   startDashboardInsightsScheduler();
+  // Dashboard KPI snapshots: heavy analytic metrics pre-aggregated at the WIB
+  // cutoffs (09/12/15/18/21) so "Hari ini" loads from one cached row.
+  startDashboardSnapshotScheduler();
   // Laporan & Jadwal: report-schedule poller (every 60s). Sends due scheduled
   // reports via email and logs each attempt. Additive; no-op when no schedules.
   startReportSchedulePoller();

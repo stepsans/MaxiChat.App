@@ -15,6 +15,7 @@ import {
   resolvePeriod,
   computeSummary,
   computeAiPerformance,
+  computeProductInterest,
   gatherAnomalyInputs,
   type PeriodKey,
 } from "../lib/analytics-v2-metrics";
@@ -308,6 +309,24 @@ router.get("/v2/next-actions", view, async (req, res): Promise<void> => {
   } catch (err) {
     logger.error({ err }, "analytics v2 next-actions failed");
     res.status(500).json({ error: "Gagal memuat langkah selanjutnya" });
+  }
+});
+
+// Top Produk Diminati + Peluang Produk Baru (spec C.7/C.10). Aggregates the AI
+// Pipeline analyses by product interest; product_in_catalog splits "Ada" vs the
+// new-product demand surfaced in the "Peluang Produk Baru" card.
+router.get("/v2/product-interest", view, async (req, res): Promise<void> => {
+  try {
+    const ownerUserId = await owner(req, res);
+    if (ownerUserId == null) return;
+    const channelIds = await channelScope(req, res);
+    if (channelIds == null) return;
+    const { period, from, to } = periodFromQuery(req);
+    const p = resolvePeriod(period, from, to);
+    res.json(await computeProductInterest(ownerUserId, p, period, channelIds));
+  } catch (err) {
+    logger.error({ err }, "analytics v2 product-interest failed");
+    res.status(500).json({ error: "Gagal memuat minat produk" });
   }
 });
 

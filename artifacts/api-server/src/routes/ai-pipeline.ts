@@ -25,6 +25,7 @@ import {
 import { scheduleCutoffLogs } from "../lib/ai-pipeline-scheduler";
 import { generateFollowupMessage, scheduleFollowups } from "../lib/ai-pipeline-followup";
 import { resolveAiClient } from "../lib/ai-provider";
+import { computeProductInterest, resolvePeriod } from "../lib/analytics-v2-metrics";
 
 const router = Router();
 
@@ -555,6 +556,23 @@ router.get("/:id/dashboard-stats", async (req: Request, res: Response) => {
       completedAt: l.completedAt?.toISOString() ?? null,
     })),
   });
+});
+
+// Top Produk Diminati + Peluang Produk Baru for THIS pipeline (last 30 days),
+// shown on the pipeline "Analitik" tab. Owner + pipeline scoped; reuses the
+// shared analytics aggregation.
+router.get("/:id/product-interest", async (req: Request, res: Response) => {
+  const ownerUserId = await resolveOwner(req, res);
+  if (!ownerUserId) return;
+
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const pipeline = await getPipelineWithOwner(id, ownerUserId);
+  if (!pipeline) { res.status(404).json({ error: "Not found" }); return; }
+
+  const p = resolvePeriod("30d");
+  res.json(await computeProductInterest(ownerUserId, p, "30d", undefined, id));
 });
 
 // ─── Analyses ─────────────────────────────────────────────────────────────────

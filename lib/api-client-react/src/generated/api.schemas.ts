@@ -5483,6 +5483,33 @@ export interface AiPerformance {
   topEscalationTopics: EscalationTopic[];
 }
 
+export interface ProductInterestItem {
+  productInterest: string;
+  productMatchedCode: string | null;
+  productInCatalog: boolean;
+  count: number;
+  /** Sum of estimated values (whole Rupiah) */
+  totalEstimatedValue: number;
+}
+
+export type ProductInterestResultPeriod = typeof ProductInterestResultPeriod[keyof typeof ProductInterestResultPeriod];
+
+
+export const ProductInterestResultPeriod = {
+  today: 'today',
+  '7d': '7d',
+  '30d': '30d',
+  custom: 'custom',
+} as const;
+
+export interface ProductInterestResult {
+  topProducts: ProductInterestItem[];
+  unmatchedProducts: ProductInterestItem[];
+  /** Sum of estimated values for products not in catalog (whole Rupiah) */
+  totalUnmatchedValue: number;
+  period: ProductInterestResultPeriod;
+}
+
 export type ChatHistoryItemHandledBy = typeof ChatHistoryItemHandledBy[keyof typeof ChatHistoryItemHandledBy];
 
 
@@ -6316,6 +6343,26 @@ export const GetNextActionsContext = {
   ai: 'ai',
   history: 'history',
   schedule: 'schedule',
+} as const;
+
+export type GetProductInterestParams = {
+period?: GetProductInterestPeriod;
+from?: string;
+to?: string;
+/**
+ * Restrict to a single channel id. Omit for all channels the viewer can access.
+ */
+channel?: number;
+};
+
+export type GetProductInterestPeriod = typeof GetProductInterestPeriod[keyof typeof GetProductInterestPeriod];
+
+
+export const GetProductInterestPeriod = {
+  today: 'today',
+  '7d': '7d',
+  '30d': '30d',
+  custom: 'custom',
 } as const;
 
 export type ListReportScheduleLogsParams = {

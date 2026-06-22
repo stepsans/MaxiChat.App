@@ -155,6 +155,12 @@ export const aiPipelineAnalysesTable = pgTable(
     status: text("status"),
     estimatedValue: bigint("estimated_value", { mode: "number" }),
     productInterest: text("product_interest"),
+    // Catalog product code the AI matched the interest to (productsTable.code),
+    // NULL when nothing in the catalog fits. productInCatalog mirrors this as a
+    // boolean: true = matched an existing product, false = demand for a product
+    // NOT yet in the catalog (the "Peluang Produk Baru" signal).
+    productMatchedCode: text("product_matched_code"),
+    productInCatalog: boolean("product_in_catalog").notNull().default(false),
     recommendation: text("recommendation"),
     scoreReason: text("score_reason"),
     aiNotes: text("ai_notes"),

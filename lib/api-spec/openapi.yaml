@@ -4577,6 +4577,24 @@ paths:
                 items:
                   $ref: "#/components/schemas/NextActionItem"
 
+  /analytics/v2/product-interest:
+    get:
+      operationId: getProductInterest
+      tags: [analytics]
+      summary: Top product interest + new-product demand from AI Pipeline analyses
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [today, 7d, 30d, custom] } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: channel, in: query, description: "Restrict to a single channel id. Omit for all channels the viewer can access.", schema: { type: integer } }
+      responses:
+        "200":
+          description: Product interest aggregation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductInterestResult"
+
   /report-schedules:
     get:
       operationId: listReportSchedules
@@ -7073,6 +7091,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AiPipelineDashboardStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-pipelines/{id}/product-interest:
+    get:
+      operationId: getAiPipelineProductInterest
+      tags: [ai-pipeline]
+      summary: Top product interest + new-product demand for a single pipeline (last 30 days)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product interest aggregation for this pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductInterestResult"
         "401":
           description: Unauthorized
           content:
@@ -14387,6 +14436,29 @@ components:
         topEscalationTopics:
           type: array
           items: { $ref: "#/components/schemas/EscalationTopic" }
+
+    ProductInterestItem:
+      type: object
+      required: [productInterest, productMatchedCode, productInCatalog, count, totalEstimatedValue]
+      properties:
+        productInterest: { type: string }
+        productMatchedCode: { type: string, nullable: true }
+        productInCatalog: { type: boolean }
+        count: { type: integer }
+        totalEstimatedValue: { type: integer, description: Sum of estimated values (whole Rupiah) }
+
+    ProductInterestResult:
+      type: object
+      required: [topProducts, unmatchedProducts, totalUnmatchedValue, period]
+      properties:
+        topProducts:
+          type: array
+          items: { $ref: "#/components/schemas/ProductInterestItem" }
+        unmatchedProducts:
+          type: array
+          items: { $ref: "#/components/schemas/ProductInterestItem" }
+        totalUnmatchedValue: { type: integer, description: Sum of estimated values for products not in catalog (whole Rupiah) }
+        period: { type: string, enum: [today, 7d, 30d, custom] }
 
     ChatHistoryItem:
       type: object

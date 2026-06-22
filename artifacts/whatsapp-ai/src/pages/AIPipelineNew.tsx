@@ -181,6 +181,8 @@ interface FormData {
   excludeLabelIds: number[];
   cutoffTimes: string[];
   scoreThreshold: number;
+  autoCreateOpportunity: boolean;
+  opportunityThreshold: number;
   autoFollowupEnabled: boolean;
   followupIntervals: string[];
 }
@@ -195,6 +197,8 @@ const DEFAULT_FORM: FormData = {
   excludeLabelIds: [],
   cutoffTimes: ["12:00", "23:59"],
   scoreThreshold: 70,
+  autoCreateOpportunity: false,
+  opportunityThreshold: 80,
   autoFollowupEnabled: false,
   followupIntervals: ["24h", "48h", "72h"],
 };
@@ -639,7 +643,54 @@ function Step3({
         </p>
       </div>
 
-      {/* E. Auto follow-up */}
+      {/* E. Auto-create opportunity */}
+      <div className="space-y-3 border rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Buat Opportunity Otomatis</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Kontak dengan skor tinggi otomatis menjadi opportunity di Sales Pipeline
+            </p>
+          </div>
+          <Switch
+            checked={data.autoCreateOpportunity}
+            onCheckedChange={(v) => onChange({ autoCreateOpportunity: v })}
+          />
+        </div>
+        {data.autoCreateOpportunity && (
+          <div className="space-y-3 pt-2 border-t">
+            <Label>Skor Minimum Buat Opportunity</Label>
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <Slider
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={[data.opportunityThreshold]}
+                  onValueChange={([v]) => onChange({ opportunityThreshold: v })}
+                />
+              </div>
+              <div
+                className="flex items-center justify-center w-16 h-10 rounded-lg font-bold text-white text-sm"
+                style={{ backgroundColor: scoreColor(data.opportunityThreshold) }}
+              >
+                {data.opportunityThreshold}
+              </div>
+            </div>
+            {data.opportunityThreshold < data.scoreThreshold ? (
+              <p className="text-xs text-destructive">
+                Skor opportunity ({data.opportunityThreshold}) harus ≥ skor masuk pipeline ({data.scoreThreshold}).
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Kontak dengan skor ≥ <strong>{data.opportunityThreshold}</strong> otomatis dibuatkan opportunity.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* F. Auto follow-up */}
       <div className="space-y-3 border rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -692,6 +743,8 @@ function Step3({
           <span>{data.cutoffTimes.join(", ")}</span>
           <span className="text-muted-foreground">Threshold pipeline</span>
           <span>{data.scoreThreshold}</span>
+          <span className="text-muted-foreground">Auto opportunity</span>
+          <span>{data.autoCreateOpportunity ? `Skor ≥ ${data.opportunityThreshold}` : "Nonaktif"}</span>
           <span className="text-muted-foreground">Auto follow-up</span>
           <span>
             {data.autoFollowupEnabled
@@ -707,7 +760,7 @@ function Step3({
         </Button>
         <Button
           onClick={onSubmit}
-          disabled={!canSubmit || (data.autoFollowupEnabled && data.followupIntervals.length === 0) || isSubmitting}
+          disabled={!canSubmit || (data.autoFollowupEnabled && data.followupIntervals.length === 0) || (data.autoCreateOpportunity && data.opportunityThreshold < data.scoreThreshold) || isSubmitting}
           className="gap-2"
         >
           {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -779,6 +832,9 @@ export default function AIPipelineNewPage() {
         excludeLabelIds: form.excludeLabelIds,
         cutoffTimes: [...form.cutoffTimes].sort(),
         scoreThreshold: form.scoreThreshold,
+        autoCreateOpportunity: form.autoCreateOpportunity,
+        // Clamp ≥ scoreThreshold so the server-side invariant always holds.
+        opportunityThreshold: Math.max(form.opportunityThreshold, form.scoreThreshold),
         autoFollowupEnabled: form.autoFollowupEnabled,
         followupIntervals: form.followupIntervals.slice(0, 3),
       },

@@ -486,3 +486,85 @@ export async function gatherAnomalyInputs(ownerUserId: number, now: Date = new D
     volumeByHourToday,
   };
 }
+
+// --- Product interest (Top Produk Diminati / Peluang Produk Baru) -----------
+// Aggregates ai_pipeline_analyses.product_interest over the period, scoped to
+// the owner and the viewer's channel set. product_in_catalog distinguishes
+// products already sold (status "Ada") from net-new demand (status "Baru").
+// Skipped / not-lead analyses carry no real interest, so they're excluded.
+
+export interface ProductInterestRow {
+  productInterest: string;
+  productMatchedCode: string | null;
+  productInCatalog: boolean;
+  count: number;
+  totalEstimatedValue: number;
+}
+
+export interface ProductInterestResult {
+  topProducts: ProductInterestRow[];
+  unmatchedProducts: ProductInterestRow[];
+  totalUnmatchedValue: number;
+  period: string;
+}
+
+export async function computeProductInterest(
+  ownerUserId: number,
+  p: ResolvedPeriod,
+  periodKey: PeriodKey,
+  channelIds?: number[],
+  pipelineId?: number,
+): Promise<ProductInterestResult> {
+  // Optional single-pipeline scope (AI Pipeline "Analitik" tab). When absent the
+  // aggregation spans every pipeline the owner has (Laporan & Jadwal surface).
+  const pipelineFilter = pipelineId != null ? sql`AND a.pipeline_id = ${pipelineId}` : sql``;
+  // Group case-insensitively on the trimmed interest so "Mesin UV" and "mesin uv"
+  // collapse, but surface the most recent original spelling for display.
+  const res = await db.execute(sql`
+    SELECT
+      (ARRAY_AGG(a.product_interest ORDER BY a.created_at DESC))[1] AS interest,
+      (ARRAY_AGG(a.product_matched_code ORDER BY a.created_at DESC)
+        FILTER (WHERE a.product_matched_code IS NOT NULL))[1] AS matched_code,
+      BOOL_OR(a.product_in_catalog) AS in_catalog,
+      COUNT(*)::int AS cnt,
+      COALESCE(SUM(a.estimated_value), 0)::bigint AS total_value
+    FROM ai_pipeline_analyses a
+    JOIN channels ch ON ch.id = a.channel_id
+    WHERE a.owner_user_id = ${ownerUserId}
+      AND ${chFilter(channelIds)}
+      ${pipelineFilter}
+      AND a.skipped = false
+      AND a.lead_classification <> 'not_lead'
+      AND a.product_interest IS NOT NULL
+      AND TRIM(a.product_interest) <> ''
+      AND a.created_at >= ${p.start.toISOString()}
+      AND a.created_at < ${p.end.toISOString()}
+    GROUP BY LOWER(TRIM(a.product_interest))
+    ORDER BY cnt DESC, total_value DESC
+    LIMIT 50
+  `);
+
+  const rows: ProductInterestRow[] = (res.rows as Array<{
+    interest: string;
+    matched_code: string | null;
+    in_catalog: boolean;
+    cnt: number;
+    total_value: string | number;
+  }>).map((r) => ({
+    productInterest: r.interest,
+    productMatchedCode: r.matched_code ?? null,
+    productInCatalog: Boolean(r.in_catalog),
+    count: Number(r.cnt),
+    totalEstimatedValue: Number(r.total_value),
+  }));
+
+  const unmatchedProducts = rows.filter((r) => !r.productInCatalog);
+  const totalUnmatchedValue = unmatchedProducts.reduce((s, r) => s + r.totalEstimatedValue, 0);
+
+  return {
+    topProducts: rows,
+    unmatchedProducts,
+    totalUnmatchedValue,
+    period: periodKey,
+  };
+}

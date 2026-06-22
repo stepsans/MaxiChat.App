@@ -7,6 +7,9 @@ import { getAllowedChannelIds } from "../lib/user-channel-access";
 import { getSystemHealth } from "../lib/system-health";
 import { getCachedTopQuestions } from "../lib/dashboard-insights";
 import { buildDrillPdf, buildDrillCsv } from "../lib/dashboard-pdf";
+import { startOfWibDay } from "../lib/timezone";
+import { getLatestSnapshot, refreshOwnerSnapshot } from "../lib/dashboard-snapshot";
+import { agentKpiLeaderboard, type AgentKpiDimension } from "../lib/agent-kpi";
 import {
   type DashboardRange,
   conversationCount,
@@ -31,10 +34,9 @@ function parseRange(req: Request): DashboardRange {
   const now = new Date();
   const fromRaw = typeof req.query.from === "string" ? new Date(req.query.from) : null;
   const toRaw = typeof req.query.to === "string" ? new Date(req.query.to) : null;
+  // Default window = "today" anchored to 00:00 WIB (not server-local / UTC).
   const from =
-    fromRaw && !Number.isNaN(fromRaw.getTime())
-      ? fromRaw
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    fromRaw && !Number.isNaN(fromRaw.getTime()) ? fromRaw : startOfWibDay(now);
   const to = toRaw && !Number.isNaN(toRaw.getTime()) ? toRaw : now;
   return { from, to };
 }
@@ -63,9 +65,10 @@ router.get(
   }
 );
 
-// GET /dashboard/summary — KPI cards for the range (spec 5.1). Owner-only signals
-// (lead panas, customer tidak puas) are included for the owner; CS-operational
-// signals for everyone who can view. Money cards (Won) land in a later phase.
+// GET /dashboard/summary — KPI cards for the range (spec 5.1 / 3.6). For an
+// owner viewing "Hari ini" the heavy analytic metrics come from the latest
+// pre-computed snapshot (instant); the queue ("Belum dibalas", chat aktif saya,
+// FRT) is always computed live & cheap. Agents and report ranges compute live.
 router.get(
   "/summary",
   requirePermission("dashboard", "view"),
@@ -75,24 +78,55 @@ router.get(
     const allowed = await getAllowedChannelIds(uid);
     const range = parseRange(req);
     const isOwner = uid === ownerUserId;
+    const now = new Date();
+    const isToday = Math.abs(range.from.getTime() - startOfWibDay(now).getTime()) < 60_000;
 
-    const [percakapan, belumDibalas, avgFrt, aiPct, myActive, leadStatus] = await Promise.all([
-      conversationCount(allowed, range),
+    // Always-live, cheap queue metrics (CS needs real-time; never cached).
+    const [belumDibalas, myActive, avgFrt] = await Promise.all([
       waitingCompanyCount(allowed),
-      avgFirstResponseSeconds(allowed, range),
-      aiHandledPercent(allowed, range),
       myActiveChatCount(allowed, uid),
-      leadStatusCounts(allowed, range),
+      avgFirstResponseSeconds(allowed, range),
     ]);
 
-    // Owner-facing AI + money signals.
-    const [leadPanas, tidakPuas, won] = isOwner
-      ? await Promise.all([
-          hotLeadCount(allowed, range),
-          dissatisfiedCount(allowed, range),
-          wonMetric(allowed, range),
-        ])
-      : [null, null, null];
+    type Percakapan = Awaited<ReturnType<typeof conversationCount>>;
+    type Won = Awaited<ReturnType<typeof wonMetric>>;
+    let percakapan: Percakapan;
+    let aiPct: number | null;
+    let leadStatus: Awaited<ReturnType<typeof leadStatusCounts>>;
+    let leadPanas: number | null;
+    let tidakPuas: number | null;
+    let won: Won | null;
+    let narrative: Record<string, unknown> | null = null;
+    let updatedAt: string;
+    let fromSnapshot = false;
+
+    const snap = isOwner && isToday ? await getLatestSnapshot(ownerUserId) : null;
+    if (snap) {
+      const p = snap.payload;
+      percakapan = p.percakapan;
+      aiPct = p.ai_handled_percent;
+      leadStatus = p.lead_status;
+      leadPanas = p.lead_panas;
+      tidakPuas = p.tidak_puas;
+      won = p.won;
+      narrative = p.narrative ?? null;
+      updatedAt = snap.snapshotAt.toISOString();
+      fromSnapshot = true;
+    } else {
+      [percakapan, aiPct, leadStatus] = await Promise.all([
+        conversationCount(allowed, range),
+        aiHandledPercent(allowed, range),
+        leadStatusCounts(allowed, range),
+      ]);
+      [leadPanas, tidakPuas, won] = isOwner
+        ? await Promise.all([
+            hotLeadCount(allowed, range),
+            dissatisfiedCount(allowed, range),
+            wonMetric(allowed, range),
+          ])
+        : [null, null, null];
+      updatedAt = now.toISOString();
+    }
 
     res.json({
       role: isOwner ? "owner" : "cs",
@@ -106,7 +140,34 @@ router.get(
       tidak_puas: tidakPuas,
       won,
       lead_status: leadStatus,
+      narrative,
+      updated_at: updatedAt,
+      from_snapshot: fromSnapshot,
     });
+  }
+);
+
+// POST /dashboard/refresh — owner-only manual snapshot recompute ("Refresh
+// sekarang", spec 3.6). Lightweight rate-limit: skip if the latest snapshot is
+// under 60s old.
+router.post(
+  "/refresh",
+  requirePermission("dashboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const ownerUserId = await resolveOwnerUserId(uid);
+    if (uid !== ownerUserId) {
+      res.status(403).json({ error: "Hanya owner yang dapat me-refresh snapshot." });
+      return;
+    }
+    const latest = await getLatestSnapshot(ownerUserId);
+    if (latest && Date.now() - latest.createdAt.getTime() < 60_000) {
+      res.json({ ok: true, skipped: true, updated_at: latest.snapshotAt.toISOString() });
+      return;
+    }
+    await refreshOwnerSnapshot(ownerUserId);
+    const fresh = await getLatestSnapshot(ownerUserId);
+    res.json({ ok: true, updated_at: fresh?.snapshotAt.toISOString() ?? null });
   }
 );
 
@@ -151,6 +212,29 @@ router.get(
       volume_by_hour: volumeByHour,
       ai_vs_human: aiVsHuman,
     });
+  }
+);
+
+const AGENT_KPI_DIMENSIONS: AgentKpiDimension[] = [
+  "kpi",
+  "speed",
+  "lang",
+  "accuracy",
+  "complaint",
+  "unanswered",
+];
+
+// GET /dashboard/agent-kpi?dimension — Papan KPI Agent leaderboard (spec 5.4),
+// sourced from the latest completed ACR job's per-agent scores.
+router.get(
+  "/agent-kpi",
+  requirePermission("dashboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const ownerUserId = await resolveOwnerUserId(uid);
+    const raw = String(req.query.dimension ?? "kpi") as AgentKpiDimension;
+    const dimension = AGENT_KPI_DIMENSIONS.includes(raw) ? raw : "kpi";
+    res.json(await agentKpiLeaderboard(ownerUserId, dimension));
   }
 );
 

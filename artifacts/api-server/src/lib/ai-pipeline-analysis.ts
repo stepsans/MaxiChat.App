@@ -14,7 +14,10 @@ import {
   leadFeedbackTable,
   leadReviewRequestsTable,
   tenantAiMemoriesTable,
+  tenantSettingsTable,
+  productsTable,
 } from "@workspace/db";
+import { buildProductCatalogText } from "./product-catalog";
 import { resolveAiClient } from "./ai-provider";
 import { TokenQuotaExceededError } from "./ai-quota";
 import { recordDeferredJob } from "./ai-deferred-jobs";
@@ -48,6 +51,12 @@ interface AiAnalysisResult {
   status: string;
   estimatedValue: number;
   productInterest: string;
+  // Catalog match: the product code the interest maps to (validated against the
+  // tenant catalog so the model can't invent a code), and whether it exists in
+  // the catalog. productInCatalog=false on a non-empty productInterest = demand
+  // for a product the tenant doesn't sell yet.
+  productMatchedCode: string | null;
+  productInCatalog: boolean;
   recommendation: string;
   scoreReason: string;
   aiNotes: string;
@@ -102,6 +111,11 @@ function buildOutputContract(): string {
 
 Total skor = jumlah semua dimensi (0-100).
 
+PENCOCOKAN PRODUK (gunakan KATALOG PRODUK TENANT di atas, bila ada):
+- productInterest = produk/jasa yang diminati customer, pakai kata customer apa adanya.
+- productMatchedCode = kode (field "kode:") dari katalog yang paling cocok secara SEMANTIK dengan minat customer (mis. "printer uv a3" cocok dengan "Mesin UV DTF A3"). null bila tidak ada yang cocok atau katalog kosong. JANGAN mengarang kode yang tidak ada di katalog.
+- productInCatalog = true bila productMatchedCode terisi (produk ADA di katalog), false bila customer meminta produk yang TIDAK ada di katalog.
+
 Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
 {
   "conversation_role": "tenant_is_seller" | "tenant_is_buyer" | "unclear",
@@ -120,7 +134,9 @@ Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
   },
   "status": "<hot|warm|cold>",
   "estimatedValue": <integer dalam Rupiah, 0 jika tidak ada indikasi>,
-  "productInterest": "<produk/jasa yang diminati, kosong jika tidak ada>",
+  "productInterest": "<produk/jasa yang diminati (kata customer apa adanya), kosong jika tidak ada>",
+  "productMatchedCode": "<kode produk dari katalog yang cocok, atau null bila tidak ada>",
+  "productInCatalog": <true bila productMatchedCode terisi, selain itu false>,
   "recommendation": "<rekomendasi tindak lanjut, 1-2 kalimat>",
   "scoreReason": "<alasan skor dalam 1-2 kalimat>",
   "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
@@ -177,6 +193,11 @@ ${lessonsBlock}${CLASSIFICATION_INSTRUCTION}Beri skor berdasarkan 6 dimensi:
 
 Total skor = jumlah semua dimensi (0-100).
 
+PENCOCOKAN PRODUK (gunakan KATALOG PRODUK TENANT di atas, bila ada):
+- productInterest = produk/jasa yang diminati customer, pakai kata customer apa adanya.
+- productMatchedCode = kode (field "kode:") dari katalog yang paling cocok secara SEMANTIK dengan minat customer (mis. "printer uv a3" cocok dengan "Mesin UV DTF A3"). null bila tidak ada yang cocok atau katalog kosong. JANGAN mengarang kode yang tidak ada di katalog.
+- productInCatalog = true bila productMatchedCode terisi (produk ADA di katalog), false bila customer meminta produk yang TIDAK ada di katalog.
+
 Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
 {
   "conversation_role": "tenant_is_seller" | "tenant_is_buyer" | "unclear",
@@ -195,7 +216,9 @@ Balas HANYA dengan JSON valid (tanpa markdown, tanpa komentar):
   },
   "status": "<hot|warm|cold>",
   "estimatedValue": <integer dalam Rupiah, 0 jika tidak ada indikasi>,
-  "productInterest": "<produk/jasa yang diminati, kosong jika tidak ada>",
+  "productInterest": "<produk/jasa yang diminati (kata customer apa adanya), kosong jika tidak ada>",
+  "productMatchedCode": "<kode produk dari katalog yang cocok, atau null bila tidak ada>",
+  "productInCatalog": <true bila productMatchedCode terisi, selain itu false>,
   "recommendation": "<rekomendasi tindak lanjut, 1-2 kalimat>",
   "scoreReason": "<alasan skor dalam 1-2 kalimat>",
   "aiNotes": "<catatan tambahan relevan, kosong jika tidak ada>",
@@ -273,6 +296,24 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
 
     // Resolve AI client once.
     const { client, model, provider, ownerUserId } = await resolveAiClient(pipeline.ownerUserId);
+
+    // Load tenant business profile + product catalog ONCE for the whole run —
+    // every chat is judged against what this tenant actually sells. productCodes
+    // is the authoritative set used to validate the model's catalog match.
+    const [tenantSettings, productRows] = await Promise.all([
+      db.query.tenantSettingsTable.findFirst({
+        where: eq(tenantSettingsTable.ownerUserId, pipeline.ownerUserId),
+        columns: { systemPrompt: true },
+      }),
+      db
+        .select()
+        .from(productsTable)
+        .where(eq(productsTable.userId, pipeline.ownerUserId))
+        .limit(200),
+    ]);
+    const systemPrompt = tenantSettings?.systemPrompt ?? null;
+    const productCatalogText = buildProductCatalogText(productRows);
+    const productCodes = new Set(productRows.map((p) => p.code.toUpperCase()));
 
 
     // Find all chats in these channels that have had messages in the window.
@@ -352,6 +393,9 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           windowEnd,
           channelType: channelTypeMap.get(chat.channelId) ?? null,
           customPrompt: pipeline.customPrompt,
+          systemPrompt,
+          productCatalogText,
+          productCodes,
           client,
           model,
           provider,
@@ -394,6 +438,8 @@ export async function runCutoffAnalysis(cutoffLogId: number): Promise<void> {
           status: result.status,
           estimatedValue: result.estimatedValue || null,
           productInterest: result.productInterest || null,
+          productMatchedCode: result.productMatchedCode,
+          productInCatalog: result.productInCatalog,
           recommendation: result.recommendation || null,
           scoreReason: result.scoreReason || null,
           aiNotes: result.aiNotes || null,
@@ -555,12 +601,19 @@ async function analyzeChat(opts: {
   windowEnd: Date;
   channelType: string | null;
   customPrompt: string | null;
+  // Tenant business profile + product catalog, fetched once per cut-off run and
+  // shared across every chat so the model judges relevance/product-fit against
+  // what this tenant actually sells. productCodes is the validated set of real
+  // catalog codes — the model's productMatchedCode is rejected unless it's here.
+  systemPrompt: string | null;
+  productCatalogText: string;
+  productCodes: Set<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client: any;
   model: string;
   provider: string;
 }): Promise<AiAnalysisResult | null> {
-  const { chat, windowStart, windowEnd, channelType, customPrompt, client, model, provider, ownerUserId } = opts;
+  const { chat, windowStart, windowEnd, channelType, customPrompt, systemPrompt, productCatalogText, productCodes, client, model, provider, ownerUserId } = opts;
 
   // GUARD 1 — user manually marked this contact not_lead → skip entirely, no AI,
   // no analysis row (manual classification always wins). Returns null so the
@@ -641,7 +694,17 @@ async function analyzeChat(opts: {
     getTenantMemoryBlock(ownerUserId),
     getRecentLessonsBlock(ownerUserId),
   ]);
-  const teachingBlock = `${memoryBlock}${lessonsBlock}`;
+
+  // Business profile + product catalog (shared across the whole cut-off run).
+  // Placed before the teaching/lessons block so the model anchors relevance and
+  // product-fit on what the tenant actually sells. Both are optional — fall back
+  // to a short note when absent rather than emitting an empty header.
+  const businessProfile = (systemPrompt ?? "").trim();
+  const businessBlock =
+    `=== PROFIL BISNIS TENANT ===\n${businessProfile || "Tidak ada profil bisnis."}\n\n` +
+    `=== KATALOG PRODUK TENANT ===\n${productCatalogText.trim() || "Tidak ada katalog produk terdaftar — gunakan profil bisnis saja."}\n\n`;
+
+  const teachingBlock = `${businessBlock}${memoryBlock}${lessonsBlock}`;
 
   // A tenant-supplied custom prompt overrides the default scoring persona; the
   // system still appends the transcript + fixed JSON contract so output parses.
@@ -741,12 +804,23 @@ async function analyzeChat(opts: {
     .digest("hex")
     .slice(0, 8);
 
+  // Product catalog match. Validate the model's code against the real catalog so
+  // a hallucinated code can never set productInCatalog=true. A non-empty interest
+  // with no valid match → productInCatalog=false = new-product demand signal.
+  const productInterest = typeof parsed.productInterest === "string" ? parsed.productInterest : "";
+  const rawMatchedCode = parseNullableText(parsed.productMatchedCode);
+  const productMatchedCode =
+    rawMatchedCode && productCodes.has(rawMatchedCode.toUpperCase()) ? rawMatchedCode : null;
+  const productInCatalog = productMatchedCode !== null;
+
   return {
     score,
     scoreBreakdown: breakdown,
     status: typeof parsed.status === "string" ? parsed.status : "cold",
     estimatedValue: typeof parsed.estimatedValue === "number" ? Math.max(0, Math.floor(parsed.estimatedValue)) : 0,
-    productInterest: typeof parsed.productInterest === "string" ? parsed.productInterest : "",
+    productInterest,
+    productMatchedCode,
+    productInCatalog,
     recommendation: typeof parsed.recommendation === "string" ? parsed.recommendation : "",
     scoreReason: typeof parsed.scoreReason === "string" ? parsed.scoreReason : "",
     aiNotes: typeof parsed.aiNotes === "string" ? parsed.aiNotes : "",
@@ -909,6 +983,8 @@ function buildSkippedResult(
     status: "Tidak relevan",
     estimatedValue: 0,
     productInterest: "",
+    productMatchedCode: null,
+    productInCatalog: false,
     recommendation: "",
     scoreReason: "",
     aiNotes: "",

@@ -45,7 +45,12 @@ export interface SystemHealth {
   overall: "ok" | "warning" | "critical";
 }
 
-const TRACKED_JOBS = ["ai_chat_report", "agent_quality", "crm_followup_poller"] as const;
+const TRACKED_JOBS = [
+  "ai_chat_report",
+  "agent_quality",
+  "crm_followup_poller",
+  "dashboard_snapshot",
+] as const;
 
 export async function getSystemHealth(params: {
   ownerUserId: number;

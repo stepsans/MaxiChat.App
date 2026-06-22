@@ -175,6 +175,7 @@ import type {
   GetMyBillingTrendParams,
   GetMyCreditWalletUsageParams,
   GetNextActionsParams,
+  GetProductInterestParams,
   GetProductSyncConfig200,
   GetSalesOrderSyncConfig200,
   GetShortcutSyncConfig200,
@@ -249,6 +250,7 @@ import type {
   PricingConfig,
   Product,
   ProductInput,
+  ProductInterestResult,
   ProductSyncConfigInput,
   ProrationResult,
   PurgeChatsResult,
@@ -15324,6 +15326,90 @@ export function useGetNextActions<TData = Awaited<ReturnType<typeof getNextActio
 
 
 
+export const getGetProductInterestUrl = (params?: GetProductInterestParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/analytics/v2/product-interest?${stringifiedParams}` : `/api/analytics/v2/product-interest`
+}
+
+/**
+ * @summary Top product interest + new-product demand from AI Pipeline analyses
+ */
+export const getProductInterest = async (params?: GetProductInterestParams, options?: RequestInit): Promise<ProductInterestResult> => {
+
+  return customFetch<ProductInterestResult>(getGetProductInterestUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProductInterestQueryKey = (params?: GetProductInterestParams,) => {
+    return [
+    `/api/analytics/v2/product-interest`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetProductInterestQueryOptions = <TData = Awaited<ReturnType<typeof getProductInterest>>, TError = ErrorType<unknown>>(params?: GetProductInterestParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProductInterestQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProductInterest>>> = ({ signal }) => getProductInterest(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProductInterest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProductInterestQueryResult = NonNullable<Awaited<ReturnType<typeof getProductInterest>>>
+export type GetProductInterestQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Top product interest + new-product demand from AI Pipeline analyses
+ */
+
+export function useGetProductInterest<TData = Awaited<ReturnType<typeof getProductInterest>>, TError = ErrorType<unknown>>(
+ params?: GetProductInterestParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProductInterestQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getListReportSchedulesUrl = () => {
 
 
@@ -21586,6 +21672,83 @@ export function useGetAiPipelineDashboardStats<TData = Awaited<ReturnType<typeof
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAiPipelineDashboardStatsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAiPipelineProductInterestUrl = (id: number,) => {
+
+
+
+
+  return `/api/ai-pipelines/${id}/product-interest`
+}
+
+/**
+ * @summary Top product interest + new-product demand for a single pipeline (last 30 days)
+ */
+export const getAiPipelineProductInterest = async (id: number, options?: RequestInit): Promise<ProductInterestResult> => {
+
+  return customFetch<ProductInterestResult>(getGetAiPipelineProductInterestUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAiPipelineProductInterestQueryKey = (id: number,) => {
+    return [
+    `/api/ai-pipelines/${id}/product-interest`
+    ] as const;
+    }
+
+
+export const getGetAiPipelineProductInterestQueryOptions = <TData = Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAiPipelineProductInterestQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiPipelineProductInterest>>> = ({ signal }) => getAiPipelineProductInterest(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAiPipelineProductInterestQueryResult = NonNullable<Awaited<ReturnType<typeof getAiPipelineProductInterest>>>
+export type GetAiPipelineProductInterestQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Top product interest + new-product demand for a single pipeline (last 30 days)
+ */
+
+export function useGetAiPipelineProductInterest<TData = Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiPipelineProductInterest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAiPipelineProductInterestQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

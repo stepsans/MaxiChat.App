@@ -1,5 +1,5 @@
 import { usePermissions } from "@/hooks/use-permissions";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListProducts,
@@ -281,14 +281,30 @@ export default function Products() {
     },
   });
 
-  const openCreate = () => {
+  const openCreate = (prefillName?: string) => {
     setEditing(null);
-    setForm({ ...emptyForm });
+    setForm({ ...emptyForm, ...(prefillName ? { name: prefillName } : {}) });
     setImageUrl(null);
     setVideoUrls([]);
     setChannelIds([]);
     setDialogOpen(true);
   };
+
+  // Deep link from "Peluang Produk Baru" (Laporan & Jadwal): /products?prefill_name=
+  // opens the add-product dialog pre-filled with the requested product name, then
+  // strips the param so a refresh doesn't reopen it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefill = params.get("prefill_name");
+    if (prefill) {
+      openCreate(prefill);
+      params.delete("prefill_name");
+      const qs = params.toString();
+      window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    }
+    // Run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openEdit = (p: Product) => {
     setEditing(p);
@@ -604,7 +620,7 @@ export default function Products() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button data-testid="button-add-product" size="sm" onClick={openCreate}>
+          <Button data-testid="button-add-product" size="sm" onClick={() => openCreate()}>
             <Plus className="w-3.5 h-3.5 mr-1.5" />
             Tambah Produk
           </Button>

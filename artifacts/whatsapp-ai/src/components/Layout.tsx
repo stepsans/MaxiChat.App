@@ -24,6 +24,7 @@ import {
   Camera,
   Cpu,
   ReceiptText,
+  BarChart2,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import { useQueryClient } from "@tanstack/react-query";
@@ -101,6 +102,7 @@ const navGroups: NavGroup[] = [
         requiresAiSalesAssistant: true,
       },
       { href: "/learning-inbox", label: "Learning Inbox", icon: GraduationCap, menu: "chats" },
+      { href: "/analytics", label: "Laporan & Jadwal", icon: BarChart2, menu: "analytics" },
       { href: "/usage", label: "Pemakaian Token", icon: Cpu, menu: "usage" },
     ],
   },

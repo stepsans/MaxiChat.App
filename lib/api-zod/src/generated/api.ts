@@ -4700,6 +4700,36 @@ export const GetNextActionsResponse = zod.array(GetNextActionsResponseItem)
 
 
 /**
+ * @summary Top product interest + new-product demand from AI Pipeline analyses
+ */
+export const GetProductInterestQueryParams = zod.object({
+  "period": zod.enum(['today', '7d', '30d', 'custom']).optional(),
+  "from": zod.coerce.string().optional(),
+  "to": zod.coerce.string().optional(),
+  "channel": zod.coerce.number().optional().describe('Restrict to a single channel id. Omit for all channels the viewer can access.')
+})
+
+export const GetProductInterestResponse = zod.object({
+  "topProducts": zod.array(zod.object({
+  "productInterest": zod.string(),
+  "productMatchedCode": zod.string().nullable(),
+  "productInCatalog": zod.boolean(),
+  "count": zod.number(),
+  "totalEstimatedValue": zod.number().describe('Sum of estimated values (whole Rupiah)')
+})),
+  "unmatchedProducts": zod.array(zod.object({
+  "productInterest": zod.string(),
+  "productMatchedCode": zod.string().nullable(),
+  "productInCatalog": zod.boolean(),
+  "count": zod.number(),
+  "totalEstimatedValue": zod.number().describe('Sum of estimated values (whole Rupiah)')
+})),
+  "totalUnmatchedValue": zod.number().describe('Sum of estimated values for products not in catalog (whole Rupiah)'),
+  "period": zod.enum(['today', '7d', '30d', 'custom'])
+})
+
+
+/**
  * @summary List the owner's report schedules
  */
 export const ListReportSchedulesResponseItem = zod.object({
@@ -7249,6 +7279,33 @@ export const GetAiPipelineDashboardStatsResponse = zod.object({
   "status": zod.string().optional(),
   "completedAt": zod.coerce.date().nullish()
 }))
+})
+
+
+/**
+ * @summary Top product interest + new-product demand for a single pipeline (last 30 days)
+ */
+export const GetAiPipelineProductInterestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAiPipelineProductInterestResponse = zod.object({
+  "topProducts": zod.array(zod.object({
+  "productInterest": zod.string(),
+  "productMatchedCode": zod.string().nullable(),
+  "productInCatalog": zod.boolean(),
+  "count": zod.number(),
+  "totalEstimatedValue": zod.number().describe('Sum of estimated values (whole Rupiah)')
+})),
+  "unmatchedProducts": zod.array(zod.object({
+  "productInterest": zod.string(),
+  "productMatchedCode": zod.string().nullable(),
+  "productInCatalog": zod.boolean(),
+  "count": zod.number(),
+  "totalEstimatedValue": zod.number().describe('Sum of estimated values (whole Rupiah)')
+})),
+  "totalUnmatchedValue": zod.number().describe('Sum of estimated values for products not in catalog (whole Rupiah)'),
+  "period": zod.enum(['today', '7d', '30d', 'custom'])
 })
 
 

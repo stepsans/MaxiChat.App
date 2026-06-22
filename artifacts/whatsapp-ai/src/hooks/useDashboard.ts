@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export interface DashboardRange {
   from: string; // ISO
@@ -17,6 +17,15 @@ export interface DashboardSummary {
   tidak_puas: number | null;
   won: { count: number; value: number } | null;
   lead_status: { lead: number; not_lead: number; unknown: number };
+  narrative: DailyNarrative | null;
+  updated_at: string;
+  from_snapshot: boolean;
+}
+
+export interface DailyNarrative {
+  ringkasan?: string;
+  sorotan?: string[];
+  rekomendasi?: string[];
 }
 
 export interface DrillRow {
@@ -49,6 +58,25 @@ export function useDashboardSummary(range: DashboardRange, live: boolean) {
     queryKey: ["/api/dashboard/summary", range.from, range.to],
     queryFn: () => apiFetch(`/api/dashboard/summary?${qs(range)}`),
     refetchInterval: live ? 30_000 : false,
+  });
+}
+
+// Manual snapshot recompute ("Refresh sekarang", spec 3.6). Invalidates the
+// summary so the fresh "diperbarui" time shows.
+export function useDashboardRefresh() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean; updated_at: string | null }>({
+    mutationFn: async () => {
+      const res = await fetch("/api/dashboard/refresh", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+    },
   });
 }
 
@@ -102,6 +130,39 @@ export function useDashboardTopQuestions(enabled: boolean) {
   return useQuery<{ questions: TopQuestion[]; windowDays: number; computedAt: string | null }>({
     queryKey: ["/api/dashboard/top-questions"],
     queryFn: () => apiFetch(`/api/dashboard/top-questions`),
+    enabled,
+  });
+}
+
+export type AgentKpiDimension =
+  | "kpi"
+  | "speed"
+  | "lang"
+  | "accuracy"
+  | "complaint"
+  | "unanswered";
+
+export interface AgentKpiRow {
+  agentUserId: number;
+  name: string;
+  value: number | null;
+  grade: string;
+  insufficientData: boolean;
+}
+
+export interface AgentKpiResult {
+  dimension: AgentKpiDimension;
+  ascending: boolean;
+  jobId: string | null;
+  periodEnd: string | null;
+  rows: AgentKpiRow[];
+}
+
+// Papan KPI Agent leaderboard for one dimension (spec 5.4).
+export function useDashboardAgentKpi(dimension: AgentKpiDimension, enabled: boolean) {
+  return useQuery<AgentKpiResult>({
+    queryKey: ["/api/dashboard/agent-kpi", dimension],
+    queryFn: () => apiFetch(`/api/dashboard/agent-kpi?dimension=${dimension}`),
     enabled,
   });
 }

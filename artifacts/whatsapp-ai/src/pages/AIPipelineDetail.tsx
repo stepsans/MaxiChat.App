@@ -16,6 +16,8 @@ import {
   useGetAiPipeline,
   useListAiPipelines,
   useGetAiPipelineDashboardStats,
+  useGetAiPipelineProductInterest,
+  getGetAiPipelineProductInterestQueryKey,
   useListAiPipelineAnalyses,
   useListAiPipelineEntries,
   useGetAiPipelineEntry,
@@ -89,6 +91,8 @@ import {
   FlaskConical,
   History,
 } from "lucide-react";
+import { TopProductsTable } from "@/components/analytics/TopProductsTable";
+import { NewProductOpportunity } from "@/components/analytics/NewProductOpportunity";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -329,6 +333,11 @@ function DashboardTab({ pipelineId }: { pipelineId: number }) {
   const { data: entriesData } = useListAiPipelineEntries(pipelineId, { pageSize: 500 });
   const entries = entriesData?.data ?? [];
 
+  // Top Produk Diminati + Peluang Produk Baru for this pipeline (last 30 days).
+  const { data: productData, isLoading: productLoading } = useGetAiPipelineProductInterest(pipelineId, {
+    query: { queryKey: getGetAiPipelineProductInterestQueryKey(pipelineId) },
+  });
+
   // Compute pipeline-level metrics from entries
   const terminalStatuses = new Set<string>(KANBAN_COLUMNS.filter((c) => c.isTerminal).map((c) => c.id));
   const activeEntries = entries.filter((e) => !terminalStatuses.has(e.status));
@@ -534,6 +543,15 @@ function DashboardTab({ pipelineId }: { pipelineId: number }) {
           </div>
         )}
       </div>
+
+      {/* ── Produk Diminati + Peluang Produk Baru (30 hari) ── */}
+      <TopProductsTable rows={productData?.topProducts} loading={productLoading} period="30d" />
+      <NewProductOpportunity
+        rows={productData?.unmatchedProducts}
+        loading={productLoading}
+        totalUnmatchedValue={productData?.totalUnmatchedValue ?? 0}
+        period="30d"
+      />
 
       {/* ── Analisa Terbaru (enhanced) ── */}
       <div className="rounded-xl border bg-card p-4 space-y-2">
@@ -2165,6 +2183,8 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
   const [isActive, setIsActive] = useState(pipeline.isActive);
   const [cutoffTimes, setCutoffTimes] = useState<string[]>(pipeline.cutoffTimes);
   const [scoreThreshold, setScoreThreshold] = useState(pipeline.scoreThreshold);
+  const [autoCreateOpportunity, setAutoCreateOpportunity] = useState(pipeline.autoCreateOpportunity ?? false);
+  const [opportunityThreshold, setOpportunityThreshold] = useState(pipeline.opportunityThreshold ?? 80);
   const [autoFollowupEnabled, setAutoFollowupEnabled] = useState(pipeline.autoFollowupEnabled ?? false);
   const [followupIntervals, setFollowupIntervals] = useState<string[]>(
     (pipeline.followupIntervals as string[] | null) ?? []
@@ -2247,6 +2267,8 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
         excludeLabelIds,
         cutoffTimes: [...cutoffTimes].sort(),
         scoreThreshold,
+        autoCreateOpportunity,
+        opportunityThreshold: Math.max(opportunityThreshold, scoreThreshold),
         autoFollowupEnabled,
         followupIntervals: followupIntervals.slice(0, 3),
         customPrompt: customPrompt.trim() || undefined,
@@ -2489,6 +2511,29 @@ function SettingsTab({ pipeline, onDeleted }: { pipeline: AiPipeline; onDeleted:
       <div className="space-y-3">
         <Label>Skor Minimum Pipeline: {scoreThreshold}</Label>
         <Slider min={0} max={100} step={1} value={[scoreThreshold]} onValueChange={([v]) => setScoreThreshold(v)} />
+      </div>
+
+      <div className="space-y-3 border rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Buat Opportunity Otomatis</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Kontak skor tinggi otomatis menjadi opportunity di Sales Pipeline
+            </p>
+          </div>
+          <Switch checked={autoCreateOpportunity} onCheckedChange={setAutoCreateOpportunity} />
+        </div>
+        {autoCreateOpportunity && (
+          <div className="space-y-2 pt-2 border-t">
+            <Label>Skor Minimum Buat Opportunity: {opportunityThreshold}</Label>
+            <Slider min={0} max={100} step={1} value={[opportunityThreshold]} onValueChange={([v]) => setOpportunityThreshold(v)} />
+            {opportunityThreshold < scoreThreshold && (
+              <p className="text-xs text-destructive">
+                Skor opportunity harus ≥ skor masuk pipeline ({scoreThreshold}).
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-3 border rounded-lg p-4">
