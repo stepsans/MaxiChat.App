@@ -13,10 +13,13 @@ import {
   workboardNotificationsTable,
   workboardTaskEventsTable,
   usersTable,
+  chatsTable,
+  channelsTable,
   type WorkboardBoardMemberRow,
 } from "@workspace/db";
-import { getSessionUserId } from "../lib/auth";
+import { getSessionUserId, getEffectiveOwnerUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
+import { startOfWibDay } from "../lib/timezone";
 import { requirePermission } from "../lib/role-permissions";
 import { parseMentionIds } from "../lib/workboard-mentions";
 import { notifyWorkboardMentions } from "../lib/workboard-notify";
@@ -83,6 +86,137 @@ async function getTaskAssignees(taskIds: number[]) {
     .leftJoin(usersTable, eq(workboardTaskAssigneesTable.userId, usersTable.id))
     .where(inArray(workboardTaskAssigneesTable.taskId, taskIds));
 }
+
+// ─── MY TASKS (dashboard) ─────────────────────────────────────────────────────
+// GET /workboard/my-tasks — tasks assigned to OR @mentioning the current user,
+// scoped to their tenant. Feeds the mobile dashboard "Tugas WorkBoard" section
+// (and the agent dashboard). Gated workboard.view (agents have it by default).
+router.get(
+  "/my-tasks",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const ownerUserId = await getEffectiveOwnerUserId(uid);
+
+    const taskCols = {
+      taskId: workboardTasksTable.id,
+      boardId: workboardTasksTable.boardId,
+      boardName: workboardBoardsTable.name,
+      boardEmoji: workboardBoardsTable.emoji,
+      boardColor: workboardBoardsTable.color,
+      columnId: workboardTasksTable.columnId,
+      title: workboardTasksTable.title,
+      dueDate: workboardTasksTable.dueDate,
+      priority: workboardTasksTable.priority,
+      isCompleted: workboardTasksTable.isCompleted,
+    };
+
+    // Assigned to me, still open, within my tenant. Soonest due first.
+    const assignedRows = await db
+      .select(taskCols)
+      .from(workboardTaskAssigneesTable)
+      .innerJoin(
+        workboardTasksTable,
+        eq(workboardTasksTable.id, workboardTaskAssigneesTable.taskId)
+      )
+      .innerJoin(
+        workboardBoardsTable,
+        eq(workboardBoardsTable.id, workboardTasksTable.boardId)
+      )
+      .where(
+        and(
+          eq(workboardTaskAssigneesTable.userId, uid),
+          eq(workboardBoardsTable.ownerUserId, ownerUserId),
+          eq(workboardTasksTable.isCompleted, false)
+        )
+      )
+      .orderBy(asc(workboardTasksTable.dueDate), asc(workboardTasksTable.id))
+      .limit(100);
+
+    // Tasks where a comment @mentions me. May yield several rows per task; keep
+    // the most recent mention per task (rows are newest-first).
+    const mentionRows = await db
+      .select({
+        ...taskCols,
+        commentId: workboardTaskCommentsTable.id,
+        mentionedAt: workboardTaskCommentsTable.createdAt,
+        mentionedBy: usersTable.name,
+      })
+      .from(workboardCommentMentionsTable)
+      .innerJoin(
+        workboardTaskCommentsTable,
+        eq(workboardTaskCommentsTable.id, workboardCommentMentionsTable.commentId)
+      )
+      .innerJoin(
+        workboardTasksTable,
+        eq(workboardTasksTable.id, workboardTaskCommentsTable.taskId)
+      )
+      .innerJoin(
+        workboardBoardsTable,
+        eq(workboardBoardsTable.id, workboardTasksTable.boardId)
+      )
+      .leftJoin(usersTable, eq(usersTable.id, workboardTaskCommentsTable.authorUserId))
+      .where(
+        and(
+          eq(workboardCommentMentionsTable.mentionedUserId, uid),
+          eq(workboardBoardsTable.ownerUserId, ownerUserId)
+        )
+      )
+      .orderBy(desc(workboardTaskCommentsTable.createdAt))
+      .limit(200);
+
+    const toTask = (r: typeof assignedRows[number]) => ({
+      taskId: r.taskId,
+      boardId: r.boardId,
+      boardName: r.boardName,
+      boardEmoji: r.boardEmoji,
+      boardColor: r.boardColor,
+      columnId: r.columnId,
+      title: r.title,
+      dueDate: r.dueDate ? r.dueDate.toISOString() : null,
+      priority: r.priority,
+      isCompleted: r.isCompleted,
+    });
+
+    const assigned = assignedRows.map(toTask);
+
+    // Dedupe mentions to one (latest) per task.
+    const seenMention = new Set<number>();
+    const mentioned: Array<ReturnType<typeof toTask> & {
+      commentId: number;
+      mentionedAt: string;
+      mentionedBy: string | null;
+    }> = [];
+    for (const r of mentionRows) {
+      if (seenMention.has(r.taskId)) continue;
+      seenMention.add(r.taskId);
+      mentioned.push({
+        ...toTask(r),
+        commentId: r.commentId,
+        mentionedAt: r.mentionedAt.toISOString(),
+        mentionedBy: r.mentionedBy,
+      });
+    }
+
+    const todayStart = startOfWibDay().getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+    const dueToday = assigned.filter((t) => {
+      if (!t.dueDate) return false;
+      const d = new Date(t.dueDate).getTime();
+      return d >= todayStart && d < todayEnd;
+    }).length;
+
+    res.json({
+      assigned,
+      mentioned,
+      counts: {
+        active: assigned.length,
+        dueToday,
+        mentioned: mentioned.length,
+      },
+    });
+  }
+);
 
 // ─── BOARDS ──────────────────────────────────────────────────────────────────
 
@@ -912,17 +1046,30 @@ router.post(
 
     const member = await requireBoardAccess(boardId, uid, "editor", res);
     if (!member) return;
+    const ownerUserId = await resolveOwnerUserId(uid);
 
-    const { title, description, columnId, priority, dueDate, tags, assigneeIds } =
-      req.body as {
-        title?: string;
-        description?: string;
-        columnId?: number;
-        priority?: string;
-        dueDate?: string;
-        tags?: string;
-        assigneeIds?: number[];
-      };
+    const {
+      title,
+      description,
+      columnId,
+      priority,
+      dueDate,
+      tags,
+      assigneeIds,
+      // ── WorkBoard-from-chat (opsional) ──
+      sourceType,
+      sourceChatId,
+    } = req.body as {
+      title?: string;
+      description?: string;
+      columnId?: number;
+      priority?: string;
+      dueDate?: string;
+      tags?: string;
+      assigneeIds?: number[];
+      sourceType?: string;
+      sourceChatId?: number;
+    };
 
     if (!title || typeof title !== "string" || title.trim().length === 0) {
       res.status(400).json({ error: "Judul task wajib diisi." });
@@ -952,6 +1099,54 @@ router.post(
       }
     }
 
+    // ── Resolusi source chat (WorkBoard-from-chat) ─────────────────────────
+    // Hanya proses bila sourceType === 'chat' DAN sourceChatId valid. Snapshot
+    // nama kontak + pesan terakhir diambil server-side (jangan percaya body),
+    // dan chat WAJIB milik tenant (owner) yang sama dengan user — cegah
+    // melampirkan chat lintas-tenant ke task.
+    let resolvedSource: {
+      sourceType: string;
+      sourceChatId: number | null;
+      sourceContactName: string | null;
+      sourceLastMessage: string | null;
+    } = {
+      sourceType: "manual",
+      sourceChatId: null,
+      sourceContactName: null,
+      sourceLastMessage: null,
+    };
+
+    if (sourceType === "chat" && Number.isInteger(sourceChatId)) {
+      const [srcChat] = await db
+        .select({
+          id: chatsTable.id,
+          contactName: chatsTable.contactName,
+          nickname: chatsTable.nickname,
+          lastMessage: chatsTable.lastMessage,
+          channelId: chatsTable.channelId,
+        })
+        .from(chatsTable)
+        .innerJoin(channelsTable, eq(channelsTable.id, chatsTable.channelId))
+        .where(
+          and(
+            eq(chatsTable.id, sourceChatId as number),
+            eq(channelsTable.userId, ownerUserId),
+          ),
+        )
+        .limit(1);
+
+      if (srcChat) {
+        resolvedSource = {
+          sourceType: "chat",
+          sourceChatId: srcChat.id,
+          sourceContactName: (srcChat.nickname?.trim() || srcChat.contactName) ?? null,
+          sourceLastMessage: srcChat.lastMessage ?? null,
+        };
+      }
+      // Bila chat tak ditemukan / bukan milik tenant → diam-diam fallback ke
+      // 'manual' (task tetap dibuat, tanpa link). Jangan 400 — UX lebih baik.
+    }
+
     const [maxPos] = await db
       .select({ maxPos: sql<number>`coalesce(max(position), -1)::int` })
       .from(workboardTasksTable)
@@ -976,6 +1171,11 @@ router.post(
         tags: tags ?? null,
         isCompleted: false,
         createdByUserId: uid,
+        // ── source ──
+        sourceType: resolvedSource.sourceType,
+        sourceChatId: resolvedSource.sourceChatId,
+        sourceContactName: resolvedSource.sourceContactName,
+        sourceLastMessage: resolvedSource.sourceLastMessage,
         createdAt: now,
         updatedAt: now,
       })
@@ -1791,6 +1991,65 @@ router.patch(
     }
     res.json({ ok: true });
   }
+);
+
+// ─── WORKBOARD-FROM-CHAT: riwayat task dari sebuah chat ──────────────────────
+// GET /workboard/chats/:chatId/tasks — task yang source_chat_id = :chatId,
+// dibatasi ke board yang user-nya member + milik tenant. Terbaru dulu. Dipanggil
+// dari sidebar Info Chat.
+router.get(
+  "/chats/:chatId/tasks",
+  requirePermission("workboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const ownerUserId = await resolveOwnerUserId(uid);
+    const chatId = Number(req.params.chatId);
+    if (!Number.isInteger(chatId)) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+
+    // Board yang user ini member-nya (batasi visibilitas riwayat ke board yang
+    // memang boleh dilihat user).
+    const memberRows = await db
+      .select({ boardId: workboardBoardMembersTable.boardId })
+      .from(workboardBoardMembersTable)
+      .where(eq(workboardBoardMembersTable.userId, uid));
+    const boardIds = memberRows.map((r) => r.boardId);
+    if (boardIds.length === 0) {
+      res.json({ tasks: [] });
+      return;
+    }
+
+    // Task dari chat ini, di board yang boleh dilihat user + milik tenant.
+    const tasks = await db
+      .select({
+        id: workboardTasksTable.id,
+        boardId: workboardTasksTable.boardId,
+        title: workboardTasksTable.title,
+        priority: workboardTasksTable.priority,
+        isCompleted: workboardTasksTable.isCompleted,
+        createdAt: workboardTasksTable.createdAt,
+        boardName: workboardBoardsTable.name,
+        boardColor: workboardBoardsTable.color,
+        boardEmoji: workboardBoardsTable.emoji,
+      })
+      .from(workboardTasksTable)
+      .innerJoin(
+        workboardBoardsTable,
+        eq(workboardBoardsTable.id, workboardTasksTable.boardId),
+      )
+      .where(
+        and(
+          eq(workboardTasksTable.sourceChatId, chatId),
+          eq(workboardBoardsTable.ownerUserId, ownerUserId),
+          inArray(workboardTasksTable.boardId, boardIds),
+        ),
+      )
+      .orderBy(desc(workboardTasksTable.createdAt));
+
+    res.json({ tasks });
+  },
 );
 
 export default router;

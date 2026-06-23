@@ -140,6 +140,7 @@ import type {
   CreditUsageEvent,
   CreditWalletView,
   CustomerLabel,
+  DashboardOverview,
   DeleteAiReviewConfig200,
   DeleteKnowledgeType200,
   DeleteKnowledgeType400,
@@ -225,6 +226,7 @@ import type {
   MuteChatInput,
   NextActionItem,
   OkResponse,
+  OnboardingChecklist,
   OpenChatByPhoneInput,
   OpenChatByPhoneResult,
   Opportunity,
@@ -356,7 +358,8 @@ import type {
   WhatsappBioInput,
   WhatsappStatus,
   WhatsappStatus2,
-  WhatsappStatusAuthor
+  WhatsappStatusAuthor,
+  WorkboardMyTasks
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -872,6 +875,83 @@ export const useRevokeTrustedDevice = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getRevokeTrustedDeviceMutationOptions(options));
     }
+
+export const getGetOnboardingChecklistUrl = () => {
+
+
+
+
+  return `/api/onboarding/checklist`
+}
+
+/**
+ * @summary Tenant onboarding progress (setup health score + per-step state)
+ */
+export const getOnboardingChecklist = async ( options?: RequestInit): Promise<OnboardingChecklist> => {
+
+  return customFetch<OnboardingChecklist>(getGetOnboardingChecklistUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOnboardingChecklistQueryKey = () => {
+    return [
+    `/api/onboarding/checklist`
+    ] as const;
+    }
+
+
+export const getGetOnboardingChecklistQueryOptions = <TData = Awaited<ReturnType<typeof getOnboardingChecklist>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOnboardingChecklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOnboardingChecklistQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOnboardingChecklist>>> = ({ signal }) => getOnboardingChecklist({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOnboardingChecklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOnboardingChecklistQueryResult = NonNullable<Awaited<ReturnType<typeof getOnboardingChecklist>>>
+export type GetOnboardingChecklistQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Tenant onboarding progress (setup health score + per-step state)
+ */
+
+export function useGetOnboardingChecklist<TData = Awaited<ReturnType<typeof getOnboardingChecklist>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOnboardingChecklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOnboardingChecklistQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getUpdateAiProfileUrl = () => {
 
@@ -14898,6 +14978,160 @@ export function useGetStorageUsage<TData = Awaited<ReturnType<typeof getStorageU
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetStorageUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetDashboardUrl = () => {
+
+
+
+
+  return `/api/dashboard`
+}
+
+/**
+ * @summary Aggregated dashboard payload for the mobile app (Owner/Supervisor)
+ */
+export const getDashboard = async ( options?: RequestInit): Promise<DashboardOverview> => {
+
+  return customFetch<DashboardOverview>(getGetDashboardUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardQueryKey = () => {
+    return [
+    `/api/dashboard`
+    ] as const;
+    }
+
+
+export const getGetDashboardQueryOptions = <TData = Awaited<ReturnType<typeof getDashboard>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboard>>> = ({ signal }) => getDashboard({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboard>>>
+export type GetDashboardQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Aggregated dashboard payload for the mobile app (Owner/Supervisor)
+ */
+
+export function useGetDashboard<TData = Awaited<ReturnType<typeof getDashboard>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMyWorkboardTasksUrl = () => {
+
+
+
+
+  return `/api/workboard/my-tasks`
+}
+
+/**
+ * @summary WorkBoard tasks assigned to or @mentioning the current user
+ */
+export const getMyWorkboardTasks = async ( options?: RequestInit): Promise<WorkboardMyTasks> => {
+
+  return customFetch<WorkboardMyTasks>(getGetMyWorkboardTasksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyWorkboardTasksQueryKey = () => {
+    return [
+    `/api/workboard/my-tasks`
+    ] as const;
+    }
+
+
+export const getGetMyWorkboardTasksQueryOptions = <TData = Awaited<ReturnType<typeof getMyWorkboardTasks>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyWorkboardTasks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyWorkboardTasksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyWorkboardTasks>>> = ({ signal }) => getMyWorkboardTasks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyWorkboardTasks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyWorkboardTasksQueryResult = NonNullable<Awaited<ReturnType<typeof getMyWorkboardTasks>>>
+export type GetMyWorkboardTasksQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary WorkBoard tasks assigned to or @mentioning the current user
+ */
+
+export function useGetMyWorkboardTasks<TData = Awaited<ReturnType<typeof getMyWorkboardTasks>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyWorkboardTasks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyWorkboardTasksQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

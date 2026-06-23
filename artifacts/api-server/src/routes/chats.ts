@@ -32,6 +32,13 @@ import { requireSuperAdmin } from "../lib/team-permissions";
 import { recordLeadCorrection } from "../lib/lead-feedback";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
+import {
+  summarizeChatForTask,
+  ChatNotFoundError,
+  NoConversationError,
+} from "../lib/chat-task-summary";
+import { InsufficientCreditsError } from "../lib/credit-wallet";
+import { PlatformInactiveError, AllEnginesDownError } from "../lib/ai-failover";
 import { saveTenantMedia } from "../lib/tenant-storage";
 import {
   ListChatsQueryParams,
@@ -3724,6 +3731,49 @@ router.post("/:id/shortcut", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Failed to send shortcut");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/chats/:id/summarize-for-task
+// Rangkum percakapan chat menjadi deskripsi task via mesin AI terpusat
+// (resolveAiClient → prepaid gate + circuit breaker + usage accounting).
+// Dipakai tombol "Generate AI" pada modal Buat Task dari Chat.
+router.post("/:id/summarize-for-task", async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: "Parameter tidak valid." });
+      return;
+    }
+    const userId = getSessionUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: "Tidak terautentikasi." });
+      return;
+    }
+    const ownerUserId = await resolveOwnerUserId(userId);
+
+    const summary = await summarizeChatForTask(userId, ownerUserId, id);
+    res.json({ summary });
+  } catch (err) {
+    if (err instanceof ChatNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof NoConversationError) {
+      res.status(422).json({ error: err.message });
+      return;
+    }
+    if (err instanceof InsufficientCreditsError) {
+      // Frontend memetakan 402 → state "Kredit AI habis" pada tombol.
+      res.status(402).json({ error: "Saldo kredit AI tidak mencukupi." });
+      return;
+    }
+    if (err instanceof PlatformInactiveError || err instanceof AllEnginesDownError) {
+      res.status(503).json({ error: "Mesin AI sedang tidak tersedia. Coba lagi nanti." });
+      return;
+    }
+    req.log.error({ err }, "summarize-for-task failed");
+    res.status(500).json({ error: "Gagal merangkum percakapan." });
   }
 });
 

@@ -1,8 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -26,8 +26,34 @@ import {
 
 import { Avatar } from "@/components/Avatar";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
+import { ChatListSkeleton } from "@/components/Skeleton";
 import { useChannel } from "@/contexts/ChannelContext";
 import { useColors } from "@/hooks/useColors";
+
+type Colors = ReturnType<typeof useColors>;
+
+// Status Lead (spec §5) — 3-state keputusan manusia, melekat ke kontak.
+// Urutan siklus filter: off → Leads → Bukan Leads → Belum Tahu → off.
+const LEAD_CYCLE: ChatLeadStatus[] = [
+  ChatLeadStatus.lead,
+  ChatLeadStatus.not_lead,
+  ChatLeadStatus.unknown,
+];
+
+function leadLabel(s: ChatLeadStatus): string {
+  if (s === ChatLeadStatus.lead) return "Leads";
+  if (s === ChatLeadStatus.not_lead) return "Bukan Leads";
+  return "Belum Tahu";
+}
+
+// Warna semantik per status lead — hijau Leads, merah Bukan Leads, abu default.
+function leadColor(s: ChatLeadStatus, colors: Colors): string {
+  return s === ChatLeadStatus.lead
+    ? colors.success
+    : s === ChatLeadStatus.not_lead
+      ? colors.danger
+      : colors.mutedForeground;
+}
 
 function timeLabel(iso: string | null): string {
   if (!iso) return "";
@@ -43,97 +69,42 @@ function timeLabel(iso: string | null): string {
   return d.toLocaleDateString([], { day: "2-digit", month: "2-digit" });
 }
 
-export default function ChatListScreen() {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { activeChannelId } = useChannel();
+const isGroupChat = (c: Chat) => c.phoneNumber.endsWith("@g.us");
 
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [labelFilter, setLabelFilter] = useState<number | null>(null);
-  const [leadOnly, setLeadOnly] = useState(false);
-  const [scope, setScope] = useState<"personal" | "group">("personal");
+// ── Memoized row ──────────────────────────────────────────────────────────────
+// Module-level + React.memo with a field-level `areEqual`. The 5s poll feeds a
+// new array but React Query's structural sharing keeps unchanged items' identity
+// stable; combined with this comparator, only rows whose visible fields actually
+// changed re-render — the rest are skipped entirely.
+function labelsKey(labels: CustomerLabel[]): string {
+  let k = "";
+  for (let i = 0; i < labels.length && i < 3; i++) {
+    k += labels[i].id + ":" + labels[i].color + ":" + labels[i].name + "|";
+  }
+  return k;
+}
 
-  // Debounce the search term used for the server-side content lookup so we
-  // don't fire a request on every keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  const {
-    data: chats,
-    isLoading,
-    isRefetching,
-    refetch,
-  } = useListChats(undefined, {
-    query: {
-      queryKey: getListChatsQueryKey(),
-      enabled: activeChannelId != null,
-      refetchInterval: 5000,
-    },
-  });
-
-  const { data: labels } = useListCustomerLabels();
-
-  // Server-side message-content search: ids of chats whose messages contain the
-  // query. Combined with the instant name/phone/nickname filter so the search
-  // box also matches words inside conversations (mirrors the web app).
-  const { data: contentMatch } = useSearchChatContent(
-    { q: debouncedSearch },
-    {
-      query: {
-        queryKey: getSearchChatContentQueryKey({ q: debouncedSearch }),
-        enabled: debouncedSearch.length >= 2,
-      },
-    },
-  );
-
-  const isGroupChat = (c: Chat) => c.phoneNumber.endsWith("@g.us");
-
-  const counts = useMemo(() => {
-    const all = chats ?? [];
-    const group = all.filter(isGroupChat).length;
-    return { personal: all.length - group, group };
-  }, [chats]);
-
-  const filtered = useMemo(() => {
-    let list = chats ?? [];
-    list = list.filter((c) => (scope === "group" ? isGroupChat(c) : !isGroupChat(c)));
-    if (leadOnly) {
-      list = list.filter((c) => c.leadStatus === ChatLeadStatus.lead);
-    }
-    if (labelFilter != null) {
-      list = list.filter((c) => c.labels.some((l) => l.id === labelFilter));
-    }
-    const q = search.trim().toLowerCase();
-    if (q) {
-      const contentIds = new Set(contentMatch?.chatIds ?? []);
-      list = list.filter(
-        (c) =>
-          c.contactName.toLowerCase().includes(q) ||
-          c.phoneNumber.toLowerCase().includes(q) ||
-          (c.nickname ?? "").toLowerCase().includes(q) ||
-          contentIds.has(c.id),
-      );
-    }
-    return list;
-  }, [chats, labelFilter, leadOnly, search, scope, contentMatch]);
-
-  const renderItem = ({ item }: { item: Chat }) => (
+function ChatRowBase({
+  item,
+  colors,
+  onPress,
+}: {
+  item: Chat;
+  colors: Colors;
+  onPress: (id: number) => void;
+}) {
+  const lead = item.leadStatus ?? ChatLeadStatus.unknown;
+  const c = leadColor(lead, colors);
+  return (
     <TouchableOpacity
       style={styles.row}
       activeOpacity={0.6}
-      onPress={() => router.push(`/chat/${item.id}`)}
+      onPress={() => onPress(item.id)}
     >
       <Avatar name={item.contactName} uri={item.profilePicUrl} size={52} />
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
-          <Text
-            style={[styles.name, { color: colors.foreground }]}
-            numberOfLines={1}
-          >
+          <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={1}>
             {item.nickname || item.contactName}
           </Text>
           <Text style={[styles.time, { color: colors.mutedForeground }]}>
@@ -148,74 +119,205 @@ export default function ChatListScreen() {
             {item.lastMessage || "Belum ada pesan"}
           </Text>
           {item.unreadCount > 0 ? (
-            <View
-              style={[styles.badge, { backgroundColor: colors.unreadBadge }]}
-            >
+            <View style={[styles.badge, { backgroundColor: colors.unreadBadge }]}>
               <Text style={styles.badgeText}>
                 {item.unreadCount > 99 ? "99+" : item.unreadCount}
               </Text>
             </View>
           ) : null}
         </View>
-        {item.leadStatus === ChatLeadStatus.lead ||
-        item.leadStatus === ChatLeadStatus.not_lead ||
-        item.labels.length > 0 ? (
-          <View style={styles.labelRow}>
-            {item.leadStatus === ChatLeadStatus.lead ||
-            item.leadStatus === ChatLeadStatus.not_lead ? (
-              <View
-                style={[
-                  styles.leadPill,
-                  {
-                    backgroundColor:
-                      (item.leadStatus === ChatLeadStatus.lead
-                        ? colors.success
-                        : colors.danger) + "22",
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.labelDot,
-                    {
-                      backgroundColor:
-                        item.leadStatus === ChatLeadStatus.lead
-                          ? colors.success
-                          : colors.danger,
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.leadPillText,
-                    {
-                      color:
-                        item.leadStatus === ChatLeadStatus.lead
-                          ? colors.success
-                          : colors.danger,
-                    },
-                  ]}
-                >
-                  {item.leadStatus === ChatLeadStatus.lead ? "Lead" : "Bukan"}
-                </Text>
-              </View>
-            ) : null}
-            {item.labels.slice(0, 3).map((l: CustomerLabel) => (
-              <View
-                key={l.id}
-                style={[styles.labelChip, { backgroundColor: l.color + "22" }]}
-              >
-                <View style={[styles.labelDot, { backgroundColor: l.color }]} />
-                <Text style={[styles.labelText, { color: colors.foreground }]}>
-                  {l.name}
-                </Text>
-              </View>
-            ))}
+        {/* Status Lead melekat ke kontak; tampilkan pill untuk SEMUA state
+            (termasuk "Belum Tahu" default, dengan warna abu yang lembut). */}
+        <View style={styles.labelRow}>
+          <View style={[styles.leadPill, { backgroundColor: c + "22" }]}>
+            <View style={[styles.labelDot, { backgroundColor: c }]} />
+            <Text style={[styles.leadPillText, { color: c }]}>{leadLabel(lead)}</Text>
           </View>
-        ) : null}
+          {item.labels.slice(0, 3).map((l: CustomerLabel) => (
+            <View
+              key={l.id}
+              style={[styles.labelChip, { backgroundColor: l.color + "22" }]}
+            >
+              <View style={[styles.labelDot, { backgroundColor: l.color }]} />
+              <Text style={[styles.labelText, { color: colors.foreground }]}>
+                {l.name}
+              </Text>
+            </View>
+          ))}
+        </View>
       </View>
     </TouchableOpacity>
   );
+}
+
+const ChatRow = React.memo(ChatRowBase, (prev, next) => {
+  const a = prev.item;
+  const b = next.item;
+  return (
+    prev.colors === next.colors &&
+    prev.onPress === next.onPress &&
+    a.id === b.id &&
+    a.contactName === b.contactName &&
+    a.nickname === b.nickname &&
+    a.profilePicUrl === b.profilePicUrl &&
+    a.lastMessage === b.lastMessage &&
+    a.lastMessageAt === b.lastMessageAt &&
+    a.unreadCount === b.unreadCount &&
+    a.leadStatus === b.leadStatus &&
+    labelsKey(a.labels) === labelsKey(b.labels)
+  );
+});
+
+// Best-match-first ranking for the search box (spec §8): exact name > startsWith
+// name > includes name/nickname > includes number > includes message > server
+// content match. Lower rank = closer to the top.
+function rankOf(c: Chat, q: string): number {
+  const contact = c.contactName.toLowerCase();
+  const nick = (c.nickname ?? "").toLowerCase();
+  const display = (c.nickname || c.contactName).toLowerCase();
+  if (contact === q || display === q) return 0;
+  if (display.startsWith(q) || contact.startsWith(q)) return 1;
+  if (display.includes(q) || contact.includes(q) || nick.includes(q)) return 2;
+  if (c.phoneNumber.toLowerCase().includes(q)) return 3;
+  if ((c.lastMessage ?? "").toLowerCase().includes(q)) return 4;
+  return 5; // matched only via server-side content search
+}
+
+export default function ChatListScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { activeChannelId } = useChannel();
+  // Deep-link filters from the Dashboard (e.g. tapping "Leads" or a label bar):
+  // /(tabs)?filter=leads  or  /(tabs)?label=<labelId>
+  const linkParams = useLocalSearchParams<{ filter?: string; label?: string }>();
+
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [labelFilter, setLabelFilter] = useState<number | null>(null);
+  // null = tidak memfilter status lead; selain itu hanya tampilkan kontak
+  // dengan status lead tsebut (lead / not_lead / unknown).
+  const [leadFilter, setLeadFilter] = useState<ChatLeadStatus | null>(null);
+  const [scope, setScope] = useState<"personal" | "group">("personal");
+
+  // Apply incoming deep-link filter params. Keyed on the param values so it
+  // fires per navigation (not on a plain tab-bar tap, which carries no params),
+  // leaving the user free to change the filter afterwards.
+  const filterParam = Array.isArray(linkParams.filter) ? linkParams.filter[0] : linkParams.filter;
+  const labelParam = Array.isArray(linkParams.label) ? linkParams.label[0] : linkParams.label;
+  useEffect(() => {
+    if (filterParam === "leads") {
+      setLeadFilter(ChatLeadStatus.lead);
+      setLabelFilter(null);
+    }
+    if (labelParam) {
+      const id = Number(labelParam);
+      if (Number.isInteger(id)) {
+        setLabelFilter(id);
+        setLeadFilter(null);
+      }
+    }
+  }, [filterParam, labelParam]);
+
+  // Debounce the search term (~150ms) so we re-rank / fire the content lookup
+  // after the user pauses, not on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 150);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const {
+    data: chats,
+    isLoading,
+    refetch,
+  } = useListChats(undefined, {
+    query: {
+      queryKey: getListChatsQueryKey(),
+      enabled: activeChannelId != null,
+      // Silent background poll: refresh the cache every 5s but never while the
+      // app is backgrounded, and let structural sharing + memoized rows decide
+      // what actually re-renders (no full-list flash).
+      refetchInterval: 5000,
+      refetchIntervalInBackground: false,
+      placeholderData: keepPreviousData,
+    },
+  });
+
+  const { data: labels } = useListCustomerLabels();
+
+  // Server-side message-content search: ids of chats whose messages contain the
+  // query. Combined with the instant name/phone/nickname filter so the search
+  // box also matches words inside conversations (mirrors the web app).
+  const { data: contentMatch } = useSearchChatContent(
+    { q: debouncedSearch },
+    {
+      query: {
+        queryKey: getSearchChatContentQueryKey({ q: debouncedSearch }),
+        enabled: debouncedSearch.length >= 2,
+        placeholderData: keepPreviousData,
+      },
+    },
+  );
+
+  const counts = useMemo(() => {
+    const all = chats ?? [];
+    const group = all.filter(isGroupChat).length;
+    return { personal: all.length - group, group };
+  }, [chats]);
+
+  const filtered = useMemo(() => {
+    let list = chats ?? [];
+    list = list.filter((c) => (scope === "group" ? isGroupChat(c) : !isGroupChat(c)));
+    if (leadFilter != null) {
+      list = list.filter((c) => (c.leadStatus ?? ChatLeadStatus.unknown) === leadFilter);
+    }
+    if (labelFilter != null) {
+      list = list.filter((c) => c.labels.some((l) => l.id === labelFilter));
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      const contentIds = new Set(contentMatch?.chatIds ?? []);
+      list = list.filter(
+        (c) =>
+          c.contactName.toLowerCase().includes(q) ||
+          c.phoneNumber.toLowerCase().includes(q) ||
+          (c.nickname ?? "").toLowerCase().includes(q) ||
+          (c.lastMessage ?? "").toLowerCase().includes(q) ||
+          contentIds.has(c.id),
+      );
+      // Rank best matches to the top; Hermes' Array.sort is stable so equal
+      // ranks keep their server order (recent-first).
+      list = [...list].sort((a, b) => rankOf(a, q) - rankOf(b, q));
+    }
+    return list;
+  }, [chats, labelFilter, leadFilter, search, scope, contentMatch]);
+
+  // Pull-to-refresh spinner is bound to an explicit manual-refresh flag, NOT
+  // react-query's `isRefetching` — otherwise the silent 5s background poll would
+  // flash the spinner every 5 seconds (spec §10).
+  const [manualRefresh, setManualRefresh] = useState(false);
+  const onManualRefresh = useCallback(async () => {
+    setManualRefresh(true);
+    try {
+      await refetch();
+    } finally {
+      setManualRefresh(false);
+    }
+  }, [refetch]);
+
+  const onPressChat = useCallback(
+    (id: number) => router.push(`/chat/${id}`),
+    [router],
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: Chat }) => (
+      <ChatRow item={item} colors={colors} onPress={onPressChat} />
+    ),
+    [colors, onPressChat],
+  );
+
+  const keyExtractor = useCallback((c: Chat) => String(c.id), []);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -294,100 +396,110 @@ export default function ChatListScreen() {
       </View>
 
       <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={[
-            { id: -2, name: "Leads", color: colors.success } as CustomerLabel,
-            { id: -1, name: "Semua", color: colors.primary } as CustomerLabel,
-            ...(labels ?? []),
-          ]}
-          keyExtractor={(l) => String(l.id)}
-          style={styles.filterStrip}
-          contentContainerStyle={styles.filterContent}
-          renderItem={({ item }) => {
-            const isLeads = item.id === -2;
-            const isAll = item.id === -1;
-            if (isLeads) {
-              return (
-                <TouchableOpacity
-                  style={[
-                    styles.filterPill,
-                    {
-                      backgroundColor: leadOnly ? colors.success : colors.secondary,
-                      borderColor: leadOnly ? colors.success : colors.border,
-                    },
-                  ]}
-                  onPress={() => setLeadOnly((v) => !v)}
-                >
-                  <Feather
-                    name="user-check"
-                    size={13}
-                    color={leadOnly ? "#ffffff" : colors.success}
-                  />
-                  <Text
-                    style={[
-                      styles.filterText,
-                      { color: leadOnly ? "#ffffff" : colors.foreground },
-                    ]}
-                  >
-                    Leads
-                  </Text>
-                </TouchableOpacity>
-              );
-            }
-            const active = isAll ? labelFilter == null : labelFilter === item.id;
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={[
+          { id: -2, name: "Leads", color: colors.success } as CustomerLabel,
+          { id: -1, name: "Semua", color: colors.primary } as CustomerLabel,
+          ...(labels ?? []),
+        ]}
+        keyExtractor={(l) => String(l.id)}
+        style={styles.filterStrip}
+        contentContainerStyle={styles.filterContent}
+        renderItem={({ item }) => {
+          const isLeads = item.id === -2;
+          const isAll = item.id === -1;
+          if (isLeads) {
+            // Pill siklus 3-state: ketuk untuk berpindah Leads → Bukan Leads
+            // → Belum Tahu → mati. Warna & teks mengikuti state aktif.
+            const on = leadFilter != null;
+            const tone = leadFilter != null ? leadColor(leadFilter, colors) : colors.success;
+            const cycle = () => {
+              setLeadFilter((cur) => {
+                if (cur == null) return LEAD_CYCLE[0];
+                const i = LEAD_CYCLE.indexOf(cur);
+                return i < 0 || i === LEAD_CYCLE.length - 1
+                  ? null
+                  : LEAD_CYCLE[i + 1];
+              });
+              setLabelFilter(null);
+            };
             return (
               <TouchableOpacity
                 style={[
                   styles.filterPill,
                   {
-                    backgroundColor: active ? colors.primary : colors.secondary,
-                    borderColor: active ? colors.primary : colors.border,
+                    backgroundColor: on ? tone : colors.secondary,
+                    borderColor: on ? tone : colors.border,
                   },
                 ]}
-                onPress={() => setLabelFilter(isAll ? null : item.id)}
+                onPress={cycle}
               >
-                {!isAll ? (
-                  <View
-                    style={[styles.labelDot, { backgroundColor: item.color }]}
-                  />
-                ) : null}
+                <Feather
+                  name="user-check"
+                  size={13}
+                  color={on ? "#ffffff" : colors.success}
+                />
                 <Text
                   style={[
                     styles.filterText,
-                    {
-                      color: active
-                        ? colors.primaryForeground
-                        : colors.foreground,
-                    },
+                    { color: on ? "#ffffff" : colors.foreground },
                   ]}
                 >
-                  {item.name}
+                  {leadFilter != null ? leadLabel(leadFilter) : "Leads"}
                 </Text>
               </TouchableOpacity>
             );
-          }}
-        />
+          }
+          const active = isAll ? labelFilter == null : labelFilter === item.id;
+          return (
+            <TouchableOpacity
+              style={[
+                styles.filterPill,
+                {
+                  backgroundColor: active ? colors.primary : colors.secondary,
+                  borderColor: active ? colors.primary : colors.border,
+                },
+              ]}
+              onPress={() => setLabelFilter(isAll ? null : item.id)}
+            >
+              {!isAll ? (
+                <View style={[styles.labelDot, { backgroundColor: item.color }]} />
+              ) : null}
+              <Text
+                style={[
+                  styles.filterText,
+                  {
+                    color: active ? colors.primaryForeground : colors.foreground,
+                  },
+                ]}
+              >
+                {item.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        }}
+      />
 
       {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} size="large" />
-        </View>
+        <ChatListSkeleton />
       ) : (
         <FlatList
           data={filtered}
-          keyExtractor={(c) => String(c.id)}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
-          ItemSeparatorComponent={() => (
-            <View
-              style={[styles.sep, { backgroundColor: colors.border }]}
-            />
-          )}
+          // Perf tuning for long lists (spec §1): recycle offscreen rows and cap
+          // per-frame work so scrolling stays ~60fps on mid-range Android.
+          removeClippedSubviews
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          ItemSeparatorComponent={ChatSeparator}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
+              refreshing={manualRefresh}
+              onRefresh={onManualRefresh}
               tintColor={colors.primary}
             />
           }
@@ -399,7 +511,7 @@ export default function ChatListScreen() {
                 color={colors.mutedForeground}
               />
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                {search || labelFilter != null
+                {search || labelFilter != null || leadFilter != null
                   ? "Tidak ada chat yang cocok."
                   : "Belum ada chat di channel ini."}
               </Text>
@@ -410,6 +522,12 @@ export default function ChatListScreen() {
     </View>
   );
 }
+
+function SeparatorBase() {
+  const colors = useColors();
+  return <View style={[styles.sep, { backgroundColor: colors.border }]} />;
+}
+const ChatSeparator = React.memo(SeparatorBase);
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

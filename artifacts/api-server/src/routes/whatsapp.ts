@@ -1488,7 +1488,14 @@ ${AI_HARD_GUARDRAILS}`;
 }
 
 interface IncomingMedia {
-  mediaType: "image" | "video" | "document" | "audio" | "sticker" | "contact";
+  mediaType:
+    | "image"
+    | "video"
+    | "document"
+    | "audio"
+    | "sticker"
+    | "contact"
+    | "location";
   mediaUrl: string | null;
   mediaMimeType: string | null;
   mediaFilename: string | null;
@@ -1678,6 +1685,14 @@ async function parseWaMessage(
     const contact =
       inner.contactMessage ?? inner.contactsArrayMessage?.contacts?.[0];
     const displayName = contact?.displayName ?? "Kontak";
+    // Ambil nomor dari vCard (field TEL) supaya kontak masuk menyimpan nama
+    // DAN nomor — content "Nama (nomor)" senada dengan kontak keluar, jadi
+    // klien bisa menampilkan tombol telepon.
+    const vcard = contact?.vcard ?? "";
+    const tel = vcard.match(/TEL[^:]*:\s*([+0-9][0-9\s\-()]*)/i)?.[1];
+    const phone = tel ? tel.replace(/[^\d+]/g, "") : null;
+    if (!messageContent)
+      messageContent = phone ? `${displayName} (${phone})` : displayName;
     media = {
       mediaType: "contact",
       mediaUrl: null,
@@ -1688,6 +1703,18 @@ async function parseWaMessage(
     const loc = inner.locationMessage ?? inner.liveLocationMessage;
     const name = loc?.name ? ` ${loc.name}` : "";
     if (!messageContent) messageContent = `📍 Lokasi${name}`;
+    // Simpan koordinat (mediaUrl "geo:lat,lng") agar lokasi masuk bisa dibuka
+    // di Google Maps dari HP — sama seperti lokasi keluar.
+    const lat = loc?.degreesLatitude;
+    const lng = loc?.degreesLongitude;
+    if (typeof lat === "number" && typeof lng === "number") {
+      media = {
+        mediaType: "location",
+        mediaUrl: `geo:${lat},${lng}`,
+        mediaMimeType: "text/plain",
+        mediaFilename: loc?.name ?? null,
+      };
+    }
   } else if (inner.pollCreationMessage || inner.pollCreationMessageV3) {
     const poll = inner.pollCreationMessage ?? inner.pollCreationMessageV3;
     if (!messageContent)

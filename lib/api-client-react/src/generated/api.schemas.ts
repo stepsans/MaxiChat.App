@@ -2111,6 +2111,118 @@ export interface StorageUsage {
   estimatedBytes: number;
 }
 
+/**
+ * Channel-scoped counters for the mobile dashboard (subset of AnalyticsSummary; AI Handled is intentionally excluded).
+ */
+export interface DashboardSummary {
+  totalChats: number;
+  todayChats: number;
+  needsHuman: number;
+  leads: number;
+  notLeads: number;
+  totalMessages: number;
+  /** Percentage of chats marked as Lead, out of all chats. */
+  leadRate: number;
+  chatsByLabel: LabelCount[];
+}
+
+export interface DashboardChannels {
+  /** Channels the requester can see. */
+  total: number;
+  /** Of those */
+  connected: number;
+  anyConnected: boolean;
+}
+
+/**
+ * AI token credit for the tenant owner. Null for non-owner roles (credit is owner-only).
+ */
+export interface DashboardAiCredit {
+  usagePercent: number;
+  tokenRemaining: number;
+  blocked?: boolean;
+  notifyLevel?: string;
+}
+
+export interface DashboardHealth {
+  channels: DashboardChannels;
+  /** Null when the requester is not the tenant owner. */
+  aiCredit?: DashboardAiCredit | null;
+}
+
+export interface CommonQuestion {
+  question: string;
+  count: number;
+}
+
+export interface DashboardOverview {
+  summary: DashboardSummary;
+  health: DashboardHealth;
+  storage: StorageUsage;
+  commonQuestions: CommonQuestion[];
+}
+
+export interface MyWorkboardTask {
+  taskId: number;
+  boardId: number;
+  boardName: string;
+  boardEmoji?: string | null;
+  boardColor: string;
+  columnId?: number | null;
+  title: string;
+  dueDate?: string | null;
+  priority: string;
+  isCompleted: boolean;
+}
+
+export interface MyWorkboardMention {
+  taskId: number;
+  boardId: number;
+  boardName: string;
+  boardEmoji?: string | null;
+  boardColor: string;
+  columnId?: number | null;
+  title: string;
+  dueDate?: string | null;
+  priority: string;
+  isCompleted: boolean;
+  commentId: number;
+  mentionedAt: string;
+  /** Display name of the comment author who mentioned the user. */
+  mentionedBy?: string | null;
+}
+
+export interface MyWorkboardTaskCounts {
+  /** Open tasks assigned to the user. */
+  active: number;
+  /** Assigned open tasks due today (WIB). */
+  dueToday: number;
+  /** Tasks where the user is @mentioned. */
+  mentioned: number;
+}
+
+export interface WorkboardMyTasks {
+  assigned: MyWorkboardTask[];
+  mentioned: MyWorkboardMention[];
+  counts: MyWorkboardTaskCounts;
+}
+
+/**
+ * Tenant onboarding progress. healthScore (0-100) is the setup completion percent; the dashboard banner hides at 100.
+ */
+export interface OnboardingChecklist {
+  waConnected: boolean;
+  productAdded: boolean;
+  teamMemberAdded: boolean;
+  firstMessageAt?: string | null;
+  aiTriedAt?: string | null;
+  flowActivated: boolean;
+  /** Setup completion percent */
+  healthScore: number;
+  /** low (>=70) | medium (40-69) | high (<40). */
+  riskLevel: string;
+}
+
 export interface PurgeChatsResult {
   deletedChats: number;
   deletedMessages: number;
@@ -2267,11 +2379,6 @@ export interface ProductInput {
 
 export interface SendProductBody {
   productId: number;
-}
-
-export interface CommonQuestion {
-  question: string;
-  count: number;
 }
 
 export interface WhatsappBio {

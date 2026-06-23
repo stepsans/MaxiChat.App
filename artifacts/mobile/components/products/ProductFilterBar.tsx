@@ -27,7 +27,7 @@ const SORT_LABELS: { key: ProductSortKey; label: string }[] = [
 
 /**
  * Reusable filter strip for product lists: search, category combo box,
- * "jumlah > 1" toggle, sort key, and ascending/descending direction. `compact`
+ * "jumlah > 0" toggle, sort key, and ascending/descending direction. `compact`
  * trims paddings for the narrower in-chat sidebar.
  */
 export function ProductFilterBar({
@@ -84,27 +84,27 @@ export function ProductFilterBar({
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => state.setQtyOverOne(!state.qtyOverOne)}
+          onPress={() => state.setQtyInStock(!state.qtyInStock)}
           style={[
             styles.checkbox,
             {
-              backgroundColor: state.qtyOverOne ? colors.success : colors.secondary,
-              borderColor: state.qtyOverOne ? colors.success : colors.border,
+              backgroundColor: state.qtyInStock ? colors.success : colors.secondary,
+              borderColor: state.qtyInStock ? colors.success : colors.border,
             },
           ]}
         >
           <Feather
             name="check"
             size={13}
-            color={state.qtyOverOne ? "#ffffff" : colors.mutedForeground}
+            color={state.qtyInStock ? "#ffffff" : colors.mutedForeground}
           />
           <Text
             style={[
               styles.checkboxText,
-              { color: state.qtyOverOne ? "#ffffff" : colors.mutedForeground },
+              { color: state.qtyInStock ? "#ffffff" : colors.mutedForeground },
             ]}
           >
-            Jumlah &gt; 1
+            Jumlah &gt; 0
           </Text>
         </TouchableOpacity>
       </View>

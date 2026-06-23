@@ -1,5 +1,6 @@
+import { Image } from "expo-image";
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
 import { resolveMediaUrl } from "@/lib/api";
@@ -28,7 +29,7 @@ const SEED_COLORS = [
   "#6366f1",
 ];
 
-export function Avatar({
+function AvatarBase({
   name,
   uri,
   size = 48,
@@ -45,6 +46,12 @@ export function Avatar({
     return (
       <Image
         source={{ uri: resolved }}
+        // Recycle the decoded bitmap by contact url so scrolling a long list
+        // reuses cached images instead of re-decoding/popping-in on each pass.
+        recyclingKey={resolved}
+        cachePolicy="memory-disk"
+        transition={120}
+        contentFit="cover"
         style={{
           width: size,
           height: size,
@@ -68,6 +75,10 @@ export function Avatar({
     </View>
   );
 }
+
+// Memoized: avatars sit inside long lists; re-rendering them on every poll is
+// pure waste when name/uri/size are unchanged.
+export const Avatar = React.memo(AvatarBase);
 
 const styles = StyleSheet.create({
   fallback: {

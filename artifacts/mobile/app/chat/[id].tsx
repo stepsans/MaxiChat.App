@@ -2,6 +2,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as Contacts from "expo-contacts";
+import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -11,7 +12,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -45,6 +46,7 @@ import {
   useBlockChat,
   useSendLocationToChat,
   useSendContactToChat,
+  useListShortcuts,
   getGetChatQueryKey,
   getGetChatAttachmentsQueryKey,
   getGetStarredMessagesQueryKey,
@@ -55,6 +57,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { Avatar } from "@/components/Avatar";
+import { ChatVideo } from "@/components/ChatVideo";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import {
   LinkifiedText,
@@ -76,6 +79,11 @@ import {
 
 const AVATAR_SIZE = 30;
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+// Fallback bila tenant belum punya shortcut "/almt" — minta alamat pengiriman.
+const DEFAULT_ALMT_TEMPLATE =
+  "Mohon kirimkan alamat lengkap pengiriman ya kak 🙏\n\n" +
+  "Nama penerima:\nNo. HP:\nAlamat lengkap:\nKecamatan:\nKota/Kabupaten:\nProvinsi:\nKode pos:";
 
 function msgTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
@@ -139,6 +147,7 @@ export default function ConversationScreen() {
     },
   });
   const { data: labels } = useListCustomerLabels();
+  const { data: shortcuts } = useListShortcuts();
 
   const sendReply = useSendManualReply();
   const setLabels = useSetChatLabels();
@@ -151,6 +160,34 @@ export default function ConversationScreen() {
 
   // WhatsApp-parity chat-room surfaces.
   const [photoOpen, setPhotoOpen] = useState(false);
+  // Full-screen lightbox for an inbound/outbound chat image (url being viewed).
+  const [imageView, setImageView] = useState<string | null>(null);
+
+  // Buka URL eksternal (dokumen/telepon) di app penanganan device.
+  const openExternal = (url: string) => Linking.openURL(url).catch(() => {});
+
+  // Buka koordinat ("lat,lng") di app Google Maps HP. Android: skema `geo:`
+  // membuka app peta langsung; iOS/lainnya: URL universal Google Maps yang
+  // membuka app-nya bila terpasang (kalau gagal, jatuh ke browser).
+  const openMaps = (coords: string) => {
+    const universal = `https://www.google.com/maps/search/?api=1&query=${coords}`;
+    const url = Platform.select({
+      android: `geo:${coords}?q=${coords}`,
+      default: universal,
+    })!;
+    Linking.openURL(url).catch(() => Linking.openURL(universal).catch(() => {}));
+  };
+
+  // Chip "/almt" — sisipkan template minta-alamat ke komposer agar agent bisa
+  // tinjau/ubah sebelum kirim. Pakai shortcut "/almt" milik tenant bila ada,
+  // jika tidak pakai template default.
+  const insertAlamat = () => {
+    const entry = (shortcuts ?? []).find(
+      (s) => s.shortcut.toLowerCase() === "/almt",
+    );
+    const tpl = entry?.replacement ?? DEFAULT_ALMT_TEMPLATE;
+    setText((t) => (t.trim() ? `${t.trimEnd()}\n${tpl}` : tpl));
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -695,8 +732,29 @@ export default function ConversationScreen() {
     const isSticker = media && mType === "sticker";
     const isAudio =
       media && (mType === "audio" || media.mediaMimeType?.startsWith("audio/"));
+    const isVideo =
+      media && (mType === "video" || media.mediaMimeType?.startsWith("video/"));
+    const isDoc = media && mType === "document";
+    const isContact = media && mType === "contact";
+    // Lokasi keluar (dikirim app) punya media row mediaType="location" +
+    // mediaUrl "geo:lat,lng". Lokasi masuk hanya teks diawali 📍 (tanpa koordinat).
+    const isLocation =
+      (media && mType === "location") || (!media && /^📍/.test(item.content ?? ""));
     const imageUri = isImage || isSticker ? resolveMediaUrl(media!.mediaUrl) : null;
     const audioUri = isAudio ? resolveMediaUrl(media!.mediaUrl) : null;
+    const videoUri = isVideo ? resolveMediaUrl(media!.mediaUrl) : null;
+    const docUri = isDoc ? resolveMediaUrl(media!.mediaUrl) : null;
+    const geoCoords =
+      media?.mediaUrl && media.mediaUrl.startsWith("geo:")
+        ? media.mediaUrl.slice(4)
+        : null;
+    // Kontak: nama dari mediaFilename; nomor (bila ada) diparse dari "Nama (nomor)".
+    const contactName = isContact
+      ? media!.mediaFilename || item.content || "Kontak"
+      : null;
+    const contactPhone = isContact
+      ? (item.content ?? "").match(/\(([+0-9][0-9\s-]{5,})\)/)?.[1]?.replace(/[\s-]/g, "") ?? null
+      : null;
     const link = item.content ? firstLink(item.content) : null;
     const isSelected = selected.has(item.id);
 
@@ -744,7 +802,13 @@ export default function ConversationScreen() {
       >
         {!out ? avatarSlot : null}
         {bareSticker ? (
-          <Image source={{ uri: imageUri! }} style={styles.sticker} resizeMode="contain" />
+          <Image
+            source={{ uri: imageUri! }}
+            style={styles.sticker}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={120}
+          />
         ) : (
           <View
             style={[
@@ -786,21 +850,92 @@ export default function ConversationScreen() {
             ) : null}
 
             {isSticker && imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.sticker} resizeMode="contain" />
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.sticker}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                transition={120}
+              />
             ) : imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.bubbleImage} />
+              <TouchableOpacity activeOpacity={0.9} onPress={() => setImageView(imageUri)}>
+                <Image
+                  source={{ uri: imageUri }}
+                  style={styles.bubbleImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={120}
+                />
+              </TouchableOpacity>
             ) : null}
 
-            {audioUri ? (
-              <VoiceNote
-                uri={audioUri}
-                tint={colors.primary}
-                trackColor={out ? colors.bubbleOutForeground : colors.mutedForeground}
-              />
+            {videoUri ? <ChatVideo uri={videoUri} /> : null}
+
+            {docUri ? (
+              <TouchableOpacity
+                style={[styles.fileCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                onPress={() => openExternal(docUri)}
+                activeOpacity={0.7}
+              >
+                <Feather name="file-text" size={22} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fileName, { color: colors.foreground }]} numberOfLines={2}>
+                    {media!.mediaFilename || "Dokumen"}
+                  </Text>
+                  <Text style={[styles.fileMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    {media!.mediaMimeType || "Berkas"}
+                  </Text>
+                </View>
+                <Feather name="download" size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            ) : null}
+
+            {isContact ? (
+              <TouchableOpacity
+                style={[styles.attachCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                onPress={contactPhone ? () => openExternal(`tel:${contactPhone}`) : undefined}
+                activeOpacity={contactPhone ? 0.7 : 1}
+                disabled={!contactPhone}
+              >
+                <View style={[styles.attachAvatar, { backgroundColor: colors.primary + "22" }]}>
+                  <Feather name="user" size={20} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.attachTitle, { color: colors.foreground }]} numberOfLines={1}>
+                    {contactName}
+                  </Text>
+                  <Text style={[styles.fileMeta, { color: colors.mutedForeground }]}>
+                    {contactPhone ?? "Kontak"}
+                  </Text>
+                </View>
+                {contactPhone ? <Feather name="phone" size={18} color={colors.success} /> : null}
+              </TouchableOpacity>
+            ) : null}
+
+            {isLocation ? (
+              <TouchableOpacity
+                style={[styles.attachCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                onPress={geoCoords ? () => openMaps(geoCoords) : undefined}
+                activeOpacity={geoCoords ? 0.7 : 1}
+                disabled={!geoCoords}
+              >
+                <View style={[styles.attachAvatar, { backgroundColor: colors.danger + "22" }]}>
+                  <Feather name="map-pin" size={20} color={colors.danger} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.attachTitle, { color: colors.foreground }]} numberOfLines={1}>
+                    {(item.content ?? "").replace(/^📍\s*/, "").trim() || "Lokasi"}
+                  </Text>
+                  <Text style={[styles.fileMeta, { color: colors.mutedForeground }]}>
+                    {geoCoords ? "Buka di peta" : "Lokasi dibagikan"}
+                  </Text>
+                </View>
+                {geoCoords ? <Feather name="external-link" size={16} color={colors.mutedForeground} /> : null}
+              </TouchableOpacity>
             ) : null}
 
             {link ? <LinkPreviewCard url={link} isOutbound={out} /> : null}
-            {item.content ? (
+            {item.content && !isContact && !isLocation ? (
               <LinkifiedText
                 content={item.content}
                 color={out ? colors.bubbleOutForeground : colors.foreground}
@@ -1004,6 +1139,10 @@ export default function ConversationScreen() {
             keyExtractor={(m) => String(m.id)}
             renderItem={renderMessage}
             contentContainerStyle={styles.messages}
+            removeClippedSubviews
+            initialNumToRender={15}
+            maxToRenderPerBatch={12}
+            windowSize={9}
             ListEmptyComponent={
               searchOpen && searchQuery.trim() ? (
                 <View style={[styles.center, { transform: [{ scaleY: -1 }] }]}>
@@ -1049,6 +1188,13 @@ export default function ConversationScreen() {
         {/* Quick chips — open the info panel at the relevant tab */}
         {!editTarget && !recording ? (
           <View style={[styles.quickRow, { backgroundColor: colors.background }]}>
+            <TouchableOpacity
+              style={[styles.quickChip, { backgroundColor: colors.secondary }]}
+              onPress={insertAlamat}
+            >
+              <Feather name="map-pin" size={13} color={colors.primary} />
+              <Text style={[styles.quickText, { color: colors.foreground }]}>/almt</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.quickChip, { backgroundColor: colors.secondary }]}
               onPress={() => openPanel("shortcut")}
@@ -1443,6 +1589,12 @@ export default function ConversationScreen() {
         onClose={() => setPhotoOpen(false)}
       />
 
+      {/* Lightbox untuk foto di dalam percakapan (ketuk gambar bubble). */}
+      <ImageLightbox
+        uri={imageView}
+        onClose={() => setImageView(null)}
+      />
+
       <ChatInfoPanel
         visible={infoOpen}
         onClose={() => setInfoOpen(false)}
@@ -1555,6 +1707,36 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.05)",
   },
   sticker: { width: 140, height: 140, marginBottom: 2 },
+  fileCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 4,
+    minWidth: 200,
+  },
+  fileName: { fontFamily: "Inter_500Medium", fontSize: 14 },
+  fileMeta: { fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 1 },
+  attachCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 4,
+    minWidth: 200,
+  },
+  attachAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
   bubbleText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 20 },
   fwdRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 2 },
   fwdText: { fontFamily: "Inter_400Regular", fontSize: 11, fontStyle: "italic" },
@@ -1683,6 +1865,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, padding: 0 },
   quickRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     paddingHorizontal: 10,
     paddingTop: 8,

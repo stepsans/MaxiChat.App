@@ -21,6 +21,7 @@ import {
   useBlockChat,
   getGetChatQueryKey,
   getGetCommonGroupsQueryKey,
+  getListChatsQueryKey,
   type Chat,
   type ChatUpdateStatus,
   type ChatUpdateLeadStatus,
@@ -34,10 +35,16 @@ const STATUS_OPTIONS: { value: ChatUpdateStatus; label: string }[] = [
   { value: "closed", label: "Selesai" },
 ];
 
-const LEAD_OPTIONS: { value: ChatUpdateLeadStatus; label: string }[] = [
-  { value: "unknown", label: "Unknown" },
-  { value: "lead", label: "Lead" },
-  { value: "not_lead", label: "Not Lead" },
+// Status Lead (spec §5): keputusan manusia, 3 pilihan, default "Belum Tahu".
+// Warna mengikuti makna — hijau Leads, merah Bukan Leads, abu Belum Tahu.
+const LEAD_OPTIONS: {
+  value: ChatUpdateLeadStatus;
+  label: string;
+  tone: "success" | "destructive" | "muted";
+}[] = [
+  { value: "lead", label: "Leads", tone: "success" },
+  { value: "not_lead", label: "Bukan Leads", tone: "destructive" },
+  { value: "unknown", label: "Belum Tahu", tone: "muted" },
 ];
 
 export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
@@ -106,12 +113,29 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
     }
   };
 
+  // Optimistic: flip the lead pill instantly on both the open chat and the chat
+  // list cache, roll back if the PATCH fails, then reconcile on success.
   const setLead = async (leadStatus: ChatUpdateLeadStatus) => {
+    const chatKey = getGetChatQueryKey(chatId);
+    const listKey = getListChatsQueryKey();
+    await queryClient.cancelQueries({ queryKey: chatKey });
+    const prevChat = queryClient.getQueryData<Chat>(chatKey);
+    const prevList = queryClient.getQueryData<Chat[]>(listKey);
+    const next = leadStatus as Chat["leadStatus"];
+    if (prevChat) queryClient.setQueryData<Chat>(chatKey, { ...prevChat, leadStatus: next });
+    if (prevList) {
+      queryClient.setQueryData<Chat[]>(
+        listKey,
+        prevList.map((c) => (c.id === chatId ? { ...c, leadStatus: next } : c)),
+      );
+    }
     try {
       await updateChat.mutateAsync({ id: chatId, data: { leadStatus } });
       invalidate();
+      queryClient.invalidateQueries({ queryKey: listKey });
     } catch {
-      // ignore
+      if (prevChat) queryClient.setQueryData(chatKey, prevChat);
+      if (prevList) queryClient.setQueryData(listKey, prevList);
     }
   };
 
@@ -309,6 +333,7 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
       <View style={styles.pillWrap}>
         {LEAD_OPTIONS.map((o) => {
           const active = (chat.leadStatus ?? "unknown") === o.value;
+          const tone = colors[o.tone];
           return (
             <TouchableOpacity
               key={o.value}
@@ -316,15 +341,16 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
               style={[
                 styles.pill,
                 {
-                  backgroundColor: active ? colors.primary : colors.secondary,
-                  borderColor: colors.border,
+                  backgroundColor: active ? tone : colors.secondary,
+                  borderColor: active ? tone : colors.border,
                 },
               ]}
             >
+              <View style={[styles.dot, { backgroundColor: active ? "#ffffff" : tone }]} />
               <Text
                 style={[
                   styles.pillText,
-                  { color: active ? colors.primaryForeground : colors.foreground },
+                  { color: active ? "#ffffff" : colors.foreground },
                 ]}
               >
                 {o.label}

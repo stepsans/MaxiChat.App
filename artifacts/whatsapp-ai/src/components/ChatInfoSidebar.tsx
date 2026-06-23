@@ -93,12 +93,17 @@ import {
   ArrowUp,
   ArrowDown,
   RefreshCw,
+  LayoutDashboard,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { QRCodeSVG } from "qrcode.react";
 import { ChatAvatar } from "@/components/ChatAvatar";
 import { ContactPicker } from "@/components/ContactPicker";
 import { ProductImageLightbox } from "@/components/ProductImageLightbox";
 import { resolveImageSrc } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useChatWorkboardTasks } from "@/hooks/useChatWorkboard";
+import CreateTaskFromChatModal from "@/components/Chat/CreateTaskFromChatModal";
 
 export type ChatLabel = { id: number; name: string; color: string };
 
@@ -116,6 +121,7 @@ type ChatLike = {
   nickname?: string | null;
   contactName: string;
   phoneNumber: string;
+  lastMessage?: string | null;
   company?: string | null;
   customerCode?: string | null;
   labels: ChatLabel[];
@@ -1949,6 +1955,113 @@ function EmptyHint({ text }: { text: string }) {
   );
 }
 
+// WorkBoard section in the chat Info tab: "Buat Task dari Chat" + riwayat task
+// yang lahir dari chat ini. Disembunyikan total bila user tak punya akses
+// workboard (view). Tombol create hanya muncul bila user boleh create.
+function ChatWorkboardSection({
+  chatId,
+  contactDisplayName,
+  contactPhone,
+  lastMessage,
+}: {
+  chatId: number;
+  contactDisplayName: string;
+  contactPhone: string;
+  lastMessage: string | null;
+}) {
+  const { menus } = usePermissions();
+  const { tasks, loading } = useChatWorkboardTasks(chatId);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [, navigate] = useLocation();
+
+  if (!menus.workboard?.canView) return null;
+
+  const priorityColor: Record<string, string> = {
+    low: "#9ca3af",
+    medium: "#f59e0b",
+    high: "#ef4444",
+  };
+
+  return (
+    <>
+      <Separator className="bg-[hsl(var(--wa-divider))]" />
+      <div className="space-y-2.5">
+        <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide flex items-center gap-1.5">
+          <LayoutDashboard className="w-3.5 h-3.5" />
+          WorkBoard
+        </Label>
+
+        {menus.workboard?.canCreate && (
+          <Button
+            type="button"
+            data-testid="button-create-task-from-chat"
+            onClick={() => setModalOpen(true)}
+            className="h-9 w-full gap-1.5 text-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Buat Task dari Chat
+          </Button>
+        )}
+
+        <div className="space-y-1.5">
+          <p className="text-[10px] text-[hsl(var(--wa-meta))]">
+            Riwayat task dari chat ini
+          </p>
+
+          {loading ? (
+            <p className="text-[11px] text-[hsl(var(--wa-meta))] py-1">Memuat…</p>
+          ) : tasks.length === 0 ? (
+            <p className="text-[11px] text-[hsl(var(--wa-meta))] py-1">
+              Belum ada task dari chat ini.
+            </p>
+          ) : (
+            tasks.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center gap-2 p-1.5 rounded-md border border-[hsl(var(--wa-divider))]"
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: priorityColor[t.priority] ?? "#9ca3af" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11.5px] truncate text-foreground">{t.title}</p>
+                  <p className="text-[9.5px] text-[hsl(var(--wa-meta))] truncate">
+                    {t.boardEmoji ? `${t.boardEmoji} ` : ""}
+                    {t.boardName} ·{" "}
+                    {new Date(t.createdAt).toLocaleDateString("id-ID", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "2-digit",
+                    })}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  data-testid={`button-view-task-${t.id}`}
+                  onClick={() => navigate(`/workboard/${t.boardId}?task=${t.id}`)}
+                  className="text-[10px] px-2 py-1 rounded border border-[hsl(var(--wa-divider))] text-[hsl(var(--wa-accent))] hover:bg-white/5 flex items-center gap-1"
+                >
+                  View
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <CreateTaskFromChatModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        chatId={chatId}
+        contactDisplayName={contactDisplayName}
+        contactPhone={contactPhone}
+        lastMessage={lastMessage}
+      />
+    </>
+  );
+}
+
 export function ChatInfoSidebar({
   chatId,
   chat,
@@ -2320,27 +2433,31 @@ export function ChatInfoSidebar({
               </DialogContent>
             </Dialog>
 
-            <div className="space-y-1.5">
-              <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
-                Status
-              </Label>
-              <Select
-                value={chat.status}
-                onValueChange={(val) => onUpdate({ status: val })}
-              >
-                <SelectTrigger
-                  data-testid="select-chat-status"
-                  className="h-9 w-full text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+            {/* Combobox Status (AI Handled / Needs Human / Closed) disembunyikan
+                atas permintaan. */}
+            {false && (
+              <div className="space-y-1.5">
+                <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
+                  Status
+                </Label>
+                <Select
+                  value={chat.status}
+                  onValueChange={(val) => onUpdate({ status: val })}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ai_handled">AI Handled</SelectItem>
-                  <SelectItem value="needs_human">Needs Human</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                  <SelectTrigger
+                    data-testid="select-chat-status"
+                    className="h-9 w-full text-xs bg-transparent border-[hsl(var(--wa-divider))]"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ai_handled">AI Handled</SelectItem>
+                    <SelectItem value="needs_human">Needs Human</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
@@ -2365,7 +2482,8 @@ export function ChatInfoSidebar({
               </p>
             </div>
 
-            {canAssign && (
+            {/* Combobox "Ditugaskan ke" disembunyikan atas permintaan. */}
+            {false && canAssign && (
               <div className="space-y-1.5">
                 <Label className="text-[11px] text-[hsl(var(--wa-meta))] uppercase tracking-wide">
                   Ditugaskan ke
@@ -2401,12 +2519,20 @@ export function ChatInfoSidebar({
               </div>
             )}
 
-            {!isGroup && (
+            {/* Bagian "Grup Bersama" disembunyikan atas permintaan. */}
+            {false && !isGroup && (
               <>
                 <Separator className="bg-[hsl(var(--wa-divider))]" />
                 <CommonGroupsSection chatId={chatId} />
               </>
             )}
+
+            <ChatWorkboardSection
+              chatId={chatId}
+              contactDisplayName={chat.nickname?.trim() || chat.contactName}
+              contactPhone={chat.phoneNumber}
+              lastMessage={chat.lastMessage ?? null}
+            />
           </div>
         ) : tab === "grup" ? (
           <GroupTab chatId={chatId} contactName={chat.contactName} />

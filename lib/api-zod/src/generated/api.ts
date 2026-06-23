@@ -162,6 +162,21 @@ export const RevokeTrustedDeviceResponse = zod.object({
 
 
 /**
+ * @summary Tenant onboarding progress (setup health score + per-step state)
+ */
+export const GetOnboardingChecklistResponse = zod.object({
+  "waConnected": zod.boolean(),
+  "productAdded": zod.boolean(),
+  "teamMemberAdded": zod.boolean(),
+  "firstMessageAt": zod.union([zod.coerce.date(),zod.null()]).optional(),
+  "aiTriedAt": zod.union([zod.coerce.date(),zod.null()]).optional(),
+  "flowActivated": zod.boolean(),
+  "healthScore": zod.number().describe('Setup completion percent'),
+  "riskLevel": zod.string().describe('low (>=70) | medium (40-69) | high (<40).')
+}).describe('Tenant onboarding progress. healthScore (0-100) is the setup completion percent; the dashboard banner hides at 100.')
+
+
+/**
  * @summary Save the first-run AI-feeding profile and (re)compose the system prompt
  */
 export const updateAiProfileBodyAiToneDefault = `profesional`;
@@ -4568,6 +4583,89 @@ export const GetStorageUsageResponse = zod.object({
   "chatCount": zod.number().describe('Total chats stored for the tenant across all channels.'),
   "messageCount": zod.number().describe('Total chat messages stored for the tenant across all channels.'),
   "estimatedBytes": zod.number().describe('Estimated on-disk size in bytes of the tenant\'s chats + messages (sum of pg_column_size over both tables).')
+})
+
+
+/**
+ * @summary Aggregated dashboard payload for the mobile app (Owner/Supervisor)
+ */
+export const GetDashboardResponse = zod.object({
+  "summary": zod.object({
+  "totalChats": zod.number(),
+  "todayChats": zod.number(),
+  "needsHuman": zod.number(),
+  "leads": zod.number(),
+  "notLeads": zod.number(),
+  "totalMessages": zod.number(),
+  "leadRate": zod.number().describe('Percentage of chats marked as Lead, out of all chats.'),
+  "chatsByLabel": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "color": zod.string().describe('Hex color of the label, mirrored from CustomerLabel.'),
+  "count": zod.number().describe('Number of chats in scope that carry this label.')
+}))
+}).describe('Channel-scoped counters for the mobile dashboard (subset of AnalyticsSummary; AI Handled is intentionally excluded).'),
+  "health": zod.object({
+  "channels": zod.object({
+  "total": zod.number().describe('Channels the requester can see.'),
+  "connected": zod.number().describe('Of those'),
+  "anyConnected": zod.boolean()
+}),
+  "aiCredit": zod.union([zod.object({
+  "usagePercent": zod.number(),
+  "tokenRemaining": zod.number(),
+  "blocked": zod.boolean().optional(),
+  "notifyLevel": zod.string().optional()
+}).describe('AI token credit for the tenant owner. Null for non-owner roles (credit is owner-only).'),zod.null()]).optional().describe('Null when the requester is not the tenant owner.')
+}),
+  "storage": zod.object({
+  "chatCount": zod.number().describe('Total chats stored for the tenant across all channels.'),
+  "messageCount": zod.number().describe('Total chat messages stored for the tenant across all channels.'),
+  "estimatedBytes": zod.number().describe('Estimated on-disk size in bytes of the tenant\'s chats + messages (sum of pg_column_size over both tables).')
+}),
+  "commonQuestions": zod.array(zod.object({
+  "question": zod.string(),
+  "count": zod.number()
+}))
+})
+
+
+/**
+ * @summary WorkBoard tasks assigned to or @mentioning the current user
+ */
+export const GetMyWorkboardTasksResponse = zod.object({
+  "assigned": zod.array(zod.object({
+  "taskId": zod.number(),
+  "boardId": zod.number(),
+  "boardName": zod.string(),
+  "boardEmoji": zod.union([zod.string(),zod.null()]).optional(),
+  "boardColor": zod.string(),
+  "columnId": zod.union([zod.number(),zod.null()]).optional(),
+  "title": zod.string(),
+  "dueDate": zod.union([zod.coerce.date(),zod.null()]).optional(),
+  "priority": zod.string(),
+  "isCompleted": zod.boolean()
+})),
+  "mentioned": zod.array(zod.object({
+  "taskId": zod.number(),
+  "boardId": zod.number(),
+  "boardName": zod.string(),
+  "boardEmoji": zod.union([zod.string(),zod.null()]).optional(),
+  "boardColor": zod.string(),
+  "columnId": zod.union([zod.number(),zod.null()]).optional(),
+  "title": zod.string(),
+  "dueDate": zod.union([zod.coerce.date(),zod.null()]).optional(),
+  "priority": zod.string(),
+  "isCompleted": zod.boolean(),
+  "commentId": zod.number(),
+  "mentionedAt": zod.coerce.date(),
+  "mentionedBy": zod.union([zod.string(),zod.null()]).optional().describe('Display name of the comment author who mentioned the user.')
+})),
+  "counts": zod.object({
+  "active": zod.number().describe('Open tasks assigned to the user.'),
+  "dueToday": zod.number().describe('Assigned open tasks due today (WIB).'),
+  "mentioned": zod.number().describe('Tasks where the user is @mentioned.')
+})
 })
 
 

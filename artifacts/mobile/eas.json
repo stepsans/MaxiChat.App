@@ -1,0 +1,39 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_DOMAIN": "GANTI-dengan-domain-api-anda.com"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_DOMAIN": "GANTI-dengan-domain-api-anda.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_DOMAIN": "GANTI-dengan-domain-api-anda.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

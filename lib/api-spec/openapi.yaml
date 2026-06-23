@@ -218,6 +218,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /onboarding/checklist:
+    get:
+      operationId: getOnboardingChecklist
+      tags: [onboarding]
+      summary: Tenant onboarding progress (setup health score + per-step state)
+      responses:
+        "200":
+          description: Onboarding checklist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingChecklist"
+
   /onboarding/ai-profile:
     put:
       operationId: updateAiProfile
@@ -4477,6 +4490,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StorageUsage"
+
+  # ---------------------------------------------------------------------------
+  # Mobile dashboard aggregate — one round-trip for the app's Dashboard tab
+  # (Owner/Supervisor). Gated dashboard.view. Bundles the channel-scoped summary,
+  # system health (channel connectivity + AI credit), tenant storage and top
+  # questions so the mobile app need not fan out to /analytics/* separately.
+  # ---------------------------------------------------------------------------
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Aggregated dashboard payload for the mobile app (Owner/Supervisor)
+      responses:
+        "200":
+          description: Dashboard overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardOverview"
+
+  /workboard/my-tasks:
+    get:
+      operationId: getMyWorkboardTasks
+      tags: [workboard]
+      summary: WorkBoard tasks assigned to or @mentioning the current user
+      responses:
+        "200":
+          description: My WorkBoard tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkboardMyTasks"
 
   # ---------------------------------------------------------------------------
   # Laporan & Jadwal (analytics v2) — unified reports dashboard endpoints.
@@ -10712,6 +10757,150 @@ components:
         estimatedBytes:
           type: integer
           description: Estimated on-disk size in bytes of the tenant's chats + messages (sum of pg_column_size over both tables).
+
+    DashboardSummary:
+      type: object
+      required: [totalChats, todayChats, needsHuman, leads, notLeads, totalMessages, leadRate, chatsByLabel]
+      description: Channel-scoped counters for the mobile dashboard (subset of AnalyticsSummary; AI Handled is intentionally excluded).
+      properties:
+        totalChats: { type: integer }
+        todayChats: { type: integer }
+        needsHuman: { type: integer }
+        leads: { type: integer }
+        notLeads: { type: integer }
+        totalMessages: { type: integer }
+        leadRate:
+          type: number
+          description: Percentage of chats marked as Lead, out of all chats.
+        chatsByLabel:
+          type: array
+          items:
+            $ref: "#/components/schemas/LabelCount"
+
+    DashboardChannels:
+      type: object
+      required: [total, connected, anyConnected]
+      properties:
+        total: { type: integer, description: Channels the requester can see. }
+        connected: { type: integer, description: Of those, how many are status=connected. }
+        anyConnected: { type: boolean }
+
+    DashboardAiCredit:
+      type: object
+      required: [usagePercent, tokenRemaining]
+      description: AI token credit for the tenant owner. Null for non-owner roles (credit is owner-only).
+      properties:
+        usagePercent: { type: number }
+        tokenRemaining: { type: integer }
+        blocked: { type: boolean }
+        notifyLevel: { type: string }
+
+    DashboardHealth:
+      type: object
+      required: [channels]
+      properties:
+        channels:
+          $ref: "#/components/schemas/DashboardChannels"
+        aiCredit:
+          oneOf:
+            - $ref: "#/components/schemas/DashboardAiCredit"
+            - type: "null"
+          description: Null when the requester is not the tenant owner.
+
+    DashboardOverview:
+      type: object
+      required: [summary, health, storage, commonQuestions]
+      properties:
+        summary:
+          $ref: "#/components/schemas/DashboardSummary"
+        health:
+          $ref: "#/components/schemas/DashboardHealth"
+        storage:
+          $ref: "#/components/schemas/StorageUsage"
+        commonQuestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommonQuestion"
+
+    MyWorkboardTask:
+      type: object
+      required: [taskId, boardId, boardName, boardColor, title, priority, isCompleted]
+      properties:
+        taskId: { type: integer }
+        boardId: { type: integer }
+        boardName: { type: string }
+        boardEmoji:
+          oneOf: [{ type: string }, { type: "null" }]
+        boardColor: { type: string }
+        columnId:
+          oneOf: [{ type: integer }, { type: "null" }]
+        title: { type: string }
+        dueDate:
+          oneOf: [{ type: string, format: date-time }, { type: "null" }]
+        priority: { type: string }
+        isCompleted: { type: boolean }
+
+    MyWorkboardMention:
+      type: object
+      required: [taskId, boardId, boardName, boardColor, title, priority, isCompleted, commentId, mentionedAt]
+      properties:
+        taskId: { type: integer }
+        boardId: { type: integer }
+        boardName: { type: string }
+        boardEmoji:
+          oneOf: [{ type: string }, { type: "null" }]
+        boardColor: { type: string }
+        columnId:
+          oneOf: [{ type: integer }, { type: "null" }]
+        title: { type: string }
+        dueDate:
+          oneOf: [{ type: string, format: date-time }, { type: "null" }]
+        priority: { type: string }
+        isCompleted: { type: boolean }
+        commentId: { type: integer }
+        mentionedAt: { type: string, format: date-time }
+        mentionedBy:
+          oneOf: [{ type: string }, { type: "null" }]
+          description: Display name of the comment author who mentioned the user.
+
+    MyWorkboardTaskCounts:
+      type: object
+      required: [active, dueToday, mentioned]
+      properties:
+        active: { type: integer, description: Open tasks assigned to the user. }
+        dueToday: { type: integer, description: Assigned open tasks due today (WIB). }
+        mentioned: { type: integer, description: Tasks where the user is @mentioned. }
+
+    WorkboardMyTasks:
+      type: object
+      required: [assigned, mentioned, counts]
+      properties:
+        assigned:
+          type: array
+          items:
+            $ref: "#/components/schemas/MyWorkboardTask"
+        mentioned:
+          type: array
+          items:
+            $ref: "#/components/schemas/MyWorkboardMention"
+        counts:
+          $ref: "#/components/schemas/MyWorkboardTaskCounts"
+
+    OnboardingChecklist:
+      type: object
+      required: [waConnected, productAdded, teamMemberAdded, flowActivated, healthScore, riskLevel]
+      description: Tenant onboarding progress. healthScore (0-100) is the setup completion percent; the dashboard banner hides at 100.
+      properties:
+        waConnected: { type: boolean }
+        productAdded: { type: boolean }
+        teamMemberAdded: { type: boolean }
+        firstMessageAt:
+          oneOf: [{ type: string, format: date-time }, { type: "null" }]
+        aiTriedAt:
+          oneOf: [{ type: string, format: date-time }, { type: "null" }]
+        flowActivated: { type: boolean }
+        healthScore: { type: integer, description: Setup completion percent, 0-100. }
+        riskLevel: { type: string, description: low (>=70) | medium (40-69) | high (<40). }
 
     PurgeChatsResult:
       type: object

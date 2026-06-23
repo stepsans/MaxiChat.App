@@ -27,6 +27,20 @@ export default function BoardDetailPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
+  // Deep-link from a chat sidebar "View" → /workboard/:boardId?task=:taskId.
+  // Read once on mount, then strip the query so a later back-nav doesn't
+  // re-trigger the modal. KanbanView opens the task once its data loads.
+  const [deepLinkTaskId] = useState<number | null>(() => {
+    const raw = new URLSearchParams(window.location.search).get("task");
+    const id = raw ? Number(raw) : NaN;
+    return Number.isInteger(id) ? id : null;
+  });
+  useEffect(() => {
+    if (deepLinkTaskId != null) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [deepLinkTaskId]);
+
   useEffect(() => {
     if (!permLoading && !menus.workboard?.canView) {
       navigate("/");
@@ -108,6 +122,7 @@ export default function BoardDetailPage() {
             onDeleteTask={detail.deleteTask}
             onCreateColumn={detail.createColumn}
             onUpdateColumn={detail.updateColumn}
+            initialOpenTaskId={deepLinkTaskId}
           />
         )}
 

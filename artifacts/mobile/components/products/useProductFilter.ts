@@ -7,7 +7,7 @@ export type ProductSortKey = "price" | "code" | "name" | "stock";
 /** Sentinel category value for products with no `category`. */
 export const NO_CATEGORY = "__none__";
 
-/** Effective stock used for the "jumlah > 1" filter and the Stok sort. */
+/** Effective stock used for the "jumlah > 0" filter and the Stok sort. */
 export function productStock(p: Product): number {
   return p.stockOnHand ?? p.stock ?? 0;
 }
@@ -17,13 +17,14 @@ export function productStock(p: Product): number {
  * the in-chat Produk sidebar so their behaviour stays identical.
  *
  * Filters: category combo (all / distinct / "Tanpa kategori"), free-text search
- * over name+code, and an optional "jumlah > 1" stock gate. Sorts by Harga /
+ * over name+code, and an optional "jumlah > 0" stock gate (disamakan dengan
+ * web/program: tersedia bila stock > 0 ATAU stockOnHand > 0). Sorts by Harga /
  * Kode / Nama / Stok, ascending or descending.
  */
 export function useProductFilter(products: Product[] | undefined) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  const [qtyOverOne, setQtyOverOne] = useState(false);
+  const [qtyInStock, setQtyInStock] = useState(false);
   const [sortKey, setSortKey] = useState<ProductSortKey>("price");
   const [asc, setAsc] = useState(true);
 
@@ -41,8 +42,8 @@ export function useProductFilter(products: Product[] | undefined) {
       } else if (category != null) {
         if (p.category !== category) return false;
       }
-      if (qtyOverOne) {
-        if ((p.stock ?? 0) <= 1 && (p.stockOnHand ?? 0) <= 1) return false;
+      if (qtyInStock) {
+        if ((p.stock ?? 0) <= 0 && (p.stockOnHand ?? 0) <= 0) return false;
       }
       if (!q) return true;
       return (
@@ -69,15 +70,15 @@ export function useProductFilter(products: Product[] | undefined) {
       return asc ? cmp : -cmp;
     });
     return sorted;
-  }, [products, query, category, qtyOverOne, sortKey, asc]);
+  }, [products, query, category, qtyInStock, sortKey, asc]);
 
   return {
     query,
     setQuery,
     category,
     setCategory,
-    qtyOverOne,
-    setQtyOverOne,
+    qtyInStock,
+    setQtyInStock,
     sortKey,
     setSortKey,
     asc,

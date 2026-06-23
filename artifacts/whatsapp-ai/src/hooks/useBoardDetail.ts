@@ -35,6 +35,11 @@ export interface WorkboardTask {
   createdAt: string;
   updatedAt: string;
   assignees: WorkboardAssignee[];
+  // ── Source tracking (WorkBoard-from-chat) ──
+  sourceType?: string;
+  sourceChatId?: number | null;
+  sourceContactName?: string | null;
+  sourceLastMessage?: string | null;
 }
 
 export interface WorkboardMember {
@@ -97,6 +102,9 @@ export function useBoardDetail(boardId: number) {
       dueDate?: string;
       tags?: string;
       assigneeIds?: number[];
+      // ── WorkBoard-from-chat ──
+      sourceType?: string;
+      sourceChatId?: number;
     }) =>
       apiFetch<{ task: WorkboardTask }>(`/api/workboard/boards/${boardId}/tasks`, {
         method: "POST",

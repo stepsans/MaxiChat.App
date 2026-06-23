@@ -30,6 +30,8 @@ interface KanbanViewPropsSimple {
   onDeleteTask: (taskId: number) => Promise<void>;
   onCreateColumn: (data: { name: string; color?: string }) => Promise<void>;
   onUpdateColumn: (columnId: number, data: Partial<Pick<WorkboardColumn, "name" | "color" | "position" | "isFinishStage">>) => Promise<void>;
+  // Deep-link: open this task's modal once on mount (from a chat sidebar "View").
+  initialOpenTaskId?: number | null;
 }
 
 export default function KanbanView({
@@ -44,6 +46,7 @@ export default function KanbanView({
   onDeleteTask,
   onCreateColumn,
   onUpdateColumn,
+  initialOpenTaskId = null,
 }: KanbanViewPropsSimple) {
   const { data: me } = useGetMe({ query: { queryKey: ["/api/auth/me"] } });
   const myUserId = me?.user?.id ?? null;
@@ -64,6 +67,18 @@ export default function KanbanView({
   useEffect(() => {
     setLocalTasks(null);
   }, [tasks]);
+
+  // Deep-link: when arriving from a chat sidebar "View" (?task=<id>), open that
+  // task's modal once the board's tasks have loaded. Guarded so it fires once.
+  const deepLinkOpenedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkOpenedRef.current || !initialOpenTaskId) return;
+    const found = tasks.find((t) => t.id === initialOpenTaskId);
+    if (found) {
+      deepLinkOpenedRef.current = true;
+      setTaskModal({ open: true, task: found });
+    }
+  }, [initialOpenTaskId, tasks]);
 
   const displayTasks = (localTasks ?? tasks).filter((t) => matchesFilter(t, filter));
 

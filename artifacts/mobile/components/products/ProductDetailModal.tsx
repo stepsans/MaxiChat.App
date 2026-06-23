@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import React, { useState } from "react";
 import {
-  Image,
   Linking,
   Modal,
   Pressable,
@@ -80,7 +80,13 @@ export function ProductDetailModal({
               style={[styles.hero, { backgroundColor: colors.muted }]}
             >
               {uri ? (
-                <Image source={{ uri }} style={styles.heroImg} resizeMode="cover" />
+                <Image
+                  source={{ uri }}
+                  style={styles.heroImg}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={150}
+                />
               ) : (
                 <Feather name="box" size={48} color={colors.mutedForeground} />
               )}
@@ -181,7 +187,12 @@ export function ProductDetailModal({
       <Modal visible={lightbox} transparent animationType="fade" onRequestClose={() => setLightbox(false)}>
         <Pressable style={styles.lightbox} onPress={() => setLightbox(false)}>
           {uri ? (
-            <Image source={{ uri }} style={styles.lightboxImg} resizeMode="contain" />
+            <Image
+              source={{ uri }}
+              style={styles.lightboxImg}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
           ) : null}
           <View style={[styles.lightboxClose, { top: insets.top + 12 }]}>
             <Feather name="x" size={28} color="#fff" />

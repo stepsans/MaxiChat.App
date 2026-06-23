@@ -106,6 +106,20 @@ export const workboardTasksTable = pgTable(
     position: integer("position").notNull().default(0),
     dueDate: timestamp("due_date", { withTimezone: true }),
     tags: text("tags"),
+    // ── Source tracking (WorkBoard-from-chat) ──────────────────────────────
+    // 'manual' = dibuat normal di board; 'chat' = lahir dari sidebar chat.
+    // Eksplisit (bukan sekadar source_chat_id IS NULL) agar sumber lain di masa
+    // depan (pipeline/order) bisa dibedakan tanpa ubah skema.
+    sourceType: text("source_type").notNull().default("manual"),
+    // Chat asal task (nullable). Plain integer (no FK in Drizzle) mengikuti pola
+    // chats.assignedUserId untuk menghindari cross-schema circular reference;
+    // FK constraint + ON DELETE SET NULL tetap berlaku di level DB lewat
+    // migration workboard_source.sql (hapus chat tak menghapus task).
+    sourceChatId: integer("source_chat_id"),
+    // Snapshot nama kontak + pesan terakhir saat task dibuat, supaya riwayat
+    // tetap kebaca walau chat dihapus.
+    sourceContactName: text("source_contact_name"),
+    sourceLastMessage: text("source_last_message"),
     isCompleted: boolean("is_completed").notNull().default(false),
     createdByUserId: integer("created_by_user_id")
       .notNull()
@@ -120,6 +134,7 @@ export const workboardTasksTable = pgTable(
     index("workboard_tasks_board_idx").on(t.boardId),
     index("workboard_tasks_column_idx").on(t.columnId),
     index("workboard_tasks_created_by_idx").on(t.createdByUserId),
+    index("workboard_tasks_source_chat_idx").on(t.sourceChatId),
   ]
 );
 

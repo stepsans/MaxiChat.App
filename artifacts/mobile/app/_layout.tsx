@@ -14,6 +14,13 @@ import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { enableFreeze, enableScreens } from "react-native-screens";
+
+// Native-stack screens + freeze offscreen screens (e.g. inactive tabs and the
+// chat screen behind the info panel) so they stop re-rendering on background
+// polls until the user navigates back to them.
+enableScreens(true);
+enableFreeze(true);
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";

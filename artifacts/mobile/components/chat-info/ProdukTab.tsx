@@ -1,11 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
+import { Image } from "expo-image";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -60,7 +60,14 @@ export function ProdukTab({
       <View style={[styles.card, { borderColor: colors.border }]}>
         <View style={[styles.thumb, { backgroundColor: colors.muted }]}>
           {uri ? (
-            <Image source={{ uri }} style={styles.thumbImg} />
+            <Image
+              source={{ uri }}
+              style={styles.thumbImg}
+              recyclingKey={uri}
+              cachePolicy="memory-disk"
+              transition={120}
+              contentFit="cover"
+            />
           ) : (
             <Feather name="box" size={22} color={colors.mutedForeground} />
           )}

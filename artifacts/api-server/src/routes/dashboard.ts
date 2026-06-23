@@ -1,10 +1,18 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
+import { db, channelsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { getSessionUserId } from "../lib/auth";
 import { resolveOwnerUserId } from "../lib/seed";
 import { requirePermission } from "../lib/role-permissions";
 import { getAllowedChannelIds } from "../lib/user-channel-access";
+import { resolveChannelScope } from "../lib/channel-context";
 import { getSystemHealth } from "../lib/system-health";
+import {
+  computeAnalyticsSummary,
+  computeCommonQuestions,
+  computeStorageUsage,
+} from "../lib/analytics-queries";
 import { getCachedTopQuestions } from "../lib/dashboard-insights";
 import { buildDrillPdf, buildDrillCsv } from "../lib/dashboard-pdf";
 import { startOfWibDay } from "../lib/timezone";
@@ -45,6 +53,74 @@ function parseRange(req: Request): DashboardRange {
 // honour the requester's allowed channels. Money/credit signals are hidden from
 // non-owner roles.
 const router: Router = Router();
+
+// GET /dashboard — aggregated payload for the mobile app's Dashboard tab
+// (Owner/Supervisor). One round-trip: channel-scoped summary + system health
+// (channel connectivity & AI credit) + tenant storage + top questions. AI
+// Handled is intentionally omitted (founder call). Credit is owner-only.
+router.get(
+  "/",
+  requirePermission("dashboard", "view"),
+  async (req: Request, res: Response): Promise<void> => {
+    const uid = getSessionUserId(req)!;
+    const ownerUserId = await resolveOwnerUserId(uid);
+    const allowed = await getAllowedChannelIds(uid);
+
+    // Summary + common questions honour the channel switcher (X-Channel-Id);
+    // resolveChannelScope returns null (and has already responded) on error.
+    const scope = await resolveChannelScope(req, res);
+    if (!scope) return;
+
+    // Storage is tenant-wide (every owner channel, ignore the switcher).
+    const ownerChannels = await db
+      .select({ id: channelsTable.id })
+      .from(channelsTable)
+      .where(eq(channelsTable.userId, ownerUserId));
+
+    const [summary, commonQuestions, storage, health] = await Promise.all([
+      computeAnalyticsSummary(scope.channelIds),
+      computeCommonQuestions(scope.channelIds),
+      computeStorageUsage(ownerChannels.map((c) => c.id)),
+      getSystemHealth({
+        ownerUserId,
+        allowedChannelIds: allowed,
+        includeCredit: uid === ownerUserId,
+      }),
+    ]);
+
+    const connected = health.channels.filter((c) => c.connected).length;
+
+    res.json({
+      summary: {
+        totalChats: summary.totalChats,
+        todayChats: summary.todayChats,
+        needsHuman: summary.needsHuman,
+        leads: summary.leads,
+        notLeads: summary.notLeads,
+        totalMessages: summary.totalMessages,
+        leadRate: summary.leadRate,
+        chatsByLabel: summary.chatsByLabel,
+      },
+      health: {
+        channels: {
+          total: health.channels.length,
+          connected,
+          anyConnected: connected > 0,
+        },
+        aiCredit: health.credit
+          ? {
+              usagePercent: health.credit.usagePercent,
+              tokenRemaining: health.credit.tokenRemaining,
+              blocked: health.credit.blocked,
+              notifyLevel: health.credit.notifyLevel,
+            }
+          : null,
+      },
+      storage,
+      commonQuestions,
+    });
+  }
+);
 
 // GET /dashboard/system-health — channel connectivity, AI engine failover,
 // scheduled jobs, AI credit (spec A.9). Strip is shown to anyone who can view the

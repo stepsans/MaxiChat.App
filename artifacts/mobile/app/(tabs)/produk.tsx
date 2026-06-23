@@ -1,9 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import React, { useState } from "react";
+import { Image } from "expo-image";
+import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -19,6 +18,7 @@ import {
 
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { ProductListSkeleton } from "@/components/Skeleton";
 import { formatRupiah } from "@/components/chat-info/shared";
 import { ProductDetailModal } from "@/components/products/ProductDetailModal";
 import { ProductFilterBar } from "@/components/products/ProductFilterBar";
@@ -26,6 +26,98 @@ import { productStock, useProductFilter } from "@/components/products/useProduct
 import { useChannel } from "@/contexts/ChannelContext";
 import { useColors } from "@/hooks/useColors";
 import { resolveMediaUrl } from "@/lib/api";
+
+type Colors = ReturnType<typeof useColors>;
+
+// Memoized product card — keeps unchanged rows from re-rendering while typing in
+// the filter or when the list query refreshes.
+function ProductRowBase({
+  item,
+  colors,
+  onPress,
+}: {
+  item: Product;
+  colors: Colors;
+  onPress: (p: Product) => void;
+}) {
+  const uri = resolveMediaUrl(item.imageUrl);
+  const stock = productStock(item);
+  const inStock = stock > 0;
+  return (
+    <TouchableOpacity
+      style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}
+      activeOpacity={0.7}
+      onPress={() => onPress(item)}
+    >
+      <View style={[styles.thumb, { backgroundColor: colors.muted }]}>
+        {uri ? (
+          <Image
+            source={{ uri }}
+            recyclingKey={uri}
+            cachePolicy="memory-disk"
+            transition={120}
+            contentFit="cover"
+            style={styles.thumbImg}
+          />
+        ) : (
+          <Feather name="box" size={22} color={colors.mutedForeground} />
+        )}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={2}>
+          {item.name}
+        </Text>
+        <View style={styles.metaRow}>
+          <Text style={[styles.code, { color: colors.mutedForeground }]}>{item.code}</Text>
+          {item.category ? (
+            <View style={[styles.catChip, { backgroundColor: colors.primarySoft }]}>
+              <Text style={[styles.catText, { color: colors.primaryDark }]} numberOfLines={1}>
+                {item.category}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={[styles.price, { color: colors.primary }]}>
+          {formatRupiah(item.price)}
+        </Text>
+      </View>
+      <View style={styles.rightCol}>
+        <View
+          style={[
+            styles.stockBadge,
+            { backgroundColor: inStock ? colors.successSoft : colors.destructive + "22" },
+          ]}
+        >
+          <Text
+            style={[
+              styles.stockBadgeText,
+              { color: inStock ? colors.success : colors.destructive },
+            ]}
+          >
+            {inStock ? stock : 0}
+          </Text>
+        </View>
+        <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const ProductRow = React.memo(ProductRowBase, (prev, next) => {
+  const a = prev.item;
+  const b = next.item;
+  return (
+    prev.colors === next.colors &&
+    prev.onPress === next.onPress &&
+    a.id === b.id &&
+    a.name === b.name &&
+    a.code === b.code &&
+    a.category === b.category &&
+    a.price === b.price &&
+    a.imageUrl === b.imageUrl &&
+    productStock(a) === productStock(b)
+  );
+});
 
 export default function ProdukScreen() {
   const colors = useColors();
@@ -41,62 +133,13 @@ export default function ProdukScreen() {
   const filter = useProductFilter(products);
   const [selected, setSelected] = useState<Product | null>(null);
 
-  const renderItem = ({ item }: { item: Product }) => {
-    const uri = resolveMediaUrl(item.imageUrl);
-    const stock = productStock(item);
-    const inStock = stock > 0;
-    return (
-      <TouchableOpacity
-        style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}
-        activeOpacity={0.7}
-        onPress={() => setSelected(item)}
-      >
-        <View style={[styles.thumb, { backgroundColor: colors.muted }]}>
-          {uri ? (
-            <Image source={{ uri }} style={styles.thumbImg} />
-          ) : (
-            <Feather name="box" size={22} color={colors.mutedForeground} />
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={2}>
-            {item.name}
-          </Text>
-          <View style={styles.metaRow}>
-            <Text style={[styles.code, { color: colors.mutedForeground }]}>{item.code}</Text>
-            {item.category ? (
-              <View style={[styles.catChip, { backgroundColor: colors.primarySoft }]}>
-                <Text style={[styles.catText, { color: colors.primaryDark }]} numberOfLines={1}>
-                  {item.category}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-          <Text style={[styles.price, { color: colors.primary }]}>
-            {formatRupiah(item.price)}
-          </Text>
-        </View>
-        <View style={styles.rightCol}>
-          <View
-            style={[
-              styles.stockBadge,
-              { backgroundColor: inStock ? colors.successSoft : colors.destructive + "22" },
-            ]}
-          >
-            <Text
-              style={[
-                styles.stockBadgeText,
-                { color: inStock ? colors.success : colors.destructive },
-              ]}
-            >
-              {inStock ? stock : 0}
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  const renderItem = useCallback(
+    ({ item }: { item: Product }) => (
+      <ProductRow item={item} colors={colors} onPress={setSelected} />
+    ),
+    [colors],
+  );
+  const keyExtractor = useCallback((p: Product) => String(p.id), []);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -104,13 +147,17 @@ export default function ProdukScreen() {
       <ProductFilterBar state={filter} />
 
       {isLoading ? (
-        <ActivityIndicator style={{ marginTop: 32 }} color={colors.primary} size="large" />
+        <ProductListSkeleton />
       ) : (
         <FlatList
           data={filter.filtered}
-          keyExtractor={(p) => String(p.id)}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 12, paddingBottom: insets.bottom + 24 }}
+          removeClippedSubviews
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
           ListHeaderComponent={
             <Text style={[styles.count, { color: colors.mutedForeground }]}>
               {filter.filtered.length} produk

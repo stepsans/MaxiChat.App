@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import React, { useState } from "react";
 import {
-  Image,
   Linking,
   ScrollView,
   StyleSheet,
@@ -102,7 +102,14 @@ export function MediaTab({ chatId }: { chatId: number }) {
                     onPress={() => open(m.mediaUrl)}
                   >
                     {uri ? (
-                      <Image source={{ uri }} style={styles.thumbImg} />
+                      <Image
+                        source={{ uri }}
+                        style={styles.thumbImg}
+                        recyclingKey={uri}
+                        cachePolicy="memory-disk"
+                        transition={120}
+                        contentFit="cover"
+                      />
                     ) : (
                       <Feather
                         name="film"
