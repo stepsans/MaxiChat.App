@@ -3766,6 +3766,12 @@ async function startBaileys(userId: number, channelId: number) {
       }
 
       let ingested = 0;
+      // OPSI A: media WhatsApp hanya bisa diunduh ulang ~14 hari. Mencoba
+      // mengunduh media riwayat yang lebih tua selalu gagal (403) dan hanya
+      // membuang CPU/jaringan — inilah yang membanjiri server saat sinkronisasi
+      // riwayat. Untuk pesan lama kita simpan metadata-nya saja (placeholder);
+      // pesan yang masih baru tetap diunduh penuh.
+      const HISTORY_MEDIA_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
       for (const msg of messages) {
         try {
           // Use `continue`, not `return`: a mid-batch epoch flip used
@@ -3791,12 +3797,22 @@ async function startBaileys(userId: number, channelId: number) {
           // sequential here (we await each one) so we don't fan out a
           // huge fetch storm; individual failures are logged inside
           // parseWaMessage and we still persist the row with metadata.
+          // BUT only attempt it inside WhatsApp's ~14-day media re-download
+          // window: older media URLs are always expired (403), so trying
+          // floods the server with useless fetches (see HISTORY_MEDIA_MAX_AGE_MS).
+          // A missing/zero timestamp is treated as "too old" (skip download)
+          // rather than falling back to Date.now() — otherwise a malformed
+          // history record would re-open the flood we're guarding against.
+          const tsEpochMs =
+            msg.messageTimestamp != null ? toEpochMs(msg.messageTimestamp) : 0;
+          const downloadHistoryMedia =
+            tsEpochMs > 0 && Date.now() - tsEpochMs <= HISTORY_MEDIA_MAX_AGE_MS;
           const parsed = await parseWaMessage(
             { ownerUserId: mediaOwnerUserId, channelId },
             msg,
             isJidGroup as (j: string) => boolean,
             downloadMediaMessage,
-            true,
+            downloadHistoryMedia,
             resolveGroupName,
             resolveLidToPn,
           );

@@ -32,6 +32,23 @@ with `time zone displacement out of range`, rolling back the whole history-sync
 transaction. Clamp `pinned` to a plausible epoch (`<= 2100-01-01`) before
 constructing the Date in `extractChatListMeta`.
 
+## History-media downloads must be age-gated (~14-day WA window)
+Even with `syncFullHistory: false`, the recent-history `messaging-history.set`
+handler used to call `parseWaMessage(..., downloadMedia=true)` for EVERY history
+message. WhatsApp only allows media re-download for ~14 days, so older `.enc`
+URLs return 403 — attempting them is pure waste that floods prod logs and
+saturates CPU/network, stalling the dashboard's API calls (symptom: published app
+"spins forever", but process is STABLE/no restart = saturation, not OOM-crash).
+
+**Rule:** in the history handler, gate the download flag on message age
+(`Date.now() - toEpochMs(msg.messageTimestamp) <= 14d`); older messages persist
+metadata only (placeholder, `mediaUrl: null`). Treat a missing/zero timestamp as
+"too old" (skip) — do NOT let `toEpochMs`'s `Date.now()` fallback re-open the
+flood. Live `messages.upsert` keeps downloading (fresh URLs) and is untouched.
+
+**Why:** old media is unrecoverable regardless, so the only effect of trying is
+the flood; placeholders for >14d media are an acceptable, invisible tradeoff.
+
 ## Diagnosing a "site down but process looks alive" hang
 - `curl -sv https://<domain>/` → TLS connects + cert OK but no `HTTP/` line, then
   timeout (`http=000`) = backend wedged, not a DNS/TLS/domain problem.
