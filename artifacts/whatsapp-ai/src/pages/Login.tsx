@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [notRegistered, setNotRegistered] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const [resendCount, setResendCount] = useState(0);
@@ -47,9 +48,12 @@ export default function LoginPage() {
     try {
       const { ok, data } = await post("/api/auth/otp/request", { email });
       if (!ok) {
-        // Unregistered → steer to signup.
+        // Unregistered → DO NOT redirect. Show a notice and let the user either
+        // fix a typo or go to signup intentionally via the link below.
         if (data?.reason === "email_not_registered") {
-          window.location.href = `/signup?email=${encodeURIComponent(email)}`;
+          setNotRegistered(true);
+          setError("");
+          setNotice("");
           return;
         }
         // Pending account → a fresh verification link was just emailed.
@@ -167,7 +171,7 @@ export default function LoginPage() {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); setNotRegistered(false); }}
                     required
                     placeholder="nama@perusahaan.com"
                     className={inputCls + " pl-11"}
@@ -175,6 +179,19 @@ export default function LoginPage() {
                   />
                 </div>
               </div>
+              {notRegistered && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-800">
+                  Email ini belum terdaftar di MaxiChat. Periksa kembali penulisan email Anda,
+                  atau{" "}
+                  <a
+                    href={`/signup?email=${encodeURIComponent(email)}`}
+                    className="font-semibold text-orange-600 hover:text-orange-700 underline"
+                  >
+                    daftar trial gratis di sini
+                  </a>
+                  .
+                </div>
+              )}
               {noticeBox}
               {errBox}
               <button type="submit" disabled={loading} className={btnCls}>

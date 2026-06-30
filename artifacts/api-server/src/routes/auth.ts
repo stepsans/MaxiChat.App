@@ -112,6 +112,7 @@ router.post("/otp/request", otpLimit, async (req, res): Promise<void> => {
         status: usersTable.status,
         emailVerifiedAt: usersTable.emailVerifiedAt,
         name: usersTable.name,
+        parentUserId: usersTable.parentUserId,
       })
       .from(usersTable)
       .where(eq(usersTable.email, email))
@@ -130,13 +131,38 @@ router.post("/otp/request", otpLimit, async (req, res): Promise<void> => {
       res.status(403).json({ reason: "account_disabled", error: "Akun dinonaktifkan. Hubungi Super Admin." });
       return;
     }
-    // Not yet verified → re-issue the verification link instead of an OTP.
+    // Not yet verified → re-issue the correct activation link (NOT an OTP).
+    // Invited team members (parentUserId != null) get an AGENT INVITATION link
+    // (/invite/verify); self-signup owners get the email-verification link
+    // (/verify-email). Sending the wrong one leaves invited members unable to
+    // activate, because /auth/verify-email only flips rows that are still
+    // status='pending' and invited rows are created 'active'.
     if (!user.emailVerifiedAt || user.status === "pending") {
-      try { await issueVerificationLink(user.id, email, user.name); }
-      catch (err) { logger.error({ err, email }, "Failed to re-issue verification link"); }
+      try {
+        if (user.parentUserId !== null) {
+          const { createAgentInvitation, getAppUrl } = await import("../lib/agent-invitation");
+          const { sendAgentInvitationEmail } = await import("../lib/email");
+          const [ownerRow] = await db
+            .select({ name: usersTable.name, email: usersTable.email })
+            .from(usersTable)
+            .where(eq(usersTable.id, user.parentUserId))
+            .limit(1);
+          const { token } = await createAgentInvitation(user.id, user.parentUserId, email);
+          await sendAgentInvitationEmail(
+            email,
+            ownerRow?.name || ownerRow?.email || "Super Admin",
+            token,
+            await getAppUrl()
+          );
+        } else {
+          await issueVerificationLink(user.id, email, user.name);
+        }
+      } catch (err) {
+        logger.error({ err, email }, "Failed to re-issue activation link");
+      }
       res.status(403).json({
         reason: "email_not_verified",
-        error: "Email belum diverifikasi. Kami kirim ulang link verifikasi ke email kamu.",
+        error: "Email belum diverifikasi. Kami kirim ulang link aktivasi ke email kamu.",
       });
       return;
     }
@@ -350,11 +376,16 @@ router.post("/verify-email", async (req, res): Promise<void> => {
     // A disabled account's old link must never reactivate it.
     if (user.status === "disabled") { res.status(400).json({ error: "Akun dinonaktifkan." }); return; }
 
-    // Idempotent activation: only flips a still-pending row.
+    // Idempotent activation: set emailVerifiedAt if missing, and promote a
+    // still-pending row to active. Safe for already-active invited members that
+    // somehow received a stale /verify-email link before FIX 2A shipped.
     await db
       .update(usersTable)
-      .set({ status: "active", emailVerifiedAt: user.emailVerifiedAt ?? new Date() })
-      .where(and(eq(usersTable.id, user.id), eq(usersTable.status, "pending")));
+      .set({
+        status: user.status === "pending" ? "active" : user.status,
+        emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+      })
+      .where(eq(usersTable.id, user.id));
 
     // Commit trial — owners only (parent NULL, not platform admin), once.
     const isOwner = user.parentUserId === null && user.role !== "admin";
@@ -426,7 +457,7 @@ router.get("/invite/verify", async (req, res): Promise<void> => {
     if (!token) { res.status(400).json({ error: "Token tidak valid." }); return; }
     const result = await verifyAgentInvitation(token);
     if (!result.ok) { res.status(400).json({ error: result.error }); return; }
-    const appUrl = process.env.PUBLIC_URL || "https://app.maxichat.app";
+    const appUrl = await getAppUrl();
     res.redirect(`${appUrl}/login?verified=1&email=${encodeURIComponent(result.email!)}`);
   } catch (err) {
     logger.error({ err }, "GET /auth/invite/verify failed");

@@ -8,7 +8,7 @@ const hashToken = (t: string) => crypto.createHash("sha256").update(t).digest("h
 export async function getAppUrl(): Promise<string> {
   const [row] = await db.select().from(platformSettingsTable)
     .where(eq(platformSettingsTable.key, "app_url")).limit(1);
-  return row?.value?.trim() || process.env.PUBLIC_URL?.trim() || "https://app.maxichat.app";
+  return row?.value?.trim() || process.env.PUBLIC_URL?.trim() || "https://maxichat.app";
 }
 
 export async function createAgentInvitation(agentUserId: number, invitedByUserId: number, agentEmail: string) {

@@ -1,0 +1,362 @@
+# MaxiChat — Auth Fixes (Login Notice · Invited-Member Verify · Activation Link Domain)
+
+Three independent fixes. They can be applied together. Each section lists the
+file, the exact change, and how to verify. Files touched are all in the indexed
+web/API workspaces (`artifacts/whatsapp-ai/src/`, `artifacts/api-server/src/`).
+
+No DB schema migration is required. No OpenAPI/Zod/Orval regeneration is
+required (no API response shape changes).
+
+---
+
+## FIX 1 — Login page: show a notice instead of auto-redirecting to /signup
+
+### Problem
+When an email that is **not registered** is entered on the login page, the
+backend returns `{ reason: "email_not_registered", redirect: "/signup" }` and
+the frontend immediately does `window.location.href = "/signup?email=..."`.
+A typo on a real account, or any unknown email, silently throws the user onto
+the signup page. Desired behavior: **stay on the login page and show a notice**,
+with an explicit (one-click, intentional) link to the trial signup.
+
+### Scope
+**Frontend only.** Do NOT change the API. The `reason: "email_not_registered"`
+field stays as-is; the frontend simply stops auto-redirecting. (The `redirect`
+field in the API response becomes unused — leave it; removing it would force a
+contract regeneration for no benefit.)
+
+### File
+`artifacts/whatsapp-ai/src/pages/Login.tsx`
+
+### Change A — handler
+In `handleEmailSubmit`, replace the `email_not_registered` branch.
+
+**Before:**
+```ts
+if (!ok) {
+  // Unregistered → steer to signup.
+  if (data?.reason === "email_not_registered") {
+    window.location.href = `/signup?email=${encodeURIComponent(email)}`;
+    return;
+  }
+```
+
+**After:**
+```ts
+if (!ok) {
+  // Unregistered → DO NOT redirect. Show a notice and let the user either
+  // fix a typo or go to signup intentionally via the link below.
+  if (data?.reason === "email_not_registered") {
+    setNotRegistered(true);
+    setError("");
+    setNotice("");
+    return;
+  }
+```
+
+### Change B — state
+Add a boolean state alongside the existing `useState` declarations near the top
+of the component:
+```ts
+const [notRegistered, setNotRegistered] = useState(false);
+```
+
+Reset it whenever the user edits the email so the notice clears on retry. In the
+email input's `onChange`, also clear the flag, e.g.:
+```ts
+onChange={(e) => { setEmail(e.target.value); setNotRegistered(false); }}
+```
+(If the email input currently uses a simpler `onChange={(e) => setEmail(...)}`,
+extend it as above. Keep everything else identical.)
+
+### Change C — notice render
+Render a notice block in the **email step** (`step === "email"`), placed where
+the existing `error`/`notice` messages render so it inherits the same visual
+treatment. Use the existing notice/error Tailwind styling already present in
+this file (match the orange-tinted notice box used for the `verified`/
+`email_not_verified` messages). Suggested block:
+
+```tsx
+{notRegistered && (
+  <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-800">
+    Email ini belum terdaftar di MaxiChat. Periksa kembali penulisan email Anda,
+    atau{" "}
+    <a
+      href={`/signup?email=${encodeURIComponent(email)}`}
+      className="font-semibold text-orange-600 hover:text-orange-700 underline"
+    >
+      daftar trial gratis di sini
+    </a>
+    .
+  </div>
+)}
+```
+
+> Match the corner radius / padding to the existing notice boxes in this file if
+> they differ from the snippet above. The email value stays in the field so the
+> user can correct a typo immediately.
+
+### Note (mobile)
+This is a **web-only** change. The Expo mobile app has its own login screen that
+hits the same `/auth/otp/request` endpoint; if it also auto-redirects on
+`email_not_registered`, apply the equivalent notice there in a separate pass.
+(Mobile files are not in scope for this spec.)
+
+### Verify
+1. On the login page, enter an email that does not exist → page stays, amber
+   notice appears with a working "daftar trial gratis di sini" link.
+2. Edit the email → notice disappears.
+3. A registered+verified email still proceeds to the OTP step.
+4. A registered-but-unverified email still shows the existing "belum
+   diverifikasi" notice (unchanged).
+
+---
+
+## FIX 2 — Invited member who logs in before accepting gets the wrong activation email
+
+### Problem
+An invited agent/supervisor row is created with `status: "active"` but
+`emailVerifiedAt: null`. If they go to the login page **before** clicking their
+invitation link, `/auth/otp/request` hits the "not verified" branch and calls
+`issueVerificationLink(...)`, which sends the **self-signup** email-verification
+link (`/verify-email?token=...`, backed by `email_verification_tokens`) — NOT
+the agent-invitation link (`/invite/verify?token=...`, backed by
+`agent_invitations`).
+
+Clicking that wrong link calls `POST /auth/verify-email`, whose activation
+UPDATE is gated `WHERE status = 'pending'`. The invited member is already
+`active`, so the UPDATE matches **0 rows** and `emailVerifiedAt` is never set —
+the member stays unable to log in. Only the real invitation link
+(`/invite/verify` → `verifyAgentInvitation`) sets `emailVerifiedAt` correctly.
+
+### Scope
+**Backend only.** Two changes in `auth.ts`:
+- **2A (primary):** in `/auth/otp/request`, route invited members to a resent
+  **agent invitation** instead of a self-signup verification link.
+- **2B (hardening):** make `/auth/verify-email` idempotently set
+  `emailVerifiedAt` for any non-disabled account, so any *already-sent* wrong
+  links (e.g. for users stuck before this deploy) still work.
+
+### File
+`artifacts/api-server/src/routes/auth.ts`
+
+### Change 2A — `/auth/otp/request`
+
+Add `parentUserId` to the user lookup `select`:
+```ts
+const [user] = await db
+  .select({
+    id: usersTable.id,
+    status: usersTable.status,
+    emailVerifiedAt: usersTable.emailVerifiedAt,
+    name: usersTable.name,
+    parentUserId: usersTable.parentUserId, // ← add
+  })
+  .from(usersTable)
+  .where(eq(usersTable.email, email))
+  .limit(1);
+```
+
+Replace the "not yet verified" branch.
+
+**Before:**
+```ts
+// Not yet verified → re-issue the verification link instead of an OTP.
+if (!user.emailVerifiedAt || user.status === "pending") {
+  try { await issueVerificationLink(user.id, email, user.name); }
+  catch (err) { logger.error({ err, email }, "Failed to re-issue verification link"); }
+  res.status(403).json({
+    reason: "email_not_verified",
+    error: "Email belum diverifikasi. Kami kirim ulang link verifikasi ke email kamu.",
+  });
+  return;
+}
+```
+
+**After:**
+```ts
+// Not yet verified → re-issue the correct activation link (NOT an OTP).
+// Invited team members (parentUserId != null) get an AGENT INVITATION link
+// (/invite/verify); self-signup owners get the email-verification link
+// (/verify-email). Sending the wrong one leaves invited members unable to
+// activate, because /auth/verify-email only flips rows that are still
+// status='pending' and invited rows are created 'active'.
+if (!user.emailVerifiedAt || user.status === "pending") {
+  try {
+    if (user.parentUserId !== null) {
+      const { createAgentInvitation, getAppUrl } = await import("../lib/agent-invitation");
+      const { sendAgentInvitationEmail } = await import("../lib/email");
+      const [ownerRow] = await db
+        .select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, user.parentUserId))
+        .limit(1);
+      const { token } = await createAgentInvitation(user.id, user.parentUserId, email);
+      await sendAgentInvitationEmail(
+        email,
+        ownerRow?.name || ownerRow?.email || "Super Admin",
+        token,
+        await getAppUrl()
+      );
+    } else {
+      await issueVerificationLink(user.id, email, user.name);
+    }
+  } catch (err) {
+    logger.error({ err, email }, "Failed to re-issue activation link");
+  }
+  res.status(403).json({
+    reason: "email_not_verified",
+    error: "Email belum diverifikasi. Kami kirim ulang link aktivasi ke email kamu.",
+  });
+  return;
+}
+```
+
+> The frontend already handles `reason: "email_not_verified"` with a notice, so
+> no frontend change is needed. (Optionally soften that frontend copy from
+> "link verifikasi" to "link aktivasi" for consistency — cosmetic only.)
+
+### Change 2B — `/auth/verify-email` hardening (recommended)
+
+Make activation idempotent for any non-disabled account that is missing
+`emailVerifiedAt`. Disabled accounts are already rejected earlier in this route,
+so the only statuses reaching this UPDATE are `pending` or `active`.
+
+**Before:**
+```ts
+// Idempotent activation: only flips a still-pending row.
+await db
+  .update(usersTable)
+  .set({ status: "active", emailVerifiedAt: user.emailVerifiedAt ?? new Date() })
+  .where(and(eq(usersTable.id, user.id), eq(usersTable.status, "pending")));
+```
+
+**After:**
+```ts
+// Idempotent activation: set emailVerifiedAt if missing, and promote a
+// still-pending row to active. Safe for already-active invited members that
+// somehow received a stale /verify-email link before FIX 2A shipped.
+await db
+  .update(usersTable)
+  .set({
+    status: user.status === "pending" ? "active" : user.status,
+    emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+  })
+  .where(eq(usersTable.id, user.id));
+```
+
+The owner-only trial-commit block that follows is unchanged (it checks
+`parentUserId === null` and `!trialUsed`, both already correct).
+
+### Verify
+1. Invite a new agent. **Before** they click the invitation link, have them
+   submit their email on the login page → they receive an **invitation** email
+   pointing to `/invite/verify?token=...` (not `/verify-email`).
+2. Clicking that link activates them (`emailVerifiedAt` set, `status=active`),
+   then they can request an OTP and log in.
+3. Owner self-signup who submits their (unverified) email on login still
+   receives the `/verify-email` link (unchanged).
+4. (2B) Any user who clicks a `/verify-email` link while already `active` now
+   gets `emailVerifiedAt` set instead of a silent no-op.
+
+---
+
+## FIX 3 — Activation/verification links point to a non-resolving domain
+
+### Problem
+Emails contain links to `https://app.maxichat.app/...`, which returns
+`DNS_PROBE_FINISHED_NXDOMAIN` (no DNS record). The working domain is the apex
+`https://maxichat.app`. Swapping the host manually works, confirming only the
+host is wrong.
+
+Root cause — the base URL resolves to the wrong fallback in two places:
+- `getAppUrl()` in `lib/agent-invitation.ts` falls back to
+  `"https://app.maxichat.app"` when neither the `app_url` platform setting nor
+  `PUBLIC_URL` is set. This builds the outgoing email links
+  (`issueVerificationLink` and the agent-invitation email).
+- `GET /auth/invite/verify` builds its post-click redirect from
+  `process.env.PUBLIC_URL || "https://app.maxichat.app"` directly — it does
+  **not** read `getAppUrl()`, so even a correct `app_url` setting won't fix the
+  redirect target.
+
+### Part A — Immediate config fix (no deploy)
+
+1. **Admin panel → Platform Settings → App URL:** set to `https://maxichat.app`
+   and save. This is read first by `getAppUrl()`, so all newly generated email
+   links use the correct host immediately. (Equivalent API: `PUT
+   /admin/platform-settings` with `{ "appUrl": "https://maxichat.app" }`.)
+2. **Replit env var:** set `PUBLIC_URL=https://maxichat.app` and restart the
+   Reserved VM. This fixes the `/auth/invite/verify` redirect target (which uses
+   the env var, not the setting) and serves as the fallback everywhere.
+
+> Direct SQL alternative for step 1 (per psql convention), if preferred over the
+> admin UI:
+> ```sql
+> INSERT INTO platform_settings (key, value)
+> VALUES ('app_url', 'https://maxichat.app')
+> ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+> ```
+
+Already-sent links remain valid (the token is unaffected) — the user can swap
+the host manually, or you can resend.
+
+### Part B — Code hardening (next deploy)
+
+Make `maxichat.app` the single source of truth and stop `/invite/verify` from
+diverging from `getAppUrl()`.
+
+**`artifacts/api-server/src/lib/agent-invitation.ts`** — fix the fallback host:
+```ts
+export async function getAppUrl(): Promise<string> {
+  const [row] = await db.select().from(platformSettingsTable)
+    .where(eq(platformSettingsTable.key, "app_url")).limit(1);
+  return row?.value?.trim() || process.env.PUBLIC_URL?.trim() || "https://maxichat.app";
+}
+```
+
+**`artifacts/api-server/src/routes/auth.ts`** — `GET /auth/invite/verify`: use
+`getAppUrl()` instead of reading the env var with a hardcoded fallback.
+
+**Before:**
+```ts
+const result = await verifyAgentInvitation(token);
+if (!result.ok) { res.status(400).json({ error: result.error }); return; }
+const appUrl = process.env.PUBLIC_URL || "https://app.maxichat.app";
+res.redirect(`${appUrl}/login?verified=1&email=${encodeURIComponent(result.email!)}`);
+```
+
+**After:**
+```ts
+const result = await verifyAgentInvitation(token);
+if (!result.ok) { res.status(400).json({ error: result.error }); return; }
+const { getAppUrl } = await import("../lib/agent-invitation");
+const appUrl = await getAppUrl();
+res.redirect(`${appUrl}/login?verified=1&email=${encodeURIComponent(result.email!)}`);
+```
+
+> Decision note: this standardizes on the **apex** `maxichat.app`, matching what
+> resolves today. If you later want to serve the app from `app.maxichat.app`,
+> add the DNS record for that subdomain, then just change the App URL setting +
+> `PUBLIC_URL` — no further code changes, since both now flow through
+> `getAppUrl()`.
+
+### Verify
+1. Invite a new agent and trigger a new owner signup → both emails link to
+   `https://maxichat.app/...` and open without DNS errors.
+2. Click an agent invitation link → after activation, the redirect lands on
+   `https://maxichat.app/login?verified=1&email=...`.
+
+---
+
+## Suggested execution order
+1. **FIX 3 Part A** (config) — unblocks live users right now, no deploy.
+2. **FIX 1** + **FIX 2** + **FIX 3 Part B** — ship together in the next deploy.
+
+## One thing to double-check (relates to FIX 2)
+The link you received was `https://app.maxichat.app/verify-email?token=...&email=stephen@maxipro.co.id`.
+The `/verify-email` path is the **self-signup / owner** verification format. If
+`stephen@maxipro.co.id` is an **invited agent** (not an owner), receiving a
+`/verify-email` link is exactly the FIX 2A bug manifesting. If it's an **owner**
+self-signup, that link format is correct and only the domain (FIX 3) was wrong.
+Worth confirming whether that account's `parent_user_id` is NULL (owner) or set
+(invited member).
