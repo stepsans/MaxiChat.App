@@ -28,6 +28,7 @@ import {
 } from "@workspace/api-client-react";
 
 import { useColors } from "@/hooks/useColors";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const STATUS_OPTIONS: { value: ChatUpdateStatus; label: string }[] = [
   { value: "ai_handled", label: "AI" },
@@ -47,9 +48,24 @@ const LEAD_OPTIONS: {
   { value: "unknown", label: "Belum Tahu", tone: "muted" },
 ];
 
-export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
+export function InfoTab({
+  chatId,
+  chat,
+  onAddToWorkboard,
+}: {
+  chatId: number;
+  chat: Chat;
+  /** Opens the "Tambah ke WorkBoard" sheet (lifted to the chat screen so the
+   *  info panel can close first, avoiding a nested-modal stack). */
+  onAddToWorkboard?: () => void;
+}) {
   const colors = useColors();
   const queryClient = useQueryClient();
+  // WorkBoard task creation maps to the board "view" + editor role on the
+  // backend (board creation is what "create" gates) — so canView is the right
+  // visibility check here; super_admin always passes.
+  const { can } = usePermissions();
+  const canWorkboard = can("workboard").canView;
 
   const { data: labels } = useListCustomerLabels();
   const { data: commonGroups } = useGetCommonGroups(chatId, {
@@ -238,6 +254,19 @@ export function InfoTab({ chatId, chat }: { chatId: number; chat: Chat }) {
           {savingText ? "Menyimpan…" : "Simpan"}
         </Text>
       </TouchableOpacity>
+
+      {/* Tambah ke WorkBoard — buat task dari chat ini (gated by permission). */}
+      {canWorkboard && onAddToWorkboard ? (
+        <TouchableOpacity
+          onPress={onAddToWorkboard}
+          style={[styles.workboardBtn, { borderColor: colors.primary }]}
+        >
+          <Feather name="layout" size={16} color={colors.primary} />
+          <Text style={[styles.workboardBtnText, { color: colors.primary }]}>
+            Tambah ke WorkBoard
+          </Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* AI / manual takeover */}
       <View style={[styles.row, { marginTop: 18 }]}>
@@ -449,6 +478,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   saveBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15 },
+  workboardBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 11,
+    marginTop: 10,
+  },
+  workboardBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15 },
   row: { flexDirection: "row", alignItems: "center", gap: 12 },
   rowTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15 },
   rowSub: { fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 2 },

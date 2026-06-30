@@ -66,10 +66,12 @@ import {
 } from "@/components/MessageBody";
 import { VoiceNote } from "@/components/VoiceNote";
 import { VoiceRecorder, type RecordedVoiceNote } from "@/components/VoiceRecorder";
+import { AddToWorkboardSheet } from "@/components/chat-info/AddToWorkboardSheet";
 import { ChatInfoPanel, type TabKey } from "@/components/chat-info/ChatInfoPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useColors } from "@/hooks/useColors";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   resolveMediaUrl,
   uploadChatMedia,
@@ -157,6 +159,12 @@ export default function ConversationScreen() {
   const [labelModal, setLabelModal] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoTab, setInfoTab] = useState<TabKey>("info");
+  const [workboardOpen, setWorkboardOpen] = useState(false);
+
+  // WorkBoard task creation is gated on the board "view" permission (board
+  // creation is what "create" governs); super_admin always passes.
+  const { can } = usePermissions();
+  const canWorkboard = can("workboard").canView;
 
   // WhatsApp-parity chat-room surfaces.
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -1507,6 +1515,17 @@ export default function ConversationScreen() {
                 setStarredOpen(true);
               }}
             />
+            {canWorkboard ? (
+              <ActionRow
+                icon="layout"
+                label="Tambah ke WorkBoard"
+                color={colors.foreground}
+                onPress={() => {
+                  setMenuOpen(false);
+                  setWorkboardOpen(true);
+                }}
+              />
+            ) : null}
             <ActionRow
               icon="share-2"
               label="Ekspor Chat"
@@ -1601,6 +1620,21 @@ export default function ConversationScreen() {
         chatId={chatId}
         chat={chat}
         initialTab={infoTab}
+        onAddToWorkboard={
+          canWorkboard
+            ? () => {
+                // Close the info panel first so we don't stack two modals.
+                setInfoOpen(false);
+                setWorkboardOpen(true);
+              }
+            : undefined
+        }
+      />
+
+      <AddToWorkboardSheet
+        visible={workboardOpen}
+        onClose={() => setWorkboardOpen(false)}
+        chat={chat}
       />
     </View>
   );

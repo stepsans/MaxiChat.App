@@ -161,6 +161,102 @@ async function postJson<T = unknown>(
   }
 }
 
+/**
+ * GET an authenticated JSON endpoint that isn't covered by the generated client
+ * (e.g. the WorkBoard board/column/task routes, which aren't in the OpenAPI
+ * spec). Attaches the bearer token + X-Channel-Id the same way the generated
+ * fetcher does, and surfaces the backend `error` message on failure.
+ */
+export async function apiGetJson<T = unknown>(path: string): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (currentToken) headers["authorization"] = `Bearer ${currentToken}`;
+  if (currentChannelId) headers["x-channel-id"] = currentChannelId;
+  const res = await fetch(`${API_BASE}${path}`, { headers, credentials: "include" });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      msg = (j && (j.error || j.detail || j.message)) || msg;
+    } catch {
+      // ignore parse failure
+    }
+    throw new Error(msg);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return undefined as T;
+  }
+}
+
+/**
+ * POST an authenticated JSON body to an endpoint not in the generated client.
+ * Same auth/channel headers as apiGetJson. Used for WorkBoard task creation.
+ */
+export async function apiPostJson<T = unknown>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (currentToken) headers["authorization"] = `Bearer ${currentToken}`;
+  if (currentChannelId) headers["x-channel-id"] = currentChannelId;
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      msg = (j && (j.error || j.detail || j.message)) || msg;
+    } catch {
+      // ignore parse failure
+    }
+    throw new Error(msg);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return undefined as T;
+  }
+}
+
+/**
+ * PATCH an authenticated JSON body to an endpoint not in the generated client.
+ * Same auth/channel headers as apiGetJson. Used for WorkBoard task moves.
+ */
+export async function apiPatchJson<T = unknown>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (currentToken) headers["authorization"] = `Bearer ${currentToken}`;
+  if (currentChannelId) headers["x-channel-id"] = currentChannelId;
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      msg = (j && (j.error || j.detail || j.message)) || msg;
+    } catch {
+      // ignore parse failure
+    }
+    throw new Error(msg);
+  }
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return undefined as T;
+  }
+}
+
 export type MobileSessionResult = {
   token: string;
   user: AuthUser;

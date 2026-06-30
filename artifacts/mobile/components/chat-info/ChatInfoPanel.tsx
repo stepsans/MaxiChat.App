@@ -42,6 +42,7 @@ export function ChatInfoPanel({
   chatId,
   chat,
   initialTab,
+  onAddToWorkboard,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -49,6 +50,8 @@ export function ChatInfoPanel({
   chat: Chat | undefined;
   /** Tab to focus when the panel opens; defaults to "info". */
   initialTab?: TabKey;
+  /** Forwarded to the Info tab's "Tambah ke WorkBoard" action. */
+  onAddToWorkboard?: () => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -145,7 +148,11 @@ export function ChatInfoPanel({
           {/* Content */}
           <View style={{ flex: 1 }}>
             {!chat ? null : tab === "info" ? (
-              <InfoTab chatId={chatId} chat={chat} />
+              <InfoTab
+                chatId={chatId}
+                chat={chat}
+                onAddToWorkboard={onAddToWorkboard}
+              />
             ) : tab === "media" ? (
               <MediaTab chatId={chatId} />
             ) : tab === "shortcut" ? (

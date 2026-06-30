@@ -94,6 +94,7 @@ function RootLayoutNav() {
       <Stack.Protected guard={!!token}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat/[id]" />
+        <Stack.Screen name="workboard/[id]" />
       </Stack.Protected>
       <Stack.Protected guard={!token}>
         <Stack.Screen name="login" />

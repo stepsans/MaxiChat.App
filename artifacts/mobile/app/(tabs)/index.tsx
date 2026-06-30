@@ -71,6 +71,14 @@ function timeLabel(iso: string | null): string {
 
 const isGroupChat = (c: Chat) => c.phoneNumber.endsWith("@g.us");
 
+// Filter baca/belum-baca (client-side, di atas scope + pencarian yang ada).
+type ReadFilter = "all" | "unread" | "read";
+const READ_SEGMENTS: { id: ReadFilter; label: string }[] = [
+  { id: "all", label: "Semua" },
+  { id: "unread", label: "Belum dibaca" },
+  { id: "read", label: "Sudah dibaca" },
+];
+
 // ── Memoized row ──────────────────────────────────────────────────────────────
 // Module-level + React.memo with a field-level `areEqual`. The 5s poll feeds a
 // new array but React Query's structural sharing keeps unchanged items' identity
@@ -199,6 +207,8 @@ export default function ChatListScreen() {
   // dengan status lead tsebut (lead / not_lead / unknown).
   const [leadFilter, setLeadFilter] = useState<ChatLeadStatus | null>(null);
   const [scope, setScope] = useState<"personal" | "group">("personal");
+  // Filter baca/belum-baca — sesi saja (tidak perlu persist antar-restart).
+  const [readFilter, setReadFilter] = useState<ReadFilter>("all");
 
   // Apply incoming deep-link filter params. Keyed on the param values so it
   // fires per navigation (not on a plain tab-bar tap, which carries no params),
@@ -265,9 +275,22 @@ export default function ChatListScreen() {
     return { personal: all.length - group, group };
   }, [chats]);
 
+  // Jumlah chat belum dibaca dalam scope aktif — untuk badge di segmen filter.
+  const unreadInScope = useMemo(() => {
+    const list = (chats ?? []).filter((c) =>
+      scope === "group" ? isGroupChat(c) : !isGroupChat(c),
+    );
+    return list.filter((c) => (c.unreadCount ?? 0) > 0).length;
+  }, [chats, scope]);
+
   const filtered = useMemo(() => {
     let list = chats ?? [];
     list = list.filter((c) => (scope === "group" ? isGroupChat(c) : !isGroupChat(c)));
+    if (readFilter === "unread") {
+      list = list.filter((c) => (c.unreadCount ?? 0) > 0);
+    } else if (readFilter === "read") {
+      list = list.filter((c) => (c.unreadCount ?? 0) === 0);
+    }
     if (leadFilter != null) {
       list = list.filter((c) => (c.leadStatus ?? ChatLeadStatus.unknown) === leadFilter);
     }
@@ -290,7 +313,7 @@ export default function ChatListScreen() {
       list = [...list].sort((a, b) => rankOf(a, q) - rankOf(b, q));
     }
     return list;
-  }, [chats, labelFilter, leadFilter, search, scope, contentMatch]);
+  }, [chats, labelFilter, leadFilter, readFilter, search, scope, contentMatch]);
 
   // Pull-to-refresh spinner is bound to an explicit manual-refresh flag, NOT
   // react-query's `isRefetching` — otherwise the silent 5s background poll would
@@ -361,6 +384,59 @@ export default function ChatListScreen() {
             value={search}
             onChangeText={setSearch}
           />
+        </View>
+      </View>
+
+      {/* Segmen baca/belum-baca — di atas list, menumpuk dengan scope + cari. */}
+      <View style={styles.readFilterWrap}>
+        <View
+          style={[
+            styles.segmentRow,
+            { backgroundColor: colors.secondary, borderColor: colors.border },
+          ]}
+        >
+          {READ_SEGMENTS.map((seg) => {
+            const active = readFilter === seg.id;
+            const showBadge = seg.id === "unread" && unreadInScope > 0;
+            return (
+              <TouchableOpacity
+                key={seg.id}
+                style={[
+                  styles.segment,
+                  active && { backgroundColor: colors.primary },
+                ]}
+                activeOpacity={0.8}
+                onPress={() => setReadFilter(seg.id)}
+              >
+                <Text
+                  style={[
+                    styles.segmentText,
+                    { color: active ? colors.primaryForeground : colors.mutedForeground },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {seg.label}
+                </Text>
+                {showBadge ? (
+                  <View
+                    style={[
+                      styles.segmentBadge,
+                      { backgroundColor: active ? colors.primaryForeground : colors.unreadBadge },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentBadgeText,
+                        { color: active ? colors.primary : "#ffffff" },
+                      ]}
+                    >
+                      {unreadInScope > 99 ? "99+" : unreadInScope}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
@@ -513,7 +589,11 @@ export default function ChatListScreen() {
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
                 {search || labelFilter != null || leadFilter != null
                   ? "Tidak ada chat yang cocok."
-                  : "Belum ada chat di channel ini."}
+                  : readFilter === "unread"
+                    ? "Tidak ada chat yang belum dibaca."
+                    : readFilter === "read"
+                      ? "Tidak ada chat yang sudah dibaca."
+                      : "Belum ada chat di channel ini."}
               </Text>
             </View>
           }
@@ -572,6 +652,33 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 3,
     marginTop: 8,
   },
+  readFilterWrap: { paddingHorizontal: 12, paddingTop: 8 },
+  segmentRow: {
+    flexDirection: "row",
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 3,
+    gap: 3,
+  },
+  segment: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 7,
+    borderRadius: 15,
+  },
+  segmentText: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  segmentBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentBadgeText: { fontFamily: "Inter_700Bold", fontSize: 10 },
   filterStrip: { flexGrow: 0, paddingVertical: 8 },
   filterContent: { paddingHorizontal: 12, gap: 8 },
   filterPill: {
