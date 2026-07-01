@@ -1658,11 +1658,18 @@ router.post("/:id/participants", async (req, res): Promise<void> => {
   }
 });
 
-// How many of the most-recent messages GET /chats/:id returns. Older history
-// is paged via GET /chats/history. Keeping this window small matters because
-// the client polls GET /chats/:id every few seconds — a large group chat has
-// tens of thousands of messages and shipping all of them on every poll is what
-// made opening such chats feel unresponsive.
+// How many of the most-recent messages GET /chats/:id returns on the initial
+// open. Older history is paged via GET /chats/history as the user scrolls up.
+// Keeping this small matters twice over: the client polls GET /chats/:id every
+// few seconds, and a large group chat has tens of thousands of messages —
+// shipping (and rendering) a big window on every poll is what made opening
+// such chats feel unresponsive. 40 comfortably fills the first viewport; the
+// rest lazy-loads on scroll.
+const INITIAL_MESSAGE_WINDOW = 40;
+
+// Default page size for GET /chats/history (scroll-up paging). Larger than the
+// initial window so each scroll-up fetch pulls in a substantial batch and the
+// user rarely has to wait again. Capped at 500 by the endpoint's Zod schema.
 const RECENT_MESSAGE_WINDOW = 200;
 
 // Wipe ALL chat history for the caller's tenant — every channel the owner
@@ -1780,9 +1787,9 @@ router.get("/:id", async (req, res): Promise<void> => {
       .from(chatMessagesTable)
       .where(eq(chatMessagesTable.chatId, chat.id))
       .orderBy(desc(chatMessagesTable.createdAt), desc(chatMessagesTable.id))
-      .limit(RECENT_MESSAGE_WINDOW + 1);
-    const hasMoreMessages = recent.length > RECENT_MESSAGE_WINDOW;
-    const messages = recent.slice(0, RECENT_MESSAGE_WINDOW).reverse();
+      .limit(INITIAL_MESSAGE_WINDOW + 1);
+    const hasMoreMessages = recent.length > INITIAL_MESSAGE_WINDOW;
+    const messages = recent.slice(0, INITIAL_MESSAGE_WINDOW).reverse();
 
     if ((chat.unreadCount ?? 0) > 0) {
       db.update(chatsTable)

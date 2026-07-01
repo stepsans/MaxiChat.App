@@ -2377,7 +2377,7 @@ paths:
       tags: [chats]
       summary: Get a specific chat with messages
       description: >
-        Returns the chat plus the most recent window of messages (newest 200).
+        Returns the chat plus the most recent window of messages (newest 40).
         Older history is paged separately via GET /chats/history to keep this
         response — which the client polls every few seconds — small even for
         large group chats.

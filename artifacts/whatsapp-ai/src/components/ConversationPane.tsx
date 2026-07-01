@@ -1078,14 +1078,34 @@ export default function ConversationPane({ chatId }: { chatId: number }) {
   }, [newestMessageId, chat?.id]);
 
   if (isLoading) {
+    // Render the full conversation layout as a skeleton so the screen fills in
+    // immediately instead of blocking on a centered spinner. Alternating
+    // left/right bubble placeholders mimic an incoming/outgoing thread, so the
+    // shape the user expects is on-screen while the real messages arrive.
+    const skeletonRows = [
+      { side: "left", w: "w-48" },
+      { side: "right", w: "w-32" },
+      { side: "left", w: "w-56" },
+      { side: "left", w: "w-40" },
+      { side: "right", w: "w-52" },
+      { side: "right", w: "w-24" },
+      { side: "left", w: "w-44" },
+    ];
     return (
       <div className="flex-1 wa-doodle-bg flex flex-col">
         <div className="h-[60px] bg-[hsl(var(--wa-panel-header))] border-b border-[hsl(var(--wa-divider))] flex items-center px-4 gap-3">
           <Skeleton className="w-10 h-10 rounded-full" />
           <Skeleton className="h-4 w-40" />
         </div>
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--wa-meta))]" />
+        <div className="flex-1 overflow-hidden px-4 py-4 space-y-3">
+          {skeletonRows.map((row, i) => (
+            <div
+              key={i}
+              className={`flex ${row.side === "right" ? "justify-end" : "justify-start"}`}
+            >
+              <Skeleton className={`h-10 ${row.w} rounded-lg`} />
+            </div>
+          ))}
         </div>
       </div>
     );

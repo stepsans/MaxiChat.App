@@ -104,13 +104,16 @@ function ConnectionOverlay({
   if (status === "connected") return null;
 
   if (status === "syncing") {
+    // WhatsApp is already connected and merely catching up on older history in
+    // the background. Existing chats and messages are fully usable, so show a
+    // slim non-blocking banner instead of a full-screen overlay — pointer
+    // events pass through so the user can keep reading and replying.
     return (
-      <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-background/90 backdrop-blur-sm">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <div className="text-center">
-          <p className="text-base font-medium">Memuat riwayat pesan...</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Harap tunggu, riwayat percakapan sedang disinkronkan.
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+        <div className="flex items-center gap-2 rounded-full bg-background/95 backdrop-blur-sm border border-border px-4 py-2 shadow-md">
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          <p className="text-sm font-medium">
+            Menyinkronkan riwayat pesan di latar belakang…
           </p>
         </div>
       </div>
