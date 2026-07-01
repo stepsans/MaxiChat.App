@@ -164,7 +164,9 @@
       "Bash(grep -rln \"leadStatus\\\\|lead_status\\\\|isLead\" src)",
       "Read(//home/hooks/**)",
       "Read(//home/**)",
-      "Bash(perl -0pi -e 's/assignees: assignees\\\\.map\\\\\\(\\\\\\(a\\\\\\) => \\\\\\(\\\\{ userId: a\\\\.userId, name: a\\\\.name, email: a\\\\.email \\\\}\\\\\\)\\\\\\)/assignees: assignees.map\\(\\(a\\) => \\({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl }\\)\\)/g' workboard.ts)"
+      "Bash(perl -0pi -e 's/assignees: assignees\\\\.map\\\\\\(\\\\\\(a\\\\\\) => \\\\\\(\\\\{ userId: a\\\\.userId, name: a\\\\.name, email: a\\\\.email \\\\}\\\\\\)\\\\\\)/assignees: assignees.map\\(\\(a\\) => \\({ userId: a.userId, name: a.name, email: a.email, profilePhotoUrl: a.profilePhotoUrl }\\)\\)/g' workboard.ts)",
+      "Bash(PORT=5000 pnpm run build)",
+      "Bash(PORT=5000 BASE_PATH=/ NODE_ENV=production pnpm run build)"
     ],
     "deny": [
       "Bash(sudo *)",

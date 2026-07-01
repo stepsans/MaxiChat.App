@@ -3,13 +3,13 @@
 // @workspace/db (it connects to Postgres eagerly at import) — can import the
 // tag constants + classifier without dragging the database in.
 
-// WhatsApp italic syntax uses underscores. We append on the next line so
-// the tag is visually separated from the message body. Empty/whitespace-
-// only inputs return the tag as a standalone message (used as a caption
-// fallback when an agent attaches media with no caption).
+// WhatsApp monospace (FixedSys) syntax wraps text in triple backticks. We
+// append on the next line so the tag is visually separated from the message
+// body. Empty/whitespace-only inputs return the tag as a standalone message
+// (used as a caption fallback when an agent attaches media with no caption).
 export function withTag(text: string | null | undefined, tag: string): string {
   const body = (text ?? "").trimEnd();
-  const sig = `_${tag}_`;
+  const sig = "```" + tag + "```";
   if (!body) return sig;
   return `${body}\n${sig}`;
 }
@@ -18,13 +18,15 @@ export const CHATBOT_TAG = "Chatbot";
 export const AI_TAG = "powered by AI";
 export const FOLLOW_UP_TAG = "follow-up otomatis";
 
-// Strip a trailing `\n\n_<anything>_` signature from a stored outbound
-// message before feeding it back to the LLM as conversation history.
-// Without this, the model sees its own past `_powered by AI_` (and the
-// agent/chatbot tags) and is tempted to either roleplay as that agent
-// or to emit a signature itself — which `withTag` would then double up.
+// Strip a trailing signature from a stored outbound message before feeding it
+// back to the LLM as conversation history. Without this, the model sees its
+// own past ```powered by AI``` (and the agent/chatbot tags) and is tempted to
+// either roleplay as that agent or to emit a signature itself — which
+// `withTag` would then double up. Accepts both the current monospace form
+// (```tag```) and the legacy italic form (_tag_) so messages stored before the
+// format switch are still cleaned.
 export function stripTrailingTag(text: string): string {
-  return text.replace(/\n*_[^_\n]+_\s*$/u, "").trimEnd();
+  return text.replace(/\n*(?:```[^`\n]+```|_[^_\n]+_)\s*$/u, "").trimEnd();
 }
 
 // The signatures appended by the system's automated outbound paths:
@@ -38,8 +40,10 @@ export function stripTrailingTag(text: string): string {
 // no signature) apart from an automated send that also lacks a sentByUserId.
 // Matches the tag at the very end of the message, optionally followed by
 // trailing whitespace. Anchored so a tag quoted mid-message doesn't trip it.
+// Accepts both the monospace form (```tag```) and the legacy italic form
+// (_tag_) so sends stored before the format switch are still recognised.
 const AUTOMATED_SIGNATURE_RE =
-  /_(?:Chatbot|powered by AI|follow-up otomatis)_\s*$/u;
+  /(?:```(?:Chatbot|powered by AI|follow-up otomatis)```|_(?:Chatbot|powered by AI|follow-up otomatis)_)\s*$/u;
 
 export function hasAutomatedSignature(content: string | null | undefined): boolean {
   return AUTOMATED_SIGNATURE_RE.test(content ?? "");
