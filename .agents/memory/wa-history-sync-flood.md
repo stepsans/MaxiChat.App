@@ -49,6 +49,25 @@ flood. Live `messages.upsert` keeps downloading (fresh URLs) and is untouched.
 **Why:** old media is unrecoverable regardless, so the only effect of trying is
 the flood; placeholders for >14d media are an acceptable, invisible tradeoff.
 
+### The deeper cost is per-message DB work, not just media
+Age-gating media alone was NOT enough: on every reconnect (WhatsApp 515
+`restartRequired`) WhatsApp re-dumps the RECENT history as many back-to-back
+5000-message batches, and the handler did one `parseWaMessage` DB round-trip per
+message (dedup/insert) — even though `ingested` was ~0 because they were already
+stored. That per-message DB storm on the single Node event loop is what makes the
+published dashboard "spin" (every API call jumps to 1–3s; process stays STABLE,
+no restart = saturation not crash).
+
+**Rule:** in the history handler, on RECONNECT only
+(`isReconnect = connPreSyncCutoff.size > 0`), `continue` (skip `parseWaMessage`
+entirely) for messages older than a ~14-day catch-up window. First-time sync
+(`isReconnect=false`) still ingests everything so a fresh pairing populates chats.
+Keep `status@broadcast` handling and the `isLatest` "syncing"-promotion BEFORE/AFTER
+the gate untouched, and never touch the live `messages.upsert` path.
+
+**Trade-off (accepted):** a reconnect after >14 days of downtime won't backfill
+the older missed messages — rare, and those are already media-expired anyway.
+
 ## Diagnosing a "site down but process looks alive" hang
 - `curl -sv https://<domain>/` → TLS connects + cert OK but no `HTTP/` line, then
   timeout (`http=000`) = backend wedged, not a DNS/TLS/domain problem.

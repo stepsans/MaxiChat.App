@@ -3772,6 +3772,14 @@ async function startBaileys(userId: number, channelId: number) {
       // riwayat. Untuk pesan lama kita simpan metadata-nya saja (placeholder);
       // pesan yang masih baru tetap diunduh penuh.
       const HISTORY_MEDIA_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+      // OPSI: pada RECONNECT, WhatsApp mengulang dump riwayat (batch 5000 pesan
+      // berkali-kali). Pesan lama itu SUDAH tersimpan dari sinkronisasi
+      // sebelumnya, tapi memproses ulang tiap pesan tetap melakukan 1 round-trip
+      // DB per pesan — inilah "badai" yang menyaturasi event loop & membuat
+      // dashboard "muter". Jadi saat reconnect kita lewati pemrosesan pesan di
+      // luar jendela catch-up. Pada sinkronisasi PERTAMA (isReconnect=false)
+      // semua pesan tetap diproses agar riwayat chat terisi.
+      const HISTORY_INGEST_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
       for (const msg of messages) {
         try {
           // Use `continue`, not `return`: a mid-batch epoch flip used
@@ -3791,6 +3799,22 @@ async function startBaileys(userId: number, channelId: number) {
             );
             continue;
           }
+          // A missing/zero timestamp is treated as "too old" (skip) rather
+          // than falling back to Date.now() — otherwise a malformed history
+          // record would re-open the flood we're guarding against.
+          const tsEpochMs =
+            msg.messageTimestamp != null ? toEpochMs(msg.messageTimestamp) : 0;
+          const msgAgeMs = tsEpochMs > 0 ? Date.now() - tsEpochMs : Infinity;
+
+          // On a RECONNECT, skip the per-message DB work for messages outside
+          // the catch-up window: they are already stored from an earlier sync,
+          // so re-parsing them each reconnect just floods the event loop
+          // (the "history storm" that stalls the dashboard). First-time syncs
+          // (isReconnect=false) still ingest everything to populate the chat.
+          if (isReconnect && msgAgeMs > HISTORY_INGEST_MAX_AGE_MS) {
+            continue;
+          }
+
           // Download media for historical messages too — otherwise the
           // operator sees the chat history but every PDF / image / video
           // shows as a placeholder with mediaUrl=null. Downloads are
@@ -3800,13 +3824,7 @@ async function startBaileys(userId: number, channelId: number) {
           // BUT only attempt it inside WhatsApp's ~14-day media re-download
           // window: older media URLs are always expired (403), so trying
           // floods the server with useless fetches (see HISTORY_MEDIA_MAX_AGE_MS).
-          // A missing/zero timestamp is treated as "too old" (skip download)
-          // rather than falling back to Date.now() — otherwise a malformed
-          // history record would re-open the flood we're guarding against.
-          const tsEpochMs =
-            msg.messageTimestamp != null ? toEpochMs(msg.messageTimestamp) : 0;
-          const downloadHistoryMedia =
-            tsEpochMs > 0 && Date.now() - tsEpochMs <= HISTORY_MEDIA_MAX_AGE_MS;
+          const downloadHistoryMedia = msgAgeMs <= HISTORY_MEDIA_MAX_AGE_MS;
           const parsed = await parseWaMessage(
             { ownerUserId: mediaOwnerUserId, channelId },
             msg,
