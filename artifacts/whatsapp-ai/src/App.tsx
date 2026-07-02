@@ -38,6 +38,7 @@ import Profile from "@/pages/Profile";
 import Login from "@/pages/Login";
 import SignUp from "@/pages/SignUp";
 import VerifyEmail from "@/pages/VerifyEmail";
+import InviteVerify from "@/pages/InviteVerify";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -103,7 +104,7 @@ function AuthGate() {
         <Route path="/login" component={Login} />
         <Route path="/signup" component={SignUp} />
         <Route path="/verify-email" component={VerifyEmail} />
-        <Route path="/invite/verify" component={Login} />
+        <Route path="/invite/verify" component={InviteVerify} />
         <Route component={Login} />
       </Switch>
     );

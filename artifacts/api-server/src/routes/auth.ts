@@ -465,6 +465,26 @@ router.get("/invite/verify", async (req, res): Promise<void> => {
   }
 });
 
+// POST /auth/invite/verify — JSON variant consumed by the frontend
+// /invite/verify page. verifyAgentInvitation() sets email_verified_at +
+// status=active unconditionally on the account row (works for invited agents,
+// which are created 'active'), and is single-use on the token via its
+// acceptedAt guard. Never creates a session; the agent logs in afterwards via
+// email OTP. A double-click returns "Link sudah pernah digunakan." which the
+// frontend treats as a soft-success.
+router.post("/invite/verify", async (req, res): Promise<void> => {
+  try {
+    const token = String(req.body?.token ?? "").trim();
+    if (!token) { res.status(400).json({ error: "Token tidak valid." }); return; }
+    const result = await verifyAgentInvitation(token);
+    if (!result.ok) { res.status(400).json({ error: result.error }); return; }
+    res.json({ ok: true, email: result.email });
+  } catch (err) {
+    logger.error({ err }, "POST /auth/invite/verify failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /auth/me
 router.get("/me", async (req, res): Promise<void> => {
   const userId = req.session?.userId;
